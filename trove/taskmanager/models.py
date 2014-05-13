@@ -575,8 +575,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             name, image_id, flavor_id, files=files, userdata=userdata,
             security_groups=security_groups, block_device_mapping=bdmap,
             availability_zone=availability_zone, nics=nics,
-            key_name=CONF.nova_key_name,
-            config_drive=CONF.nova_use_config_drive)
+            key_name=CONF.use_nova_key_name,
+            config_drive=CONF.use_nova_config_drive)
         LOG.debug(_("Created new compute instance %(server_id)s "
                     "for id: %(id)s") %
                   {'server_id': server.id, 'id': self.id})
