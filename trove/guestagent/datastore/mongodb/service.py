@@ -43,7 +43,6 @@ class MongoDBApp(object):
         if not system.PACKAGER.pkg_is_installed(packages):
             LOG.debug(_("Installing packages: %s") % str(packages))
             system.PACKAGER.pkg_install(packages, {}, system.TIME_OUT)
-        self.start_db()
         LOG.info(_("Finished installing MongoDB server"))
 
     def _enable_db_on_boot(self):
