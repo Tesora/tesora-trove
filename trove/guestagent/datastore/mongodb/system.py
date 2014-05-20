@@ -24,7 +24,6 @@ TMP_CONFIG = "/tmp/mongodb.conf.tmp"
 CONFIG = "/etc/mongodb.conf"
 SERVICE_CANDIDATES = ["mongodb", "mongod"]
 MONGODB_KILL = "sudo kill %s"
-FIND_PID = "ps xau | grep mongod"
 TIME_OUT = 1000
 
 PACKAGER = pkg.Package()
