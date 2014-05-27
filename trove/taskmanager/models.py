@@ -264,11 +264,31 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             LOG.error(_("Timeout for service changing to active. "
                       "No usage create-event sent."))
             self.update_statuses_on_time_out()
-
         except Exception:
             LOG.exception(_("Error during create-event call."))
 
         LOG.debug("end create_instance for id: %s" % self.id)
+
+    def attach_replication_slave(self, snapshot, slave_config=None):
+        LOG.debug("Calling attach_replication_slave for %s.", self.id)
+        try:
+            self.guest.attach_replication_slave(snapshot, slave_config)
+        except GuestError as e:
+            msg = (_("Error attaching instance %s "
+                     "as replication slave.") % self.id)
+            err = inst_models.InstanceTasks.BUILDING_ERROR_SLAVE
+            self._log_and_raise(e, msg, err)
+
+    def get_replication_master_snapshot(self, context, slave_of_id, backup_id):
+        try:
+            master_tasks = BuiltInstanceTasks.load(context, slave_of_id)
+            snapshot = master_tasks.get_replication_snapshot(backup_id)
+            return snapshot
+        except TroveError as e:
+            msg = (_("Error getting snapshot from "
+                     "replication master %s.") % slave_of_id)
+            err = inst_models.InstanceTasks.BUILDING_ERROR_SLAVE
+            self._log_and_raise(e, msg, err)
 
     def report_root_enabled(self):
         mysql_models.RootHistory.create(self.context, self.id, 'root')
@@ -802,6 +822,18 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
     def create_backup(self, backup_info):
         LOG.debug("Calling create_backup  %s " % self.id)
         self.guest.create_backup(backup_info)
+
+    def get_replication_snapshot(self, backup_id):
+        master_config = {'snapshot_id': backup_id or utils.generate_uuid()}
+        LOG.debug("Calling get_replication_snapshot on %s.", self.id)
+        try:
+            result = self.guest.get_replication_snapshot(master_config)
+            LOG.debug("Got replication snapshot from %s.", self.id)
+            return result
+        except (GuestError, GuestTimeout):
+            msg = _("Failed to get replication snapshot from %s.") % self.id
+            LOG.exception(msg)
+            raise TroveError(msg)
 
     def reboot(self):
         try:

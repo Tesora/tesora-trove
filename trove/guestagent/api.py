@@ -326,8 +326,8 @@ class API(proxy.RpcProxy):
 
     def get_replication_snapshot(self, master_config=None):
         LOG.debug("Retrieving replication snapshot from instance %s.", self.id)
-        self._call("get_replication_snapshot", AGENT_HIGH_TIMEOUT,
-                   master_config=master_config)
+        return self._call("get_replication_snapshot", AGENT_HIGH_TIMEOUT,
+                          master_config=master_config)
 
     def attach_replication_slave(self, snapshot, slave_config=None):
         LOG.debug("Configuring instance %s to replicate from %s.",
