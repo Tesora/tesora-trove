@@ -870,6 +870,11 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         return run_with_quotas(self.context.tenant, {'backups': 1},
                                _get_replication_snapshot)
 
+    def detach_replication_slave(self):
+        LOG.debug("Calling detach_replication_slave on %s" % self.id)
+        self.guest.detach_replication_slave()
+        self.update_db(self, slave_of_id=None)
+
     def reboot(self):
         try:
             LOG.debug("Instance %s calling stop_db..." % self.id)

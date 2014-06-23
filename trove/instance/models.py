@@ -820,6 +820,15 @@ class Instance(BuiltInstance):
         self.update_db(task_status=InstanceTasks.REBOOTING)
         task_api.API(self.context).restart(self.id)
 
+    def detach_replication(self):
+        self.validate_can_perform_action()
+        LOG.info(_("Detaching instance %s from its replication master...")
+                 % self.id)
+        if not self.slave_of_id:
+            raise exception.BadRequest(
+                _("Instance %s has no replication master.") % self.id)
+        task_api.API(self.context).detach_replication(self.id)
+
     def migrate(self, host=None):
         self.validate_can_perform_action()
         LOG.info("Migrating instance id = %s, to host = %s" % (self.id, host))

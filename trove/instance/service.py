@@ -77,7 +77,8 @@ class InstanceController(wsgi.Controller):
         _actions = {
             'restart': self._action_restart,
             'resize': self._action_resize,
-            'reset_password': self._action_reset_password
+            'reset_password': self._action_reset_password,
+            'detach_replication': self._action_detach_replication
         }
         selected_action = None
         for key in body:
@@ -123,6 +124,10 @@ class InstanceController(wsgi.Controller):
 
     def _action_reset_password(self, instance, body):
         raise webob.exc.HTTPNotImplemented()
+
+    def _action_detach_replication(self, instance, body):
+        instance.detach_replication()
+        return wsgi.Result(None, 202)
 
     def index(self, req, tenant_id):
         """Return all instances."""
