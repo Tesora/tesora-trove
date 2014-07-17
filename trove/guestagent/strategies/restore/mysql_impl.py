@@ -80,7 +80,12 @@ class MySQLRestoreMixin(object):
             LOG.info(_("Cleaning up the temp mysqld process..."))
             child.delayafterclose = 1
             child.delayafterterminate = 1
-            child.close(force=True)
+            try:
+                child.close(force=True)
+            except pexpect.ExceptionPexpect:
+                # This can fail on some OSs (Ubuntu 14.04 vs 12.04).
+                # Ignore the exception since we clean up with killall.
+                pass
             utils.execute_with_timeout("sudo", "killall", "mysqld")
             self.poll_until_then_raise(
                 self.mysql_is_not_running,
