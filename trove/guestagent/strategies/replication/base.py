@@ -32,15 +32,16 @@ class Replication(Strategy):
         super(Replication, self).__init__()
 
     @abc.abstractmethod
-    def get_master_ref(self, mysql_service, master_config):
+    def get_master_ref(self, mysql_service, snapshot_info):
         """Get reference to master site for replication strategy."""
 
     @abc.abstractmethod
-    def snapshot_for_replication(self, mysql_service, location, master_config):
+    def snapshot_for_replication(self, context, mysql_service, location,
+                                 snapshot_info):
         """Capture snapshot of master db."""
 
     @abc.abstractmethod
-    def enable_as_master(self, mysql_service, master_config):
+    def enable_as_master(self, mysql_service, snapshot_info):
         """Configure underlying database to act as master for replication."""
 
     @abc.abstractmethod

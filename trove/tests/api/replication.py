@@ -15,6 +15,7 @@
 from proboscis import test
 from proboscis.asserts import assert_equal
 from proboscis.asserts import assert_raises
+from proboscis.asserts import assert_true
 from proboscis.decorators import time_out
 from trove.common.utils import generate_uuid
 from trove.common.utils import poll_until
@@ -66,11 +67,9 @@ class WaitForCreateSlaveToFinish(object):
             if instance.status == "ACTIVE":
                 return True
             else:
-                # If its not ACTIVE, anything but BUILD must be
-                # an error.
-                assert_equal("BUILD", instance.status)
-                if instance_info.volume is not None:
-                    assert_equal(instance.volume.get('used', None), None)
+                assert_true(instance.status in ['BUILD', 'BACKUP'])
+                # if instance_info.volume is not None:
+                #     assert_equal(instance.volume.get('used', None), None)
                 return False
         poll_until(result_is_active)
 
