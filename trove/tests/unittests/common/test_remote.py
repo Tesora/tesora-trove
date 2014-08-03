@@ -21,6 +21,7 @@ import testtools
 from testtools import matchers
 
 import swiftclient.client
+import uuid
 
 from trove.tests.fakes.swift import SwiftClientStub
 from trove.common.context import TroveContext
@@ -48,7 +49,7 @@ class TestRemote(testtools.TestCase):
         service_catalog = [{'endpoints': [{'publicURL': 'example.com'}],
                             'type': 'object-store'}]
         client = remote.create_swift_client(TroveContext(
-            tenant='123',
+            tenant=uuid.uuid4().hex,
             service_catalog=service_catalog))
         headers, container = client.get_container('bob')
         self.assertIs(headers, "text")
@@ -286,7 +287,7 @@ class TestCreateCinderClient(testtools.TestCase):
 
     def test_create_with_conf_override(self):
         cinder_url_from_conf = 'http://example.com'
-        tenant_from_ctx = 'abc'
+        tenant_from_ctx = uuid.uuid4().hex
         cfg.CONF.set_override('cinder_url', cinder_url_from_conf)
 
         client = remote.create_cinder_client(
@@ -296,7 +297,7 @@ class TestCreateCinderClient(testtools.TestCase):
 
     def test_create_with_conf_override_trailing_slash(self):
         cinder_url_from_conf = 'http://example.com/'
-        tenant_from_ctx = 'abc'
+        tenant_from_ctx = uuid.uuid4().hex
         cfg.CONF.set_override('cinder_url', cinder_url_from_conf)
         client = remote.create_cinder_client(
             TroveContext(tenant=tenant_from_ctx))
@@ -361,7 +362,7 @@ class TestCreateNovaClient(testtools.TestCase):
 
     def test_create_with_conf_override(self):
         nova_url_from_conf = 'http://example.com'
-        tenant_from_ctx = 'abc'
+        tenant_from_ctx = uuid.uuid4().hex
         cfg.CONF.set_override('nova_compute_url', nova_url_from_conf)
 
         client = remote.create_nova_client(
@@ -371,7 +372,7 @@ class TestCreateNovaClient(testtools.TestCase):
 
     def test_create_with_conf_override_trailing_slash(self):
         nova_url_from_conf = 'http://example.com/'
-        tenant_from_ctx = 'abc'
+        tenant_from_ctx = uuid.uuid4().hex
         cfg.CONF.set_override('nova_compute_url', nova_url_from_conf)
         client = remote.create_nova_client(
             TroveContext(tenant=tenant_from_ctx))
@@ -436,7 +437,7 @@ class TestCreateHeatClient(testtools.TestCase):
 
     def test_create_with_conf_override(self):
         heat_url_from_conf = 'http://example.com'
-        tenant_from_ctx = 'abc'
+        tenant_from_ctx = uuid.uuid4().hex
         cfg.CONF.set_override('heat_url', heat_url_from_conf)
 
         client = remote.create_heat_client(
@@ -446,7 +447,7 @@ class TestCreateHeatClient(testtools.TestCase):
 
     def test_create_with_conf_override_trailing_slash(self):
         heat_url_from_conf = 'http://example.com/'
-        tenant_from_ctx = 'abc'
+        tenant_from_ctx = uuid.uuid4().hex
         cfg.CONF.set_override('heat_url', heat_url_from_conf)
         client = remote.create_heat_client(
             TroveContext(tenant=tenant_from_ctx))
@@ -511,7 +512,7 @@ class TestCreateSwiftClient(testtools.TestCase):
 
     def test_create_with_conf_override(self):
         swift_url_from_conf = 'http://example.com/AUTH_'
-        tenant_from_ctx = 'abc'
+        tenant_from_ctx = uuid.uuid4().hex
         cfg.CONF.set_override('swift_url', swift_url_from_conf)
 
         client = remote.create_swift_client(

@@ -99,8 +99,11 @@ def nova_client(context):
                            service_type=CONF.nova_compute_service_type,
                            endpoint_region=CONF.os_region_name)
 
-    client = Client(context.user, context.auth_token,
-                    project_id=context.tenant, auth_url=PROXY_AUTH_URL)
+    client = Client(username=context.user,
+                    api_key=context.auth_token,
+                    project_id=CONF.nova_proxy_admin_tenant_name,
+                    bypass_url=url,
+                    auth_url=PROXY_AUTH_URL)
     client.client.auth_token = context.auth_token
     client.client.management_url = url
     return client
