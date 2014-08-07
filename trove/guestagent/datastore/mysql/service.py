@@ -66,6 +66,22 @@ MYCNF_OVERRIDES_TMP = "/tmp/overrides.cnf.tmp"
 MYCNF_REPLMASTER = "/etc/mysql/conf.d/replication.cnf"
 MYCNF_REPLMASTER_TMP = "/tmp/replication.cnf.tmp"
 
+# SLAVE_STATUS_CHECK = [ (re, expected value, failure_code)... ]
+SLAVE_STATUS_CHECK = [
+    (re.compile("Slave_IO_Running: +(\w+)"), "Yes",
+     rd_instance.ServiceStatuses.DETACHED),
+    (re.compile("Slave_SQL_Running: +(\w+)"), "Yes",
+     rd_instance.ServiceStatuses.DETACHED),
+    (re.compile("Last_Errno: +(\d+)"), "0",
+     rd_instance.ServiceStatuses.UNKNOWN),
+    (re.compile("Last_IO_Errno: +(\d+)"), "0",
+     rd_instance.ServiceStatuses.UNKNOWN),
+    (re.compile("Last_SQL_Errno: +(\d+)"), "0",
+     rd_instance.ServiceStatuses.UNKNOWN),
+    (re.compile("Seconds_Behind_Master: +(\d+)"), "0",
+     rd_instance.ServiceStatuses.DELAYED)
+]
+
 
 # Create a package impl
 packager = pkg.Package()
@@ -162,11 +178,23 @@ class MySqlAppStatus(service.BaseDbStatus):
 
     def _get_actual_db_status(self):
         try:
-            out, err = utils.execute_with_timeout(
-                "/usr/bin/mysqladmin",
-                "ping", run_as_root=True, root_helper="sudo")
-            LOG.info(_("MySQL Service Status is RUNNING."))
-            return rd_instance.ServiceStatuses.RUNNING
+            slave_status, err = utils.execute_with_timeout(
+                "/usr/bin/mysql", "-e", "show slave status\G",
+                run_as_root=True, root_helper="sudo")
+            # if there is no output from "show slave status",
+            # the site is not a slave site, so default status to RUNNING
+            status = rd_instance.ServiceStatuses.RUNNING
+            for re, expected, fail_code in SLAVE_STATUS_CHECK:
+                m = re.search(str(slave_status))
+                if m is None:
+                    break
+                elif m.group(1) != expected:
+                    LOG.debug("Slave status failing on: %s", re.pattern)
+                    LOG.info(_("Slave failure status:\n%s") % slave_status)
+                    status = fail_code
+                    break
+            LOG.info(_("Service Status is '%s'.") % status)
+            return status
         except exception.ProcessExecutionError:
             LOG.exception(_("Failed to get database status."))
             try:

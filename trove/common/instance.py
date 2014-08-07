@@ -96,6 +96,9 @@ class ServiceStatuses(object):
     DELETED = ServiceStatus(0x05, 'deleted', 'DELETED')
     FAILED_TIMEOUT_GUESTAGENT = ServiceStatus(0x18, 'guestagent error',
                                               'ERROR')
+    DELAYED = ServiceStatus(0x20, 'Replication slave lags master', 'DELAYED')
+    DETACHED = ServiceStatus(0x21, 'Replication slave detached from master',
+                             'DETACHED')
 
 # Dissuade further additions at run-time.
 ServiceStatus.__init__ = None
