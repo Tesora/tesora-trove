@@ -188,8 +188,7 @@ instance = {
         "properties": {
             "instance": {
                 "type": "object",
-                "required": ["name", "flavorRef",
-                             "volume" if CONF.trove_volume_support else None],
+                "required": ["name", "flavorRef"],
                 "additionalProperties": True,
                 "properties": {
                     "name": non_empty_string,
@@ -433,6 +432,26 @@ account = {
         "additionalProperties": True,
         "properties": {
             "users": users_list
+        }
+    }
+}
+
+upgrade = {
+    "create": {
+        "type": "object",
+        "required": ["upgrade"],
+        "additionalProperties": True,
+        "properties": {
+            "upgrade": {
+                "type": "object",
+                "required": [],
+                "additionalProperties": True,
+                "properties": {
+                    "instance_version": non_empty_string,
+                    "location": non_empty_string,
+                    "metadata": {}
+                }
+            }
         }
     }
 }

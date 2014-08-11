@@ -21,6 +21,11 @@ from trove.guestagent import api
 import trove.openstack.common.rpc as rpc
 import trove.common.rpc as trove_rpc
 
+REPLICATION_SNAPSHOT = {'master': {'id': '123', 'host': '192.168.0.1',
+                                   'port': 3306},
+                        'dataset': {},
+                        'binlog_position': 'binpos'}
+
 
 def _mock_call_pwd_change(cmd, users=None):
     if users == 'dummy':
@@ -275,6 +280,40 @@ class ApiTest(testtools.TestCase):
         # verify
         self._verify_rpc_cast(exp_msg, rpc.cast)
 
+    def test_get_replication_snapshot(self):
+        exp_resp = REPLICATION_SNAPSHOT
+        rpc.call = mock.Mock(return_value=exp_resp)
+        exp_msg = RpcMsgMatcher('get_replication_snapshot', 'master_config')
+        # execute
+        self.api.get_replication_snapshot()
+        # verify
+        self._verify_rpc_call(exp_msg, rpc.call)
+
+    def test_attach_replication_slave(self):
+        rpc.cast = mock.Mock()
+        exp_msg = RpcMsgMatcher('attach_replication_slave',
+                                'snapshot', 'slave_config')
+        # execute
+        self.api.attach_replication_slave(REPLICATION_SNAPSHOT)
+        # verify
+        self._verify_rpc_cast(exp_msg, rpc.cast)
+
+    def test_detach_replication_slave(self):
+        rpc.call = mock.Mock()
+        exp_msg = RpcMsgMatcher('detach_replication_slave')
+        # execute
+        self.api.detach_replication_slave()
+        # verify
+        self._verify_rpc_call(exp_msg, rpc.call)
+
+    def test_demote_replication_master(self):
+        rpc.call = mock.Mock()
+        exp_msg = RpcMsgMatcher('demote_replication_master')
+        # execute
+        self.api.demote_replication_master()
+        # verify
+        self._verify_rpc_call(exp_msg, rpc.call)
+
     def _verify_rpc_connection_and_cast(self, rpc, mock_conn, exp_msg):
         rpc.create_connection.assert_called_with(new=True)
         mock_conn.create_consumer.assert_called_with(
@@ -315,14 +354,21 @@ class ApiTest(testtools.TestCase):
         self._verify_rpc_connection_and_cast(rpc, mock_conn, exp_msg)
 
     def test_upgrade(self):
+        instance_version = "v1.0.1"
+        strategy = "pip"
+        location = "http://swift/trove-guestagent-v1.0.1.tar.gz"
+
         mock_conn = mock.Mock()
         rpc.create_connection = mock.Mock(return_value=mock_conn)
         rpc.cast = mock.Mock()
-        exp_msg = RpcMsgMatcher('upgrade')
+        exp_msg = RpcMsgMatcher(
+            'upgrade', 'instance_version', 'location', 'metadata')
+
         # execute
-        self.api.upgrade()
+        self.api.upgrade(instance_version, strategy, location)
+
         # verify
-        self._verify_rpc_connection_and_cast(rpc, mock_conn, exp_msg)
+        self._verify_rpc_cast(exp_msg, rpc.cast)
 
     def test_rpc_cast_with_consumer_exception(self):
         mock_conn = mock.Mock()

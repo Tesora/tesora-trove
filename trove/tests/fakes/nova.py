@@ -259,7 +259,7 @@ class FakeServers(object):
 
     def create(self, name, image_id, flavor_ref, files=None, userdata=None,
                block_device_mapping=None, volume=None, security_groups=None,
-               availability_zone=None, nics=None):
+               availability_zone=None, nics=None, config_drive=False):
         id = "FAKE_%s" % uuid.uuid4()
         if volume:
             volume = self.volumes.create(volume['size'], volume['name'],
@@ -272,8 +272,8 @@ class FakeServers(object):
             mapping = "%s::%s:%s" % (volume.id, volume.size, 1)
             block_device_mapping = {'vdb': mapping}
             volumes = [volume]
-            LOG.debug(_("Fake Volume Create %(volumeid)s with "
-                        "status %(volumestatus)s") %
+            LOG.debug("Fake Volume Create %(volumeid)s with "
+                      "status %(volumestatus)s" %
                       {'volumeid': volume.id, 'volumestatus': volume.status})
         else:
             volumes = self._get_volumes_from_bdm(block_device_mapping)
@@ -289,9 +289,11 @@ class FakeServers(object):
             raise nova_exceptions.ClientException("The requested availability "
                                                   "zone is not available.")
 
-        if nics is not None and nics.port_id == 'UNKNOWN':
-            raise nova_exceptions.ClientException("The requested availability "
-                                                  "zone is not available.")
+        if nics:
+            if 'port-id' in nics[0] and nics[0]['port-id'] == "UNKNOWN":
+                raise nova_exceptions.ClientException("The requested "
+                                                      "port-id is not "
+                                                      "available.")
 
         server.schedule_status("ACTIVE", 1)
         LOG.info(_("FAKE_SERVERS_DB : %s") % str(FAKE_SERVERS_DB))
@@ -347,7 +349,7 @@ class FakeServers(object):
 
         def set_server_running():
             instance = DBInstance.find_by(compute_instance_id=id)
-            LOG.debug(_("Setting server %s to running") % instance.id)
+            LOG.debug("Setting server %s to running" % instance.id)
             status = InstanceServiceStatus.find_by(instance_id=instance.id)
             status.status = rd_instance.ServiceStatuses.RUNNING
             status.save()
@@ -387,7 +389,7 @@ class FakeServerVolumes(object):
     def get_server_volumes(self, server_id):
         class ServerVolumes(object):
             def __init__(self, block_device_mapping):
-                LOG.debug(_("block_device_mapping = %s") %
+                LOG.debug("block_device_mapping = %s" %
                           block_device_mapping)
                 device = block_device_mapping['vdb']
                 (self.volumeId,
@@ -402,7 +404,7 @@ class FakeServerVolumes(object):
 class FakeVolume(object):
 
     def __init__(self, parent, owner, id, size, name,
-                 description):
+                 description, volume_type):
         self.attachments = []
         self.parent = parent
         self.owner = owner  # This is a context.
@@ -414,6 +416,7 @@ class FakeVolume(object):
         # For some reason we grab this thing from device then call it mount
         # point.
         self.device = "vdb"
+        self.volume_type = volume_type
 
     def __repr__(self):
         msg = ("FakeVolume(id=%s, size=%s, name=%s, "
@@ -488,10 +491,10 @@ class FakeVolumes(object):
             else:
                 raise nova_exceptions.NotFound(404, "Bad permissions")
 
-    def create(self, size, name=None, description=None):
+    def create(self, size, name=None, description=None, volume_type=None):
         id = "FAKE_VOL_%s" % uuid.uuid4()
         volume = FakeVolume(self, self.context, id, size, name,
-                            description)
+                            description, volume_type)
         self.db[id] = volume
         if size == 9:
             volume.schedule_status("error", 2)
@@ -499,8 +502,8 @@ class FakeVolumes(object):
             raise Exception("No volume for you!")
         else:
             volume.schedule_status("available", 2)
-        LOG.debug(_("Fake volume created %(volumeid)s with "
-                    "status %(volumestatus)s") %
+        LOG.debug("Fake volume created %(volumeid)s with "
+                  "status %(volumestatus)s" %
                   {'volumeid': volume.id, 'volumestatus': volume.status})
         LOG.info("FAKE_VOLUMES_DB : %s" % FAKE_VOLUMES_DB)
         return volume
@@ -509,7 +512,7 @@ class FakeVolumes(object):
         return [self.db[key] for key in self.db]
 
     def extend(self, volume_id, new_size):
-        LOG.debug(_("Resize volume id (%(volumeid)s) to size (%(size)s)") %
+        LOG.debug("Resize volume id (%(volumeid)s) to size (%(size)s)" %
                   {'volumeid': volume_id, 'size': new_size})
         volume = self.get(volume_id)
 
@@ -522,7 +525,7 @@ class FakeVolumes(object):
             volume.size = new_size
         eventlet.spawn_after(1.0, finish_resize)
 
-    def detach(self, volume_id):
+    def delete_server_volume(self, server_id, volume_id):
         volume = self.get(volume_id)
 
         if volume._current_status != 'in-use':
@@ -534,7 +537,7 @@ class FakeVolumes(object):
             volume._current_status = "available"
         eventlet.spawn_after(1.0, finish_detach)
 
-    def attach(self, volume_id, server_id, device_path):
+    def create_server_volume(self, server_id, volume_id, device_path):
         volume = self.get(volume_id)
 
         if volume._current_status != "available":

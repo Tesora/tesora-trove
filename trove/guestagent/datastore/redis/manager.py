@@ -17,6 +17,8 @@ from trove.common import cfg
 from trove.common import exception
 from trove.guestagent import dbaas
 from trove.guestagent import volume
+from trove.common import instance as rd_instance
+from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.redis.service import RedisAppStatus
 from trove.guestagent.datastore.redis.service import RedisApp
 from trove.openstack.common import log as logging
@@ -75,18 +77,26 @@ class Manager(periodic_task.PeriodicTasks):
         It is the first rpc message passed from the task manager.
         prepare handles all the base configuration of the redis instance.
         """
-        app = RedisApp(RedisAppStatus.get())
-        RedisAppStatus.get().begin_install()
-        if device_path:
-            device = volume.VolumeDevice(device_path)
-            device.format()
-            device.mount(mount_point)
-            LOG.debug(_('Mounted the volume.'))
-        app.install_if_needed(packages)
-        LOG.info(_('Securing redis now.'))
-        app.write_config(config_contents)
-        app.complete_install_or_restart()
-        LOG.info(_('"prepare" redis call has finished.'))
+        try:
+            app = RedisApp(RedisAppStatus.get())
+            RedisAppStatus.get().begin_install()
+            if device_path:
+                device = volume.VolumeDevice(device_path)
+                # unmount if device is already mounted
+                device.unmount_device(device_path)
+                device.format()
+                device.mount(mount_point)
+                operating_system.update_owner('redis', 'redis', mount_point)
+                LOG.debug('Mounted the volume.')
+            app.install_if_needed(packages)
+            LOG.info(_('Securing redis now.'))
+            app.write_config(config_contents)
+            app.restart()
+            LOG.info(_('"prepare" redis call has finished.'))
+        except Exception as e:
+            LOG.error(e)
+            app.status.set_status(rd_instance.ServiceStatuses.FAILED)
+            raise RuntimeError("prepare call has failed.")
 
     def restart(self, context):
         """
@@ -100,10 +110,9 @@ class Manager(periodic_task.PeriodicTasks):
     def start_db_with_conf_changes(self, context, config_contents):
         """
         Start this redis instance with new conf changes.
-        Right now this does nothing.
         """
-        raise exception.DatastoreOperationNotSupported(
-            operation='start_db_with_conf_changes', datastore=MANAGER)
+        app = RedisApp(RedisAppStatus.get())
+        app.start_db_with_conf_changes(config_contents)
 
     def stop_db(self, context, do_not_start_on_reboot=False):
         """
@@ -115,7 +124,7 @@ class Manager(periodic_task.PeriodicTasks):
         app.stop_db(do_not_start_on_reboot=do_not_start_on_reboot)
 
     def get_filesystem_stats(self, context, fs_path):
-        """Gets the filesystem stats for the path given. """
+        """Gets the filesystem stats for the path given."""
         mount_point = CONF.get(
             'mysql' if not MANAGER else MANAGER).mount_point
         return dbaas.get_filesystem_volume_stats(mount_point)
@@ -131,17 +140,17 @@ class Manager(periodic_task.PeriodicTasks):
     def mount_volume(self, context, device_path=None, mount_point=None):
         device = volume.VolumeDevice(device_path)
         device.mount(mount_point, write_to_fstab=False)
-        LOG.debug(_("Mounted the volume."))
+        LOG.debug("Mounted the volume.")
 
     def unmount_volume(self, context, device_path=None, mount_point=None):
         device = volume.VolumeDevice(device_path)
         device.unmount(mount_point)
-        LOG.debug(_("Unmounted the volume."))
+        LOG.debug("Unmounted the volume.")
 
     def resize_fs(self, context, device_path=None, mount_point=None):
         device = volume.VolumeDevice(device_path)
         device.resize_fs(mount_point)
-        LOG.debug(_("Resized the filesystem"))
+        LOG.debug("Resized the filesystem")
 
     def update_overrides(self, context, overrides, remove=False):
         raise exception.DatastoreOperationNotSupported(
@@ -204,3 +213,19 @@ class Manager(periodic_task.PeriodicTasks):
     def is_root_enabled(self, context):
         raise exception.DatastoreOperationNotSupported(
             operation='is_root_enabled', datastore=MANAGER)
+
+    def get_replication_snapshot(self, master_config):
+        raise exception.DatastoreOperationNotSupported(
+            operation='get_replication_snapshot', datastore=MANAGER)
+
+    def attach_replication_slave(self, snapshot, slave_config):
+        raise exception.DatastoreOperationNotSupported(
+            operation='attach_replication_slave', datastore=MANAGER)
+
+    def detach_replication_slave(self):
+        raise exception.DatastoreOperationNotSupported(
+            operation='detach_replication_slave', datastore=MANAGER)
+
+    def demote_replication_master(self):
+        raise exception.DatastoreOperationNotSupported(
+            operation='demote_replication_master', datastore=MANAGER)

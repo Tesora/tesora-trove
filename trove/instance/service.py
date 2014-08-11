@@ -37,12 +37,8 @@ LOG = logging.getLogger(__name__)
 
 class InstanceController(wsgi.Controller):
 
-    """Controller for instance functionality"""
+    """Controller for instance functionality."""
     schemas = apischema.instance.copy()
-    if not CONF.trove_volume_support:
-        # see instance.models.create for further validation around this
-        LOG.info("Removing volume attributes from schema")
-        schemas['create']['properties']['instance']['required'].pop()
 
     @classmethod
     def get_action_schema(cls, body, action_schema):
@@ -221,12 +217,17 @@ class InstanceController(wsgi.Controller):
         else:
             nics = None
 
+        if 'slave_of' in body['instance']:
+            slave_of_id = body['instance']['slave_of']
+        else:
+            slave_of_id = None
+
         instance = models.Instance.create(context, name, flavor_id,
                                           image_id, databases, users,
                                           datastore, datastore_version,
                                           volume_size, backup_id,
                                           availability_zone, nics,
-                                          configuration)
+                                          configuration, slave_of_id)
 
         view = views.InstanceDetailView(instance, req=req)
         return wsgi.Result(view.data(), 200)
@@ -268,7 +269,7 @@ class InstanceController(wsgi.Controller):
         context = req.environ[wsgi.CONTEXT_KEY]
         instance = models.Instance.load(context, id)
         LOG.debug("server: %s" % instance)
-        config = instance.get_default_configration_template()
+        config = instance.get_default_configuration_template()
         LOG.debug("default config for instance is: %s" % config)
         return wsgi.Result(views.DefaultConfigurationView(
                            config).data(), 200)

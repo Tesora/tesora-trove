@@ -15,6 +15,7 @@
 
 
 import json
+from time import sleep
 from datetime import datetime
 from proboscis import SkipTest
 from proboscis import test
@@ -55,6 +56,14 @@ sql_variables = [
     'connect_timeout',
     'join_buffer_size',
 ]
+
+
+def _is_valid_timestamp(time_string):
+    try:
+        datetime.strptime(time_string, "%Y-%m-%dT%H:%M:%S")
+    except ValueError:
+        return False
+    return True
 
 
 # helper methods to validate configuration is applied to instance
@@ -133,12 +142,34 @@ def _test_configuration_is_applied_to_instance(instance, configuration_id):
         assert_true(converted_key_value in testconfig_info.values.items())
 
 
+class ConfigurationsTestBase(object):
+
+    @staticmethod
+    def expected_instance_datastore_configs(instance_id):
+        """Given an instance retrieve the expected test configurations for
+        instance's datastore.
+        """
+        instance = instance_info.dbaas.instances.get(instance_id)
+        datastore_type = instance.datastore['type']
+        datastore_test_configs = CONFIG.get(datastore_type, {})
+        return datastore_test_configs.get("configurations", {})
+
+    @staticmethod
+    def expected_default_datastore_configs():
+        """Returns the expected test configurations for the default datastore
+        defined in the Test Config as dbaas_datastore.
+        """
+        default_datatstore = CONFIG.get('dbaas_datastore', None)
+        datastore_test_configs = CONFIG.get(default_datatstore, {})
+        return datastore_test_configs.get("configurations", {})
+
+
 @test(depends_on_classes=[WaitForGuestInstallationToFinish], groups=[GROUP])
-class CreateConfigurations(object):
+class CreateConfigurations(ConfigurationsTestBase):
 
     @test
     def test_expected_configurations_parameters(self):
-        """test get expected configurations parameters"""
+        """Test get expected configurations parameters."""
         expected_attrs = ["configuration-parameters"]
         instance_info.dbaas.configuration_parameters.parameters(
             instance_info.dbaas_datastore,
@@ -153,7 +184,8 @@ class CreateConfigurations(object):
         config_param_keys = []
         for param in config_params_list:
             config_param_keys.append(param['name'])
-        expected_config_params = ['key_buffer_size', 'connect_timeout']
+        expected_configs = self.expected_default_datastore_configs()
+        expected_config_params = expected_configs.get('parameters_list')
         # check for duplicate configuration parameters
         msg = "check for duplicate configuration parameters"
         assert_equal(len(config_param_keys), len(set(config_param_keys)), msg)
@@ -182,39 +214,50 @@ class CreateConfigurations(object):
 
     @test
     def test_configurations_create_invalid_values(self):
-        """test create configurations with invalid values"""
+        """Test create configurations with invalid values."""
         values = '{"this_is_invalid": 123}'
         assert_unprocessable(instance_info.dbaas.configurations.create,
                              CONFIG_NAME, values, CONFIG_DESC)
 
     @test
     def test_configurations_create_invalid_value_type(self):
-        """test create configuration with invalild value type"""
+        """Test create configuration with invalild value type."""
         values = '{"key_buffer_size": "this is a string not int"}'
         assert_unprocessable(instance_info.dbaas.configurations.create,
                              CONFIG_NAME, values, CONFIG_DESC)
 
     @test
     def test_configurations_create_value_out_of_bounds(self):
-        """test create configuration with value out of bounds"""
-        values = '{"connect_timeout": 1000000}'
+        """Test create configuration with value out of bounds."""
+        expected_configs = self.expected_default_datastore_configs()
+        values = json.dumps(expected_configs.get('out_of_bounds_over'))
         assert_unprocessable(instance_info.dbaas.configurations.create,
                              CONFIG_NAME, values, CONFIG_DESC)
-        values = '{"connect_timeout": -10}'
+        values = json.dumps(expected_configs.get('out_of_bounds_under'))
         assert_unprocessable(instance_info.dbaas.configurations.create,
                              CONFIG_NAME, values, CONFIG_DESC)
 
     @test
     def test_valid_configurations_create(self):
         # create a configuration with valid parameters
-        values = ('{"connect_timeout": 120, "local_infile": true, '
-                  '"collation_server": "latin1_swedish_ci"}')
+        expected_configs = self.expected_default_datastore_configs()
+        values = json.dumps(expected_configs.get('valid_values'))
         expected_values = json.loads(values)
-        result = instance_info.dbaas.configurations.create(CONFIG_NAME,
-                                                           values,
-                                                           CONFIG_DESC)
+        result = instance_info.dbaas.configurations.create(
+            CONFIG_NAME,
+            values,
+            CONFIG_DESC,
+            datastore=instance_info.dbaas_datastore,
+            datastore_version=instance_info.dbaas_datastore_version)
         resp, body = instance_info.dbaas.client.last_response
         assert_equal(resp.status, 200)
+        with TypeCheck('Configuration', result) as configuration:
+            configuration.has_field('name', basestring)
+            configuration.has_field('description', basestring)
+            configuration.has_field('values', dict)
+            configuration.has_field('datastore_name', basestring)
+            configuration.has_field('datastore_version_id', unicode)
+            configuration.has_field('datastore_version_name', basestring)
         global configuration_info
         configuration_info = result
         assert_equal(configuration_info.name, CONFIG_NAME)
@@ -225,7 +268,10 @@ class CreateConfigurations(object):
     def test_appending_to_existing_configuration(self):
         # test being able to update and insert new parameter name and values
         # to an existing configuration
-        values = '{"join_buffer_size": 1048576, "connect_timeout": 60}'
+        expected_configs = self.expected_default_datastore_configs()
+        values = json.dumps(expected_configs.get('appending_values'))
+        # ensure updated timestamp is different than created
+        sleep(1)
         instance_info.dbaas.configurations.edit(configuration_info.id,
                                                 values)
         resp, body = instance_info.dbaas.client.last_response
@@ -233,7 +279,7 @@ class CreateConfigurations(object):
 
 
 @test(runs_after=[CreateConfigurations], groups=[GROUP])
-class AfterConfigurationsCreation(object):
+class AfterConfigurationsCreation(ConfigurationsTestBase):
 
     @test
     def test_assign_configuration_to_invalid_instance(self):
@@ -268,7 +314,7 @@ class AfterConfigurationsCreation(object):
                       configuration=config_id)
 
     @test(depends_on=[test_assign_configuration_to_valid_instance])
-    @time_out(10)
+    @time_out(30)
     def test_get_configuration_details_from_instance_validation(self):
         # validate that the configuraiton was applied correctly to the instance
         inst = instance_info.dbaas.instances.get(instance_info.id)
@@ -291,8 +337,23 @@ class AfterConfigurationsCreation(object):
             check.has_field("name", basestring)
             check.has_field("description", basestring)
             check.has_field("values", dict)
+            check.has_field("created", basestring)
+            check.has_field("updated", basestring)
+            check.has_field("instance_count", int)
 
         print(result.values)
+
+        # check for valid timestamps
+        assert_true(_is_valid_timestamp(result.created))
+        assert_true(_is_valid_timestamp(result.updated))
+
+        # check that created and updated timestamps differ, since
+        # test_appending_to_existing_configuration should have changed the
+        # updated timestamp
+        assert_not_equal(result.created, result.updated)
+
+        assert_equal(result.instance_count, 1)
+
         with CollectionCheck("configuration_values", result.values) as check:
             # check each item has the correct type according to the rules
             for (item_key, item_val) in result.values.iteritems():
@@ -329,12 +390,21 @@ class AfterConfigurationsCreation(object):
 
 
 @test(runs_after=[AfterConfigurationsCreation], groups=[GROUP])
-class ListConfigurations(object):
+class ListConfigurations(ConfigurationsTestBase):
 
     @test
     def test_configurations_list(self):
         # test listing configurations show up
         result = instance_info.dbaas.configurations.list()
+        for conf in result:
+            with TypeCheck("Configuration", conf) as check:
+                check.has_field('id', basestring)
+                check.has_field('name', basestring)
+                check.has_field('description', basestring)
+                check.has_field('datastore_version_id', basestring)
+                check.has_field('datastore_version_name', basestring)
+                check.has_field('datastore_name', basestring)
+
         exists = [config for config in result if
                   config.id == configuration_info.id]
         assert_equal(1, len(exists))
@@ -367,8 +437,8 @@ class ListConfigurations(object):
     def test_changing_configuration_with_nondynamic_parameter(self):
         # test that changing a non-dynamic parameter is applied to instance
         # and show that the instance requires a restart
-        values = ('{"join_buffer_size":1048576,'
-                  '"innodb_buffer_pool_size":57671680}')
+        expected_configs = self.expected_default_datastore_configs()
+        values = json.dumps(expected_configs.get('nondynamic_parameter'))
         instance_info.dbaas.configurations.update(configuration_info.id,
                                                   values)
         resp, body = instance_info.dbaas.client.last_response
@@ -414,7 +484,7 @@ class ListConfigurations(object):
         poll_until(result_is_active)
 
     @test(depends_on=[test_restart_service_should_return_active])
-    @time_out(10)
+    @time_out(30)
     def test_get_configuration_details_from_instance_validation(self):
         # validate that the configuraiton was applied correctly to the instance
         inst = instance_info.dbaas.instances.get(instance_info.id)
@@ -423,9 +493,21 @@ class ListConfigurations(object):
         _test_configuration_is_applied_to_instance(instance_info,
                                                    configuration_id)
 
+    @test(depends_on=[test_configurations_list])
+    def test_compare_list_and_details_timestamps(self):
+        # compare config timestamps between list and details calls
+        result = instance_info.dbaas.configurations.list()
+        list_config = [config for config in result if
+                       config.id == configuration_info.id]
+        assert_equal(1, len(list_config))
+        details_config = instance_info.dbaas.configurations.get(
+            configuration_info.id)
+        assert_equal(list_config[0].created, details_config.created)
+        assert_equal(list_config[0].updated, details_config.updated)
+
 
 @test(runs_after=[ListConfigurations], groups=[GROUP])
-class StartInstanceWithConfiguration(object):
+class StartInstanceWithConfiguration(ConfigurationsTestBase):
 
     @test
     def test_start_instance_with_configuration(self):
@@ -462,7 +544,7 @@ class StartInstanceWithConfiguration(object):
 
 
 @test(runs_after=[StartInstanceWithConfiguration], groups=[GROUP])
-class WaitForConfigurationInstanceToFinish(object):
+class WaitForConfigurationInstanceToFinish(ConfigurationsTestBase):
 
     @test
     @time_out(TIMEOUT_INSTANCE_CREATE)
@@ -484,7 +566,7 @@ class WaitForConfigurationInstanceToFinish(object):
         poll_until(result_is_active)
 
     @test(depends_on=[test_instance_with_configuration_active])
-    @time_out(10)
+    @time_out(30)
     def test_get_configuration_details_from_instance_validation(self):
         # validate that the configuraiton was applied correctly to the instance
         inst = instance_info.dbaas.instances.get(configuration_instance.id)
@@ -495,7 +577,7 @@ class WaitForConfigurationInstanceToFinish(object):
 
 
 @test(runs_after=[WaitForConfigurationInstanceToFinish], groups=[GROUP])
-class DeleteConfigurations(object):
+class DeleteConfigurations(ConfigurationsTestBase):
 
     @test
     def test_delete_invalid_configuration_not_found(self):
@@ -557,6 +639,7 @@ class DeleteConfigurations(object):
         assert_equal(configuration_info.id, result.id)
         assert_equal(configuration_info.name, result.name)
         assert_equal(configuration_info.description, result.description)
+        assert_equal(result.instance_count, 0)
         print(configuration_instance.id)
         print(instance_info.id)
 

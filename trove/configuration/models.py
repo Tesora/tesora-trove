@@ -18,7 +18,7 @@ from datetime import datetime
 from trove.common import cfg
 from trove.common import configurations
 from trove.common.exception import ModelNotFoundError
-from trove.datastore.models import DatastoreVersion
+from trove.datastore import models as dstore_models
 from trove.db import models as dbmodels
 from trove.openstack.common import log as logging
 from trove.openstack.common.gettextutils import _
@@ -42,13 +42,13 @@ class Configurations(object):
 
         if context.is_admin:
             db_info = DBConfiguration.find_all(deleted=False)
-            if db_info is None:
-                LOG.debug(_("No configurations found"))
+            if db_info.count() == 0:
+                LOG.debug("No configurations found for admin user")
         else:
             db_info = DBConfiguration.find_all(tenant_id=context.tenant,
                                                deleted=False)
-            if db_info is None:
-                LOG.debug(_("No configurations found for tenant % s")
+            if db_info.count() == 0:
+                LOG.debug("No configurations found for tenant %s"
                           % context.tenant)
 
         limit = int(context.limit or Configurations.DEFAULT_LIMIT)
@@ -85,9 +85,8 @@ class Configuration(object):
 
     @staticmethod
     def create_items(cfg_id, values):
-        LOG.debug(_("saving the values to the database"))
-        LOG.debug(_("cfg_id: %s") % cfg_id)
-        LOG.debug(_("values: %s") % values)
+        LOG.debug("Saving configuration values for %s - "
+                  "values: %s" % (cfg_id, values))
         config_items = []
         for key, val in values.iteritems():
             config_item = ConfigurationParameter.create(
@@ -107,11 +106,9 @@ class Configuration(object):
 
     @staticmethod
     def remove_all_items(context, id, deleted_at):
-        LOG.debug(_("removing the values from the database with configuration"
-                    " %s") % id)
         items = ConfigurationParameter.find_all(configuration_id=id,
                                                 deleted=False).all()
-        LOG.debug(_("removing items: %s") % items)
+        LOG.debug("Removing all configuration values for %s" % id)
         for item in items:
             item.deleted = True
             item.deleted_at = deleted_at
@@ -120,7 +117,7 @@ class Configuration(object):
     @staticmethod
     def load_configuration_datastore_version(context, id):
         config = Configuration.load(context, id)
-        datastore_version = DatastoreVersion.load_by_uuid(
+        datastore_version = dstore_models.DatastoreVersion.load_by_uuid(
             config.datastore_version_id)
         return datastore_version
 
@@ -149,7 +146,6 @@ class Configuration(object):
             datastore_manager=datastore.manager)
 
         def _get_rule(key):
-            LOG.debug(_("finding rule with key : %s") % key)
             for rule in rules['configuration-parameters']:
                 if str(rule.get('name')) == key:
                     return rule
@@ -166,7 +162,7 @@ class Configuration(object):
 
     @staticmethod
     def get_configuration_overrides(context, configuration_id):
-        """Gets the overrides dict to apply to an instance"""
+        """Gets the overrides dictionary to apply to an instance."""
         overrides = {}
         if configuration_id:
             config_items = Configuration.load_items(context,
@@ -186,7 +182,8 @@ class Configuration(object):
         items = Configuration.load_items(context, configuration.id)
 
         for instance in instances:
-            LOG.debug(_("applying to instance: %s") % instance.id)
+            LOG.debug("Configuration %s being applied to "
+                      "instance: %s" % (configuration.id, instance.id))
             overrides = {}
             for i in items:
                 overrides[i.configuration_key] = i.configuration_value
@@ -196,7 +193,21 @@ class Configuration(object):
 
 class DBConfiguration(dbmodels.DatabaseModelBase):
     _data_fields = ['name', 'description', 'tenant_id', 'datastore_version_id',
-                    'deleted', 'deleted_at']
+                    'deleted', 'deleted_at', 'created', 'updated']
+
+    @property
+    def datastore(self):
+        datastore_version = dstore_models.DatastoreVersion.load_by_uuid(
+            self.datastore_version_id)
+        datastore = dstore_models.Datastore.load(
+            datastore_version.datastore_id)
+        return datastore
+
+    @property
+    def datastore_version(self):
+        datastore_version = dstore_models.DatastoreVersion.load_by_uuid(
+            self.datastore_version_id)
+        return datastore_version
 
 
 class ConfigurationParameter(dbmodels.DatabaseModelBase):

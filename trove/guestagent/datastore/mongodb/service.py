@@ -38,10 +38,10 @@ class MongoDBApp(object):
         self.status = status
 
     def install_if_needed(self, packages):
-        """Prepare the guest machine with a MongoDB installation"""
+        """Prepare the guest machine with a MongoDB installation."""
         LOG.info(_("Preparing Guest as MongoDB"))
         if not system.PACKAGER.pkg_is_installed(packages):
-            LOG.debug(_("Installing packages: %s") % str(packages))
+            LOG.debug("Installing packages: %s" % str(packages))
             system.PACKAGER.pkg_install(packages, {}, system.TIME_OUT)
         LOG.info(_("Finished installing MongoDB server"))
 
@@ -194,14 +194,6 @@ class MongoDBApp(object):
 
     def _add_config_parameter(self, config_contents, parameter, value):
         return (config_contents or '') + "\n%s = %s" % (parameter, value)
-
-    def update_owner(self, path):
-        LOG.info(_("Set owner to 'mongodb' for %s ") % system.CONFIG)
-        utils.execute_with_timeout("chown", "-R", "mongodb", path,
-                                   run_as_root=True, root_helper="sudo")
-        LOG.info(_("Set group to 'mongodb' for %s ") % system.CONFIG)
-        utils.execute_with_timeout("chgrp", "-R", "mongodb", path,
-                                   run_as_root=True, root_helper="sudo")
 
     def clear_storage(self):
         mount_point = "/var/lib/mongodb/*"

@@ -48,9 +48,12 @@ CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 
 
-def filter_ips(ips, regex):
-    """Filter out IPs not matching regex."""
-    return [ip for ip in ips if re.search(regex, ip)]
+def filter_ips(ips, white_list_regex, black_list_regex):
+    """Return IPs matching white_list_regex and
+       Filter out IPs matching black_list_regex.
+    """
+    return [ip for ip in ips if re.search(white_list_regex, ip)
+            and not re.search(black_list_regex, ip)]
 
 
 def load_server(context, instance_id, server_id):
@@ -96,7 +99,7 @@ def validate_volume_size(size):
     max_size = CONF.max_accepted_volume_size
     if long(size) > max_size:
         msg = ("Volume 'size' cannot exceed maximum "
-               "of %d Gb, %s cannot be accepted."
+               "of %d GB, %s cannot be accepted."
                % (max_size, size))
         raise exception.VolumeQuotaExceeded(msg)
 
@@ -204,8 +207,8 @@ class SimpleInstance(object):
                 IPs.extend([addr.get('addr')
                             for addr in self.addresses[label]])
         # Includes ip addresses that match the regexp pattern
-        if CONF.ip_regex:
-            IPs = filter_ips(IPs, CONF.ip_regex)
+        if CONF.ip_regex and CONF.black_list_regex:
+            IPs = filter_ips(IPs, CONF.ip_regex, CONF.black_list_regex)
         return IPs
 
     @property
@@ -332,6 +335,14 @@ class SimpleInstance(object):
         return self.ds
 
     @property
+    def volume_support(self):
+        return CONF.get(self.datastore_version.manager).volume_support
+
+    @property
+    def device_path(self):
+        return CONF.get(self.datastore_version.manager).device_path
+
+    @property
     def root_password(self):
         return self.root_pass
 
@@ -343,7 +354,7 @@ class SimpleInstance(object):
 
 
 class DetailInstance(SimpleInstance):
-    """A detailed view of an Instnace.
+    """A detailed view of an Instance.
 
     This loads a SimpleInstance and then adds additional data for the
     instance from the guest.
@@ -499,27 +510,28 @@ class BaseInstance(SimpleInstance):
             if self.is_building:
                 raise exception.UnprocessableEntity("Instance %s is not ready."
                                                     % self.id)
-            LOG.debug(_("  ... deleting compute id = %s") %
+            LOG.debug("  ... deleting compute id = %s" %
                       self.db_info.compute_instance_id)
-            LOG.debug(_(" ... setting status to DELETING."))
+            LOG.debug(" ... setting status to DELETING.")
             self.update_db(task_status=InstanceTasks.DELETING,
                            configuration_id=None)
             task_api.API(self.context).delete_instance(self.id)
 
         deltas = {'instances': -1}
-        if CONF.trove_volume_support:
+        if self.volume_support:
             deltas['volumes'] = -self.volume_size
         return run_with_quotas(self.tenant_id,
                                deltas,
                                _delete_resources)
 
     def _delete_resources(self, deleted_at):
+        """Implemented in subclass."""
         pass
 
     def delete_async(self):
         deleted_at = datetime.utcnow()
         self._delete_resources(deleted_at)
-        LOG.debug("Setting instance %s to deleted..." % self.id)
+        LOG.debug("Setting instance %s to be deleted..." % self.id)
         # Delete guest queue.
         try:
             guest = self.get_guest()
@@ -564,7 +576,7 @@ class BaseInstance(SimpleInstance):
         return self._volume_client
 
     def reset_task_status(self):
-        LOG.info(_("Settting task status to NONE on instance %s...") % self.id)
+        LOG.info(_("Setting task status to NONE on instance %s...") % self.id)
         self.update_db(task_status=InstanceTasks.NONE)
 
 
@@ -594,15 +606,16 @@ class Instance(BuiltInstance):
             root_on_create = CONF.get(datastore_manager).root_on_create
             return root_on_create
         except NoSuchOptError:
-            LOG.debug(_("root_on_create not configured for %s"
-                        " hence defaulting the value to False")
+            LOG.debug("root_on_create not configured for %s,"
+                      " hence defaulting the value to False"
                       % datastore_manager)
             return False
 
     @classmethod
     def create(cls, context, name, flavor_id, image_id, databases, users,
                datastore, datastore_version, volume_size, backup_id,
-               availability_zone=None, nics=None, configuration_id=None):
+               availability_zone=None, nics=None, configuration_id=None,
+               slave_of_id=None):
 
         client = create_nova_client(context)
         try:
@@ -611,15 +624,17 @@ class Instance(BuiltInstance):
             raise exception.FlavorNotFound(uuid=flavor_id)
 
         deltas = {'instances': 1}
-        if CONF.trove_volume_support:
+        volume_support = CONF.get(datastore_version.manager).volume_support
+        if volume_support:
             validate_volume_size(volume_size)
             deltas['volumes'] = volume_size
         else:
             if volume_size is not None:
                 raise exception.VolumeNotSupported()
-            ephemeral_support = CONF.device_path
-            if ephemeral_support and flavor.ephemeral == 0:
-                raise exception.LocalStorageNotSpecified(flavor=flavor_id)
+            ephemeral_support = CONF.get(datastore_version.manager).device_path
+            if ephemeral_support:
+                if flavor.ephemeral == 0:
+                    raise exception.LocalStorageNotSpecified(flavor=flavor_id)
 
         if backup_id is not None:
             backup_info = Backup.get_by_id(context, backup_id)
@@ -632,21 +647,17 @@ class Instance(BuiltInstance):
                 raise exception.BackupFileNotFound(
                     location=backup_info.location)
 
-            backup_db_info = DBInstance.find_by(
-                context=context, id=backup_info.instance_id)
-            if (backup_db_info.datastore_version_id
-                    != datastore_version.id):
-                ds_version = (datastore_models.DatastoreVersion.
-                              load_by_uuid(backup_db_info.datastore_version_id)
-                              )
-                raise exception.BackupDatastoreVersionMismatchError(
-                    version1=ds_version.name,
-                    version2=datastore_version.name)
+            if (backup_info.datastore_version_id
+                    and backup_info.datastore.name != datastore.name):
+                raise exception.BackupDatastoreMismatchError(
+                    datastore1=backup_info.datastore.name,
+                    datastore2=datastore.name)
 
-        if not nics and CONF.default_neutron_networks:
+        if not nics:
             nics = []
-            for net_id in CONF.default_neutron_networks:
-                nics.append({"net-id": net_id})
+        if CONF.default_neutron_networks:
+            nics = [{"net-id": net_id}
+                    for net_id in CONF.default_neutron_networks] + nics
 
         def _create_resources():
 
@@ -656,9 +667,10 @@ class Instance(BuiltInstance):
                                         datastore_version_id=
                                         datastore_version.id,
                                         task_status=InstanceTasks.BUILDING,
-                                        configuration_id=configuration_id)
-            LOG.debug(_("Tenant %(tenant)s created new "
-                        "Trove instance %(db)s...") %
+                                        configuration_id=configuration_id,
+                                        slave_of_id=slave_of_id)
+            LOG.debug("Tenant %(tenant)s created new "
+                      "Trove instance %(db)s..." %
                       {'tenant': context.tenant, 'db': db_info.id})
 
             # if a configuration group is associated with an instance,
@@ -703,11 +715,11 @@ class Instance(BuiltInstance):
         client = create_nova_client(self.context)
         return client.flavors.get(self.flavor_id)
 
-    def get_default_configration_template(self):
+    def get_default_configuration_template(self):
         flavor = self.get_flavor()
         LOG.debug("flavor: %s" % flavor)
         config = template.SingleInstanceConfigTemplate(
-            self.ds_version.manager, flavor, id)
+            self.ds_version, flavor, id)
         return config.render_dict()
 
     def resize_flavor(self, new_flavor_id):
@@ -724,18 +736,21 @@ class Instance(BuiltInstance):
         old_flavor = client.flavors.get(self.flavor_id)
         new_flavor_size = new_flavor.ram
         old_flavor_size = old_flavor.ram
-        if CONF.trove_volume_support:
+        if self.volume_support:
             if new_flavor.ephemeral != 0:
                 raise exception.LocalStorageNotSupported()
             if new_flavor_size == old_flavor_size:
                 raise exception.CannotResizeToSameSize()
-        elif CONF.device_path is not None:
+        elif self.device_path is not None:
             # ephemeral support enabled
             if new_flavor.ephemeral == 0:
                 raise exception.LocalStorageNotSpecified(flavor=new_flavor_id)
             if (new_flavor_size == old_flavor_size and
                     new_flavor.ephemeral == new_flavor.ephemeral):
                 raise exception.CannotResizeToSameSize()
+        elif new_flavor_size == old_flavor_size:
+            # uses local storage
+            raise exception.CannotResizeToSameSize()
 
         # Set the task to RESIZING and begin the async call before returning.
         self.update_db(task_status=InstanceTasks.RESIZING)
@@ -747,9 +762,6 @@ class Instance(BuiltInstance):
         def _resize_resources():
             self.validate_can_perform_action()
             LOG.info("Resizing volume of instance %s..." % self.id)
-            if not self.volume_size:
-                raise exception.BadRequest(_("Instance %s has no volume.")
-                                           % self.id)
             old_size = self.volume_size
             if int(new_size) <= old_size:
                 raise exception.BadRequest(_("The new volume 'size' must be "
@@ -759,6 +771,9 @@ class Instance(BuiltInstance):
             self.update_db(task_status=InstanceTasks.RESIZING)
             task_api.API(self.context).resize_volume(new_size, self.id)
 
+        if not self.volume_size:
+            raise exception.BadRequest(_("Instance %s has no volume.")
+                                       % self.id)
         new_size_l = long(new_size)
         validate_volume_size(new_size_l)
         return run_with_quotas(self.tenant_id,
@@ -835,21 +850,21 @@ class Instance(BuiltInstance):
                                                  status=status)
 
     def unassign_configuration(self):
-        LOG.debug(_("Unassigning the configuration from the instance %s")
+        LOG.debug("Unassigning the configuration from the instance %s"
                   % self.id)
         if self.configuration and self.configuration.id:
-            LOG.debug(_("Unassigning the configuration id %s")
+            LOG.debug("Unassigning the configuration id %s"
                       % self.configuration.id)
             flavor = self.get_flavor()
             config_id = self.configuration.id
-            LOG.debug(_("configuration being unassigned; "
-                        "marking restart required"))
+            LOG.debug("Configuration being unassigned; "
+                      "marking restart required")
             self.update_db(task_status=InstanceTasks.RESTART_REQUIRED)
             task_api.API(self.context).unassign_configuration(self.id,
                                                               flavor,
                                                               config_id)
         else:
-            LOG.debug("no configuration found on instance skipping.")
+            LOG.debug("No configuration found on instance. Skipping.")
 
     def assign_configuration(self, configuration_id):
         self._validate_can_perform_assign()
@@ -877,12 +892,12 @@ class Instance(BuiltInstance):
         self.update_db(configuration_id=configuration.id)
 
     def update_overrides(self, overrides):
-        LOG.debug(_("Updating or removing overrides for instance %s")
+        LOG.debug("Updating or removing overrides for instance %s"
                   % self.id)
         need_restart = do_configs_require_restart(
             overrides, datastore_manager=self.ds_version.manager)
-        LOG.debug(_("config overrides has non-dynamic settings, "
-                    "requires a restart: %s") % need_restart)
+        LOG.debug("config overrides has non-dynamic settings, "
+                  "requires a restart: %s" % need_restart)
         if need_restart:
             self.update_db(task_status=InstanceTasks.RESTART_REQUIRED)
         task_api.API(self.context).update_overrides(self.id, overrides)
@@ -935,7 +950,7 @@ class Instances(object):
 
         find_server = create_server_list_matcher(servers)
         for db in db_infos:
-            LOG.debug("checking for db [id=%s, compute_instance_id=%s]" %
+            LOG.debug("Checking for db [id=%s, compute_instance_id=%s]" %
                       (db.id, db.compute_instance_id))
         ret = Instances._load_servers_status(load_simple_instance, context,
                                              data_view.collection,
@@ -951,12 +966,15 @@ class Instances(object):
                 #TODO(tim.simpson): Delete when we get notifications working!
                 if InstanceTasks.BUILDING == db.task_status:
                     db.server_status = "BUILD"
+                    db.addresses = {}
                 else:
                     try:
                         server = find_server(db.id, db.compute_instance_id)
                         db.server_status = server.status
+                        db.addresses = server.addresses
                     except exception.ComputeInstanceNotFound:
                         db.server_status = "SHUTDOWN"  # Fake it...
+                        db.addresses = {}
                 #TODO(tim.simpson): End of hack.
 
                 #volumes = find_volumes(server.id)
@@ -985,12 +1003,12 @@ class DBInstance(dbmodels.DatabaseModelBase):
     _data_fields = ['name', 'created', 'compute_instance_id',
                     'task_id', 'task_description', 'task_start_time',
                     'volume_id', 'deleted', 'tenant_id',
-                    'datastore_version_id', 'configuration_id']
+                    'datastore_version_id', 'configuration_id', 'slave_of_id']
 
     def __init__(self, task_status, **kwargs):
         """
         Creates a new persistable entity of the Trove Guest Instance for
-        purposes recording its current state and record of modifications
+        purposes of recording its current state and record of modifications
         :param task_status: the current state details of any activity or error
          that is running on this guest instance (e.g. resizing, deleting)
         :type task_status: trove.instance.tasks.InstanceTask
@@ -1005,7 +1023,7 @@ class DBInstance(dbmodels.DatabaseModelBase):
         if InstanceTask.from_code(self.task_id) is None:
             errors['task_id'] = "Not valid."
         if self.task_status is None:
-            errors['task_status'] = "Cannot be none."
+            errors['task_status'] = "Cannot be None."
 
     def get_task_status(self):
         return InstanceTask.from_code(self.task_id)
@@ -1029,7 +1047,7 @@ class InstanceServiceStatus(dbmodels.DatabaseModelBase):
 
     def _validate(self, errors):
         if self.status is None:
-            errors['status'] = "Cannot be none."
+            errors['status'] = "Cannot be None."
         if tr_instance.ServiceStatus.from_code(self.status_id) is None:
             errors['status_id'] = "Not valid."
 

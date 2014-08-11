@@ -18,6 +18,7 @@
 
 import os
 from trove.common import cfg
+from trove.common import exception
 from trove.common import instance as rd_instance
 from trove.guestagent import dbaas
 from trove.guestagent import backup
@@ -39,7 +40,7 @@ class Manager(periodic_task.PeriodicTasks):
 
     @periodic_task.periodic_task(ticks_between_runs=3)
     def update_status(self, context):
-        """Update the status of the MySQL service"""
+        """Update the status of the MySQL service."""
         MySqlAppStatus.get().update()
 
     def change_passwords(self, context, users):
@@ -93,16 +94,15 @@ class Manager(periodic_task.PeriodicTasks):
         return MySqlAdmin().is_root_enabled()
 
     def _perform_restore(self, backup_info, context, restore_location, app):
-        LOG.info(_("Restoring database from backup %s") % backup_info['id'])
+        LOG.info(_("Restoring database from backup %s.") % backup_info['id'])
         try:
             backup.restore(context, backup_info, restore_location)
-        except Exception as e:
-            LOG.error(e)
-            LOG.error("Error performing restore from backup %s",
-                      backup_info['id'])
+        except Exception:
+            LOG.exception(_("Error performing restore from backup %s.") %
+                          backup_info['id'])
             app.status.set_status(rd_instance.ServiceStatuses.FAILED)
             raise
-        LOG.info(_("Restored database successfully"))
+        LOG.info(_("Restored database successfully."))
 
     def prepare(self, context, packages, databases, memory_mb, users,
                 device_path=None, mount_point=None, backup_info=None,
@@ -116,18 +116,20 @@ class Manager(periodic_task.PeriodicTasks):
             #stop and do not update database
             app.stop_db()
             device = volume.VolumeDevice(device_path)
+            # unmount if device is already mounted
+            device.unmount_device(device_path)
             device.format()
             if os.path.exists(mount_point):
                 #rsync exiting data
                 device.migrate_data(mount_point)
             #mount the volume
             device.mount(mount_point)
-            LOG.debug(_("Mounted the volume."))
+            LOG.debug("Mounted the volume.")
             app.start_mysql()
         if backup_info:
             self._perform_restore(backup_info, context,
                                   mount_point, app)
-        LOG.info(_("Securing mysql now."))
+        LOG.debug("Securing MySQL now.")
         app.secure(config_contents, overrides)
         enable_root_on_restore = (backup_info and
                                   MySqlAdmin().is_root_enabled())
@@ -136,6 +138,7 @@ class Manager(periodic_task.PeriodicTasks):
             MySqlAdmin().enable_root(root_password)
         elif enable_root_on_restore:
             app.secure_root(secure_remote_root=False)
+            MySqlAppStatus.get().report_root('root')
         else:
             app.secure_root(secure_remote_root=True)
 
@@ -147,7 +150,7 @@ class Manager(periodic_task.PeriodicTasks):
         if users:
             self.create_user(context, users)
 
-        LOG.info('"prepare" call has finished.')
+        LOG.info(_('Completed setup of MySQL database instance.'))
 
     def restart(self, context):
         app = MySqlApp(MySqlAppStatus.get())
@@ -162,7 +165,7 @@ class Manager(periodic_task.PeriodicTasks):
         app.stop_db(do_not_start_on_reboot=do_not_start_on_reboot)
 
     def get_filesystem_stats(self, context, fs_path):
-        """Gets the filesystem stats for the path given. """
+        """Gets the filesystem stats for the path given."""
         mount_point = CONF.get(
             'mysql' if not MANAGER else MANAGER).mount_point
         return dbaas.get_filesystem_volume_stats(mount_point)
@@ -182,22 +185,46 @@ class Manager(periodic_task.PeriodicTasks):
     def mount_volume(self, context, device_path=None, mount_point=None):
         device = volume.VolumeDevice(device_path)
         device.mount(mount_point, write_to_fstab=False)
-        LOG.debug(_("Mounted the volume."))
+        LOG.debug("Mounted the device %s at the mount point %s." %
+                  (device_path, mount_point))
 
     def unmount_volume(self, context, device_path=None, mount_point=None):
         device = volume.VolumeDevice(device_path)
         device.unmount(mount_point)
-        LOG.debug(_("Unmounted the volume."))
+        LOG.debug("Unmounted the device %s from the mount point %s." %
+                  (device_path, mount_point))
 
     def resize_fs(self, context, device_path=None, mount_point=None):
         device = volume.VolumeDevice(device_path)
         device.resize_fs(mount_point)
-        LOG.debug(_("Resized the filesystem"))
+        LOG.debug("Resized the filesystem %s." % mount_point)
 
     def update_overrides(self, context, overrides, remove=False):
+        LOG.debug("Updating overrides (%s)." % overrides)
         app = MySqlApp(MySqlAppStatus.get())
         app.update_overrides(overrides, remove=remove)
 
     def apply_overrides(self, context, overrides):
+        LOG.debug("Applying overrides (%s)." % overrides)
         app = MySqlApp(MySqlAppStatus.get())
         app.apply_overrides(overrides)
+
+    def get_replication_snapshot(self, master_config):
+        LOG.debug("Getting replication snapshot.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='get_replication_snapshot', datastore=MANAGER)
+
+    def attach_replication_slave(self, snapshot, slave_config):
+        LOG.debug("Attaching replication snapshot.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='attach_replication_slave', datastore=MANAGER)
+
+    def detach_replication_slave(self):
+        LOG.debug("Detaching replication slave.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='detach_replication_slave', datastore=MANAGER)
+
+    def demote_replication_master(self):
+        LOG.debug("Demoting replication master.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='demote_replication_master', datastore=MANAGER)

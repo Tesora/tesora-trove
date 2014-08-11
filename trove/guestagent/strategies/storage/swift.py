@@ -89,7 +89,7 @@ class StreamReader(object):
 
 
 class SwiftStorage(base.Storage):
-    """Implementation of Storage Strategy for Swift """
+    """Implementation of Storage Strategy for Swift."""
     __strategy_name__ = 'swift'
 
     def __init__(self, *args, **kwargs):
@@ -128,9 +128,9 @@ class SwiftStorage(base.Storage):
             # Check each segment MD5 hash against swift etag
             # Raise an error and mark backup as failed
             if etag != segment_checksum:
-                LOG.error("Error saving data segment to swift. "
-                          "ETAG: %s Segment MD5: %s",
-                          etag, segment_checksum)
+                LOG.error(_("Error saving data segment to swift. "
+                          "ETAG: %(tag)s Segment MD5: %(checksum)s."),
+                          {'tag': etag, 'checksum': segment_checksum})
                 return False, "Error saving data to Swift!", None, location
 
             swift_checksum.update(segment_checksum)
@@ -159,8 +159,9 @@ class SwiftStorage(base.Storage):
         final_swift_checksum = swift_checksum.hexdigest()
         if etag != final_swift_checksum:
             LOG.error(
-                "Error saving data to swift. Manifest ETAG: %s Swift MD5: %s",
-                etag, final_swift_checksum)
+                _("Error saving data to swift. Manifest "
+                  "ETAG: %(tag)s Swift MD5: %(checksum)s"),
+                {'tag': etag, 'checksum': final_swift_checksum})
             return False, "Error saving data to Swift!", None, location
 
         return (True, "Successfully saved data to Swift!",
@@ -175,15 +176,15 @@ class SwiftStorage(base.Storage):
     def _verify_checksum(self, etag, checksum):
         etag_checksum = etag.strip('"')
         if etag_checksum != checksum:
-            msg = ("Original checksum: %(original)s does not match"
-                   " the current checksum: %(current)s" %
+            msg = (_("Original checksum: %(original)s does not match"
+                     " the current checksum: %(current)s") %
                    {'original': etag_checksum, 'current': checksum})
             LOG.error(msg)
             raise SwiftDownloadIntegrityError(msg)
         return True
 
     def load(self, location, backup_checksum):
-        """Restore a backup from the input stream to the restore_location"""
+        """Restore a backup from the input stream to the restore_location."""
         storage_url, container, filename = self._explodeLocation(location)
 
         headers, info = self.connection.get_object(container, filename,
@@ -195,13 +196,13 @@ class SwiftStorage(base.Storage):
         return info
 
     def _get_attr(self, original):
-        """Get a friendly name from an object header key"""
+        """Get a friendly name from an object header key."""
         key = original.replace('-', '_')
         key = key.replace('x_object_meta_', '')
         return key
 
     def _set_attr(self, original):
-        """Return a swift friendly header key"""
+        """Return a swift friendly header key."""
         key = original.replace('_', '-')
         return 'X-Object-Meta-%s' % key
 

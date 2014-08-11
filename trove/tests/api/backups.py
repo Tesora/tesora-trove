@@ -45,6 +45,7 @@ backup_info = None
 incremental_info = None
 incremental_db = generate_uuid()
 restore_instance_id = None
+total_num_dbs = 0
 backup_count_prior_to_create = 0
 backup_count_for_instance_prior_to_create = 0
 
@@ -55,7 +56,7 @@ class CreateBackups(object):
 
     @test
     def test_backup_create_instance_invalid(self):
-        """test create backup with unknown instance"""
+        """Test create backup with unknown instance."""
         invalid_inst_id = 'invalid-inst-id'
         try:
             instance_info.dbaas.backups.create(BACKUP_NAME, invalid_inst_id,
@@ -73,13 +74,13 @@ class CreateBackups(object):
 
     @test
     def test_backup_create_instance_not_found(self):
-        """test create backup with unknown instance"""
+        """Test create backup with unknown instance."""
         assert_raises(exceptions.NotFound, instance_info.dbaas.backups.create,
                       BACKUP_NAME, generate_uuid(), BACKUP_DESC)
 
     @test
     def test_backup_create_instance(self):
-        """test create backup for a given instance"""
+        """Test create backup for a given instance."""
         # Necessary to test that the count increases.
         global backup_count_prior_to_create
         backup_count_prior_to_create = len(instance_info.dbaas.backups.list())
@@ -97,7 +98,17 @@ class CreateBackups(object):
         assert_equal(instance_info.id, result.instance_id)
         assert_equal('NEW', result.status)
         instance = instance_info.dbaas.instances.get(instance_info.id)
+
+        datastore_version = instance_info.dbaas.datastore_versions.get(
+            instance_info.dbaas_datastore,
+            instance_info.dbaas_datastore_version)
+
         assert_equal('BACKUP', instance.status)
+        assert_equal(instance_info.dbaas_datastore,
+                     result.datastore['type'])
+        assert_equal(instance_info.dbaas_datastore_version,
+                     result.datastore['version'])
+        assert_equal(datastore_version.id, result.datastore['version_id'])
 
 
 @test(runs_after=[CreateBackups],
@@ -106,20 +117,20 @@ class AfterBackupCreation(object):
 
     @test
     def test_instance_action_right_after_backup_create(self):
-        """test any instance action while backup is running"""
+        """Test any instance action while backup is running."""
         assert_unprocessable(instance_info.dbaas.instances.resize_instance,
                              instance_info.id, 1)
 
     @test
     def test_backup_create_another_backup_running(self):
-        """test create backup when another backup is running"""
+        """Test create backup when another backup is running."""
         assert_unprocessable(instance_info.dbaas.backups.create,
                              'backup_test2', instance_info.id,
                              'test description2')
 
     @test
     def test_backup_delete_still_running(self):
-        """test delete backup when it is running"""
+        """Test delete backup when it is running."""
         result = instance_info.dbaas.backups.list()
         backup = result[0]
         assert_unprocessable(instance_info.dbaas.backups.delete, backup.id)
@@ -153,7 +164,7 @@ class ListBackups(object):
 
     @test
     def test_backup_list(self):
-        """test list backups"""
+        """Test list backups."""
         result = instance_info.dbaas.backups.list()
         assert_equal(backup_count_prior_to_create + 1, len(result))
         backup = result[0]
@@ -164,8 +175,35 @@ class ListBackups(object):
         assert_equal('COMPLETED', backup.status)
 
     @test
+    def test_backup_list_filter_datastore(self):
+        """test list backups and filter by datastore."""
+        result = instance_info.dbaas.backups.list(
+            datastore=instance_info.dbaas_datastore)
+        assert_equal(backup_count_prior_to_create + 1, len(result))
+        backup = result[0]
+        assert_equal(BACKUP_NAME, backup.name)
+        assert_equal(BACKUP_DESC, backup.description)
+        assert_not_equal(0.0, backup.size)
+        assert_equal(instance_info.id, backup.instance_id)
+        assert_equal('COMPLETED', backup.status)
+
+    @test
+    def test_backup_list_filter_different_datastore(self):
+        """test list backups and filter by datastore."""
+        result = instance_info.dbaas.backups.list(
+            datastore='Test_Datastore_1')
+        # There should not be any backups for this datastore
+        assert_equal(0, len(result))
+
+    @test
+    def test_backup_list_filter_datastore_not_found(self):
+        """test list backups and filter by datastore."""
+        assert_raises(exceptions.BadRequest, instance_info.dbaas.backups.list,
+                      datastore='NOT_FOUND')
+
+    @test
     def test_backup_list_for_instance(self):
-        """test backup list for instance"""
+        """Test backup list for instance."""
         result = instance_info.dbaas.instances.backups(instance_info.id)
         assert_equal(backup_count_for_instance_prior_to_create + 1,
                      len(result))
@@ -178,7 +216,7 @@ class ListBackups(object):
 
     @test
     def test_backup_get(self):
-        """test get backup"""
+        """Test get backup."""
         backup = instance_info.dbaas.backups.get(backup_info.id)
         assert_equal(backup_info.id, backup.id)
         assert_equal(backup_info.name, backup.name)
@@ -186,6 +224,15 @@ class ListBackups(object):
         assert_equal(instance_info.id, backup.instance_id)
         assert_not_equal(0.0, backup.size)
         assert_equal('COMPLETED', backup.status)
+        assert_equal(instance_info.dbaas_datastore,
+                     backup.datastore['type'])
+        assert_equal(instance_info.dbaas_datastore_version,
+                     backup.datastore['version'])
+
+        datastore_version = instance_info.dbaas.datastore_versions.get(
+            instance_info.dbaas_datastore,
+            instance_info.dbaas_datastore_version)
+        assert_equal(datastore_version.id, backup.datastore['version_id'])
 
         # Test to make sure that user in other tenant is not able
         # to GET this backup
@@ -205,9 +252,13 @@ class IncrementalBackups(object):
 
     @test
     def test_create_db(self):
+        global total_num_dbs
+        total_num_dbs = len(instance_info.dbaas.databases.list(
+            instance_info.id))
         databases = [{'name': incremental_db}]
         instance_info.dbaas.databases.create(instance_info.id, databases)
         assert_equal(202, instance_info.dbaas.last_http_code)
+        total_num_dbs += 1
 
     @test(runs_after=['test_create_db'])
     def test_create_incremental_backup(self):
@@ -320,6 +371,8 @@ class VerifyRestore(object):
     def test_database_restored_incremental(self):
         try:
             self._poll(incremental_restore_instance_id, incremental_db)
+            assert_equal(total_num_dbs, len(instance_info.dbaas.databases.list(
+                incremental_restore_instance_id)))
         except exception.PollTimeOut:
             fail('Timed out')
 
@@ -329,7 +382,7 @@ class DeleteRestoreInstance(object):
 
     @classmethod
     def _delete(cls, instance_id):
-        """test delete restored instance"""
+        """Test delete restored instance."""
         instance_info.dbaas.instances.delete(instance_id)
         assert_equal(202, instance_info.dbaas.last_http_code)
 
@@ -365,13 +418,13 @@ class DeleteBackups(object):
 
     @test
     def test_backup_delete_not_found(self):
-        """test delete unknown backup"""
+        """Test delete unknown backup."""
         assert_raises(exceptions.NotFound, instance_info.dbaas.backups.delete,
                       'nonexistent_backup')
 
     @test
     def test_backup_delete_other(self):
-        """Test another user cannot delete backup"""
+        """Test another user cannot delete backup."""
         # Test to make sure that user in other tenant is not able
         # to DELETE this backup
         reqs = Requirements(is_admin=False)
@@ -384,7 +437,7 @@ class DeleteBackups(object):
 
     @test(runs_after=[test_backup_delete_other])
     def test_backup_delete(self):
-        """test backup deletion"""
+        """Test backup deletion."""
         instance_info.dbaas.backups.delete(backup_info.id)
         assert_equal(202, instance_info.dbaas.last_http_code)
 
@@ -399,7 +452,7 @@ class DeleteBackups(object):
 
     @test(runs_after=[test_backup_delete])
     def test_incremental_deleted(self):
-        """test backup children are deleted"""
+        """Test backup children are deleted."""
         if incremental_info is None:
             raise SkipTest("Incremental Backup not created")
         assert_raises(exceptions.NotFound, instance_info.dbaas.backups.get,

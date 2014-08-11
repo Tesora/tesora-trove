@@ -17,9 +17,9 @@ import os
 
 from trove.common import cfg
 from trove.common import exception
+from trove.guestagent.common import operating_system
 from trove.guestagent import dbaas
 from trove.guestagent import volume
-from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.mongodb import service as mongo_service
 from trove.guestagent.datastore.mongodb import system
 from trove.openstack.common import log as logging
@@ -40,7 +40,7 @@ class Manager(periodic_task.PeriodicTasks):
 
     @periodic_task.periodic_task(ticks_between_runs=3)
     def update_status(self, context):
-        """Update the status of the MongoDB service"""
+        """Update the status of the MongoDB service."""
         self.status.update()
 
     def prepare(self, context, packages, databases, memory_mb, users,
@@ -48,7 +48,7 @@ class Manager(periodic_task.PeriodicTasks):
                 config_contents=None, root_password=None, overrides=None):
         """Makes ready DBAAS on a Guest container."""
 
-        LOG.debug(_("Prepare MongoDB instance"))
+        LOG.debug("Prepare MongoDB instance")
 
         self.status.begin_install()
         self.app.install_if_needed(packages)
@@ -57,20 +57,21 @@ class Manager(periodic_task.PeriodicTasks):
         mount_point = system.MONGODB_MOUNT_POINT
         if device_path:
             device = volume.VolumeDevice(device_path)
+            # unmount if device is already mounted
+            device.unmount_device(device_path)
             device.format()
             if os.path.exists(system.MONGODB_MOUNT_POINT):
                 device.migrate_data(mount_point)
             device.mount(mount_point)
-            self.app.update_owner(mount_point)
+            operating_system.update_owner('mongodb', 'mongodb', mount_point)
 
-            LOG.debug(_("Mounted the volume %(path)s as %(mount)s") %
+            LOG.debug("Mounted the volume %(path)s as %(mount)s" %
                       {'path': device_path, "mount": mount_point})
 
         if mount_point:
             config_contents = self.app.update_config_contents(
                 config_contents, {
                     'dbpath': mount_point,
-                    'bind_ip': operating_system.get_ip_address()
                 })
 
         self.app.start_db_with_conf_changes(config_contents)
@@ -89,7 +90,7 @@ class Manager(periodic_task.PeriodicTasks):
         self.app.reset_configuration(configuration)
 
     def get_filesystem_stats(self, context, fs_path):
-        """Gets the filesystem stats for the path given """
+        """Gets the filesystem stats for the path given."""
         return dbaas.get_filesystem_volume_stats(system.MONGODB_MOUNT_POINT)
 
     def change_passwords(self, context, users):
@@ -161,17 +162,17 @@ class Manager(periodic_task.PeriodicTasks):
     def mount_volume(self, context, device_path=None, mount_point=None):
         device = volume.VolumeDevice(device_path)
         device.mount(mount_point, write_to_fstab=False)
-        LOG.debug(_("Mounted the volume."))
+        LOG.debug("Mounted the volume.")
 
     def unmount_volume(self, context, device_path=None, mount_point=None):
         device = volume.VolumeDevice(device_path)
         device.unmount(mount_point)
-        LOG.debug(_("Unmounted the volume."))
+        LOG.debug("Unmounted the volume.")
 
     def resize_fs(self, context, device_path=None, mount_point=None):
         device = volume.VolumeDevice(device_path)
         device.resize_fs(mount_point)
-        LOG.debug(_("Resized the filesystem"))
+        LOG.debug("Resized the filesystem")
 
     def update_overrides(self, context, overrides, remove=False):
         raise exception.DatastoreOperationNotSupported(
@@ -180,3 +181,19 @@ class Manager(periodic_task.PeriodicTasks):
     def apply_overrides(self, context, overrides):
         raise exception.DatastoreOperationNotSupported(
             operation='apply_overrides', datastore=MANAGER)
+
+    def get_replication_snapshot(self, master_config):
+        raise exception.DatastoreOperationNotSupported(
+            operation='get_replication_snapshot', datastore=MANAGER)
+
+    def attach_replication_slave(self, snapshot, slave_config):
+        raise exception.DatastoreOperationNotSupported(
+            operation='attach_replication_slave', datastore=MANAGER)
+
+    def detach_replication_slave(self):
+        raise exception.DatastoreOperationNotSupported(
+            operation='detach_replication_slave', datastore=MANAGER)
+
+    def demote_replication_master(self):
+        raise exception.DatastoreOperationNotSupported(
+            operation='demote_replication_master', datastore=MANAGER)

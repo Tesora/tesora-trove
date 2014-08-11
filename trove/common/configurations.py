@@ -19,7 +19,6 @@ from trove.common import cfg
 from trove.common import exception
 from trove.common import utils
 from trove.openstack.common import log as logging
-from trove.openstack.common.gettextutils import _
 from six.moves import configparser
 
 
@@ -36,12 +35,12 @@ def _get_item(key, dictList):
 
 def do_configs_require_restart(overrides, datastore_manager='mysql'):
     rules = get_validation_rules(datastore_manager=datastore_manager)
-    LOG.debug(_("overrides: %s") % overrides)
-    LOG.debug(_("rules?: %s") % rules)
+    LOG.debug("overrides: %s" % overrides)
+    LOG.debug("rules?: %s" % rules)
     for key in overrides.keys():
         rule = _get_item(key, rules['configuration-parameters'])
-        LOG.debug(_("checking the rule: %s") % rule)
         if rule.get('restart_required'):
+            LOG.debug("rule requires restart: %s" % rule)
             return True
     return False
 
@@ -52,7 +51,7 @@ def get_validation_rules(datastore_manager='mysql'):
         template = ENV.get_template(config_location)
         return json.loads(template.render())
     except Exception:
-        msg = "This operation is not supported for this datastore at this time"
+        msg = "This operation is not supported by this datastore at this time."
         LOG.exception(msg)
         raise exception.UnprocessableEntity(message=msg)
 
@@ -82,7 +81,6 @@ class MySQLConfParser(object):
             elif line_clean.startswith('[') and line_clean.endswith(']'):
                 ret.append(line_clean)
             elif line_clean and "=" not in line_clean:
-                LOG.debug("fixing line without '=' in it: %s" % line_clean)
                 ret.append(line_clean + " = 1")
             else:
                 ret.append(line_clean)

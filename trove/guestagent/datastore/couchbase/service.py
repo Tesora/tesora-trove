@@ -14,6 +14,9 @@
 #    under the License.
 
 import json
+import pexpect
+import os
+import subprocess
 
 from trove.common import cfg
 from trove.common import exception
@@ -23,8 +26,10 @@ from trove.guestagent import pkg
 from trove.guestagent.common import operating_system
 from trove.guestagent.datastore import service
 from trove.guestagent.datastore.couchbase import system
+from trove.guestagent.db import models
 from trove.openstack.common import log as logging
 from trove.openstack.common.gettextutils import _
+
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
@@ -50,34 +55,38 @@ class CouchbaseApp(object):
         """
         Install couchbase if needed, do nothing if it is already installed.
         """
-        LOG.info(_('Preparing Guest as Couchbase Server'))
+        LOG.info(_('Preparing Guest as Couchbase Server.'))
         if not packager.pkg_is_installed(packages):
-            LOG.info(_('Installing Couchbase'))
+            LOG.debug('Installing Couchbase.')
             self._install_couchbase(packages)
-        self.initial_setup()
 
     def initial_setup(self):
         self.ip_address = operating_system.get_ip_address()
-        mount_point = CONF.get('couchbase').mount_point
+        mount_point = CONF.couchbase.mount_point
         try:
-            LOG.info(_('Couchbase Server change data dir path'))
-            utils.execute_with_timeout(system.cmd_own_data_dir, shell=True)
+            LOG.info(_('Couchbase Server change data dir path.'))
+            operating_system.update_owner('couchbase',
+                                          'couchbase',
+                                          mount_point)
+            pwd = CouchbaseRootAccess.get_password()
             utils.execute_with_timeout(
                 (system.cmd_node_init
                  % {'data_path': mount_point,
-                    'IP': self.ip_address}), shell=True)
+                    'IP': self.ip_address,
+                    'PWD': pwd}), shell=True)
             utils.execute_with_timeout(
                 system.cmd_rm_old_data_dir, shell=True)
-            LOG.info(_('Couchbase Server initialize cluster'))
+            LOG.debug('Couchbase Server initialize cluster.')
             utils.execute_with_timeout(
-                (system.cmd_cluster_init % {'IP': self.ip_address}),
+                (system.cmd_cluster_init
+                 % {'IP': self.ip_address, 'PWD': pwd}),
                 shell=True)
             utils.execute_with_timeout(system.cmd_set_swappiness, shell=True)
             utils.execute_with_timeout(system.cmd_update_sysctl_conf,
                                        shell=True)
-            LOG.info(_('Couchbase Server initial setup finished'))
-        except exception.ProcessExecutionError as e:
-            LOG.error(_('Process execution error %s') % e)
+            LOG.info(_('Couchbase Server initial setup finished.'))
+        except exception.ProcessExecutionError:
+            LOG.exception(_('Error performing initial Couchbase setup.'))
             raise RuntimeError("Couchbase Server initial setup failed")
 
     def complete_install_or_restart(self):
@@ -90,9 +99,8 @@ class CouchbaseApp(object):
         """
         Install the Couchbase Server.
         """
-        LOG.debug(_('Installing Couchbase Server'))
-        msg = _("Creating %s") % system.COUCHBASE_CONF_DIR
-        LOG.debug(msg)
+        LOG.debug('Installing Couchbase Server. Creating %s' %
+                  system.COUCHBASE_CONF_DIR)
         utils.execute_with_timeout('mkdir',
                                    '-p',
                                    system.COUCHBASE_CONF_DIR,
@@ -101,7 +109,7 @@ class CouchbaseApp(object):
         pkg_opts = {}
         packager.pkg_install(packages, pkg_opts, system.TIME_OUT)
         self.start_db()
-        LOG.debug(_('Finished installing Couchbase Server'))
+        LOG.debug('Finished installing Couchbase Server.')
 
     def _enable_db_on_boot(self):
         """
@@ -118,7 +126,7 @@ class CouchbaseApp(object):
                 "Command to enable Couchbase Server on boot not found."))
 
     def _disable_db_on_boot(self):
-        LOG.info(_("Disabling Couchbase Server on boot"))
+        LOG.debug("Disabling Couchbase Server on boot.")
         try:
             couchbase_service = operating_system.service_discovery(
                 system.SERVICE_CANDIDATES)
@@ -132,7 +140,7 @@ class CouchbaseApp(object):
         """
         Stops Couchbase Server on the trove instance.
         """
-        LOG.info(_('Stopping Couchbase Server...'))
+        LOG.debug('Stopping Couchbase Server.')
         if do_not_start_on_reboot:
             self._disable_db_on_boot()
 
@@ -142,17 +150,17 @@ class CouchbaseApp(object):
             utils.execute_with_timeout(
                 couchbase_service['cmd_stop'], shell=True)
         except KeyError:
-            raise RuntimeError("Command to stop Couchbase Server not found")
+            raise RuntimeError("Command to stop Couchbase Server not found.")
 
         if not self.status.wait_for_real_status_to_change_to(
                 rd_instance.ServiceStatuses.SHUTDOWN,
                 self.state_change_wait_time, update_db):
-            LOG.error(_('Could not stop Couchbase Server!'))
+            LOG.error(_('Could not stop Couchbase Server.'))
             self.status.end_install_or_restart()
-            raise RuntimeError(_("Could not stop Couchbase Server"))
+            raise RuntimeError(_("Could not stop Couchbase Server."))
 
     def restart(self):
-        LOG.info(_("Restarting Couchbase Server"))
+        LOG.info(_("Restarting Couchbase Server."))
         try:
             self.status.begin_restart()
             self.stop_db()
@@ -164,7 +172,7 @@ class CouchbaseApp(object):
         """
         Start the Couchbase Server.
         """
-        LOG.info(_("Starting Couchbase Server..."))
+        LOG.info(_("Starting Couchbase Server."))
 
         self._enable_db_on_boot()
         try:
@@ -180,14 +188,37 @@ class CouchbaseApp(object):
         if not self.status.wait_for_real_status_to_change_to(
                 rd_instance.ServiceStatuses.RUNNING,
                 self.state_change_wait_time, update_db):
-            LOG.error(_("Start up of Couchbase Server failed!"))
+            LOG.error(_("Start up of Couchbase Server failed."))
             try:
                 utils.execute_with_timeout(system.cmd_kill)
-            except exception.ProcessExecutionError as p:
-                LOG.error('Error killing stalled Couchbase start command.')
-                LOG.error(p)
+            except exception.ProcessExecutionError:
+                LOG.exception(_('Error killing Couchbase start command.'))
             self.status.end_install_or_restart()
             raise RuntimeError("Could not start Couchbase Server")
+
+    def enable_root(self, root_password=None):
+        return CouchbaseRootAccess.enable_root(root_password)
+
+    def start_db_with_conf_changes(self, config_contents):
+        LOG.info(_("Starting Couchbase with configuration changes."))
+        LOG.info(_("Configuration contents:\n %s.") % config_contents)
+        if self.status.is_running:
+            LOG.error(_("Cannot start Couchbase with configuration changes. "
+                        "Couchbase state == %s.") % self.status)
+            raise RuntimeError("Couchbase is not stopped.")
+        self._write_config(config_contents)
+        self.start_db(True)
+
+    def reset_configuration(self, configuration):
+        config_contents = configuration['config_contents']
+        LOG.debug("Resetting configuration.")
+        self._write_config(config_contents)
+
+    def _write_config(self, config_contents):
+        """
+        Update contents of Couchbase configuration file
+        """
+        return
 
 
 class CouchbaseAppStatus(service.BaseDbStatus):
@@ -197,15 +228,72 @@ class CouchbaseAppStatus(service.BaseDbStatus):
     def _get_actual_db_status(self):
         self.ip_address = operating_system.get_ip_address()
         try:
+            pwd = CouchbaseRootAccess.get_password()
             out, err = utils.execute_with_timeout(
                 (system.cmd_couchbase_status %
-                 {'IP': self.ip_address}),
+                 {'IP': self.ip_address, 'PWD': pwd}),
                 shell=True)
             server_stats = json.loads(out)
             if not err and server_stats["clusterMembership"] == "active":
                 return rd_instance.ServiceStatuses.RUNNING
             else:
                 return rd_instance.ServiceStatuses.SHUTDOWN
-        except exception.ProcessExecutionError as e:
-            LOG.error(_("Process execution %s ") % e)
+        except exception.ProcessExecutionError:
+            LOG.exception(_("Error getting Couchbase status."))
             return rd_instance.ServiceStatuses.SHUTDOWN
+
+
+class CouchbaseRootAccess(object):
+
+    @classmethod
+    def enable_root(cls, root_password=None):
+        user = models.RootUser()
+        user.name = "root"
+        user.host = "%"
+        user.password = root_password or utils.generate_random_password()
+
+        if root_password:
+            CouchbaseRootAccess().write_password_to_file(root_password)
+        else:
+            CouchbaseRootAccess().set_password(user.password)
+        return user.serialize()
+
+    def set_password(self, root_password):
+        self.ip_address = operating_system.get_ip_address()
+        child = pexpect.spawn(system.cmd_reset_pwd % {'IP': self.ip_address})
+        try:
+            child.expect('.*password.*')
+            child.sendline(root_password)
+            child.expect('.*(yes/no).*')
+            child.sendline('yes')
+            child.expect('.*successfully.*')
+        except pexpect.TIMEOUT:
+            child.delayafterclose = 1
+            child.delayafterterminate = 1
+            try:
+                child.close(force=True)
+            except pexpect.ExceptionPexpect:
+                # Close fails to terminate a sudo process on some OSes.
+                subprocess.call(['sudo', 'kill', str(child.pid)])
+
+        self.write_password_to_file(root_password)
+
+    def write_password_to_file(self, root_password):
+        utils.execute_with_timeout('mkdir',
+                                   '-p',
+                                   system.COUCHBASE_CONF_DIR,
+                                   run_as_root=True,
+                                   root_helper='sudo')
+        utils.execute_with_timeout("sudo sh -c 'echo " +
+                                   root_password +
+                                   ' > ' +
+                                   system.pwd_file + "'",
+                                   shell=True)
+
+    @staticmethod
+    def get_password():
+        pwd = "password"
+        if os.path.exists(system.pwd_file):
+            with open(system.pwd_file) as file:
+                pwd = file.readline().strip()
+        return pwd

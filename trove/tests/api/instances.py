@@ -20,15 +20,18 @@ import unittest
 
 
 GROUP = "dbaas.guest"
+GROUP_NEUTRON = "dbaas.neutron"
 GROUP_START = "dbaas.guest.initialize"
 GROUP_START_SIMPLE = "dbaas.guest.initialize.simple"
 GROUP_TEST = "dbaas.guest.test"
 GROUP_STOP = "dbaas.guest.shutdown"
 GROUP_USERS = "dbaas.api.users"
 GROUP_ROOT = "dbaas.api.root"
+GROUP_GUEST = "dbaas.guest.start.test"
 GROUP_DATABASES = "dbaas.api.databases"
 GROUP_SECURITY_GROUPS = "dbaas.api.security_groups"
 GROUP_CREATE_INSTANCE_FAILURE = "dbaas.api.failures"
+GROUP_QUOTAS = "dbaas.quotas"
 
 TIMEOUT_INSTANCE_CREATE = 60 * 32
 TIMEOUT_INSTANCE_DELETE = 120
@@ -46,6 +49,7 @@ from proboscis import after_class
 from proboscis import test
 from proboscis import SkipTest
 from proboscis.asserts import assert_equal
+from proboscis.asserts import assert_false
 from proboscis.asserts import assert_not_equal
 from proboscis.asserts import assert_raises
 from proboscis.asserts import assert_is_not_none
@@ -55,6 +59,7 @@ from proboscis.asserts import fail
 from trove import tests
 from trove.tests.config import CONFIG
 from trove.tests.util import create_dbaas_client
+from trove.tests.util import create_nova_client
 from trove.tests.util.usage import create_usage_verifier
 from trove.tests.util import dns_checker
 from trove.tests.util import iso_time
@@ -63,6 +68,7 @@ from trove.common.utils import poll_until
 from trove.tests.util.check import AttrCheck
 from trove.tests.util.check import TypeCheck
 from trove.tests.util import test_config
+from trove.tests.util import event_simulator
 
 FAKE = test_config.values['fake_mode']
 
@@ -223,7 +229,7 @@ def test_delete_instance_not_found():
 
 
 @test(depends_on_classes=[InstanceSetup],
-      groups=[GROUP, 'dbaas_quotas'],
+      groups=[GROUP, GROUP_QUOTAS],
       runs_after_groups=[tests.PRE_INSTANCES])
 class CreateInstanceQuotaTest(unittest.TestCase):
 
@@ -234,9 +240,8 @@ class CreateInstanceQuotaTest(unittest.TestCase):
         self.test_info.dbaas_datastore = CONFIG.dbaas_datastore
 
     def tearDown(self):
-        quota_dict = {'instances': CONFIG.trove_max_instances_per_user}
-        if VOLUME_SUPPORT:
-            quota_dict['volumes'] = CONFIG.trove_max_volumes_per_user
+        quota_dict = {'instances': CONFIG.trove_max_instances_per_user,
+                      'volumes': CONFIG.trove_max_volumes_per_user}
         dbaas_admin.quota.update(self.test_info.user.tenant_id,
                                  quota_dict)
 
@@ -313,7 +318,7 @@ class CreateInstanceQuotaTest(unittest.TestCase):
 
 @test(depends_on_classes=[InstanceSetup],
       groups=[GROUP, GROUP_CREATE_INSTANCE_FAILURE],
-      runs_after_groups=[tests.PRE_INSTANCES, 'dbaas_quotas'])
+      runs_after_groups=[tests.PRE_INSTANCES, GROUP_QUOTAS])
 class CreateInstanceFail(object):
 
     def instance_in_error(self, instance_id):
@@ -404,6 +409,17 @@ class CreateInstanceFail(object):
         assert_raises(exceptions.HTTPNotImplemented, dbaas.instances.create,
                       instance_name, instance_info.dbaas_flavor_href,
                       volume, databases)
+        assert_equal(501, dbaas.last_http_code)
+
+    def test_create_failure_with_volume_size_and_disabled_for_datastore(self):
+        instance_name = "instance-failure-volume-size_and_volume_disabled"
+        databases = []
+        datastore = 'redis'
+        assert_equal(CONFIG.get(datastore, 'redis')['volume_support'], False)
+        volume = {'size': 2}
+        assert_raises(exceptions.HTTPNotImplemented, dbaas.instances.create,
+                      instance_name, instance_info.dbaas_flavor_href,
+                      volume, databases, datastore=datastore)
         assert_equal(501, dbaas.last_http_code)
 
     @test(enabled=EPHEMERAL_SUPPORT)
@@ -599,7 +615,7 @@ def assert_unprocessable(func, *args):
 @test(depends_on_classes=[InstanceSetup],
       run_after_class=[CreateInstanceFail],
       groups=[GROUP, GROUP_START, GROUP_START_SIMPLE, tests.INSTANCES],
-      runs_after_groups=[tests.PRE_INSTANCES, 'dbaas_quotas'])
+      runs_after_groups=[tests.PRE_INSTANCES, GROUP_QUOTAS])
 class CreateInstance(object):
 
     """Test to create a Database Instance
@@ -620,6 +636,7 @@ class CreateInstance(object):
                       "databases": [{"name": "firstdb"}]})
         instance_info.users = users
         instance_info.dbaas_datastore = CONFIG.dbaas_datastore
+        instance_info.dbaas_datastore_version = CONFIG.dbaas_datastore_version
         if VOLUME_SUPPORT:
             instance_info.volume = {'size': 1}
         else:
@@ -673,6 +690,89 @@ class CreateInstance(object):
             check.links(result._info['links'])
             if VOLUME_SUPPORT:
                 check.volume()
+
+
+@test(depends_on_classes=[InstanceSetup], groups=[GROUP_NEUTRON])
+class CreateInstanceWithNeutron(unittest.TestCase):
+    @time_out(TIMEOUT_INSTANCE_CREATE)
+    def setUp(self):
+        if not CONFIG.values.get('neutron_enabled'):
+            raise SkipTest("neutron is not enabled, skipping")
+
+        user = test_config.users.find_user(
+            Requirements(is_admin=False, services=["nova", "trove"]))
+        self.nova_client = create_nova_client(user)
+        self.dbaas_client = create_dbaas_client(user)
+
+        self.result = None
+        self.instance_name = ("TEST_INSTANCE_CREATION_WITH_NICS"
+                              + str(datetime.now()))
+        databases = []
+        self.default_cidr = CONFIG.values.get('shared_network_subnet', None)
+        if VOLUME_SUPPORT:
+            volume = {'size': 1}
+        else:
+            volume = None
+
+        self.result = self.dbaas_client.instances.create(
+            self.instance_name,
+            instance_info.dbaas_flavor_href,
+            volume, databases)
+        self.instance_id = self.result.id
+
+        def verify_instance_is_active():
+            result = self.dbaas_client.instances.get(self.instance_id)
+            if result.status == "ACTIVE":
+                return True
+            else:
+                assert_equal("BUILD", result.status)
+                return False
+
+        poll_until(verify_instance_is_active)
+
+    def tearDown(self):
+        if self.result.id is not None:
+            self.dbaas_client.instances.delete(self.result.id)
+            while True:
+                try:
+                    self.dbaas_client.instances.get(self.result.id)
+                except exceptions.NotFound:
+                    return True
+                time.sleep(1)
+
+    def check_ip_within_network(self, ip, network):
+        octet_list = str(ip).split(".")
+
+        octets, mask = str(network).split("/")
+        octet_list_ = octets.split(".")
+
+        for i in range(int(mask) / 8):
+            if octet_list[i] != octet_list_[i]:
+                return False
+
+        return True
+
+    def test_ip_within_cidr(self):
+        nova_instance = None
+        for server in self.nova_client.servers.list():
+            if str(server.name) == self.instance_name:
+                nova_instance = server
+                break
+
+        if nova_instance is None:
+            fail("instance created with neutron enabled is not found in nova")
+
+        for address in nova_instance.addresses['private']:
+            ip = address['addr']
+            assert_true(self.check_ip_within_network(ip, self.default_cidr))
+
+        # black list filtered ip not visible via troveclient
+        trove_instance = self.dbaas_client.instances.get(self.result.id)
+
+        for ip in trove_instance.ip:
+            if str(ip).startswith('10.'):
+                assert_true(self.check_ip_within_network(ip, "10.0.0.0/24"))
+                assert_false(self.check_ip_within_network(ip, "10.0.1.0/24"))
 
 
 @test(depends_on_classes=[CreateInstance],
@@ -789,6 +889,8 @@ class SecurityGroupsTest(object):
         assert_equal(self.testSecurityGroup.name, self.secGroupName)
         assert_equal(self.testSecurityGroup.description,
                      self.secGroupDescription)
+        assert_equal(self.testSecurityGroup.created,
+                     self.testSecurityGroup.updated)
 
     @test
     def test_list_security_group(self):
@@ -820,9 +922,20 @@ class SecurityGroupsRulesTest(object):
             instance_info.id)
         self.secGroupName = "SecGroup_%s" % instance_info.id
         self.secGroupDescription = "Security Group for %s" % instance_info.id
+        self.orig_allowable_empty_sleeps = (event_simulator.
+                                            allowable_empty_sleeps)
+        event_simulator.allowable_empty_sleeps = 2
+        self.test_rule_id = None
+
+    @after_class
+    def tearDown(self):
+        (event_simulator.
+         allowable_empty_sleeps) = self.orig_allowable_empty_sleeps
 
     @test
     def test_create_security_group_rule(self):
+        # Need to sleep to verify created/updated timestamps
+        time.sleep(1)
         cidr = "1.2.3.4/16"
         self.testSecurityGroupRules = (
             dbaas.security_group_rules.create(
@@ -839,6 +952,34 @@ class SecurityGroupsRulesTest(object):
             assert_equal(rule['from_port'], 3306)
             assert_equal(rule['to_port'], 3306)
             assert_is_not_none(rule['created'])
+            self.test_rule_id = rule['id']
+
+        if not CONFIG.fake_mode:
+            group = dbaas.security_groups.get(
+                self.testSecurityGroup.id)
+            assert_not_equal(self.testSecurityGroup.created,
+                             group.updated)
+            assert_not_equal(self.testSecurityGroup.updated,
+                             group.updated)
+
+    @test(depends_on=[test_create_security_group_rule])
+    def test_delete_security_group_rule(self):
+        # Need to sleep to verify created/updated timestamps
+        time.sleep(1)
+        group_before = dbaas.security_groups.get(
+            self.testSecurityGroup.id)
+        dbaas.security_group_rules.delete(self.test_rule_id)
+        assert_equal(204, dbaas.last_http_code)
+
+        if not CONFIG.fake_mode:
+            group = dbaas.security_groups.get(
+                self.testSecurityGroup.id)
+            assert_not_equal(group_before.created,
+                             group.updated)
+            assert_not_equal(group_before.updated,
+                             group.updated)
+            assert_not_equal(self.testSecurityGroup,
+                             group.updated)
 
 
 @test(depends_on_classes=[WaitForGuestInstallationToFinish],
@@ -883,7 +1024,7 @@ class DnsTests(object):
 
 
 @test(depends_on_classes=[WaitForGuestInstallationToFinish],
-      groups=[GROUP, GROUP_TEST, "dbaas.guest.start.test"])
+      groups=[GROUP, GROUP_TEST, GROUP_GUEST])
 class TestAfterInstanceCreatedGuestData(object):
     """
     Test the optional parameters (databases and users) passed in to create
@@ -908,7 +1049,7 @@ class TestAfterInstanceCreatedGuestData(object):
 @test(depends_on_classes=[WaitForGuestInstallationToFinish],
       groups=[GROUP, GROUP_START, GROUP_START_SIMPLE, "dbaas.listing"])
 class TestInstanceListing(object):
-    """Test the listing of the instance information """
+    """Test the listing of the instance information."""
 
     @before_class
     def setUp(self):
@@ -921,7 +1062,7 @@ class TestInstanceListing(object):
     @test
     def test_index_list(self):
         expected_attrs = ['id', 'links', 'name', 'status', 'flavor',
-                          'datastore']
+                          'datastore', 'ip', 'hostname']
         if VOLUME_SUPPORT:
             expected_attrs.append('volume')
         instances = dbaas.instances.list()
@@ -1061,7 +1202,7 @@ class TestCreateNotification(object):
 @test(depends_on_groups=['dbaas.api.instances.actions'],
       groups=[GROUP, tests.INSTANCES, "dbaas.diagnostics"])
 class CheckDiagnosticsAfterTests(object):
-    """Check the diagnostics after running api commands on an instance. """
+    """Check the diagnostics after running api commands on an instance."""
     @test
     def test_check_diagnostics_on_instance_after_tests(self):
         diagnostics = dbaas_admin.diagnostics.get(instance_info.id)
@@ -1077,7 +1218,7 @@ class CheckDiagnosticsAfterTests(object):
       runs_after_groups=[GROUP_START,
                          GROUP_START_SIMPLE, GROUP_TEST, tests.INSTANCES])
 class DeleteInstance(object):
-    """Delete the created instance """
+    """Delete the created instance."""
 
     @time_out(3 * 60)
     @test
@@ -1099,10 +1240,10 @@ class DeleteInstance(object):
             result = True
             while result is not None:
                 attempts += 1
-                time.sleep(1)
                 result = dbaas.instances.get(instance_info.id)
                 assert_equal(200, dbaas.last_http_code)
                 assert_equal("SHUTDOWN", result.status)
+                time.sleep(1)
         except exceptions.NotFound:
             pass
         except Exception as ex:
@@ -1240,7 +1381,7 @@ class VerifyInstanceMgmtInfo(object):
 
 
 class CheckInstance(AttrCheck):
-    """Class to check various attributes of Instance details"""
+    """Class to check various attributes of Instance details."""
 
     def __init__(self, instance):
         super(CheckInstance, self).__init__()

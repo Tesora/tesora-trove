@@ -15,11 +15,11 @@
 
 """Model classes that form the core of instances functionality."""
 
-from trove.openstack.common import log as logging
+from trove.openstack.common.importutils import import_class
 from trove.common import remote
+from trove.common import cfg
 
-
-LOG = logging.getLogger(__name__)
+CONF = cfg.CONF
 
 
 class ModelBase(object):
@@ -96,6 +96,17 @@ class RemoteModelBase(ModelBase):
             return [self._data_item(item) for item in self._data_object]
         else:
             return self._data_item(self._data_object)
+
+
+class NetworkRemoteModelBase(RemoteModelBase):
+
+    network_driver = None
+
+    @classmethod
+    def get_driver(cls, context):
+        if not cls.network_driver:
+            cls.network_driver = import_class(CONF.network_driver)
+        return cls.network_driver(context)
 
 
 class NovaRemoteModelBase(RemoteModelBase):

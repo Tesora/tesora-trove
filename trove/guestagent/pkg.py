@@ -18,9 +18,11 @@ Manages packages on the Guest VM.
 """
 import commands
 import re
+import subprocess
 from tempfile import NamedTemporaryFile
 
 import pexpect
+import six
 
 from trove.common import exception
 from trove.common import utils
@@ -78,7 +80,11 @@ class BasePackagerMixin:
     def pexpect_kill_proc(self, child):
         child.delayafterclose = 1
         child.delayafterterminate = 1
-        child.close(force=True)
+        try:
+            child.close(force=True)
+        except pexpect.ExceptionPexpect:
+            # Close fails to terminate a sudo process on some OSes.
+            subprocess.call(['sudo', 'kill', str(child.pid)])
 
     def pexpect_wait_and_close_proc(self, child):
         child.expect(pexpect.EOF)
@@ -108,7 +114,8 @@ class RedhatPackagerMixin(BasePackagerMixin):
             utils.execute("rpm", "-e", "--nodeps", package_name,
                           run_as_root=True, root_helper="sudo")
         except ProcessExecutionError:
-            LOG.error(_("Error removing conflict %s") % package_name)
+            LOG.exception(_("Error removing conflict %(package)s") %
+                          package_name)
 
     def _install(self, packages, time_out):
         """Attempts to install packages.
@@ -158,6 +165,7 @@ class RedhatPackagerMixin(BasePackagerMixin):
 
         """
         cmd = "sudo yum --color=never -y remove %s" % package_name
+        LOG.debug("Running package remove command: %s" % cmd)
         output_expects = ['\[sudo\] password for .*:',
                           'No Packages marked for removal',
                           'Removed:']
@@ -177,11 +185,11 @@ class RedhatPackagerMixin(BasePackagerMixin):
                 raise PkgPackageStateError("Cannot install packages.")
 
     def pkg_is_installed(self, packages):
-        pkg_list = packages.split()
+        packages = packages if isinstance(packages, list) else packages.split()
         cmd = "rpm -qa"
         p = commands.getstatusoutput(cmd)
         std_out = p[1]
-        for pkg in pkg_list:
+        for pkg in packages:
             found = False
             for line in std_out.split("\n"):
                 if line.find(pkg) != -1:
@@ -204,8 +212,9 @@ class RedhatPackagerMixin(BasePackagerMixin):
             if matches:
                 line = matches.group()
                 return line
-        msg = _("version() saw unexpected output from rpm!")
-        LOG.error(msg)
+
+        LOG.error(_("Unexpected output from rpm command. (%(output)s)") %
+                  {'output': std_out})
 
     def pkg_remove(self, package_name, time_out):
         """Removes a package."""
@@ -227,7 +236,7 @@ class DebianPackagerMixin(BasePackagerMixin):
             utils.execute("dpkg", "--configure", "-a", run_as_root=True,
                           root_helper="sudo")
         except ProcessExecutionError:
-            LOG.error(_("Error fixing dpkg"))
+            LOG.exception(_("Error fixing dpkg"))
 
     def _fix_package_selections(self, packages, config_opts):
         """
@@ -270,7 +279,7 @@ class DebianPackagerMixin(BasePackagerMixin):
         cmd = "sudo -E DEBIAN_FRONTEND=noninteractive apt-get -y " \
               "--force-yes --allow-unauthenticated -o " \
               "DPkg::options::=--force-confmiss --reinstall " \
-              "install %s" % packages
+              "install %s" % " ".join(packages)
         output_expects = ['.*password*',
                           'E: Unable to locate package (.*)',
                           "Couldn't find package (.*)",
@@ -314,6 +323,7 @@ class DebianPackagerMixin(BasePackagerMixin):
                            "'sudo dpkg --configure -a'"),
                           "Unable to lock the administration directory",
                           "Removing %s*" % package_name]
+        LOG.debug("Running remove package command %s" % cmd)
         i, match = self.pexpect_run(cmd, output_expects, time_out)
         if i == 0:
             raise PkgPermissionError("Invalid permissions.")
@@ -333,7 +343,7 @@ class DebianPackagerMixin(BasePackagerMixin):
             utils.execute("apt-get", "update", run_as_root=True,
                           root_helper="sudo")
         except ProcessExecutionError:
-            LOG.error(_("Error updating the apt sources"))
+            LOG.exception(_("Error updating the apt sources"))
 
         result = self._install(packages, time_out)
         if result != OK:
@@ -360,8 +370,8 @@ class DebianPackagerMixin(BasePackagerMixin):
                 return version
 
     def pkg_is_installed(self, packages):
-        pkg_list = packages.split()
-        for pkg in pkg_list:
+        packages = packages if isinstance(packages, list) else packages.split()
+        for pkg in packages:
             m = re.match('(.+)=(.+)', pkg)
             if m:
                 package_name = m.group(1)
@@ -372,7 +382,7 @@ class DebianPackagerMixin(BasePackagerMixin):
             installed_version = self.pkg_version(package_name)
             if ((package_version and installed_version == package_version) or
                (installed_version and not package_version)):
-                LOG.debug(_("Package %s already installed.") % package_name)
+                LOG.debug("Package %s already installed." % package_name)
             else:
                 return False
         return True
@@ -405,6 +415,6 @@ class BasePackage(type):
         return super(BasePackage, meta).__new__(meta, name, bases, dct)
 
 
+@six.add_metaclass(BasePackage)
 class Package(object):
-
-    __metaclass__ = BasePackage
+    pass

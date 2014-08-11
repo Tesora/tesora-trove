@@ -36,16 +36,16 @@ class CassandraApp(object):
     """Prepares DBaaS on a Guest container."""
 
     def __init__(self, status):
-        """By default login with root no password for initial setup. """
+        """By default login with root no password for initial setup."""
         self.state_change_wait_time = CONF.state_change_wait_time
         self.status = status
 
     def install_if_needed(self, packages):
-        """Prepare the guest machine with a cassandra server installation"""
-        LOG.info(_("Preparing Guest as Cassandra Server"))
+        """Prepare the guest machine with a cassandra server installation."""
+        LOG.info(_("Preparing Guest as a Cassandra Server"))
         if not packager.pkg_is_installed(packages):
             self._install_db(packages)
-        LOG.info(_("Dbaas install_if_needed complete"))
+        LOG.debug("Cassandra install_if_needed complete")
 
     def complete_install_or_restart(self):
         self.status.end_install_or_restart()
@@ -62,9 +62,8 @@ class CassandraApp(object):
         try:
             cmd = system.INIT_FS % mount_point
             utils.execute_with_timeout(cmd, shell=True)
-        except exception.ProcessExecutionError as e:
-            LOG.error(_("Error while initiating storage structure."))
-            LOG.error(e)
+        except exception.ProcessExecutionError:
+            LOG.exception(_("Error while initiating storage structure."))
 
     def start_db(self, update_db=False):
         self._enable_db_on_boot()
@@ -72,6 +71,7 @@ class CassandraApp(object):
             utils.execute_with_timeout(system.START_CASSANDRA,
                                        shell=True)
         except exception.ProcessExecutionError:
+            LOG.exception(_("Error starting Cassandra"))
             pass
 
         if not (self.status.
@@ -82,9 +82,8 @@ class CassandraApp(object):
             try:
                 utils.execute_with_timeout(system.CASSANDRA_KILL,
                                            shell=True)
-            except exception.ProcessExecutionError as p:
-                LOG.error(_("Error killing stalled Cassandra start command."))
-                LOG.error(p)
+            except exception.ProcessExecutionError:
+                LOG.exception(_("Error killing Cassandra start command."))
             self.status.end_install_or_restart()
             raise RuntimeError(_("Could not start Cassandra"))
 
@@ -92,19 +91,20 @@ class CassandraApp(object):
         if do_not_start_on_reboot:
             self._disable_db_on_boot()
         utils.execute_with_timeout(system.STOP_CASSANDRA,
-                                   shell=True)
+                                   shell=True,
+                                   timeout=system.SERVICE_STOP_TIMEOUT)
 
         if not (self.status.wait_for_real_status_to_change_to(
                 rd_instance.ServiceStatuses.SHUTDOWN,
                 self.state_change_wait_time, update_db)):
-            LOG.error(_("Could not stop Cassandra"))
+            LOG.error(_("Could not stop Cassandra."))
             self.status.end_install_or_restart()
-            raise RuntimeError(_("Could not stop Cassandra"))
+            raise RuntimeError(_("Could not stop Cassandra."))
 
     def restart(self):
         try:
             self.status.begin_restart()
-            LOG.info(_("Restarting DB"))
+            LOG.info(_("Restarting Cassandra server."))
             self.stop_db()
             self.start_db()
         finally:
@@ -112,43 +112,42 @@ class CassandraApp(object):
 
     def _install_db(self, packages):
         """Install cassandra server"""
-        LOG.debug(_("Installing cassandra server"))
-        packager.pkg_install(packages, None, system.TIME_OUT)
-        LOG.debug(_("Finished installing cassandra server"))
+        LOG.debug("Installing cassandra server.")
+        packager.pkg_install(packages, None, system.INSTALL_TIMEOUT)
+        LOG.debug("Finished installing Cassandra server")
 
     def write_config(self, config_contents):
-        LOG.info(_('Defining temp config holder at '
-                 '%s') % system.CASSANDRA_TEMP_CONF)
+        LOG.debug('Defining temp config holder at %s.' %
+                  system.CASSANDRA_TEMP_CONF)
         with open(system.CASSANDRA_TEMP_CONF, 'w+') as conf:
             conf.write(config_contents)
-        LOG.info(_('Writing new config'))
+        LOG.info(_('Writing new config.'))
         utils.execute_with_timeout("sudo", "mv",
                                    system.CASSANDRA_TEMP_CONF,
                                    system.CASSANDRA_CONF)
-        LOG.info(_('Overriding old config'))
 
     def read_conf(self):
-        """Returns cassandra.yaml in dict structure"""
+        """Returns cassandra.yaml in dict structure."""
 
-        LOG.info(_("Opening cassandra.yaml"))
+        LOG.debug("Opening cassandra.yaml.")
         with open(system.CASSANDRA_CONF, 'r') as config:
-            LOG.info(_("Preparing YAML object from cassandra.yaml"))
+            LOG.debug("Preparing YAML object from cassandra.yaml.")
             yamled = yaml.load(config.read())
         return yamled
 
     def update_config_with_single(self, key, value):
-        """Updates single key:value in cassandra.yaml"""
+        """Updates single key:value in 'cassandra.yaml'."""
 
         yamled = self.read_conf()
         yamled.update({key: value})
-        LOG.info(_("Updating cassandra.yaml with %(key)s: %(value)s")
-                 % {'key': key, 'value': value})
+        LOG.debug("Updating cassandra.yaml with %(key)s: %(value)s."
+                  % {'key': key, 'value': value})
         dump = yaml.dump(yamled, default_flow_style=False)
-        LOG.info(_("Dumping YAML to stream"))
+        LOG.debug("Dumping YAML to stream.")
         self.write_config(dump)
 
     def update_conf_with_group(self, group):
-        """Updates group of key:value in cassandra.yaml"""
+        """Updates group of key:value in 'cassandra.yaml'."""
 
         yamled = self.read_conf()
         for key, value in group.iteritems():
@@ -158,10 +157,10 @@ class CassandraApp(object):
                  update({'seeds': value}))
             else:
                 yamled.update({key: value})
-            LOG.info(_("Updating cassandra.yaml with %(key)s: %(value)s")
-                     % {'key': key, 'value': value})
+            LOG.debug("Updating cassandra.yaml with %(key)s: %(value)s."
+                      % {'key': key, 'value': value})
         dump = yaml.dump(yamled, default_flow_style=False)
-        LOG.info(_("Dumping YAML to stream"))
+        LOG.debug("Dumping YAML to stream")
         self.write_config(dump)
 
     def make_host_reachable(self):
@@ -173,20 +172,20 @@ class CassandraApp(object):
         self.update_conf_with_group(updates)
 
     def start_db_with_conf_changes(self, config_contents):
-        LOG.info(_("Starting cassandra with conf changes..."))
-        LOG.info(_("inside the guest - cassandra is running %s...")
-                 % self.status.is_running)
+        LOG.info(_("Starting Cassandra with configuration changes."))
+        LOG.debug("Inside the guest - Cassandra is running %s."
+                  % self.status.is_running)
         if self.status.is_running:
             LOG.error(_("Cannot execute start_db_with_conf_changes because "
-                        "cassandra state == %s!") % self.status)
+                        "Cassandra state == %s.") % self.status)
             raise RuntimeError("Cassandra not stopped.")
-        LOG.info(_("Initiating config."))
+        LOG.debug("Initiating config.")
         self.write_config(config_contents)
         self.start_db(True)
 
     def reset_configuration(self, configuration):
         config_contents = configuration['config_contents']
-        LOG.info(_("Resetting configuration"))
+        LOG.debug("Resetting configuration")
         self.write_config(config_contents)
 
 
@@ -202,9 +201,6 @@ class CassandraAppStatus(service.BaseDbStatus):
                 return rd_instance.ServiceStatuses.RUNNING
             else:
                 return rd_instance.ServiceStatuses.SHUTDOWN
-        except exception.ProcessExecutionError as e:
-            LOG.error(_("Process execution %s") % e)
-            return rd_instance.ServiceStatuses.SHUTDOWN
-        except OSError as e:
-            LOG.error(_("OS Error %s") % e)
+        except (exception.ProcessExecutionError, OSError):
+            LOG.exception(_("Error getting Cassandra status"))
             return rd_instance.ServiceStatuses.SHUTDOWN

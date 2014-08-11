@@ -29,7 +29,7 @@ CONF = cfg.CONF
 
 
 class SecurityGroupController(wsgi.Controller):
-    """Controller for security groups functionality"""
+    """Controller for security groups functionality."""
 
     def index(self, req, tenant_id):
         """Return all security groups tied to a particular tenant_id."""
@@ -61,7 +61,7 @@ class SecurityGroupController(wsgi.Controller):
 
 
 class SecurityGroupRuleController(wsgi.Controller):
-    """Controller for security group rule functionality"""
+    """Controller for security group rule functionality."""
 
     def delete(self, req, tenant_id, id):
         LOG.debug("Delete Security Group Rule called %s, %s" % (tenant_id, id))
@@ -76,6 +76,7 @@ class SecurityGroupRuleController(wsgi.Controller):
             raise exception.Forbidden("Unauthorized")
 
         sec_group_rule.delete(context)
+        sec_group.save()
         return wsgi.Result(None, 204)
 
     def create(self, req, body, tenant_id):
@@ -112,8 +113,9 @@ class SecurityGroupRuleController(wsgi.Controller):
         tcp_rules = _create_rules(sec_group, tcp_ports, 'tcp')
         udp_rules = _create_rules(sec_group, udp_ports, 'udp')
 
-        all_rules = tcp_rules + udp_rules
+        sec_group.save()
 
+        all_rules = tcp_rules + udp_rules
         view = views.SecurityGroupRulesView(
             all_rules, req, tenant_id).create()
         return wsgi.Result(view, 201)

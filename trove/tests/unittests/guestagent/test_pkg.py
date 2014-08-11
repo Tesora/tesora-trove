@@ -52,16 +52,16 @@ class PkgDEBInstallTestCase(testtools.TestCase):
         self.pkg._fix_package_selections = self.pkg_fix_package_selections
 
     def test_pkg_is_instaled_no_packages(self):
-        packages = ""
+        packages = []
         self.assertTrue(self.pkg.pkg_is_installed(packages))
 
     def test_pkg_is_instaled_yes(self):
-        packages = "package1=1.0 package2"
+        packages = ["package1=1.0", "package2"]
         self.pkg.pkg_version = MagicMock(side_effect=["1.0", "2.0"])
         self.assertTrue(self.pkg.pkg_is_installed(packages))
 
     def test_pkg_is_instaled_no(self):
-        packages = "package1=1.0 package2 package3=3.1"
+        packages = ["package1=1.0", "package2", "package3=3.1"]
         self.pkg.pkg_version = MagicMock(side_effect=["1.0", "2.0", "3.0"])
         self.assertFalse(self.pkg.pkg_is_installed(packages))
 
@@ -302,17 +302,17 @@ class PkgRPMInstallTestCase(testtools.TestCase):
         pexpect.spawn.close = self.pexpect_spawn_closed
 
     def test_pkg_is_instaled_no_packages(self):
-        packages = ""
+        packages = []
         self.assertTrue(self.pkg.pkg_is_installed(packages))
 
     def test_pkg_is_instaled_yes(self):
-        packages = "package1=1.0 package2"
+        packages = ["package1=1.0", "package2"]
         commands.getstatusoutput = MagicMock(return_value={1: "package1=1.0\n"
                                                            "package2=2.0"})
         self.assertTrue(self.pkg.pkg_is_installed(packages))
 
     def test_pkg_is_instaled_no(self):
-        packages = "package1=1.0 package2 package3=3.0"
+        packages = ["package1=1.0", "package2", "package3=3.0"]
         commands.getstatusoutput = MagicMock(return_value={1: "package1=1.0\n"
                                                            "package2=2.0"})
         self.assertFalse(self.pkg.pkg_is_installed(packages))
@@ -440,14 +440,22 @@ class PkgRPMRemoveTestCase(testtools.TestCase):
     def test_package_not_found(self):
         # test
         pexpect.spawn.expect = Mock(return_value=1)
+        pexpect.spawn.match = False
         # test and verify
         self.assertRaises(pkg.PkgNotFoundError, self.pkg.pkg_remove,
                           self.pkgName, 5000)
+
+    def test_success_remove(self):
+        # test
+        pexpect.spawn.expect = Mock(return_value=2)
+        pexpect.spawn.match = False
+        self.assertTrue(self.pkg.pkg_remove(self.pkgName, 5000) is None)
 
     def test_timeout_error(self):
         # test timeout error
         pexpect.spawn.expect = Mock(side_effect=pexpect.
                                     TIMEOUT('timeout error'))
+        pexpect.spawn.match = False
         # test and verify
         self.assertRaises(pkg.PkgTimeout, self.pkg.pkg_remove,
                           self.pkgName, 5000)

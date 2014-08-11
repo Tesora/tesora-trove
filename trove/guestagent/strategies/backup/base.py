@@ -15,7 +15,6 @@
 #
 
 from trove.guestagent.strategy import Strategy
-from trove.openstack.common import log as logging
 from trove.common import cfg, utils
 from eventlet.green import subprocess
 import os
@@ -23,19 +22,17 @@ import signal
 
 CONF = cfg.CONF
 
-LOG = logging.getLogger(__name__)
-
 
 class BackupError(Exception):
     """Error running the Backup Command."""
 
 
 class UnknownBackupType(Exception):
-    """Unknown backup type"""
+    """Unknown backup type."""
 
 
 class BackupRunner(Strategy):
-    """Base class for Backup Strategy implementations """
+    """Base class for Backup Strategy implementations."""
     __strategy_type__ = 'backup_runner'
     __strategy_ns__ = 'trove.guestagent.strategies.backup'
 
@@ -65,10 +62,9 @@ class BackupRunner(Strategy):
         self.pid = self.process.pid
 
     def __enter__(self):
-        """Start up the process"""
+        """Start up the process."""
         self._run_pre_backup()
         self.run()
-        self._run_post_backup()
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -91,6 +87,8 @@ class BackupRunner(Strategy):
             if not self.check_process():
                 raise BackupError
 
+        self._run_post_backup()
+
         return True
 
     def metadata(self):
@@ -99,7 +97,7 @@ class BackupRunner(Strategy):
 
     @property
     def filename(self):
-        """Subclasses may overwrite this to declare a format (.tar)"""
+        """Subclasses may overwrite this to declare a format (.tar)."""
         return self.base_filename
 
     @property

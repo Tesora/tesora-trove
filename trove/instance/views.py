@@ -39,8 +39,15 @@ class InstanceView(object):
             "datastore": {"type": self.instance.datastore.name,
                           "version": self.instance.datastore_version.name},
         }
-        if CONF.trove_volume_support:
+        if self.instance.volume_support:
             instance_dict['volume'] = {'size': self.instance.volume_size}
+
+        if self.instance.hostname:
+            instance_dict['hostname'] = self.instance.hostname
+        else:
+            ip = self.instance.get_visible_ip_addresses()
+            if ip:
+                instance_dict['ip'] = ip
 
         LOG.debug(instance_dict)
         return {"instance": instance_dict}
@@ -77,17 +84,11 @@ class InstanceDetailView(InstanceView):
         if self.instance.configuration is not None:
             result['instance']['configuration'] = (self.
                                                    _build_configuration_info())
-        if self.instance.hostname:
-            result['instance']['hostname'] = self.instance.hostname
-        else:
-            ip = self.instance.get_visible_ip_addresses()
-            if ip is not None and len(ip) > 0:
-                result['instance']['ip'] = ip
 
         if (isinstance(self.instance, models.DetailInstance) and
                 self.instance.volume_used):
             used = self.instance.volume_used
-            if CONF.trove_volume_support:
+            if self.instance.volume_support:
                 result['instance']['volume']['used'] = used
             else:
                 # either ephemeral or root partition

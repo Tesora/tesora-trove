@@ -11,8 +11,9 @@ bind_host = 0.0.0.0
 # Port the bind the API server to
 bind_port = 8779
 
-# Number of child processes to run
-#trove_api_workers=5
+# Number of workers for the API service. The default will
+# be the number of CPUs available. (integer value)
+#trove_api_workers=None
 
 # The RabbitMQ broker address where a single node is used.
 # (string value)
@@ -73,13 +74,37 @@ api_extensions_path = $pybasedir/extensions/routes
 
 # Configuration options for talking to nova via the novaclient.
 trove_auth_url = http://0.0.0.0:5000/v2.0
-nova_compute_url = http://localhost:8774/v2
-cinder_url = http://localhost:8776/v1
-swift_url = http://localhost:8080/v1/AUTH_
+#nova_compute_url = http://localhost:8774/v2
+#cinder_url = http://localhost:8776/v1
+#swift_url = http://localhost:8080/v1/AUTH_
+#neutron_url = http://localhost:9696/
+
+# nova_compute_url, cinder_url, swift_url, and heat_url can all be fetched
+# from Keystone. To fetch from Keystone, comment out nova_compute_url,
+# cinder_url, swift_url, and heat_url and optionally uncomment the lines below.
+
+# Region name of this node. Used when searching catalog. Default value is None.
+#os_region_name = RegionOne
+# Service type to use when searching catalog.
+#nova_compute_service_type = compute
+# Service type to use when searching catalog.
+#cinder_service_type = volumev2
+# Service type to use when searching catalog.
+#swift_service_type = object-store
+# Service type to use when searching catalog.
+#heat_service_type = orchestration
+# Service type to use when searching catalog.
+#neutron_service_type = network
 
 # Config option for showing the IP address that nova doles out
+# For nova-network, set this to the appropriate network label defined in nova
+# For neutron, set this to .* since users can specify custom network labels
+# You can also optionally specify regex'es to match the actual IP addresses
+# ip_regex (white-list) is applied before black_list_regex in the filter chain
 network_label_regex = ^private$
+#network_label_regex = .* //with neutron enabled
 #ip_regex = ^(15.|123.)
+#black_list_regex = ^10.0.0.
 
 # Config options for enabling volume service
 trove_volume_support = True
@@ -113,6 +138,11 @@ dns_driver = trove.dns.designate.driver.DesignateDriver
 dns_instance_entry_factory = trove.dns.designate.driver.DesignateInstanceEntryFactory
 dns_endpoint_url = http://127.0.0.1/v1/
 dns_service_type = dns
+
+# Neutron
+network_driver = trove.network.nova.NovaNetwork
+default_neutron_networks =
+
 
 # Taskmanager queue name
 taskmanager_queue = taskmanager
@@ -163,12 +193,25 @@ root_on_create = False
 # Format (single port or port range): A, B-C
 # where C greater than B
 tcp_ports = 3306
+volume_support = True
+device_path = /dev/vdb
 
 [redis]
 tcp_ports = 6379
+#redis uses local storage
+volume_support = False
+# default device_path = None
 
 [cassandra]
 tcp_ports = 7000, 7001, 9042, 9160
+volume_support = True
+device_path = /dev/vdb
 
 [couchbase]
 tcp_ports = 8091, 8092, 4369, 11209-11211, 21100-21199
+volume_support = True
+device_path = /dev/vdb
+
+[mongodb]
+volume_support = True
+device_path = /dev/vdb

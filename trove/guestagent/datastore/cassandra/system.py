@@ -14,9 +14,7 @@
 #    under the License.
 
 from trove.common import cfg
-from trove.openstack.common import log as logging
 
-LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 
 CASSANDRA_DATA_DIR = "/var/lib/cassandra/data"
@@ -35,5 +33,5 @@ STOP_CASSANDRA = "sudo service cassandra stop"
 CASSANDRA_STATUS = """echo "use system;" > /tmp/check; cqlsh -f /tmp/check"""
 
 CASSANDRA_KILL = "sudo killall java  || true"
-
-TIME_OUT = 10000
+SERVICE_STOP_TIMEOUT = 60
+INSTALL_TIMEOUT = 10000

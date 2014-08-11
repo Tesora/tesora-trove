@@ -267,7 +267,7 @@ class Resource(openstack_wsgi.Resource):
             LOG.exception(exception_uuid + ": " + str(error))
             return Fault(webob.exc.HTTPInternalServerError(
                 "Internal Server Error. Please keep this ID to help us "
-                "figure out what went wrong: (%s)" % exception_uuid,
+                "figure out what went wrong: (%s)." % exception_uuid,
                 request=request))
 
     def _get_http_error(self, error):
@@ -301,7 +301,7 @@ class Resource(openstack_wsgi.Resource):
             # If action_result is not a Fault then there really was a
             # serialization error which we log. Otherwise return the Fault.
             if not isinstance(action_result, Fault):
-                LOG.exception("unserializable result detected.")
+                LOG.exception(_("Unserializable result detected."))
                 raise
             return action_result
 
@@ -467,7 +467,8 @@ class Fault(webob.exc.HTTPException):
         name = exc.__class__.__name__
         if name in named_exceptions:
             return named_exceptions[name]
-            # If the exception isn't in our list, at least strip off the
+
+        # If the exception isn't in our list, at least strip off the
         # HTTP from the name, and then drop the case on the first letter.
         name = name.split("HTTP").pop()
         name = name[:1].lower() + name[1:]
@@ -509,6 +510,14 @@ class ContextMiddleware(openstack_wsgi.Middleware):
                      if key in ["limit", "marker"]])
 
     def process_request(self, request):
+        service_catalog = None
+        catalog_header = request.headers.get('X-Service-Catalog', None)
+        if catalog_header:
+            try:
+                service_catalog = jsonutils.loads(catalog_header)
+            except ValueError:
+                raise webob.exc.HTTPInternalServerError(
+                    _('Invalid service catalog json.'))
         tenant_id = request.headers.get('X-Tenant-Id', None)
         auth_token = request.headers["X-Auth-Token"]
         user_id = request.headers.get('X-User-ID', None)
@@ -524,13 +533,14 @@ class ContextMiddleware(openstack_wsgi.Middleware):
                                           user=user_id,
                                           is_admin=is_admin,
                                           limit=limits.get('limit'),
-                                          marker=limits.get('marker'))
+                                          marker=limits.get('marker'),
+                                          service_catalog=service_catalog)
         request.environ[CONTEXT_KEY] = context
 
     @classmethod
     def factory(cls, global_config, **local_config):
         def _factory(app):
-            LOG.debug(_("Created context middleware with config: %s") %
+            LOG.debug("Created context middleware with config: %s" %
                       local_config)
             return cls(app)
 
@@ -552,7 +562,7 @@ class FaultWrapper(openstack_wsgi.Middleware):
                 return resp
             return resp
         except Exception as ex:
-            LOG.exception(_("Caught error: %s"), unicode(ex))
+            LOG.exception(_("Caught error: %s."), unicode(ex))
             exc = webob.exc.HTTPInternalServerError()
             return Fault(exc)
 

@@ -15,8 +15,8 @@
 #    under the License.
 """Routines for configuring Trove."""
 
+import trove
 from oslo.config import cfg
-from trove.openstack.common import log as logging
 
 import os.path
 
@@ -28,8 +28,6 @@ path_opts = [
                                                     '../')),
                help='Directory where the trove python module is installed.'),
 ]
-
-LOG = logging.getLogger(__name__)
 
 common_opts = [
     cfg.StrOpt('sql_connection',
@@ -48,15 +46,27 @@ common_opts = [
                 default=True,
                 help='Whether to provision a cinder volume for datadir.'),
     cfg.ListOpt('admin_roles', default=['admin']),
-    cfg.BoolOpt('update_status_on_fail', default=False,
-                help='If instance fails to become active, '
-                     'taskmanager updates statuses, '
-                     'service status = FAILED_TIMEOUT_GUESTAGENT, '
-                     'instance task status = BUILDING_ERROR_TIMEOUT_GA.'),
-    cfg.StrOpt('nova_compute_url', default='http://localhost:8774/v2'),
-    cfg.StrOpt('cinder_url', default='http://localhost:8776/v2'),
-    cfg.StrOpt('heat_url', default='http://localhost:8004/v1'),
-    cfg.StrOpt('swift_url', default='http://localhost:8080/v1/AUTH_'),
+    cfg.BoolOpt('update_status_on_fail', default=True,
+                help='Set the service and instance task statuses to ERROR '
+                     'when an instance fails to become active within the '
+                     'configured usage_timeout.'),
+    cfg.StrOpt('os_region_name',
+               help='Region name of this node. Used when searching catalog.'),
+    cfg.StrOpt('nova_compute_url', help='URL without the tenant segment.'),
+    cfg.StrOpt('nova_compute_service_type', default='compute',
+               help='Service type to use when searching catalog.'),
+    cfg.StrOpt('neutron_url', help='URL without the tenant segment.'),
+    cfg.StrOpt('neutron_service_type', default='network',
+               help='Service type to use when searching catalog.'),
+    cfg.StrOpt('cinder_url', help='URL without the tenant segment.'),
+    cfg.StrOpt('cinder_service_type', default='volumev2',
+               help='Service type to use when searching catalog.'),
+    cfg.StrOpt('heat_url', help='URL without the tenant segment.'),
+    cfg.StrOpt('heat_service_type', default='orchestration',
+               help='Service type to use when searching catalog.'),
+    cfg.StrOpt('swift_url', help='URL ending in AUTH_.'),
+    cfg.StrOpt('swift_service_type', default='object-store',
+               help='Service type to use when searching catalog.'),
     cfg.StrOpt('trove_auth_url', default='http://0.0.0.0:5000/v2.0'),
     cfg.StrOpt('host', default='0.0.0.0'),
     cfg.IntOpt('report_interval', default=10,
@@ -95,6 +105,8 @@ common_opts = [
     cfg.IntOpt('agent_heartbeat_time', default=10),
     cfg.IntOpt('num_tries', default=3),
     cfg.StrOpt('volume_fstype', default='ext3'),
+    cfg.StrOpt('cinder_volume_type', default=None,
+               help='Volume type to use when provisioning a cinder volume.'),
     cfg.StrOpt('format_options', default='-m 5'),
     cfg.IntOpt('volume_format_timeout', default=120),
     cfg.StrOpt('mount_options', default='defaults,noatime'),
@@ -112,7 +124,12 @@ common_opts = [
                help='Default driver to use for quota checks.'),
     cfg.StrOpt('taskmanager_queue', default='taskmanager'),
     cfg.StrOpt('conductor_queue', default='trove-conductor'),
-    cfg.IntOpt('trove_conductor_workers', default=1),
+    cfg.IntOpt('trove_conductor_workers',
+               help="Number of workers for the Conductor service. The default "
+               "will be the number of CPUs available."),
+    cfg.BoolOpt('use_nova_server_config_drive', default=False,
+                help="Use config drive for file injection when booting "
+                "instance."),
     cfg.BoolOpt('use_nova_server_volume', default=False),
     cfg.BoolOpt('use_heat', default=False),
     cfg.StrOpt('device_path', default='/dev/vdb'),
@@ -144,7 +161,9 @@ common_opts = [
     cfg.BoolOpt('trove_security_groups_support', default=True),
     cfg.StrOpt('trove_security_group_name_prefix', default='SecGroup'),
     cfg.StrOpt('trove_security_group_rule_cidr', default='0.0.0.0/0'),
-    cfg.IntOpt('trove_api_workers', default=None),
+    cfg.IntOpt('trove_api_workers',
+               help="Number of workers for the API service. The default will "
+               "be the number of CPUs available."),
     cfg.IntOpt('usage_sleep_time', default=5,
                help='Time to sleep during the check active guest.'),
     cfg.StrOpt('region', default='LOCAL_DEV',
@@ -163,9 +182,9 @@ common_opts = [
                help='Namespace to load restore strategies from.'),
     cfg.DictOpt('backup_incremental_strategy',
                 default={'InnoBackupEx': 'InnoBackupExIncremental'},
-                help='Incremental Backup Runner Based off of the default'
+                help='Incremental Backup Runner based on the default'
                 ' strategy. For strategies that do not implement an'
-                ' incremental the runner will use the default full backup.'),
+                ' incremental, the runner will use the default full backup.'),
     cfg.BoolOpt('verify_swift_checksum_on_restore', default=True,
                 help='Enable verification of swift checksum before starting '
                 'restore; makes sure the checksum of original backup matches '
@@ -198,6 +217,8 @@ common_opts = [
                default='trove.common.remote.guest_client'),
     cfg.StrOpt('remote_nova_client',
                default='trove.common.remote.nova_client'),
+    cfg.StrOpt('remote_neutron_client',
+               default='trove.common.remote.neutron_client'),
     cfg.StrOpt('remote_cinder_client',
                default='trove.common.remote.cinder_client'),
     cfg.StrOpt('remote_heat_client',
@@ -229,6 +250,7 @@ common_opts = [
                help='Use config_drive for nova instances (either boolean '
                     'or volume-id)'),
     cfg.StrOpt('ip_regex', default=None),
+    cfg.StrOpt('black_list_regex', default=None),
     cfg.StrOpt('cloudinit_location', default='/etc/trove/cloudinit',
                help="Path to folder with cloudinit scripts."),
     cfg.StrOpt('guest_config',
@@ -248,16 +270,21 @@ common_opts = [
                 default=['json'],
                 help='Filetype endings not to be reattached to an ID '
                      'by the utils method correct_id_with_req.'),
-    cfg.ListOpt('default_neutron_networks',
-                default=[],
-                help='List of network IDs which should be attached'
-                     ' to instance when networks are not specified'
-                     ' in API call.'),
+    cfg.ListOpt('default_neutron_networks', default=[],
+                help='List of IDs for management networks which should be '
+                     ' attached to the instance regardless of what NICs'
+                     ' are specified in the create API call.'),
     cfg.IntOpt('max_header_line', default=16384,
                help='Maximum line size of message headers to be accepted. '
                     'max_header_line may need to be increased when using '
                     'large tokens (typically those generated by the '
                     'Keystone v3 API with big service catalogs).'),
+    cfg.StrOpt('conductor_manager', default='trove.conductor.manager.Manager',
+               help='Qualified class name to use for conductor manager.'),
+    cfg.StrOpt('network_driver', default='trove.network.nova.NovaNetwork',
+               help="Describes the actual network manager used for "
+                    "the management of network attributes "
+                    "(security groups, floating IPs, etc.)")
 ]
 
 # Datastore specific option groups
@@ -287,6 +314,14 @@ mysql_opts = [
                 "instance-create as the 'password' field."),
     cfg.IntOpt('usage_timeout', default=400,
                help='Timeout to wait for a guest to become active.'),
+    cfg.StrOpt('backup_namespace',
+               default='trove.guestagent.strategies.backup.mysql_impl'),
+    cfg.StrOpt('restore_namespace',
+               default='trove.guestagent.strategies.restore.mysql_impl'),
+    cfg.BoolOpt('volume_support',
+                default=True,
+                help='Whether to provision a cinder volume for datadir.'),
+    cfg.StrOpt('device_path', default='/dev/vdb'),
 ]
 
 # Percona
@@ -314,6 +349,14 @@ percona_opts = [
                 "instance-create as the 'password' field."),
     cfg.IntOpt('usage_timeout', default=450,
                help='Timeout to wait for a guest to become active.'),
+    cfg.StrOpt('backup_namespace',
+               default='trove.guestagent.strategies.backup.mysql_impl'),
+    cfg.StrOpt('restore_namespace',
+               default='trove.guestagent.strategies.restore.mysql_impl'),
+    cfg.BoolOpt('volume_support',
+                default=True,
+                help='Whether to provision a cinder volume for datadir.'),
+    cfg.StrOpt('device_path', default='/dev/vdb'),
 ]
 
 # Redis
@@ -336,6 +379,10 @@ redis_opts = [
                "volumes if volume support is enabled."),
     cfg.IntOpt('usage_timeout', default=450,
                help='Timeout to wait for a guest to become active.'),
+    cfg.BoolOpt('volume_support',
+                default=False,
+                help='Whether to provision a cinder volume for datadir.'),
+    cfg.StrOpt('device_path', default=None),
 ]
 
 # Cassandra
@@ -358,9 +405,13 @@ cassandra_opts = [
                "volumes if volume support is enabled."),
     cfg.IntOpt('usage_timeout', default=600,
                help='Timeout to wait for a guest to become active.'),
+    cfg.BoolOpt('volume_support',
+                default=True,
+                help='Whether to provision a cinder volume for datadir.'),
+    cfg.StrOpt('device_path', default='/dev/vdb'),
 ]
 
-#Couchbase
+# Couchbase
 couchbase_group = cfg.OptGroup(
     'couchbase', title='Couchbase options',
     help="Oslo option group designed for Couchbase datastore")
@@ -375,13 +426,26 @@ couchbase_opts = [
                 help='List of UDP ports and/or port ranges to open'
                      ' in the security group (only applicable '
                      'if trove_security_groups_support is True).'),
-    cfg.StrOpt('backup_strategy', default=None,
+    cfg.StrOpt('backup_strategy', default='CbBackup',
                help='Default strategy to perform backups.'),
     cfg.StrOpt('mount_point', default='/var/lib/couchbase',
                help="Filesystem path for mounting "
                "volumes if volume support is enabled."),
     cfg.IntOpt('usage_timeout', default=450,
                help='Timeout to wait for a guest to become active.'),
+    cfg.BoolOpt('root_on_create', default=True,
+                help='Enable the automatic creation of the root user for the '
+                'service during instance-create. The generated password for '
+                'the root user is immediately returned in the response of '
+                "instance-create as the 'password' field."),
+    cfg.StrOpt('backup_namespace',
+               default='trove.guestagent.strategies.backup.couchbase_impl'),
+    cfg.StrOpt('restore_namespace',
+               default='trove.guestagent.strategies.restore.couchbase_impl'),
+    cfg.BoolOpt('volume_support',
+                default=True,
+                help='Whether to provision a cinder volume for datadir.'),
+    cfg.StrOpt('device_path', default='/dev/vdb'),
 ]
 
 # MongoDB
@@ -404,6 +468,10 @@ mongodb_opts = [
                "volumes if volume support is enabled."),
     cfg.IntOpt('usage_timeout', default=450,
                help='Timeout to wait for a guest to become active.'),
+    cfg.BoolOpt('volume_support',
+                default=True,
+                help='Whether to provision a cinder volume for datadir.'),
+    cfg.StrOpt('device_path', default='/dev/vdb'),
 ]
 
 CONF = cfg.CONF
@@ -433,4 +501,5 @@ def custom_parser(parsername, parser):
 def parse_args(argv, default_config_files=None):
     cfg.CONF(args=argv[1:],
              project='trove',
+             version=trove.__version__,
              default_config_files=default_config_files)

@@ -52,22 +52,32 @@ class TroveError(openstack_exception.OpenstackException):
 
 class DBConstraintError(TroveError):
 
-    message = _("Failed to save %(model_name)s because: %(error)s")
+    message = _("Failed to save %(model_name)s because: %(error)s.")
 
 
 class InvalidRPCConnectionReuse(TroveError):
 
-    message = _("Invalid RPC Connection Reuse")
+    message = _("Invalid RPC Connection Reuse.")
 
 
 class NotFound(TroveError):
 
-    message = _("Resource %(uuid)s cannot be found")
+    message = _("Resource %(uuid)s cannot be found.")
+
+
+class CapabilityNotFound(NotFound):
+
+    message = _("Capability '%(capability)s' cannot be found.")
+
+
+class CapabilityDisabled(TroveError):
+
+    message = _("Capability '%(capability)s' is disabled.")
 
 
 class FlavorNotFound(TroveError):
 
-    message = _("Resource %(uuid)s cannot be found")
+    message = _("Resource %(uuid)s cannot be found.")
 
 
 class UserNotFound(NotFound):
@@ -128,6 +138,11 @@ class DatastoreDefaultVersionNotFound(TroveError):
     message = _("Default version for datastore '%(datastore)s' not found.")
 
 
+class InvalidDatastoreManager(TroveError):
+
+    message = _("Datastore manager %(datastore_manager)s cannot be found.")
+
+
 class DatastoreOperationNotSupported(TroveError):
 
     message = _("The '%(operation)s' operation is not supported for "
@@ -136,7 +151,7 @@ class DatastoreOperationNotSupported(TroveError):
 
 class NoUniqueMatch(TroveError):
 
-    message = _("Multiple matches found for '%(name)s', i"
+    message = _("Multiple matches found for '%(name)s', "
                 "use an UUID to be more specific.")
 
 
@@ -148,7 +163,7 @@ class OverLimit(TroveError):
 
 class QuotaExceeded(TroveError):
 
-    message = _("Quota exceeded for resources: %(overs)s")
+    message = _("Quota exceeded for resources: %(overs)s.")
 
 
 class VolumeQuotaExceeded(QuotaExceeded):
@@ -175,7 +190,7 @@ class BadRequest(TroveError):
 
 class MissingKey(BadRequest):
 
-    message = _("Required element/key - %(key)s was not specified")
+    message = _("Required element/key - %(key)s was not specified.")
 
 
 class DatabaseAlreadyExists(BadRequest):
@@ -198,18 +213,18 @@ class InstanceAssignedToConfiguration(BadRequest):
 
 class UnprocessableEntity(TroveError):
 
-    message = _("Unable to process the contained request")
+    message = _("Unable to process the contained request.")
 
 
 class CannotResizeToSameSize(TroveError):
 
-    message = _("When resizing, instances must change size!")
+    message = _("No change was requested in the size of the instance.")
 
 
 class VolumeAttachmentsNotFound(NotFound):
 
     message = _("Cannot find the volumes attached to compute "
-                "instance %(server_id)")
+                "instance %(server_id).")
 
 
 class VolumeCreationFailure(TroveError):
@@ -245,7 +260,7 @@ class TaskManagerError(TroveError):
 
 class BadValue(TroveError):
 
-    message = _("Value could not be converted: %(msg)s")
+    message = _("Value could not be converted: %(msg)s.")
 
 
 class PollTimeOut(TroveError):
@@ -260,22 +275,22 @@ class Forbidden(TroveError):
 
 class InvalidModelError(TroveError):
 
-    message = _("The following values are invalid: %(errors)s")
+    message = _("The following values are invalid: %(errors)s.")
 
 
 class ModelNotFoundError(NotFound):
 
-    message = _("Not Found")
+    message = _("Not Found.")
 
 
 class UpdateGuestError(TroveError):
 
-    message = _("Failed to update instances")
+    message = _("Failed to update instances.")
 
 
 class ConfigNotFound(NotFound):
 
-    message = _("Config file not found")
+    message = _("Config file not found.")
 
 
 class PasteAppNotFound(NotFound):
@@ -284,7 +299,7 @@ class PasteAppNotFound(NotFound):
 
 
 class QuotaNotFound(NotFound):
-    message = _("Quota could not be found")
+    message = _("Quota could not be found.")
 
 
 class TenantQuotaNotFound(QuotaNotFound):
@@ -296,7 +311,7 @@ class QuotaResourceUnknown(QuotaNotFound):
 
 
 class BackupUploadError(TroveError):
-    message = _("Unable to upload Backup onto swift")
+    message = _("Unable to upload Backup to swift.")
 
 
 class BackupDownloadError(TroveError):
@@ -304,11 +319,11 @@ class BackupDownloadError(TroveError):
 
 
 class BackupCreationError(TroveError):
-    message = _("Unable to create Backup")
+    message = _("Unable to create Backup.")
 
 
 class BackupUpdateError(TroveError):
-    message = _("Unable to update Backup table in db")
+    message = _("Unable to update Backup table in database.")
 
 
 class SecurityGroupCreationError(TroveError):
@@ -334,14 +349,14 @@ class SecurityGroupRuleDeletionError(TroveError):
 class MalformedSecurityGroupRuleError(TroveError):
 
     message = _("Error creating security group rules."
-                " Malformed port(s). Port(s) is not integer."
-                " FromPort = %(from)s greater than ToPort = %(to)s")
+                " Malformed port(s). Port must be an integer."
+                " FromPort = %(from)s greater than ToPort = %(to)s.")
 
 
 class BackupNotCompleteError(TroveError):
 
     message = _("Unable to create instance because backup %(backup_id)s is "
-                "not completed")
+                "not completed.")
 
 
 class BackupFileNotFound(NotFound):
@@ -349,10 +364,10 @@ class BackupFileNotFound(NotFound):
                 "storage.")
 
 
-class BackupDatastoreVersionMismatchError(TroveError):
-    message = _("The datastore-version from which the backup was"
-                " taken, %(version1)s, does not match the destination"
-                " datastore-version of %(version2)s")
+class BackupDatastoreMismatchError(TroveError):
+    message = _("The datastore from which the backup was taken, "
+                "%(datastore1)s, does not match the destination"
+                " datastore of %(datastore2)s.")
 
 
 class SwiftAuthError(TroveError):
@@ -383,12 +398,12 @@ class RestoreBackupIntegrityError(TroveError):
 
 
 class ConfigKeyNotFound(NotFound):
-    message = _("%(key)s is not a supported configuration parameter")
+    message = _("%(key)s is not a supported configuration parameter.")
 
 
 class NoConfigParserFound(NotFound):
     message = _("No configuration parser found for datastore "
-                "%(datastore_manager)s")
+                "%(datastore_manager)s.")
 
 
 class ConfigurationDatastoreNotMatchInstance(TroveError):
@@ -398,9 +413,9 @@ class ConfigurationDatastoreNotMatchInstance(TroveError):
                 "%(instance_datastore_version)s.")
 
 
-class ConfigurationParameterDeleted(object):
+class ConfigurationParameterDeleted(TroveError):
     message = _("%(parameter_name)s parameter can no longer be "
-                " set as of %(parameter_deleted_at)s")
+                " set as of %(parameter_deleted_at)s.")
 
 
 class ConfigurationAlreadyAttached(TroveError):
@@ -410,4 +425,23 @@ class ConfigurationAlreadyAttached(TroveError):
 
 class InvalidInstanceState(TroveError):
     message = _("The operation you have requested cannot be executed because "
-                "the instance status is currently: %(status)s")
+                "the instance status is currently: %(status)s.")
+
+
+class RegionAmbiguity(TroveError):
+    """Found more than one matching endpoint in Service Catalog."""
+    message = _("Multiple matches for service_type=%(service_type)s and "
+                "endpoint_region=%(endpoint_region)s. This generally means "
+                "that a region is required and you have not supplied one.")
+
+
+class NoServiceEndpoint(TroveError):
+    """Could not find requested endpoint in Service Catalog."""
+    message = _("Endpoint not found for service_type=%(service_type)s, "
+                "endpoint_type=%(endpoint_type)s, "
+                "endpoint_region=%(endpoint_region)s.")
+
+
+class EmptyCatalog(NoServiceEndpoint):
+    """The service catalog is empty."""
+    message = _("Empty catalog.")

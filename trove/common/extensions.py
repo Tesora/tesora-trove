@@ -13,11 +13,11 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import os
 import routes
 from trove.openstack.common import log as logging
 
 from trove.openstack.common import extensions
-from trove.openstack.common.gettextutils import _
 from trove.common import cfg
 from trove.common import wsgi
 
@@ -45,12 +45,12 @@ class TroveExtensionMiddleware(extensions.ExtensionMiddleware):
 
     def __init__(self, application, ext_mgr=None):
         ext_mgr = (ext_mgr or
-                   ExtensionManager(CONF.api_extensions_path))
+                   extensions.ExtensionManager(CONF.api_extensions_path))
         mapper = routes.Mapper()
 
         # extended resources
         for resource_ext in ext_mgr.get_resources():
-            LOG.debug(_('Extended resource: %s'), resource_ext.collection)
+            LOG.debug('Extended resource: %s', resource_ext.collection)
             # The only difference here is that we are using our common
             # wsgi.Resource instead of the openstack common wsgi.Resource
             exception_map = None
@@ -75,7 +75,7 @@ class TroveExtensionMiddleware(extensions.ExtensionMiddleware):
         action_resources = self._action_ext_resources(application, ext_mgr,
                                                       mapper)
         for action in ext_mgr.get_actions():
-            LOG.debug(_('Extended action: %s'), action.action_name)
+            LOG.debug('Extended action: %s', action.action_name)
             resource = action_resources[action.collection]
             resource.add_action(action.action_name, action.handler)
 
@@ -83,7 +83,7 @@ class TroveExtensionMiddleware(extensions.ExtensionMiddleware):
         req_controllers = self._request_ext_resources(application, ext_mgr,
                                                       mapper)
         for request_ext in ext_mgr.get_request_extensions():
-            LOG.debug(_('Extended request: %s'), request_ext.key)
+            LOG.debug('Extended request: %s', request_ext.key)
             controller = req_controllers[request_ext.key]
             controller.add_handler(request_ext.handler)
 
@@ -97,6 +97,9 @@ def factory(global_config, **local_config):
     """Paste factory."""
     def _factory(app):
         extensions.DEFAULT_XMLNS = "http://docs.openstack.org/trove"
+        if not os.path.exists(CONF.api_extensions_path):
+            LOG.warning(_('API extensions path does not exist: %s.'),
+                        CONF.api_extensions_path)
         ext_mgr = extensions.ExtensionManager(CONF.api_extensions_path)
         return TroveExtensionMiddleware(app, ext_mgr)
     return _factory
