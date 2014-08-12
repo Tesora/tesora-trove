@@ -21,17 +21,21 @@ from cinderclient import exceptions as cinder_exceptions
 from eventlet import greenthread
 from novaclient import exceptions as nova_exceptions
 from trove.backup import models as bkup_models
+from trove.backup.models import BackupState
+from trove.backup.models import DBBackup
 from trove.common import cfg
 from trove.common import template
 from trove.common import utils
 from trove.common.utils import try_recover
 from trove.common.configurations import do_configs_require_restart
+from trove.common.exception import BackupCreationError
 from trove.common.exception import GuestError
 from trove.common.exception import GuestTimeout
-from trove.common.exception import PollTimeOut
-from trove.common.exception import VolumeCreationFailure
-from trove.common.exception import TroveError
+from trove.common.exception import InvalidModelError
 from trove.common.exception import MalformedSecurityGroupRuleError
+from trove.common.exception import PollTimeOut
+from trove.common.exception import TroveError
+from trove.common.exception import VolumeCreationFailure
 from trove.common.instance import ServiceStatuses
 from trove.common import instance as rd_instance
 from trove.common.remote import create_dns_client
@@ -55,6 +59,7 @@ from trove.openstack.common import log as logging
 from trove.openstack.common.gettextutils import _
 from trove.openstack.common.notifier import api as notifier
 from trove.openstack.common import timeutils
+from trove.quota.quota import run_with_quotas
 import trove.common.remote as remote
 
 LOG = logging.getLogger(__name__)
@@ -264,11 +269,57 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             LOG.error(_("Timeout for service changing to active. "
                       "No usage create-event sent."))
             self.update_statuses_on_time_out()
-
         except Exception:
             LOG.exception(_("Error during create-event call."))
 
         LOG.debug("end create_instance for id: %s" % self.id)
+
+    def attach_replication_slave(self, snapshot, slave_config=None):
+        LOG.debug("Calling attach_replication_slave for %s.", self.id)
+        try:
+            self.guest.attach_replication_slave(snapshot, slave_config)
+        except GuestError as e:
+            msg = (_("Error attaching instance %s "
+                     "as replication slave.") % self.id)
+            err = inst_models.InstanceTasks.BUILDING_ERROR_SLAVE
+            self._log_and_raise(e, msg, err)
+
+    def get_replication_master_snapshot(self, context, slave_of_id):
+        try:
+            snapshot_info = {
+                'name': "Replication snapshot of %s" % self.id,
+                'description': "Backup image used to initialize "
+                               "replication slave",
+                'instance_id': slave_of_id,
+                'parent_id': None,
+                'tenant_id': self.tenant_id,
+                'state': BackupState.NEW,
+                'datastore_version_id': self.datastore_version.id,
+                'deleted': False
+            }
+            try:
+                db_info = DBBackup.create(**snapshot_info)
+            except InvalidModelError as e:
+                msg = (_("Unable to create replication snapshot record for "
+                         "instance: %s") % self.id)
+                LOG.exception(msg)
+                raise BackupCreationError(msg)
+
+            master = BuiltInstanceTasks.load(context, slave_of_id)
+            snapshot_info.update({
+                'id': db_info['id'],
+                'datastore': master.datastore.name,
+                'datastore_version': master.datastore_version.name,
+            })
+            snapshot = master.get_replication_snapshot(snapshot_info)
+            return snapshot
+        except TroveError as e:
+            msg = (_("Error creating replication snapshot "
+                     "from instance %(master)s "
+                     "for new slave %(slave)s.") % {'master': slave_of_id,
+                                                    'slave': self.id})
+            err = inst_models.InstanceTasks.BUILDING_ERROR_SLAVE
+            self._log_and_raise(e, msg, err)
 
     def report_root_enabled(self):
         mysql_models.RootHistory.create(self.context, self.id, 'root')
@@ -802,6 +853,22 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
     def create_backup(self, backup_info):
         LOG.debug("Calling create_backup  %s " % self.id)
         self.guest.create_backup(backup_info)
+
+    def get_replication_snapshot(self, snapshot_info):
+
+        def _get_replication_snapshot():
+            LOG.debug("Calling get_replication_snapshot on %s.", self.id)
+            try:
+                result = self.guest.get_replication_snapshot(snapshot_info)
+                LOG.debug("Got replication snapshot from guest successfully.")
+                return result
+            except (GuestError, GuestTimeout):
+                LOG.exception(_("Failed to get replication snapshot from %s") %
+                              self.id)
+                raise
+
+        return run_with_quotas(self.context.tenant, {'backups': 1},
+                               _get_replication_snapshot)
 
     def reboot(self):
         try:
