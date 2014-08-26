@@ -225,9 +225,9 @@ common_opts = [
     cfg.StrOpt('network_label_regex', default='^private$'),
     cfg.StrOpt('use_nova_key_name', default=None,
                help='Use key_name for for nova instances'),
-    cfg.StrOpt('use_nova_config_drive', default=None,
-               help='Use config_drive for nova instances (either boolean '
-                    'or volume-id)'),
+    cfg.BoolOpt('use_nova_server_config_drive', default=False,
+                 help="Use config drive for file injection when booting "
+                 "instance."),
     cfg.StrOpt('ip_regex', default=None),
     cfg.StrOpt('cloudinit_location', default='/etc/trove/cloudinit',
                help="Path to folder with cloudinit scripts."),
