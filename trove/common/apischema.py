@@ -244,6 +244,7 @@ instance = {
                     "configuration_id": configuration_id,
                     "flavorRef": flavorref,
                     "volume": volume,
+                    "replica_of_id": uuid,
                     "databases": databases_def,
                     "users": users_list,
                     "restorePoint": {
@@ -277,7 +278,7 @@ instance = {
                 "type": "object",
                 "required": [],
                 "properties": {
-                    "slave_of": {},
+                    "replica_of": {},
                 }
             }
         }

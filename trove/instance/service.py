@@ -274,7 +274,7 @@ class InstanceController(wsgi.Controller):
 
         instance = models.Instance.load(context, id)
 
-        if 'slave_of' in body['instance']:
+        if 'replica_of' in body['instance']:
             LOG.debug("Detaching replica from source.")
             instance.detach_replica()
 

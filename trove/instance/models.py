@@ -870,7 +870,7 @@ class Instance(BuiltInstance):
         self.validate_can_perform_action()
         LOG.info(_("Detaching instance %s from its replication source.")
                  % self.id)
-        if not self.slave_of_id:
+        if not self.replica_of_id:
             raise exception.BadRequest(_("Instance %s is not a replica.")
                                        % self.id)
         task_api.API(self.context).detach_replica(self.id)

@@ -933,7 +933,7 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         LOG.debug("Calling detach_replica on %s" % self.id)
         try:
             self.guest.detach_replica()
-            self.update_db(slave_of_id=None)
+            self.update_db(replica_of_id=None)
         except (GuestError, GuestTimeout):
             LOG.exception(_("Failed to detach replica %s.") % self.id)
 
