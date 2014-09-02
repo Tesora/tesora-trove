@@ -260,10 +260,10 @@ class GuestAgentManagerTest(testtools.TestCase):
         total_size = 2.0
 
         mock_replication = MagicMock()
-        mock_replication.enable_as_master = MagicMock()
+        mock_replication.enable_as_source = MagicMock()
         mock_replication.snapshot_for_replication = MagicMock(
             return_value=(snapshot_id, log_position))
-        mock_replication.get_master_ref = MagicMock(
+        mock_replication.get_source_ref = MagicMock(
             return_value=master_ref)
         self.mock_rs_class.return_value = mock_replication
         self.mock_gfvs_class.return_value = (
@@ -288,12 +288,12 @@ class GuestAgentManagerTest(testtools.TestCase):
                                                   master_config))
         # assertions
         self.assertEqual(expected_replication_snapshot, replication_snapshot)
-        self.assertEqual(mock_replication.enable_as_master.call_count, 1)
+        self.assertEqual(mock_replication.enable_as_source.call_count, 1)
         self.assertEqual(
             mock_replication.snapshot_for_replication.call_count, 1)
-        self.assertEqual(mock_replication.get_master_ref.call_count, 1)
+        self.assertEqual(mock_replication.get_source_ref.call_count, 1)
 
-    def test_attach_replication_slave_valid(self):
+    def test_attach_replica_valid(self):
         mock_status = MagicMock()
         dbaas.MySqlAppStatus.get = MagicMock(return_value=mock_status)
 
@@ -301,7 +301,7 @@ class GuestAgentManagerTest(testtools.TestCase):
         dataset_size = 1.0
 
         mock_replication = MagicMock()
-        mock_replication.enable_as_slave = MagicMock()
+        mock_replication.enable_as_replica = MagicMock()
         self.mock_rs_class.return_value = mock_replication
         self.mock_gfvs_class.return_value = {'total': total_size}
 
@@ -309,11 +309,11 @@ class GuestAgentManagerTest(testtools.TestCase):
                     'dataset': {'dataset_size': dataset_size}}
 
         # entry point
-        self.manager.attach_replication_slave(self.context, snapshot, None)
+        self.manager.attach_replica(self.context, snapshot, None)
         # assertions
-        self.assertEqual(mock_replication.enable_as_slave.call_count, 1)
+        self.assertEqual(mock_replication.enable_as_replica.call_count, 1)
 
-    def test_attach_replication_slave_invalid(self):
+    def test_attach_replica_invalid(self):
         mock_status = MagicMock()
         dbaas.MySqlAppStatus.get = MagicMock(return_value=mock_status)
 
@@ -321,7 +321,7 @@ class GuestAgentManagerTest(testtools.TestCase):
         dataset_size = 3.0
 
         mock_replication = MagicMock()
-        mock_replication.enable_as_slave = MagicMock()
+        mock_replication.enable_as_replica = MagicMock()
         self.mock_rs_class.return_value = mock_replication
         self.mock_gfvs_class.return_value = {'total': total_size}
 
@@ -330,33 +330,34 @@ class GuestAgentManagerTest(testtools.TestCase):
 
         # entry point
         self.assertRaises(InsufficientSpaceForReplica,
-                          self.manager.attach_replication_slave,
+                          self.manager.attach_replica,
                           self.context, snapshot, None)
         # assertions
-        self.assertEqual(mock_replication.enable_as_slave.call_count, 0)
+        self.assertEqual(mock_replication.enable_as_replica.call_count, 0)
 
     def test_detach_replica(self):
         mock_status = MagicMock()
         dbaas.MySqlAppStatus.get = MagicMock(return_value=mock_status)
 
         mock_replication = MagicMock()
-        mock_replication.detach_slave = MagicMock()
+        mock_replication.detach_replica = MagicMock()
         self.mock_rs_class.return_value = mock_replication
 
         # entry point
         self.manager.detach_replica(self.context)
         # assertions
-        self.assertEqual(mock_replication.detach_slave.call_count, 1)
+        self.assertEqual(mock_replication.detach_replica.call_count, 1)
 
-    def test_demote_replication_master(self):
+    def test_demote_replication_source(self):
         mock_status = MagicMock()
         dbaas.MySqlAppStatus.get = MagicMock(return_value=mock_status)
 
         mock_replication = MagicMock()
-        mock_replication.demote_master = MagicMock()
+        mock_replication.demote_replication_source = MagicMock()
         self.mock_rs_class.return_value = mock_replication
 
         # entry point
-        self.manager.demote_replication_master(self.context)
+        self.manager.demote_replication_source(self.context)
         # assertions
-        self.assertEqual(mock_replication.demote_master.call_count, 1)
+        self.assertEqual(mock_replication.demote_replication_source.call_count,
+                         1)

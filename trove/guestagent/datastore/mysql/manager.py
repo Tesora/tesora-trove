@@ -219,7 +219,7 @@ class Manager(periodic_task.PeriodicTasks):
         app = MySqlApp(MySqlAppStatus.get())
 
         replication = REPLICATION_STRATEGY_CLASS(context)
-        replication.enable_as_master(app, snapshot_info)
+        replication.enable_as_source(app, snapshot_info)
 
         snapshot_id, log_position = (
             replication.snapshot_for_replication(context, app, None,
@@ -236,7 +236,7 @@ class Manager(periodic_task.PeriodicTasks):
                 'snapshot_id': snapshot_id
             },
             'replication_strategy': REPLICATION_STRATEGY,
-            'master': replication.get_master_ref(app, snapshot_info),
+            'master': replication.get_source_ref(app, snapshot_info),
             'log_position': log_position
         }
 
@@ -255,16 +255,16 @@ class Manager(periodic_task.PeriodicTasks):
                 snapshot['dataset']['dataset_size']):
             raise exception.InsufficientSpaceForReplica(
                 snapshot.update({
-                    'slave_volume_size': volume_stats.get('total', 0.0)
+                    'replica_volume_size': volume_stats.get('total', 0.0)
                 }))
 
-    def attach_replication_slave(self, context, snapshot, slave_config):
-        LOG.debug("Attaching replication snapshot.")
+    def attach_replica(self, context, snapshot, replica_config):
+        LOG.debug("Attaching replica.")
         app = MySqlApp(MySqlAppStatus.get())
         try:
             self._validate_slave_for_replication(context, snapshot)
             replication = REPLICATION_STRATEGY_CLASS(context)
-            replication.enable_as_slave(app, snapshot)
+            replication.enable_as_replica(app, snapshot)
         except Exception:
             LOG.exception("Error enabling replication.")
             app.status.set_status(rd_instance.ServiceStatuses.FAILED)
@@ -274,10 +274,10 @@ class Manager(periodic_task.PeriodicTasks):
         LOG.debug("Detaching replica.")
         app = MySqlApp(MySqlAppStatus.get())
         replication = REPLICATION_STRATEGY_CLASS(context)
-        replication.detach_slave(app)
+        replication.detach_replica(app)
 
-    def demote_replication_master(self, context):
-        LOG.debug("Demoting replication master.")
+    def demote_replication_source(self, context):
+        LOG.debug("Demoting replication source.")
         app = MySqlApp(MySqlAppStatus.get())
         replication = REPLICATION_STRATEGY_CLASS(context)
-        replication.demote_master(app)
+        replication.demote_replication_source(app)

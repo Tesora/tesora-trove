@@ -289,12 +289,11 @@ class ApiTest(testtools.TestCase):
         # verify
         self._verify_rpc_call(exp_msg, rpc.call)
 
-    def test_attach_replication_slave(self):
+    def test_attach_replica(self):
         rpc.cast = mock.Mock()
-        exp_msg = RpcMsgMatcher('attach_replication_slave',
-                                'snapshot', 'slave_config')
+        exp_msg = RpcMsgMatcher('attach_replica', 'snapshot', 'replica_config')
         # execute
-        self.api.attach_replication_slave(REPLICATION_SNAPSHOT)
+        self.api.attach_replica(REPLICATION_SNAPSHOT)
         # verify
         self._verify_rpc_cast(exp_msg, rpc.cast)
 
@@ -306,11 +305,11 @@ class ApiTest(testtools.TestCase):
         # verify
         self._verify_rpc_call(exp_msg, rpc.call)
 
-    def test_demote_replication_master(self):
+    def test_demote_replication_source(self):
         rpc.call = mock.Mock()
-        exp_msg = RpcMsgMatcher('demote_replication_master')
+        exp_msg = RpcMsgMatcher('demote_replication_source')
         # execute
-        self.api.demote_replication_master()
+        self.api.demote_replication_source()
         # verify
         self._verify_rpc_call(exp_msg, rpc.call)
 

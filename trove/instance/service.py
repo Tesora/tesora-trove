@@ -218,16 +218,16 @@ class InstanceController(wsgi.Controller):
         availability_zone = body['instance'].get('availability_zone')
         nics = body['instance'].get('nics')
 
-        slave_of_id = body['instance'].get('replica_of',
-                                           # also check for older name
-                                           body['instance'].get('slave_of'))
+        replica_of_id = body['instance'].get(
+            # check for 'replica', fall back to previous name 'slave'
+            'replica_of', body['instance'].get('slave_of'))
 
         instance = models.Instance.create(context, name, flavor_id,
                                           image_id, databases, users,
                                           datastore, datastore_version,
                                           volume_size, backup_id,
                                           availability_zone, nics,
-                                          configuration, slave_of_id)
+                                          configuration, replica_of_id)
 
         view = views.InstanceDetailView(instance, req=req)
         return wsgi.Result(view.data(), 200)

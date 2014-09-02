@@ -71,7 +71,7 @@ class CreateReplicationSlave(object):
             instance_info.name + "_slave",
             instance_info.dbaas_flavor_href,
             instance_info.volume,
-            slave_of=instance_info.id)
+            replica_of=instance_info.id)
         assert_equal(200, instance_info.dbaas.last_http_code)
         assert_equal("BUILD", result.status)
         slave_instance.id = result.id
@@ -144,7 +144,7 @@ class TestInstanceListing(object):
         assert_equal(200, instance_info.dbaas.last_http_code)
         instance_dict = instance._info
         print("instance_dict=%s" % instance_dict)
-        CheckInstance(instance_dict).slave_of()
+        CheckInstance(instance_dict).replica_of()
         assert_equal(instance_info.id, instance_dict['replica_of']['id'])
 
     @test
@@ -153,7 +153,7 @@ class TestInstanceListing(object):
         assert_equal(200, instance_info.dbaas.last_http_code)
         instance_dict = instance._info
         print("instance_dict=%s" % instance_dict)
-        CheckInstance(instance_dict).slaves()
+        CheckInstance(instance_dict).replicas()
         assert_equal(slave_instance.id, instance_dict['replicas'][0]['id'])
 
 

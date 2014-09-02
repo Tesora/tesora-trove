@@ -83,16 +83,15 @@ class Manager(periodic_task.PeriodicTasks):
         instance_tasks = models.BuiltInstanceTasks.load(context, instance_id)
         instance_tasks.create_backup(backup_info)
 
-    def _create_replication_slave(self, context, instance_id, name, flavor,
-                                  image_id, databases, users,
-                                  datastore_manager, packages, volume_size,
-                                  availability_zone,
-                                  root_password, nics, overrides, slave_of_id):
-
+    def _create_replica(self, context, instance_id, name, flavor,
+                        image_id, databases, users,
+                        datastore_manager, packages, volume_size,
+                        availability_zone,
+                        root_password, nics, overrides, replica_of_id):
         instance_tasks = FreshInstanceTasks.load(context, instance_id)
 
-        snapshot = instance_tasks.get_replication_master_snapshot(context,
-                                                                  slave_of_id)
+        snapshot = instance_tasks.get_replication_snapshot(context,
+                                                           replica_of_id)
         instance_tasks.create_instance(flavor, image_id, databases, users,
                                        datastore_manager, packages,
                                        volume_size,
@@ -100,20 +99,20 @@ class Manager(periodic_task.PeriodicTasks):
                                        availability_zone, root_password,
                                        nics, overrides, None)
 
-        instance_tasks.attach_replication_slave(snapshot)
+        instance_tasks.attach_replica(snapshot)
 
     def create_instance(self, context, instance_id, name, flavor,
                         image_id, databases, users, datastore_manager,
                         packages, volume_size, backup_id, availability_zone,
-                        root_password, nics, overrides, slave_of_id,
+                        root_password, nics, overrides, replica_of_id,
                         cluster_config):
-        if slave_of_id:
-            self._create_replication_slave(context, instance_id, name,
-                                           flavor, image_id, databases, users,
-                                           datastore_manager, packages,
-                                           volume_size,
-                                           availability_zone, root_password,
-                                           nics, overrides, slave_of_id)
+        if replica_of_id:
+            self._create_replica(context, instance_id, name,
+                                 flavor, image_id, databases, users,
+                                 datastore_manager, packages,
+                                 volume_size,
+                                 availability_zone, root_password,
+                                 nics, overrides, replica_of_id)
         else:
             instance_tasks = FreshInstanceTasks.load(context, instance_id)
             instance_tasks.create_instance(flavor, image_id, databases, users,

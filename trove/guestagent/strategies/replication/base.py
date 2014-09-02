@@ -32,26 +32,26 @@ class Replication(Strategy):
         super(Replication, self).__init__()
 
     @abc.abstractmethod
-    def get_master_ref(self, service, snapshot_info):
-        """Get reference to master site for replication strategy."""
+    def get_source_ref(self, service, snapshot_info):
+        """Get reference to source site for replication strategy."""
 
     @abc.abstractmethod
     def snapshot_for_replication(self, context, service, location,
                                  snapshot_info):
-        """Capture snapshot of master db."""
+        """Capture snapshot of source db."""
 
     @abc.abstractmethod
-    def enable_as_master(self, service, snapshot_info):
-        """Configure underlying database to act as master for replication."""
+    def enable_as_source(self, service, snapshot_info):
+        """Configure underlying database to act as source for replication."""
 
     @abc.abstractmethod
-    def enable_as_slave(self, service, snapshot):
-        """Configure underlying database as a slave of the given master."""
+    def enable_as_replica(self, service, snapshot):
+        """Configure underlying database as a replica of the given source."""
 
     @abc.abstractmethod
-    def detach_slave(self, service):
-        """Turn off replication on a slave site."""
+    def detach_replica(self, service):
+        """Turn off replication on a replica site."""
 
     @abc.abstractmethod
-    def demote_master(self, service):
-        """Turn off replication on a master site."""
+    def demote_replication_source(self, service):
+        """Turn off replication on a source site."""

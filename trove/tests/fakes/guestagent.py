@@ -338,7 +338,7 @@ class FakeGuest(object):
             'log_position': '100'
         }
 
-    def attach_replication_slave(self, snapshot, slave_config):
+    def attach_replica(self, snapshot, replica_config):
         pass
 
 

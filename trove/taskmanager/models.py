@@ -312,22 +312,21 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             LOG.exception(_("Failed to send usage create-event for "
                             "instance %s.") % self.id)
 
-    def attach_replication_slave(self, snapshot, slave_config=None):
-        LOG.debug("Calling attach_replication_slave for %s.", self.id)
+    def attach_replica(self, snapshot, replica_config=None):
+        LOG.debug("Calling attach_replica for %s.", self.id)
         try:
-            self.guest.attach_replication_slave(snapshot, slave_config)
+            self.guest.attach_replica(snapshot, replica_config)
         except GuestError as e:
             msg = (_("Error attaching instance %s "
                      "as replica.") % self.id)
             err = inst_models.InstanceTasks.BUILDING_ERROR_REPLICA
             self._log_and_raise(e, msg, err)
 
-    def get_replication_master_snapshot(self, context, slave_of_id):
+    def get_replication_snapshot(self, context, replica_of_id):
         snapshot_info = {
             'name': "Replication snapshot of %s" % self.id,
-            'description': "Backup image used to initialize "
-            "replication slave",
-            'instance_id': slave_of_id,
+            'description': "Backup image used to initialize replica",
+            'instance_id': replica_of_id,
             'parent_id': None,
             'tenant_id': self.tenant_id,
             'state': BackupState.NEW,
@@ -344,20 +343,21 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             raise BackupCreationError(msg)
 
         try:
-            master = BuiltInstanceTasks.load(context, slave_of_id)
+            source = BuiltInstanceTasks.load(context, replica_of_id)
             snapshot_info.update({
                 'id': db_info['id'],
-                'datastore': master.datastore.name,
-                'datastore_version': master.datastore_version.name,
+                'datastore': source.datastore.name,
+                'datastore_version': source.datastore_version.name,
             })
-            snapshot = master.get_replication_snapshot(snapshot_info)
+            snapshot = source.get_replication_snapshot(snapshot_info)
             return snapshot
         except TroveError as e:
             msg = (_("Error creating replication snapshot "
                      "from instance %(source)s "
-                     "for new replica %(replica)s.") % {'source': slave_of_id,
-                                                        'replica': self.id})
-            err = inst_models.InstanceTasks.BUILDING_ERROR_SLAVE
+                     "for new replica %(replica)s.") %
+                   {'source': replica_of_id,
+                    'replica': self.id})
+            err = inst_models.InstanceTasks.BUILDING_ERROR_REPLICA
             self._log_and_raise(e, msg, err)
 
     def report_root_enabled(self):

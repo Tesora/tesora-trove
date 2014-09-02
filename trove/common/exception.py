@@ -460,7 +460,7 @@ class IncompatibleReplicationStrategy(TroveError):
 
 
 class InsufficientSpaceForReplica(TroveError):
-    message = _("The target instance has only %(slave_volume_size)sG free, "
+    message = _("The target instance has only %(replica_volume_size)sG free, "
                 "but the replication snapshot contains %(dataset_size)sG "
                 "of data.")
 

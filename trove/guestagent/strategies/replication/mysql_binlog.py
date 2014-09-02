@@ -57,7 +57,7 @@ class MysqlBinlogReplication(base.Replication):
         message = _("Unable to determine binlog position "
                     "(from file %(binlog_file)).")
 
-    def get_master_ref(self, service, snapshot_info):
+    def get_source_ref(self, service, snapshot_info):
         master_ref = {
             'host': operating_system.get_ip_address(),
             'port': service.get_port()
@@ -80,12 +80,12 @@ class MysqlBinlogReplication(base.Replication):
         log_position = {}
         return snapshot_id, log_position
 
-    def enable_as_master(self, service, snapshot_info):
+    def enable_as_source(self, service, snapshot_info):
         service.write_replication_overrides(MASTER_CONFIG)
         service.restart()
         service.grant_replication_privilege()
 
-    def enable_as_slave(self, service, snapshot):
+    def enable_as_replica(self, service, snapshot):
         service.write_replication_overrides(SLAVE_CONFIG)
         service.restart()
         service.change_master_for_binlog(
@@ -94,12 +94,12 @@ class MysqlBinlogReplication(base.Replication):
             self._read_log_position())
         service.start_slave()
 
-    def detach_slave(self, service):
+    def detach_replica(self, service):
         service.stop_slave()
         service.remove_replication_overrides()
         service.restart()
 
-    def demote_master(self, service):
+    def demote_replication_source(self, service):
         service.revoke_replication_privilege()
         service.remove_replication_overrides()
         service.restart()

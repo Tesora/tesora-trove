@@ -219,9 +219,9 @@ class Manager(periodic_task.PeriodicTasks):
         raise exception.DatastoreOperationNotSupported(
             operation='get_replication_snapshot', datastore=MANAGER)
 
-    def attach_replication_slave(self, context, snapshot, slave_config):
+    def attach_replica(self, context, snapshot, replica_config):
         raise exception.DatastoreOperationNotSupported(
-            operation='attach_replication_slave', datastore=MANAGER)
+            operation='attach_replica', datastore=MANAGER)
 
     def detach_replica(self, context):
         raise exception.DatastoreOperationNotSupported(

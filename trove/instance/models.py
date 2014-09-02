@@ -162,7 +162,7 @@ class SimpleInstance(object):
             self.ds = (datastore_models.Datastore.
                        load(self.ds_version.datastore_id))
 
-        self.slave_list = None
+        self.replica_list = None
 
     @property
     def addresses(self):
@@ -246,8 +246,8 @@ class SimpleInstance(object):
         return self.db_info.compute_instance_id
 
     @property
-    def slave_of_id(self):
-        return self.db_info.slave_of_id
+    def replica_of_id(self):
+        return self.db_info.replica_of_id
 
     @property
     def datastore_status(self):
@@ -363,12 +363,12 @@ class SimpleInstance(object):
                                       self.db_info.configuration_id)
 
     @property
-    def slaves(self):
-        if self.slave_list is None:
-            self.slave_list = DBInstance.find_all(tenant_id=self.tenant_id,
-                                                  slave_of_id=self.id,
-                                                  deleted=False).all()
-        return self.slave_list
+    def replicas(self):
+        if self.replica_list is None:
+            self.replica_list = DBInstance.find_all(tenant_id=self.tenant_id,
+                                                    replica_of_id=self.id,
+                                                    deleted=False).all()
+        return self.replica_list
 
     @property
     def cluster_id(self):
@@ -656,7 +656,7 @@ class Instance(BuiltInstance):
     def create(cls, context, name, flavor_id, image_id, databases, users,
                datastore, datastore_version, volume_size, backup_id,
                availability_zone=None, nics=None, configuration_id=None,
-               slave_of_id=None, cluster_config=None):
+               replica_of_id=None, cluster_config=None):
 
         datastore_cfg = CONF.get(datastore_version.manager)
         client = create_nova_client(context)
@@ -695,7 +695,7 @@ class Instance(BuiltInstance):
                     datastore1=backup_info.datastore.name,
                     datastore2=datastore.name)
 
-        if slave_of_id:
+        if replica_of_id:
             replication_support = datastore_cfg.replication_strategy
             if not replication_support:
                 raise exception.ReplicationNotSupported(
@@ -723,7 +723,7 @@ class Instance(BuiltInstance):
                                         datastore_version.id,
                                         task_status=InstanceTasks.BUILDING,
                                         configuration_id=configuration_id,
-                                        slave_of_id=slave_of_id,
+                                        replica_of_id=replica_of_id,
                                         cluster_id=cluster_id,
                                         shard_id=shard_id,
                                         type=instance_type)
@@ -758,7 +758,7 @@ class Instance(BuiltInstance):
                                                   volume_size, backup_id,
                                                   availability_zone,
                                                   root_password, nics,
-                                                  overrides, slave_of_id,
+                                                  overrides, replica_of_id,
                                                   cluster_config)
 
             return SimpleInstance(context, db_info, datastore_status,
@@ -1096,8 +1096,8 @@ class DBInstance(dbmodels.DatabaseModelBase):
     _data_fields = ['name', 'created', 'compute_instance_id',
                     'task_id', 'task_description', 'task_start_time',
                     'volume_id', 'deleted', 'tenant_id',
-                    'datastore_version_id', 'configuration_id', 'slave_of_id',
-                    'cluster_id', 'shard_id', 'type']
+                    'datastore_version_id', 'configuration_id',
+                    'replica_of_id', 'cluster_id', 'shard_id', 'type']
 
     def __init__(self, task_status, **kwargs):
         """

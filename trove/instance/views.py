@@ -49,7 +49,7 @@ class InstanceView(object):
             if ip:
                 instance_dict['ip'] = ip
 
-        if self.instance.slave_of_id is not None:
+        if self.instance.replica_of_id is not None:
             instance_dict['replica_of'] = self._build_master_info()
 
         LOG.debug(instance_dict)
@@ -70,9 +70,9 @@ class InstanceView(object):
 
     def _build_master_info(self):
         return {
-            "id": self.instance.slave_of_id,
+            "id": self.instance.replica_of_id,
             "links": create_links("instances", self.req,
-                                  self.instance.slave_of_id)
+                                  self.instance.replica_of_id)
         }
 
 
@@ -91,8 +91,8 @@ class InstanceDetailView(InstanceView):
         result['instance']['datastore']['version'] = (self.instance.
                                                       datastore_version.name)
 
-        if self.instance.slaves:
-            result['instance']['replicas'] = self._build_slaves_info()
+        if self.instance.replicas:
+            result['instance']['replicas'] = self._build_replicas_info()
 
         if self.instance.configuration is not None:
             result['instance']['configuration'] = (self.
@@ -118,12 +118,12 @@ class InstanceDetailView(InstanceView):
 
         return result
 
-    def _build_slaves_info(self):
+    def _build_replicas_info(self):
         data = []
-        for slave in self.instance.slaves:
+        for replica in self.instance.replicas:
             data.append({
-                "id": slave.id,
-                "links": create_links("instances", self.req, slave.id)
+                "id": replica.id,
+                "links": create_links("instances", self.req, replica.id)
             })
         return data
 
