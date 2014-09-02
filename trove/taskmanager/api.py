@@ -139,7 +139,7 @@ class API(proxy.RpcProxy):
                                 root_password=root_password,
                                 nics=nics,
                                 overrides=overrides,
-                                replica_of_id=slave_of_id,
+                                replica_of_id=replica_of_id,
                                 cluster_config=cluster_config))
 
     def update_overrides(self, instance_id, overrides=None):
