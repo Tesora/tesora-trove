@@ -15,9 +15,12 @@
 from proboscis import test
 from proboscis.asserts import assert_equal
 from proboscis.asserts import assert_raises
+from proboscis.asserts import assert_true
 from proboscis.decorators import time_out
+from proboscis import SkipTest
 from trove.common.utils import generate_uuid
 from trove.common.utils import poll_until
+from trove.tests.api.instances import CheckInstance
 from trove.tests.api.instances import instance_info
 from trove.tests.api.instances import TIMEOUT_INSTANCE_CREATE
 from trove.tests.api.instances import TIMEOUT_INSTANCE_DELETE
@@ -36,6 +39,20 @@ class SlaveInstanceTestInfo(object):
 
 GROUP = "dbaas.api.replication"
 slave_instance = SlaveInstanceTestInfo()
+existing_db_on_master = generate_uuid()
+
+
+def slave_is_running(running=True):
+
+    def check_slave_is_running():
+        server = create_server_connection(slave_instance.id)
+        cmd = ("mysqladmin extended-status "
+               "| awk '/Slave_running/{print $4}'")
+        stdout, stderr = server.execute(cmd)
+        expected = "ON" if running else "OFF"
+        return stdout.rstrip() == expected
+
+    return check_slave_is_running
 
 
 @test(depends_on_classes=[WaitForGuestInstallationToFinish],
@@ -43,6 +60,12 @@ slave_instance = SlaveInstanceTestInfo()
 class CreateReplicationSlave(object):
 
     @test
+    def test_create_db_on_master(self):
+        databases = [{'name': existing_db_on_master}]
+        instance_info.dbaas.databases.create(instance_info.id, databases)
+        assert_equal(202, instance_info.dbaas.last_http_code)
+
+    @test(runs_after=['test_create_db_on_master'])
     def test_create_slave(self):
         result = instance_info.dbaas.instances.create(
             instance_info.name + "_slave",
@@ -66,11 +89,9 @@ class WaitForCreateSlaveToFinish(object):
             if instance.status == "ACTIVE":
                 return True
             else:
-                # If its not ACTIVE, anything but BUILD must be
-                # an error.
-                assert_equal("BUILD", instance.status)
-                if instance_info.volume is not None:
-                    assert_equal(instance.volume.get('used', None), None)
+                assert_true(instance.status in ['BUILD', 'BACKUP'])
+                # if instance_info.volume is not None:
+                #     assert_equal(instance.volume.get('used', None), None)
                 return False
         poll_until(result_is_active)
 
@@ -80,18 +101,19 @@ class WaitForCreateSlaveToFinish(object):
       groups=[GROUP])
 class VerifySlave(object):
 
+    def db_is_found(self, database_to_find):
+
+        def find_database():
+            databases = instance_info.dbaas.databases.list(slave_instance.id)
+            return (database_to_find
+                    in [d.name for d in databases])
+
+        return find_database
+
     @test
     @time_out(5 * 60)
     def test_correctly_started_replication(self):
-
-        def slave_is_running():
-            server = create_server_connection(slave_instance.id)
-            cmd = ("mysqladmin extended-status "
-                   "| awk '/Slave_running/{print $4}'")
-            stdout, stderr = server.execute(cmd)
-            return stdout == "ON\n"
-
-        poll_until(slave_is_running)
+        poll_until(slave_is_running())
 
     @test(depends_on=[test_correctly_started_replication])
     def test_create_db_on_master(self):
@@ -102,18 +124,60 @@ class VerifySlave(object):
     @test(depends_on=[test_create_db_on_master])
     @time_out(5 * 60)
     def test_database_replicated_on_slave(self):
+        poll_until(self.db_is_found(slave_instance.replicated_db))
 
-        def db_is_found():
-            databases = instance_info.dbaas.databases.list(slave_instance.id)
-            return (slave_instance.replicated_db
-                    in [d.name for d in databases])
-
-        poll_until(db_is_found)
+    @test(runs_after=[test_database_replicated_on_slave])
+    @time_out(5 * 60)
+    def test_existing_db_exists_on_slave(self):
+        poll_until(self.db_is_found(existing_db_on_master))
 
 
 @test(groups=[GROUP],
       depends_on=[WaitForCreateSlaveToFinish],
       runs_after=[VerifySlave])
+class TestInstanceListing(object):
+    """Test replication information in instance listing."""
+
+    @test
+    def test_get_slave_instance(self):
+        instance = instance_info.dbaas.instances.get(slave_instance.id)
+        assert_equal(200, instance_info.dbaas.last_http_code)
+        instance_dict = instance._info
+        print("instance_dict=%s" % instance_dict)
+        CheckInstance(instance_dict).slave_of()
+        assert_equal(instance_info.id, instance_dict['replica_of']['id'])
+
+    @test
+    def test_get_master_instance(self):
+        instance = instance_info.dbaas.instances.get(instance_info.id)
+        assert_equal(200, instance_info.dbaas.last_http_code)
+        instance_dict = instance._info
+        print("instance_dict=%s" % instance_dict)
+        CheckInstance(instance_dict).slaves()
+        assert_equal(slave_instance.id, instance_dict['replicas'][0]['id'])
+
+
+@test(groups=[GROUP],
+      depends_on=[WaitForCreateSlaveToFinish],
+      runs_after=[VerifySlave])
+class DetachReplica(object):
+
+    @test
+    @time_out(5 * 60)
+    def test_detach_replica(self):
+        if CONFIG.fake_mode:
+            raise SkipTest("Detach replica not supported in fake mode")
+
+        instance_info.dbaas.instances.edit(slave_instance.id,
+                                           detach_replica_source=True)
+        assert_equal(202, instance_info.dbaas.last_http_code)
+
+        poll_until(slave_is_running(False))
+
+
+@test(groups=[GROUP],
+      depends_on=[WaitForCreateSlaveToFinish],
+      runs_after=[DetachReplica])
 class DeleteSlaveInstance(object):
 
     @test

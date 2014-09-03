@@ -111,7 +111,8 @@ class Manager(periodic_task.PeriodicTasks):
 
     def prepare(self, context, packages, databases, memory_mb, users,
                 device_path=None, mount_point=None, backup_info=None,
-                config_contents=None, root_password=None, overrides=None):
+                config_contents=None, root_password=None, overrides=None,
+                cluster_config=None):
         """Makes ready DBAAS on a Guest container."""
         MySqlAppStatus.get().begin_install()
         # status end_mysql_install set with secure()
@@ -213,15 +214,16 @@ class Manager(periodic_task.PeriodicTasks):
         app = MySqlApp(MySqlAppStatus.get())
         app.apply_overrides(overrides)
 
-    def get_replication_snapshot(self, context, master_config):
+    def get_replication_snapshot(self, context, snapshot_info):
         LOG.debug("Getting replication snapshot.")
         app = MySqlApp(MySqlAppStatus.get())
 
         replication = REPLICATION_STRATEGY_CLASS(context)
-        replication.enable_as_master(app, master_config)
+        replication.enable_as_master(app, snapshot_info)
 
         snapshot_id, log_position = (
-            replication.snapshot_for_replication(app, None, master_config))
+            replication.snapshot_for_replication(context, app, None,
+                                                 snapshot_info))
 
         mount_point = CONF.get(MANAGER).mount_point
         volume_stats = dbaas.get_filesystem_volume_stats(mount_point)
@@ -234,7 +236,7 @@ class Manager(periodic_task.PeriodicTasks):
                 'snapshot_id': snapshot_id
             },
             'replication_strategy': REPLICATION_STRATEGY,
-            'master': replication.get_master_ref(app, master_config),
+            'master': replication.get_master_ref(app, snapshot_info),
             'log_position': log_position
         }
 
@@ -251,7 +253,7 @@ class Manager(periodic_task.PeriodicTasks):
         volume_stats = dbaas.get_filesystem_volume_stats(mount_point)
         if (volume_stats.get('total', 0.0) <
                 snapshot['dataset']['dataset_size']):
-            raise exception.InsufficientSpaceForSlave(
+            raise exception.InsufficientSpaceForReplica(
                 snapshot.update({
                     'slave_volume_size': volume_stats.get('total', 0.0)
                 }))
@@ -268,8 +270,8 @@ class Manager(periodic_task.PeriodicTasks):
             app.status.set_status(rd_instance.ServiceStatuses.FAILED)
             raise
 
-    def detach_replication_slave(self, context):
-        LOG.debug("Detaching replication snapshot.")
+    def detach_replica(self, context):
+        LOG.debug("Detaching replica.")
         app = MySqlApp(MySqlAppStatus.get())
         replication = REPLICATION_STRATEGY_CLASS(context)
         replication.detach_slave(app)

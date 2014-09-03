@@ -226,7 +226,7 @@ class API(proxy.RpcProxy):
     def prepare(self, memory_mb, packages, databases, users,
                 device_path='/dev/vdb', mount_point='/mnt/volume',
                 backup_info=None, config_contents=None, root_password=None,
-                overrides=None):
+                overrides=None, cluster_config=None):
         """Make an asynchronous call to prepare the guest
            as a database container optionally includes a backup id for restores
         """
@@ -237,7 +237,7 @@ class API(proxy.RpcProxy):
             memory_mb=memory_mb, users=users, device_path=device_path,
             mount_point=mount_point, backup_info=backup_info,
             config_contents=config_contents, root_password=root_password,
-            overrides=overrides)
+            overrides=overrides, cluster_config=cluster_config)
 
     def restart(self):
         """Restart the MySQL server."""
@@ -324,10 +324,10 @@ class API(proxy.RpcProxy):
         LOG.debug("Applying overrides values %s." % overrides)
         self._cast("apply_overrides", overrides=overrides)
 
-    def get_replication_snapshot(self, master_config=None):
+    def get_replication_snapshot(self, snapshot_info=None):
         LOG.debug("Retrieving replication snapshot from instance %s.", self.id)
         return self._call("get_replication_snapshot", AGENT_HIGH_TIMEOUT,
-                          master_config=master_config)
+                          snapshot_info=snapshot_info)
 
     def attach_replication_slave(self, snapshot, slave_config=None):
         LOG.debug("Configuring instance %s to replicate from %s.",
@@ -335,9 +335,9 @@ class API(proxy.RpcProxy):
         self._cast("attach_replication_slave", snapshot=snapshot,
                    slave_config=slave_config)
 
-    def detach_replication_slave(self):
-        LOG.debug("Detaching slave %s from its master.", self.id)
-        self._call("detach_replication_slave", AGENT_HIGH_TIMEOUT)
+    def detach_replica(self):
+        LOG.debug("Detaching replica %s from its replication source.", self.id)
+        self._call("detach_replica", AGENT_HIGH_TIMEOUT)
 
     def demote_replication_master(self):
         LOG.debug("Demoting instance %s to non-master.", self.id)

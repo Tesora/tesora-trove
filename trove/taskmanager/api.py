@@ -21,6 +21,7 @@ Routes all the requests to the task manager.
 
 from trove.common import cfg
 from trove.common import exception
+from trove.common import strategy
 from trove.guestagent import models as agent_models
 from trove.openstack.common.rpc import proxy
 from trove.openstack.common import log as logging
@@ -87,6 +88,11 @@ class API(proxy.RpcProxy):
         self.cast(self.context,
                   self.make_msg("restart", instance_id=instance_id))
 
+    def detach_replica(self, instance_id):
+        LOG.debug("Making async call to detach replica: %s" % instance_id)
+        self.cast(self.context,
+                  self.make_msg("detach_replica", instance_id=instance_id))
+
     def migrate(self, instance_id, host):
         LOG.debug("Making async call to migrate instance: %s" % instance_id)
         self.cast(self.context,
@@ -114,7 +120,9 @@ class API(proxy.RpcProxy):
                         image_id, databases, users, datastore_manager,
                         packages, volume_size, backup_id=None,
                         availability_zone=None, root_password=None,
-                        nics=None, overrides=None, slave_of_id=None):
+                        nics=None, overrides=None, slave_of_id=None,
+                        cluster_config=None):
+
         LOG.debug("Making async call to create instance %s " % instance_id)
         self.cast(self.context,
                   self.make_msg("create_instance",
@@ -132,7 +140,8 @@ class API(proxy.RpcProxy):
                                 root_password=root_password,
                                 nics=nics,
                                 overrides=overrides,
-                                slave_of_id=slave_of_id))
+                                slave_of_id=slave_of_id,
+                                cluster_config=cluster_config))
 
     def update_overrides(self, instance_id, overrides=None):
         LOG.debug("Making async call to update datastore configurations for "
@@ -152,3 +161,24 @@ class API(proxy.RpcProxy):
                                 instance_id=instance_id,
                                 flavor=self._transform_obj(flavor),
                                 configuration_id=configuration_id))
+
+    def create_cluster(self, cluster_id):
+        LOG.debug("Making async call to create cluster %s " % cluster_id)
+        self.cast(self.context,
+                  self.make_msg("create_cluster",
+                                cluster_id=cluster_id))
+
+    def delete_cluster(self, cluster_id):
+        LOG.debug("Making async call to delete cluster %s " % cluster_id)
+        self.cast(self.context,
+                  self.make_msg("delete_cluster",
+                                cluster_id=cluster_id))
+
+
+def load(context, manager=None):
+    if manager:
+        task_manager_api_class = (strategy.load_taskmanager_strategy(manager)
+                                  .task_manager_api_class)
+    else:
+        task_manager_api_class = API
+    return task_manager_api_class(context)

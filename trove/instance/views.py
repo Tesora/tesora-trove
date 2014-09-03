@@ -49,6 +49,9 @@ class InstanceView(object):
             if ip:
                 instance_dict['ip'] = ip
 
+        if self.instance.slave_of_id is not None:
+            instance_dict['replica_of'] = self._build_master_info()
+
         LOG.debug(instance_dict)
         return {"instance": instance_dict}
 
@@ -64,6 +67,13 @@ class InstanceView(object):
     def _build_flavor_links(self):
         return create_links("flavors", self.req,
                             self.instance.flavor_id)
+
+    def _build_master_info(self):
+        return {
+            "id": self.instance.slave_of_id,
+            "links": create_links("instances", self.req,
+                                  self.instance.slave_of_id)
+        }
 
 
 class InstanceDetailView(InstanceView):
@@ -81,6 +91,9 @@ class InstanceDetailView(InstanceView):
         result['instance']['datastore']['version'] = (self.instance.
                                                       datastore_version.name)
 
+        if self.instance.slaves:
+            result['instance']['replicas'] = self._build_slaves_info()
+
         if self.instance.configuration is not None:
             result['instance']['configuration'] = (self.
                                                    _build_configuration_info())
@@ -97,7 +110,22 @@ class InstanceDetailView(InstanceView):
         if self.instance.root_password:
             result['instance']['password'] = self.instance.root_password
 
+        if self.instance.cluster_id:
+            result['instance']['cluster_id'] = self.instance.cluster_id
+
+        if self.instance.shard_id:
+            result['instance']['shard_id'] = self.instance.shard_id
+
         return result
+
+    def _build_slaves_info(self):
+        data = []
+        for slave in self.instance.slaves:
+            data.append({
+                "id": slave.id,
+                "links": create_links("instances", self.req, slave.id)
+            })
+        return data
 
     def _build_configuration_info(self):
         return {

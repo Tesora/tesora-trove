@@ -283,9 +283,9 @@ class ApiTest(testtools.TestCase):
     def test_get_replication_snapshot(self):
         exp_resp = REPLICATION_SNAPSHOT
         rpc.call = mock.Mock(return_value=exp_resp)
-        exp_msg = RpcMsgMatcher('get_replication_snapshot', 'master_config')
+        exp_msg = RpcMsgMatcher('get_replication_snapshot', 'snapshot_info')
         # execute
-        self.api.get_replication_snapshot()
+        self.api.get_replication_snapshot({})
         # verify
         self._verify_rpc_call(exp_msg, rpc.call)
 
@@ -298,11 +298,11 @@ class ApiTest(testtools.TestCase):
         # verify
         self._verify_rpc_cast(exp_msg, rpc.cast)
 
-    def test_detach_replication_slave(self):
+    def test_detach_replica(self):
         rpc.call = mock.Mock()
-        exp_msg = RpcMsgMatcher('detach_replication_slave')
+        exp_msg = RpcMsgMatcher('detach_replica')
         # execute
-        self.api.detach_replication_slave()
+        self.api.detach_replica()
         # verify
         self._verify_rpc_call(exp_msg, rpc.call)
 
@@ -328,11 +328,11 @@ class ApiTest(testtools.TestCase):
                                 'databases', 'users', 'device_path',
                                 'mount_point', 'backup_info',
                                 'config_contents', 'root_password',
-                                'overrides')
+                                'overrides', 'cluster_config')
         # execute
         self.api.prepare('2048', 'package1', 'db1', 'user1', '/dev/vdt',
                          '/mnt/opt', 'bkup-1232', 'cont', '1-2-3-4',
-                         'override')
+                         'override', {"id": "2-3-4-5"})
         # verify
         self._verify_rpc_connection_and_cast(rpc, mock_conn, exp_msg)
 
@@ -344,12 +344,12 @@ class ApiTest(testtools.TestCase):
                                 'databases', 'users', 'device_path',
                                 'mount_point', 'backup_info',
                                 'config_contents', 'root_password',
-                                'overrides')
+                                'overrides', 'cluster_config')
         bkup = {'id': 'backup_id_123'}
         # execute
         self.api.prepare('2048', 'package1', 'db1', 'user1', '/dev/vdt',
                          '/mnt/opt', bkup, 'cont', '1-2-3-4',
-                         'overrides')
+                         'overrides', {"id": "2-3-4-5"})
         # verify
         self._verify_rpc_connection_and_cast(rpc, mock_conn, exp_msg)
 
@@ -390,6 +390,17 @@ class ApiTest(testtools.TestCase):
     def _verify_rpc_cast(self, exp_msg, mock_cast=None):
         mock_cast.assert_called_with(mock.ANY,
                                      mock.ANY, exp_msg)
+
+
+class ApiStrategyTest(testtools.TestCase):
+
+    @mock.patch('trove.guestagent.api.API.__init__',
+                mock.Mock(return_value=None))
+    def test_guest_client(self):
+        from trove.common.remote import guest_client
+        client = guest_client(mock.Mock(), mock.Mock(), 'mongodb')
+        self.assertFalse(hasattr(client, 'add_config_servers2'))
+        self.assertTrue(callable(client.add_config_servers))
 
 
 class CastWithConsumerTest(testtools.TestCase):

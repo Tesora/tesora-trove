@@ -60,7 +60,8 @@ class Manager(periodic_task.PeriodicTasks):
 
     def prepare(self, context, packages, databases, memory_mb, users,
                 device_path=None, mount_point=None, backup_info=None,
-                config_contents=None, root_password=None, overrides=None):
+                config_contents=None, root_password=None, overrides=None,
+                cluster_config=None):
         LOG.info(_("Setting status of instance to BUILDING."))
         self.appStatus.begin_install()
         LOG.debug("Installing cassandra.")
@@ -191,22 +192,20 @@ class Manager(periodic_task.PeriodicTasks):
         raise exception.DatastoreOperationNotSupported(
             operation='apply_overrides', datastore=MANAGER)
 
-    def get_replication_snapshot(self, master_config):
-        LOG.debug("Getting replication snapshot.")
+    def get_replication_snapshot(self, context, snapshot_info):
         raise exception.DatastoreOperationNotSupported(
             operation='get_replication_snapshot', datastore=MANAGER)
 
-    def attach_replication_slave(self, snapshot, slave_config):
+    def attach_replication_slave(self, context, snapshot, slave_config):
         LOG.debug("Attaching replication slave.")
         raise exception.DatastoreOperationNotSupported(
             operation='attach_replication_slave', datastore=MANAGER)
 
-    def detach_replication_slave(self):
-        LOG.debug("Detaching replication slave.")
+    def detach_replica(self, context):
         raise exception.DatastoreOperationNotSupported(
-            operation='detach_replication_slave', datastore=MANAGER)
+            operation='detach_replica', datastore=MANAGER)
 
-    def demote_replication_master(self):
+    def demote_replication_master(self, context):
         LOG.debug("Demoting replication master.")
         raise exception.DatastoreOperationNotSupported(
             operation='demote_replication_master', datastore=MANAGER)

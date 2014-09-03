@@ -20,20 +20,29 @@ from heatclient import exc as heat_exceptions
 from cinderclient import exceptions as cinder_exceptions
 from eventlet import greenthread
 from novaclient import exceptions as nova_exceptions
+
 from trove.backup import models as bkup_models
+from trove.backup.models import BackupState
+from trove.backup.models import DBBackup
+from trove.cluster.models import Cluster
+from trove.cluster.models import DBCluster
+from trove.cluster import tasks
 from trove.common import cfg
 from trove.common import template
 from trove.common import utils
 from trove.common.utils import try_recover
 from trove.common.configurations import do_configs_require_restart
+from trove.common.exception import BackupCreationError
 from trove.common.exception import GuestError
 from trove.common.exception import GuestTimeout
-from trove.common.exception import PollTimeOut
-from trove.common.exception import VolumeCreationFailure
-from trove.common.exception import TroveError
+from trove.common.exception import InvalidModelError
 from trove.common.exception import MalformedSecurityGroupRuleError
+from trove.common.exception import PollTimeOut
+from trove.common.exception import TroveError
+from trove.common.exception import VolumeCreationFailure
 from trove.common.instance import ServiceStatuses
 from trove.common import instance as rd_instance
+from trove.common import strategy
 from trove.common.remote import create_dns_client
 from trove.common.remote import create_heat_client
 from trove.common.remote import create_cinder_client
@@ -55,6 +64,7 @@ from trove.openstack.common import log as logging
 from trove.openstack.common.gettextutils import _
 from trove.openstack.common.notifier import api as notifier
 from trove.openstack.common import timeutils
+from trove.quota.quota import run_with_quotas
 import trove.common.remote as remote
 
 LOG = logging.getLogger(__name__)
@@ -161,11 +171,40 @@ class ConfigurationMixin(object):
         return ret
 
 
+# TODO(amcreynolds): add NotifyMixin + ConfigurationMixin-like functionality
+class ClusterTasks(Cluster):
+
+    def delete_cluster(self, context, cluster_id):
+
+        LOG.debug("begin delete_cluster for id: %s" % cluster_id)
+
+        def all_instances_marked_deleted():
+            db_instances = DBInstance.find_all(cluster_id=cluster_id,
+                                               deleted=False).all()
+            return len(db_instances) == 0
+
+        try:
+            utils.poll_until(all_instances_marked_deleted,
+                             sleep_time=2,
+                             time_out=CONF.cluster_delete_time_out)
+        except PollTimeOut:
+            LOG.error(_("timeout for instances to be marked as deleted."))
+            return
+
+        LOG.debug("setting cluster %s as deleted." % cluster_id)
+        cluster = DBCluster.find_by(id=cluster_id)
+        cluster.deleted = True
+        cluster.deleted_at = utils.utcnow()
+        cluster.task_status = tasks.ClusterTasks.NONE
+        cluster.save()
+        LOG.debug("end delete_cluster for id: %s" % cluster_id)
+
+
 class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
     def create_instance(self, flavor, image_id, databases, users,
                         datastore_manager, packages, volume_size,
                         backup_id, availability_zone, root_password, nics,
-                        overrides):
+                        overrides, cluster_config):
 
         LOG.info(_("Creating instance %s.") % self.id)
         security_groups = None
@@ -214,6 +253,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                 availability_zone,
                 nics)
 
+        # TODO(amcreynolds): need to find a way to merge cluster_config
+        # TODO(amcreynolds): into config_contents
         config = self._render_config(flavor)
         config_overrides = self._render_override_config(flavor,
                                                         overrides=overrides)
@@ -229,7 +270,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
         self._guest_prepare(flavor['ram'], volume_info,
                             packages, databases, users, backup_info,
                             config.config_contents, root_password,
-                            config_overrides.config_contents)
+                            config_overrides.config_contents,
+                            cluster_config)
 
         if root_password:
             self.report_root_enabled()
@@ -255,7 +297,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
         # record to avoid over billing a customer for an instance that
         # fails to build properly.
         try:
-            usage_timeout = CONF.get(datastore_manager).usage_timeout
+            usage_timeout = CONF.usage_timeout
             utils.poll_until(self._service_is_active,
                              sleep_time=USAGE_SLEEP_TIME,
                              time_out=usage_timeout)
@@ -276,18 +318,45 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             self.guest.attach_replication_slave(snapshot, slave_config)
         except GuestError as e:
             msg = (_("Error attaching instance %s "
-                     "as replication slave.") % self.id)
-            err = inst_models.InstanceTasks.BUILDING_ERROR_SLAVE
+                     "as replica.") % self.id)
+            err = inst_models.InstanceTasks.BUILDING_ERROR_REPLICA
             self._log_and_raise(e, msg, err)
 
-    def get_replication_master_snapshot(self, context, slave_of_id, backup_id):
+    def get_replication_master_snapshot(self, context, slave_of_id):
+        snapshot_info = {
+            'name': "Replication snapshot of %s" % self.id,
+            'description': "Backup image used to initialize "
+            "replication slave",
+            'instance_id': slave_of_id,
+            'parent_id': None,
+            'tenant_id': self.tenant_id,
+            'state': BackupState.NEW,
+            'datastore_version_id': self.datastore_version.id,
+            'deleted': False
+        }
+
         try:
-            master_tasks = BuiltInstanceTasks.load(context, slave_of_id)
-            snapshot = master_tasks.get_replication_snapshot(backup_id)
+            db_info = DBBackup.create(**snapshot_info)
+        except InvalidModelError as e:
+            msg = (_("Unable to create replication snapshot record for "
+                     "instance: %s") % self.id)
+            LOG.exception(msg)
+            raise BackupCreationError(msg)
+
+        try:
+            master = BuiltInstanceTasks.load(context, slave_of_id)
+            snapshot_info.update({
+                'id': db_info['id'],
+                'datastore': master.datastore.name,
+                'datastore_version': master.datastore_version.name,
+            })
+            snapshot = master.get_replication_snapshot(snapshot_info)
             return snapshot
         except TroveError as e:
-            msg = (_("Error getting snapshot from "
-                     "replication master %s.") % slave_of_id)
+            msg = (_("Error creating replication snapshot "
+                     "from instance %(source)s "
+                     "for new replica %(replica)s.") % {'source': slave_of_id,
+                                                        'replica': self.id})
             err = inst_models.InstanceTasks.BUILDING_ERROR_SLAVE
             self._log_and_raise(e, msg, err)
 
@@ -297,7 +366,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
     def update_statuses_on_time_out(self):
 
         if CONF.update_status_on_fail:
-            #Updating service status
+            # Updating service status
             service = InstanceServiceStatus.find_by(instance_id=self.id)
             service.set_status(ServiceStatuses.
                                FAILED_TIMEOUT_GUESTAGENT)
@@ -308,8 +377,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             LOG.error(_("Service error description: %(desc)s") %
                       {'desc': ServiceStatuses.
                        FAILED_TIMEOUT_GUESTAGENT.description})
-            #Updating instance status
-            db_info = DBInstance.find_by(name=self.name)
+            # Updating instance status
+            db_info = DBInstance.find_by(id=self.id, deleted=False)
             db_info.set_task_status(InstanceTasks.
                                     BUILDING_ERROR_TIMEOUT_GA)
             db_info.save()
@@ -333,8 +402,9 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
         """
         service = InstanceServiceStatus.find_by(instance_id=self.id)
         status = service.get_status()
-        if status == rd_instance.ServiceStatuses.RUNNING:
-            return True
+        if (status == rd_instance.ServiceStatuses.RUNNING or
+           status == rd_instance.ServiceStatuses.BUILD_PENDING):
+                return True
         elif status not in [rd_instance.ServiceStatuses.NEW,
                             rd_instance.ServiceStatuses.BUILDING]:
             raise TroveError(_("Service not active, status: %s") % status)
@@ -356,6 +426,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                                          "--tenant_id=%s\n" %
                                          (self.id, datastore_manager,
                                           self.tenant_id))}
+
             name = self.hostname or self.name
             volume_desc = ("datastore volume for %s" % self.id)
             volume_name = ("datastore-%s" % self.id)
@@ -409,8 +480,9 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
 
     def _create_server_volume_heat(self, flavor, image_id,
                                    datastore_manager,
-                                   volume_size, availability_zone, nics):
-        LOG.debug("Begin _create_server_volume_heat for id: %s" % self.id)
+                                   volume_size, availability_zone,
+                                   nics):
+        LOG.debug("begin _create_server_volume_heat for id: %s" % self.id)
         try:
             client = create_heat_client(self.context)
             tcp_rules_mapping_list = self._build_sg_rules_mapping(CONF.get(
@@ -614,6 +686,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                                      "tenant_id=%s\n" %
                                      (self.id, datastore_manager,
                                       self.tenant_id))}
+
         if os.path.isfile(CONF.get('guest_config')):
             with open(CONF.get('guest_config'), "r") as f:
                 files["/etc/trove-guestagent.conf"] = f.read()
@@ -641,7 +714,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
     def _guest_prepare(self, flavor_ram, volume_info,
                        packages, databases, users, backup_info=None,
                        config_contents=None, root_password=None,
-                       overrides=None):
+                       overrides=None, cluster_config=None):
+        LOG.info(_("Entering guest_prepare"))
         # Now wait for the response from the create to do additional work
         self.guest.prepare(flavor_ram, packages, databases, users,
                            device_path=volume_info['device_path'],
@@ -649,7 +723,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                            backup_info=backup_info,
                            config_contents=config_contents,
                            root_password=root_password,
-                           overrides=overrides)
+                           overrides=overrides,
+                           cluster_config=cluster_config)
 
     def _create_dns_entry(self):
         dns_support = CONF.trove_dns_support
@@ -838,17 +913,29 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         LOG.info(_("Initiating backup for instance %s.") % self.id)
         self.guest.create_backup(backup_info)
 
-    def get_replication_snapshot(self, backup_id):
-        master_config = {'snapshot_id': backup_id or utils.generate_uuid()}
-        LOG.debug("Calling get_replication_snapshot on %s.", self.id)
+    def get_replication_snapshot(self, snapshot_info):
+
+        def _get_replication_snapshot():
+            LOG.debug("Calling get_replication_snapshot on %s.", self.id)
+            try:
+                result = self.guest.get_replication_snapshot(snapshot_info)
+                LOG.debug("Got replication snapshot from guest successfully.")
+                return result
+            except (GuestError, GuestTimeout):
+                LOG.exception(_("Failed to get replication snapshot from %s") %
+                              self.id)
+                raise
+
+        return run_with_quotas(self.context.tenant, {'backups': 1},
+                               _get_replication_snapshot)
+
+    def detach_replica(self):
+        LOG.debug("Calling detach_replica on %s" % self.id)
         try:
-            result = self.guest.get_replication_snapshot(master_config)
-            LOG.debug("Got replication snapshot from %s.", self.id)
-            return result
+            self.guest.detach_replica()
+            self.update_db(slave_of_id=None)
         except (GuestError, GuestTimeout):
-            msg = _("Failed to get replication snapshot from %s.") % self.id
-            LOG.exception(msg)
-            raise TroveError(msg)
+            LOG.exception(_("Failed to detach replica %s.") % self.id)
 
     def reboot(self):
         try:
@@ -1524,3 +1611,11 @@ class MigrateAction(ResizeActionBase):
 
     def _start_datastore(self):
         self.instance.guest.restart()
+
+
+def load_cluster_tasks(context, cluster_id):
+    manager = Cluster.manager_from_cluster_id(context, cluster_id)
+    strat = strategy.load_taskmanager_strategy(manager)
+    task_manager_cluster_tasks_class = strat.task_manager_cluster_tasks_class
+    return ClusterTasks.load(context, cluster_id,
+                             task_manager_cluster_tasks_class)

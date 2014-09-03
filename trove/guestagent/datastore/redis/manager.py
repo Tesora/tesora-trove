@@ -71,7 +71,8 @@ class Manager(periodic_task.PeriodicTasks):
 
     def prepare(self, context, packages, databases, memory_mb, users,
                 device_path=None, mount_point=None, backup_info=None,
-                config_contents=None, root_password=None, overrides=None):
+                config_contents=None, root_password=None, overrides=None,
+                cluster_config=None):
         """
         This is called when the trove instance first comes online.
         It is the first rpc message passed from the task manager.
@@ -214,18 +215,18 @@ class Manager(periodic_task.PeriodicTasks):
         raise exception.DatastoreOperationNotSupported(
             operation='is_root_enabled', datastore=MANAGER)
 
-    def get_replication_snapshot(self, master_config):
+    def get_replication_snapshot(self, context, snapshot_info):
         raise exception.DatastoreOperationNotSupported(
             operation='get_replication_snapshot', datastore=MANAGER)
 
-    def attach_replication_slave(self, snapshot, slave_config):
+    def attach_replication_slave(self, context, snapshot, slave_config):
         raise exception.DatastoreOperationNotSupported(
             operation='attach_replication_slave', datastore=MANAGER)
 
-    def detach_replication_slave(self):
+    def detach_replica(self, context):
         raise exception.DatastoreOperationNotSupported(
-            operation='detach_replication_slave', datastore=MANAGER)
+            operation='detach_replica', datastore=MANAGER)
 
-    def demote_replication_master(self):
+    def demote_replication_master(self, context):
         raise exception.DatastoreOperationNotSupported(
             operation='demote_replication_master', datastore=MANAGER)

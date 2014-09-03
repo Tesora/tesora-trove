@@ -36,9 +36,9 @@ common_opts = [
                secret=True),
     cfg.IntOpt('sql_idle_timeout', default=3600),
     cfg.BoolOpt('sql_query_log', default=False),
+    cfg.StrOpt('bind_host', default='0.0.0.0',
+               help='The IP address the API will listen on.'),
     cfg.IntOpt('bind_port', default=8779),
-    cfg.StrOpt('api_extensions_path', default='$pybasedir/extensions/routes',
-               help='Path to extensions.'),
     cfg.StrOpt('api_paste_config',
                default="api-paste.ini",
                help='File name for the paste.deploy config for trove-api.'),
@@ -92,6 +92,7 @@ common_opts = [
     cfg.IntOpt('users_page_size', default=20),
     cfg.IntOpt('databases_page_size', default=20),
     cfg.IntOpt('instances_page_size', default=20),
+    cfg.IntOpt('clusters_page_size', default=20),
     cfg.IntOpt('backups_page_size', default=20),
     cfg.IntOpt('configurations_page_size', default=20),
     cfg.ListOpt('ignore_users', default=['os_admin', 'root']),
@@ -99,7 +100,7 @@ common_opts = [
                                        'mysql',
                                        'information_schema']),
     cfg.IntOpt('agent_call_low_timeout', default=5),
-    cfg.IntOpt('agent_call_high_timeout', default=60),
+    cfg.IntOpt('agent_call_high_timeout', default=1000),
     cfg.StrOpt('guest_id', default=None),
     cfg.IntOpt('state_change_wait_time', default=3 * 60),
     cfg.IntOpt('agent_heartbeat_time', default=10),
@@ -150,6 +151,7 @@ common_opts = [
     cfg.IntOpt('dns_time_out', default=60 * 2),
     cfg.IntOpt('resize_time_out', default=60 * 10),
     cfg.IntOpt('revert_time_out', default=60 * 10),
+    cfg.IntOpt('cluster_delete_time_out', default=60 * 3),
     cfg.ListOpt('root_grant', default=['ALL']),
     cfg.BoolOpt('root_grant_option', default=True),
     cfg.IntOpt('default_password_length', default=36),
@@ -182,11 +184,6 @@ common_opts = [
     cfg.StrOpt('restore_namespace',
                default='trove.guestagent.strategies.restore.mysql_impl',
                help='Namespace to load restore strategies from.'),
-    cfg.DictOpt('backup_incremental_strategy',
-                default={'InnoBackupEx': 'InnoBackupExIncremental'},
-                help='Incremental Backup Runner based on the default'
-                ' strategy. For strategies that do not implement an'
-                ' incremental, the runner will use the default full backup.'),
     cfg.BoolOpt('verify_swift_checksum_on_restore', default=True,
                 help='Enable verification of swift checksum before starting '
                 'restore; makes sure the checksum of original backup matches '
@@ -281,7 +278,11 @@ common_opts = [
     cfg.StrOpt('network_driver', default='trove.network.nova.NovaNetwork',
                help="Describes the actual network manager used for "
                     "the management of network attributes "
-                    "(security groups, floating IPs, etc.)")
+                    "(security groups, floating IPs, etc.)"),
+    cfg.IntOpt('usage_timeout', default=600,
+               help='Timeout to wait for a guest to become active.'),
+    cfg.IntOpt('cluster_usage_timeout', default=675,
+               help='Timeout to wait for a cluster to become active.'),
 ]
 
 # Datastore specific option groups
@@ -328,6 +329,13 @@ mysql_opts = [
                 default=True,
                 help='Whether to provision a cinder volume for datadir.'),
     cfg.StrOpt('device_path', default='/dev/vdb'),
+    cfg.DictOpt('backup_incremental_strategy',
+                default={'InnoBackupEx': 'InnoBackupExIncremental'},
+                help='Incremental Backup Runner based on the default'
+                ' strategy. For strategies that do not implement an'
+                ' incremental, the runner will use the default full backup.',
+                deprecated_name='backup_incremental_strategy',
+                deprecated_group='DEFAULT'),
 ]
 
 # Percona
@@ -372,6 +380,14 @@ percona_opts = [
                 default=True,
                 help='Whether to provision a cinder volume for datadir.'),
     cfg.StrOpt('device_path', default='/dev/vdb'),
+    cfg.DictOpt('backup_incremental_strategy',
+                default={'InnoBackupEx': 'InnoBackupExIncremental'},
+                help='Incremental Backup Runner based on the default'
+                ' strategy. For strategies that do not implement an'
+                ' incremental, the runner will use the default full backup.',
+                deprecated_name='backup_incremental_strategy',
+                deprecated_group='DEFAULT'),
+
 ]
 
 # Redis
@@ -394,8 +410,6 @@ redis_opts = [
     cfg.StrOpt('mount_point', default='/var/lib/redis',
                help="Filesystem path for mounting "
                "volumes if volume support is enabled."),
-    cfg.IntOpt('usage_timeout', default=450,
-               help='Timeout to wait for a guest to become active.'),
     cfg.BoolOpt('volume_support',
                 default=False,
                 help='Whether to provision a cinder volume for datadir.'),
@@ -422,8 +436,6 @@ cassandra_opts = [
     cfg.StrOpt('mount_point', default='/var/lib/cassandra',
                help="Filesystem path for mounting "
                "volumes if volume support is enabled."),
-    cfg.IntOpt('usage_timeout', default=600,
-               help='Timeout to wait for a guest to become active.'),
     cfg.BoolOpt('volume_support',
                 default=True,
                 help='Whether to provision a cinder volume for datadir.'),
@@ -452,8 +464,6 @@ couchbase_opts = [
     cfg.StrOpt('mount_point', default='/var/lib/couchbase',
                help="Filesystem path for mounting "
                "volumes if volume support is enabled."),
-    cfg.IntOpt('usage_timeout', default=450,
-               help='Timeout to wait for a guest to become active.'),
     cfg.BoolOpt('root_on_create', default=True,
                 help='Enable the automatic creation of the root user for the '
                 'service during instance-create. The generated password for '
@@ -489,12 +499,31 @@ mongodb_opts = [
     cfg.StrOpt('mount_point', default='/var/lib/mongodb',
                help="Filesystem path for mounting "
                "volumes if volume support is enabled."),
-    cfg.IntOpt('usage_timeout', default=450,
-               help='Timeout to wait for a guest to become active.'),
     cfg.BoolOpt('volume_support',
                 default=True,
                 help='Whether to provision a cinder volume for datadir.'),
     cfg.StrOpt('device_path', default='/dev/vdb'),
+    cfg.IntOpt('num_config_servers_per_cluster', default=3,
+               help='The number of config servers to create per cluster.'),
+    cfg.IntOpt('num_query_routers_per_cluster', default=1,
+               help='The number of query routers (mongos) to create '
+                    'per cluster.'),
+    cfg.BoolOpt('cluster_support', default=True,
+                help='Enable clusters to be created and managed.'),
+    cfg.StrOpt('api_strategy',
+               default='trove.common.strategies.mongodb.api.'
+                       'MongoDbAPIStrategy',
+               help='Class that implements datastore-specific API logic.'),
+    cfg.StrOpt('taskmanager_strategy',
+               default='trove.common.strategies.mongodb.taskmanager.'
+                       'MongoDbTaskManagerStrategy',
+               help='Class that implements datastore-specific task manager '
+                    'logic.'),
+    cfg.StrOpt('guestagent_strategy',
+               default='trove.common.strategies.mongodb.guestagent.'
+                       'MongoDbGuestAgentStrategy',
+               help='Class that implements datastore-specific guest agent API '
+                    'logic.'),
 ]
 
 CONF = cfg.CONF
