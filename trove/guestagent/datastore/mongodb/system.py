@@ -27,6 +27,7 @@ TMP_MONGOS_UPSTART = "/tmp/mongos.conf.tmp"
 MONGOS_SERVICE_CANDIDATES = ["mongos"]
 MONGOD_SERVICE_CANDIDATES = ["mongodb", "mongod"]
 MONGODB_KILL = "sudo kill %s"
+FIND_PID = "ps xau | grep 'mongo[ds]'"
 TIME_OUT = 1000
 
 INIT_EXEC_MONGOS = ("start-stop-daemon --start --quiet --chuid mongodb "

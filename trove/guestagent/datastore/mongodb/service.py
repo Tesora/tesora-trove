@@ -122,10 +122,9 @@ class MongoDBApp(object):
             # If it won't start, but won't die either, kill it by hand so we
             # don't let a rouge process wander around.
             try:
-                out, err = utils.execute_with_timeout("/bin/ps", "-C",
-                                                      "mongod", "h")
-                pid = out.split()[0]
-
+                out, err = utils.execute_with_timeout(
+                    system.FIND_PID, shell=True)
+                pid = "".join(out.split(" ")[1:2])
                 utils.execute_with_timeout(
                     system.MONGODB_KILL % pid, shell=True)
             except exception.ProcessExecutionError as p:
@@ -359,26 +358,10 @@ class MongoDbAppStatus(service.BaseDbStatus):
             if not err and "connected to:" in out:
                 return ds_instance.ServiceStatuses.RUNNING
             else:
-                return rd_instance.ServiceStatuses.SHUTDOWN
-        except exception.ProcessExecutionError:
-            LOG.debug(_("mongostat returned an error - "
-                        "check for running mongodb process"))
-
-            try:
-                out, err = utils.execute_with_timeout("/bin/ps", "-C",
-                                                      "mongod", "h")
-                pid = out.split()[0]
-
-                if not pid:
-                    LOG.debug(_("MongoDB process not running"))
-                    return rd_instance.ServiceStatuses.SHUTDOWN
-                else:
-                    LOG.debug(_("MongoDB process running with pid: %(pid)s"
-                                % {'pid': pid}))
-                    return rd_instance.ServiceStatuses.BLOCKED
-            except exception.ProcessExecutionError:
-                LOG.error(_("Failed to obtain mongodb pid"))
-                return rd_instance.ServiceStatuses.SHUTDOWN
+                return ds_instance.ServiceStatuses.SHUTDOWN
+        except exception.ProcessExecutionError as e:
+            LOG.error(_("Process execution %s") % e)
+            return ds_instance.ServiceStatuses.SHUTDOWN
         except OSError as e:
             LOG.error(_("OS Error %s") % e)
             return ds_instance.ServiceStatuses.SHUTDOWN
