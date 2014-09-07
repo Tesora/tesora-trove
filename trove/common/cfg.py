@@ -405,6 +405,13 @@ redis_opts = [
                      'if trove_security_groups_support is True).'),
     cfg.StrOpt('backup_strategy', default=None,
                help='Default strategy to perform backups.'),
+    cfg.DictOpt('backup_incremental_strategy',
+                default=dict(),
+                help='Incremental Backup Runner based on the default'
+                ' strategy. For strategies that do not implement an'
+                ' incremental, the runner will use the default full backup.',
+                deprecated_name='backup_incremental_strategy',
+                deprecated_group='DEFAULT'),
     cfg.StrOpt('replication_strategy', default=None,
                help='Default strategy for replication.'),
     cfg.StrOpt('mount_point', default='/var/lib/redis',
@@ -431,6 +438,13 @@ cassandra_opts = [
                      'if trove_security_groups_support is True).'),
     cfg.StrOpt('backup_strategy', default=None,
                help='Default strategy to perform backups.'),
+    cfg.DictOpt('backup_incremental_strategy',
+                default=dict(),
+                help='Incremental Backup Runner based on the default'
+                ' strategy. For strategies that do not implement an'
+                ' incremental, the runner will use the default full backup.',
+                deprecated_name='backup_incremental_strategy',
+                deprecated_group='DEFAULT'),
     cfg.StrOpt('replication_strategy', default=None,
                help='Default strategy for replication.'),
     cfg.StrOpt('mount_point', default='/var/lib/cassandra',
@@ -459,6 +473,13 @@ couchbase_opts = [
                      'if trove_security_groups_support is True).'),
     cfg.StrOpt('backup_strategy', default='CbBackup',
                help='Default strategy to perform backups.'),
+    cfg.DictOpt('backup_incremental_strategy',
+                default=dict(),
+                help='Incremental Backup Runner based on the default'
+                ' strategy. For strategies that do not implement an'
+                ' incremental, the runner will use the default full backup.',
+                deprecated_name='backup_incremental_strategy',
+                deprecated_group='DEFAULT'),
     cfg.StrOpt('replication_strategy', default=None,
                help='Default strategy for replication.'),
     cfg.StrOpt('mount_point', default='/var/lib/couchbase',
@@ -494,6 +515,13 @@ mongodb_opts = [
                      'if trove_security_groups_support is True).'),
     cfg.StrOpt('backup_strategy', default=None,
                help='Default strategy to perform backups.'),
+    cfg.DictOpt('backup_incremental_strategy',
+                default=dict(),
+                help='Incremental Backup Runner based on the default'
+                ' strategy. For strategies that do not implement an'
+                ' incremental, the runner will use the default full backup.',
+                deprecated_name='backup_incremental_strategy',
+                deprecated_group='DEFAULT'),
     cfg.StrOpt('replication_strategy', default=None,
                help='Default strategy for replication.'),
     cfg.StrOpt('mount_point', default='/var/lib/mongodb',
