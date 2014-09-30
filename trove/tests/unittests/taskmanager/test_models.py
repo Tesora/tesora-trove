@@ -77,7 +77,7 @@ class fake_Server:
 class fake_ServerManager:
     def create(self, name, image_id, flavor_id, files, userdata,
                security_groups, block_device_mapping, availability_zone=None,
-               nics=None, config_drive=False):
+               nics=None, key_name=None, config_drive=False):
         server = fake_Server()
         server.id = "server_id"
         server.name = name
