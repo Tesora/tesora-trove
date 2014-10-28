@@ -116,6 +116,7 @@ class GuestAgentMongoDBClusterManagerTest(testtools.TestCase):
                                    mock_start, mock_poll, mock_set_status):
         self._prepare_method("test-id-2", "config_server")
         mock_update.assert_called_with(None, {'configsvr': 'true',
+                                              'smallfiles': 'true',
                                               'bind_ip': '10.0.0.3',
                                               'dbpath': '/var/lib/mongodb'})
         self.assertTrue(self.manager.app.status.is_config_server)
@@ -131,7 +132,8 @@ class GuestAgentMongoDBClusterManagerTest(testtools.TestCase):
                             mock_poll, mock_set_status):
         self._prepare_method("test-id-3", "member")
         mock_update.assert_called_with(None,
-                                       {'bind_ip': '10.0.0.4',
+                                       {'smallfiles': 'true',
+                                        'bind_ip': '10.0.0.4',
                                         'dbpath': '/var/lib/mongodb',
                                         'replSet': 'rs1'})
         mock_set_status.assert_called_with(

@@ -18,9 +18,10 @@ import time
 
 from trove.common import cfg
 from trove.common import context
-from trove.common import instance
+from trove.common import instance as rd_instance
 from trove.conductor import api as conductor_api
 from trove.guestagent.common import timeutils
+from trove.instance import models as rd_models
 from trove.openstack.common import log as logging
 from trove.openstack.common.gettextutils import _
 
@@ -56,12 +57,14 @@ class BaseDbStatus(object):
     def __init__(self):
         if self._instance is not None:
             raise RuntimeError("Cannot instantiate twice.")
-        self.status = None
+        self.status = rd_models.InstanceServiceStatus(
+            instance_id=CONF.guest_id,
+            status=rd_instance.ServiceStatuses.NEW)
         self.restart_mode = False
 
     def begin_install(self):
         """Called right before DB is prepared."""
-        self.set_status(instance.ServiceStatuses.BUILDING)
+        self.set_status(rd_instance.ServiceStatuses.BUILDING)
 
     def begin_restart(self):
         """Called before restarting DB server."""
@@ -87,10 +90,11 @@ class BaseDbStatus(object):
         True if DB app should be installed and attempts to ascertain
         its status won't result in nonsense.
         """
-        return (self.status != instance.ServiceStatuses.NEW and
-                self.status != instance.ServiceStatuses.BUILDING and
-                self.status != instance.ServiceStatuses.BUILD_PENDING and
-                self.status != instance.ServiceStatuses.FAILED)
+        return (self.status is not None and
+                self.status != rd_instance.ServiceStatuses.NEW and
+                self.status != rd_instance.ServiceStatuses.BUILDING and
+                self.status != rd_instance.ServiceStatuses.BUILD_PENDING and
+                self.status != rd_instance.ServiceStatuses.FAILED)
 
     @property
     def _is_restarting(self):
@@ -100,7 +104,7 @@ class BaseDbStatus(object):
     def is_running(self):
         """True if DB server is running."""
         return (self.status is not None and
-                self.status == instance.ServiceStatuses.RUNNING)
+                self.status == rd_instance.ServiceStatuses.RUNNING)
 
     def set_status(self, status):
         """Use conductor to update the DB app status."""

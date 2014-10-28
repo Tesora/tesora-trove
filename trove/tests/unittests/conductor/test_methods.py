@@ -14,7 +14,6 @@
 
 import testtools
 from trove.backup import models as bkup_models
-from trove.backup import state
 from trove.common import exception as t_exception
 from trove.common import utils
 from trove.common.instance import ServiceStatuses
@@ -59,7 +58,7 @@ class ConductorMethodTests(testtools.TestCase):
             name=name,
             description='This is a fake backup object.',
             tenant_id=utils.generate_uuid(),
-            state=state.BackupState.NEW,
+            state=bkup_models.BackupState.NEW,
             instance_id=self.instance_id)
         backup.save()
         return new_id

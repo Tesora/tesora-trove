@@ -91,10 +91,10 @@ max_backups_per_user = 5
 volume_time_out=30
 
 # Config options for rate limits
-http_get_rate = 500
-http_post_rate = 500
-http_put_rate = 500
-http_delete_rate = 500
+http_get_rate = 200
+http_post_rate = 200
+http_put_rate = 200
+http_delete_rate = 200
 
 # default datastore
 default_datastore = a00000a0-00a0-0a00-00a0-000a000000aa
@@ -191,7 +191,7 @@ paste.filter_factory = trove.common.wsgi:ContextMiddleware.factory
 paste.filter_factory = trove.common.wsgi:FaultWrapper.factory
 
 [filter:ratelimit]
-paste.filter_factory = trove.tests.fakes.limits:FakeRateLimitingMiddleware.factory
+paste.filter_factory = trove.common.limits:RateLimitingMiddleware.factory
 
 [app:troveapp]
 paste.app_factory = trove.common.api:app_factory

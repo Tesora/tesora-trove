@@ -1141,7 +1141,7 @@ class BaseDbStatusTest(testtools.TestCase):
         self.baseDbStatus = BaseDbStatus()
         self.baseDbStatus.status = None
 
-        self.assertTrue(self.baseDbStatus.is_installed)
+        self.assertFalse(self.baseDbStatus.is_installed)
 
     def test_is_installed_building(self):
         self.baseDbStatus = BaseDbStatus()

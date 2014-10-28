@@ -161,5 +161,5 @@ class ClusterController(wsgi.Controller):
 
         cluster = models.Cluster.create(context, name, datastore,
                                         datastore_version, instances)
-        view = views.load_view(cluster, req=req, load_servers=False)
+        view = views.load_view(cluster, req=req)
         return wsgi.Result(view.data(), 200)

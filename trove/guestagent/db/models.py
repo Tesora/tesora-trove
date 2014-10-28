@@ -19,7 +19,6 @@ import string
 import netaddr
 
 from trove.common import cfg
-from trove.openstack.common.gettextutils import _
 
 CONF = cfg.CONF
 
@@ -305,13 +304,12 @@ class MySQLDatabase(Base):
             pass
         elif self._character_set:
             if value not in self.charset[self._character_set]:
-                msg = (_("%(val)s not a valid collation for charset %(char)s.")
-                       % {'val': value, 'char': self._character_set})
-                raise ValueError(msg)
+                msg = "'%s' not a valid collation for charset '%s'"
+                raise ValueError(msg % (value, self._character_set))
             self._collate = value
         else:
             if value not in self.collation:
-                raise ValueError(_("'%s' not a valid collation.") % value)
+                raise ValueError("'%s' not a valid collation" % value)
             self._collate = value
             self._character_set = self.collation[value]
 
@@ -329,7 +327,7 @@ class MySQLDatabase(Base):
         if not value:
             pass
         elif not value in self.charset:
-            raise ValueError(_("'%s' not a valid character set.") % value)
+            raise ValueError("'%s' not a valid character set" % value)
         else:
             self._character_set = value
 
@@ -341,9 +339,9 @@ class ValidatedMySQLDatabase(MySQLDatabase):
                 not self._is_valid(value),
                 not self.dbname.match(value),
                 string.find("%r" % value, "\\") != -1]):
-            raise ValueError(_("'%s' is not a valid database name.") % value)
+            raise ValueError("'%s' is not a valid database name" % value)
         elif len(value) > 64:
-            msg = _("Database name '%s' is too long. Max length = 64.")
+            msg = "Database name '%s' is too long. Max length = 64"
             raise ValueError(msg % value)
         else:
             self._name = value
@@ -400,10 +398,10 @@ class MySQLUser(Base):
     @name.setter
     def name(self, value):
         if not self._is_valid_user_name(value):
-            raise ValueError(_("'%s' is not a valid user name.") % value)
+            raise ValueError("'%s' is not a valid user name." % value)
         elif len(value) > 16:
-            raise ValueError(_("User name '%s' is too long. Max length = 16.")
-                             % value)
+            raise ValueError("User name '%s' is too long. Max length = 16." %
+                             value)
         else:
             self._name = value
 
@@ -414,7 +412,7 @@ class MySQLUser(Base):
     @password.setter
     def password(self, value):
         if not self._is_valid(value):
-            raise ValueError(_("'%s' is not a valid password.") % value)
+            raise ValueError("'%s' is not a valid password." % value)
         else:
             self._password = value
 
@@ -437,7 +435,7 @@ class MySQLUser(Base):
     @host.setter
     def host(self, value):
         if not self._is_valid_host_name(value):
-            raise ValueError(_("'%s' is not a valid hostname.") % value)
+            raise ValueError("'%s' is not a valid hostname." % value)
         else:
             self._host = value
 

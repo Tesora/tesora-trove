@@ -23,13 +23,12 @@ from novaclient import exceptions as nova_exceptions
 
 from trove.backup import models as bkup_models
 from trove.backup.models import Backup
+from trove.backup.models import BackupState
 from trove.backup.models import DBBackup
-from trove.backup.state import BackupState
 from trove.cluster.models import Cluster
 from trove.cluster.models import DBCluster
 from trove.cluster import tasks
 from trove.common import cfg
-from trove.common import exception
 from trove.common import template
 from trove.common import utils
 from trove.common.utils import try_recover
@@ -184,6 +183,7 @@ class ConfigurationMixin(object):
         return ret
 
 
+# TODO(amcreynolds): add NotifyMixin + ConfigurationMixin-like functionality
 class ClusterTasks(Cluster):
 
     def delete_cluster(self, context, cluster_id):
@@ -265,6 +265,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                 availability_zone,
                 nics)
 
+        # TODO(amcreynolds): need to find a way to merge cluster_config
+        # TODO(amcreynolds): into config_contents
         config = self._render_config(flavor)
         config_overrides = self._render_override_config(flavor,
                                                         overrides=overrides)
@@ -732,7 +734,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                        packages, databases, users, backup_info=None,
                        config_contents=None, root_password=None,
                        overrides=None, cluster_config=None):
-        LOG.debug("Entering guest_prepare")
+        LOG.info(_("Entering guest_prepare"))
         # Now wait for the response from the create to do additional work
         self.guest.prepare(flavor_ram, packages, databases, users,
                            device_path=volume_info['device_path'],
@@ -850,13 +852,6 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         LOG.debug("Begin _delete_resources for instance %s" % self.id)
         server_id = self.db_info.compute_instance_id
         old_server = self.nova_client.servers.get(server_id)
-        LOG.debug("Stopping datastore on instance %s before deleting any "
-                  "resources." % self.id)
-        try:
-            self.guest.stop_db()
-        except Exception:
-            LOG.exception(_("Error stopping the datastore before attempting "
-                            "to delete instance id %s.") % self.id)
         try:
             if use_heat:
                 # Delete the server via heat
@@ -948,8 +943,8 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
                 LOG.debug("Got replication snapshot from guest successfully.")
                 return result
             except (GuestError, GuestTimeout):
-                LOG.exception(_("Failed to get replication snapshot from %s")
-                              % self.id)
+                LOG.exception(_("Failed to get replication snapshot from %s") %
+                              self.id)
                 raise
 
         return run_with_quotas(self.context.tenant, {'backups': 1},
@@ -970,29 +965,11 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
 
     def reboot(self):
         try:
-            # Issue a guest stop db call to shutdown the db if running
             LOG.debug("Stopping datastore on instance %s." % self.id)
-            try:
-                self.guest.stop_db()
-            except (exception.GuestError, exception.GuestTimeout) as e:
-                # Acceptable to be here if db was already in crashed state
-                # Also we check guest state before issuing reboot
-                LOG.debug(str(e))
-
-            self._refresh_datastore_status()
-            if not (self.datastore_status_matches(
-                    rd_instance.ServiceStatuses.SHUTDOWN) or
-                    self.datastore_status_matches(
-                    rd_instance.ServiceStatuses.CRASHED)):
-                # We will bail if db did not get stopped or is blocked
-                LOG.error(_("Cannot reboot instance. DB status is %s.")
-                          % self.datastore_status.status)
-                return
-            LOG.debug("The guest service status is %s."
-                      % self.datastore_status.status)
-
+            self.guest.stop_db()
             LOG.info(_("Rebooting instance %s.") % self.id)
             self.server.reboot()
+
             # Poll nova until instance is active
             reboot_time_out = CONF.reboot_time_out
 
@@ -1103,6 +1080,7 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
                 overrides[item.configuration_key] = _convert_value(val)
         LOG.debug("setting the default variables in dict: %s" % overrides)
         self.update_overrides(overrides, remove=True)
+        self.update_db(configuration_id=None)
 
     def refresh_compute_server_info(self):
         """Refreshes the compute server field."""

@@ -45,8 +45,6 @@ functionality, the following resources are provided.
 
   dev/design
   dev/install
-  dev/manual_install.rst
-
 * Source Code Repositories
 
   - `Trove`_
