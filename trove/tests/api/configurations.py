@@ -17,6 +17,8 @@
 import json
 from time import sleep
 from datetime import datetime
+from proboscis import after_class
+from proboscis import before_class
 from proboscis import SkipTest
 from proboscis import test
 from proboscis.asserts import assert_equal
@@ -194,24 +196,32 @@ class CreateConfigurations(ConfigurationsTestBase):
     @test
     def test_expected_get_configuration_parameter(self):
         # tests get on a single parameter to verify it has expected attributes
-        param = 'key_buffer_size'
+        param_name = 'key_buffer_size'
         expected_config_params = ['name', 'restart_required',
                                   'max_size', 'min_size', 'type',
                                   'deleted', 'deleted_at',
                                   'datastore_version_id']
-        instance_info.dbaas.configuration_parameters.get_parameter(
+        param = instance_info.dbaas.configuration_parameters.get_parameter(
             instance_info.dbaas_datastore,
             instance_info.dbaas_datastore_version,
-            param)
+            param_name)
         resp, body = instance_info.dbaas.client.last_response
-        print(resp)
-        print(body)
+        print("params: %s" % param)
+        print("resp: %s" % resp)
+        print("body: %s" % body)
         attrcheck = AttrCheck()
         config_parameter_dict = json.loads(body)
-        print(config_parameter_dict)
+        print("config_parameter_dict: %s" % config_parameter_dict)
         attrcheck.attrs_exist(config_parameter_dict, expected_config_params,
                               msg="Get Configuration parameter")
-        assert_equal(param, config_parameter_dict['name'])
+        assert_equal(param_name, config_parameter_dict['name'])
+        with TypeCheck('ConfigurationParameter', param) as parameter:
+            parameter.has_field('name', basestring)
+            parameter.has_field('restart_required', bool)
+            parameter.has_field('max_size', basestring)
+            parameter.has_field('min_size', basestring)
+            parameter.has_field('type', basestring)
+            parameter.has_field('datastore_version_id', unicode)
 
     @test
     def test_configurations_create_invalid_values(self):
@@ -222,9 +232,9 @@ class CreateConfigurations(ConfigurationsTestBase):
                 CONFIG_NAME,
                 values,
                 CONFIG_DESC)
-        except exceptions.NotFound:
+        except exceptions.UnprocessableEntity:
             resp, body = instance_info.dbaas.client.last_response
-            assert_equal(resp.status, 404)
+            assert_equal(resp.status, 422)
 
     @test
     def test_configurations_create_invalid_value_type(self):
@@ -312,6 +322,32 @@ class AfterConfigurationsCreation(ConfigurationsTestBase):
         resp, body = instance_info.dbaas.client.last_response
         assert_equal(resp.status, 202)
 
+    @test
+    def test_assign_name_to_instance_using_patch(self):
+        # test assigning a name to an instance
+        new_name = 'new_name_1'
+        report = CONFIG.get_report()
+        report.log("instance_info.id: %s" % instance_info.id)
+        report.log("instance name:%s" % instance_info.name)
+        report.log("instance new name:%s" % new_name)
+        instance_info.dbaas.instances.edit(instance_info.id, name=new_name)
+        assert_equal(202, instance_info.dbaas.last_http_code)
+        check = instance_info.dbaas.instances.get(instance_info.id)
+        assert_equal(200, instance_info.dbaas.last_http_code)
+        assert_equal(check.name, new_name)
+        # Restore instance name
+        instance_info.dbaas.instances.edit(instance_info.id,
+                                           name=instance_info.name)
+        assert_equal(202, instance_info.dbaas.last_http_code)
+
+    @test
+    def test_assign_configuration_to_invalid_instance_using_patch(self):
+        # test assign config group to an invalid instance
+        invalid_id = "invalid-inst-id"
+        assert_raises(exceptions.NotFound,
+                      instance_info.dbaas.instances.edit,
+                      invalid_id, configuration=configuration_info.id)
+
     @test(depends_on=[test_assign_configuration_to_valid_instance])
     def test_assign_configuration_to_instance_with_config(self):
         # test assigning a configuration to an instance that
@@ -324,14 +360,15 @@ class AfterConfigurationsCreation(ConfigurationsTestBase):
     @test(depends_on=[test_assign_configuration_to_valid_instance])
     @time_out(30)
     def test_get_configuration_details_from_instance_validation(self):
-        # validate that the configuraiton was applied correctly to the instance
+        # validate that the configuration was applied correctly to the instance
+        print("instance_info.id: %s" % instance_info.id)
         inst = instance_info.dbaas.instances.get(instance_info.id)
         configuration_id = inst.configuration['id']
+        print("configuration_info: %s" % configuration_id)
         assert_not_equal(None, inst.configuration['id'])
         _test_configuration_is_applied_to_instance(instance_info,
                                                    configuration_id)
 
-    @test
     def test_configurations_get(self):
         # test that the instance shows up on the assigned configuration
         result = instance_info.dbaas.configurations.get(configuration_info.id)
@@ -582,6 +619,35 @@ class WaitForConfigurationInstanceToFinish(ConfigurationsTestBase):
 @test(runs_after=[WaitForConfigurationInstanceToFinish], groups=[GROUP])
 class DeleteConfigurations(ConfigurationsTestBase):
 
+    @before_class
+    def setUp(self):
+        # need to store the parameter details that will be deleted
+        config_param_name = sql_variables[1]
+        instance_info.dbaas.configuration_parameters.get_parameter(
+            instance_info.dbaas_datastore,
+            instance_info.dbaas_datastore_version,
+            config_param_name)
+        resp, body = instance_info.dbaas.client.last_response
+        print(resp)
+        print(body)
+        self.config_parameter_dict = json.loads(body)
+
+    @after_class(always_run=True)
+    def tearDown(self):
+        # need to "undelete" the parameter that was deleted from the mgmt call
+        ds = instance_info.dbaas_datastore
+        ds_v = instance_info.dbaas_datastore_version
+        version = instance_info.dbaas.datastore_versions.get(
+            ds, ds_v)
+        client = instance_info.dbaas_admin.mgmt_configs
+        print(self.config_parameter_dict)
+        client.create(version.id,
+                      self.config_parameter_dict['name'],
+                      self.config_parameter_dict['restart_required'],
+                      self.config_parameter_dict['type'],
+                      self.config_parameter_dict['max_size'],
+                      self.config_parameter_dict['min_size'])
+
     @test
     def test_delete_invalid_configuration_not_found(self):
         # test deleting a configuration that does not exist throws exception
@@ -592,14 +658,15 @@ class DeleteConfigurations(ConfigurationsTestBase):
 
     @test(depends_on=[test_delete_invalid_configuration_not_found])
     def test_delete_configuration_parameter_with_mgmt_api(self):
-        # delete a parameter that is used by a test
-        # connect_timeout
+        # testing a param that is assigned to an instance can be deleted
+        # and doesnt affect an unassign later. So we delete a parameter
+        # that is used by a test (connect_timeout)
         ds = instance_info.dbaas_datastore
         ds_v = instance_info.dbaas_datastore_version
         version = instance_info.dbaas.datastore_versions.get(
             ds, ds_v)
         client = instance_info.dbaas_admin.mgmt_configs
-        config_param_name = sql_variables[1]
+        config_param_name = self.config_parameter_dict['name']
         client.delete(version.id, config_param_name)
         assert_raises(
             exceptions.NotFound,
@@ -664,14 +731,6 @@ class DeleteConfigurations(ConfigurationsTestBase):
         print(configuration_instance.id)
         print(instance_info.id)
 
-    @test(depends_on=[test_no_instances_on_configuration])
-    def test_delete_unassigned_configuration(self):
-        # test that we can delete the configuration after no instances are
-        # assigned to it any longer
-        instance_info.dbaas.configurations.delete(configuration_info.id)
-        resp, body = instance_info.dbaas.client.last_response
-        assert_equal(resp.status, 202)
-
     @test(depends_on=[test_unassign_configuration_from_instances])
     @time_out(120)
     def test_restart_service_after_unassign_return_active(self):
@@ -710,6 +769,98 @@ class DeleteConfigurations(ConfigurationsTestBase):
                 assert_equal("REBOOT", instance.status)
                 return False
         poll_until(result_is_active)
+
+    @test(depends_on=[test_restart_service_should_return_active])
+    def test_assign_config_and_name_to_instance_using_patch(self):
+        # test assigning a configuration and name to an instance
+        new_name = 'new_name'
+        report = CONFIG.get_report()
+        report.log("instance_info.id: %s" % instance_info.id)
+        report.log("configuration_info: %s" % configuration_info)
+        report.log("configuration_info.id: %s" % configuration_info.id)
+        report.log("instance name:%s" % instance_info.name)
+        report.log("instance new name:%s" % new_name)
+        saved_name = instance_info.name
+        config_id = configuration_info.id
+        instance_info.dbaas.instances.edit(instance_info.id,
+                                           configuration=config_id,
+                                           name=new_name)
+        assert_equal(202, instance_info.dbaas.last_http_code)
+        check = instance_info.dbaas.instances.get(instance_info.id)
+        assert_equal(200, instance_info.dbaas.last_http_code)
+        assert_equal(check.name, new_name)
+
+        # restore instance name
+        instance_info.dbaas.instances.edit(instance_info.id,
+                                           name=saved_name)
+        assert_equal(202, instance_info.dbaas.last_http_code)
+
+        instance = instance_info.dbaas.instances.get(instance_info.id)
+        assert_equal('RESTART_REQUIRED', instance.status)
+        # restart to be sure configuration is applied
+        instance_info.dbaas.instances.restart(instance_info.id)
+        assert_equal(202, instance_info.dbaas.last_http_code)
+        sleep(2)
+
+        def result_is_active():
+            instance = instance_info.dbaas.instances.get(
+                instance_info.id)
+            if instance.status == "ACTIVE":
+                return True
+            else:
+                assert_equal("REBOOT", instance.status)
+                return False
+        poll_until(result_is_active)
+        # test assigning a configuration to an instance that
+        # already has an assigned configuration with patch
+        config_id = configuration_info.id
+        assert_raises(exceptions.BadRequest,
+                      instance_info.dbaas.instances.edit,
+                      instance_info.id, configuration=config_id)
+
+    @test(runs_after=[test_assign_config_and_name_to_instance_using_patch])
+    def test_unassign_configuration_after_patch(self):
+        # remove the configuration from the instance
+        instance_info.dbaas.instances.edit(instance_info.id,
+                                           remove_configuration=True)
+        assert_equal(202, instance_info.dbaas.last_http_code)
+        instance = instance_info.dbaas.instances.get(instance_info.id)
+        assert_equal('RESTART_REQUIRED', instance.status)
+        # restart to be sure configuration has been unassigned
+        instance_info.dbaas.instances.restart(instance_info.id)
+        assert_equal(202, instance_info.dbaas.last_http_code)
+        sleep(2)
+
+        def result_is_active():
+            instance = instance_info.dbaas.instances.get(
+                instance_info.id)
+            if instance.status == "ACTIVE":
+                return True
+            else:
+                assert_equal("REBOOT", instance.status)
+                return False
+        poll_until(result_is_active)
+        result = instance_info.dbaas.configurations.get(configuration_info.id)
+        assert_equal(result.instance_count, 0)
+
+    @test
+    def test_unassign_configuration_from_invalid_instance_using_patch(self):
+        # test unassign config group from an invalid instance
+        invalid_id = "invalid-inst-id"
+        try:
+            instance_info.dbaas.instances.edit(invalid_id,
+                                               remove_configuration=True)
+        except exceptions.NotFound:
+            resp, body = instance_info.dbaas.client.last_response
+            assert_equal(resp.status, 404)
+
+    @test(runs_after=[test_unassign_configuration_after_patch])
+    def test_delete_unassigned_configuration(self):
+        # test that we can delete the configuration after no instances are
+        # assigned to it any longer
+        instance_info.dbaas.configurations.delete(configuration_info.id)
+        resp, body = instance_info.dbaas.client.last_response
+        assert_equal(resp.status, 202)
 
     @test(depends_on=[test_delete_unassigned_configuration])
     @time_out(TIMEOUT_INSTANCE_DELETE)

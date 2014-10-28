@@ -28,6 +28,7 @@ import trove.db.models
 from trove.taskmanager import models as taskmanager_models
 import trove.guestagent.api
 from trove.backup import models as backup_models
+from trove.backup import state
 from trove.common import remote
 from trove.common.exception import GuestError
 from trove.common.exception import PollTimeOut
@@ -582,6 +583,30 @@ class BuiltInstanceTasksTest(testtools.TestCase):
                             Is(InstanceTasks.NONE))
             self.assertThat(self.db_instance.flavor_id, Is('6'))
 
+    @patch.object(utils, 'poll_until')
+    def test_reboot(self, mock_poll):
+        self.instance_task.datastore_status_matches = Mock(return_value=True)
+        self.instance_task._refresh_datastore_status = Mock()
+        self.instance_task.server.reboot = Mock()
+        self.instance_task.set_datastore_status_to_paused = Mock()
+        self.instance_task.reboot()
+        self.instance_task._guest.stop_db.assert_any_call()
+        self.instance_task._refresh_datastore_status.assert_any_call()
+        self.instance_task.server.reboot.assert_any_call()
+        self.instance_task.set_datastore_status_to_paused.assert_any_call()
+
+    @patch.object(utils, 'poll_until')
+    def test_reboot_datastore_not_ready(self, mock_poll):
+        self.instance_task.datastore_status_matches = Mock(return_value=False)
+        self.instance_task._refresh_datastore_status = Mock()
+        self.instance_task.server.reboot = Mock()
+        self.instance_task.set_datastore_status_to_paused = Mock()
+        self.instance_task.reboot()
+        self.instance_task._guest.stop_db.assert_any_call()
+        self.instance_task._refresh_datastore_status.assert_any_call()
+        assert not self.instance_task.server.reboot.called
+        assert not self.instance_task.set_datastore_status_to_paused.called
+
 
 class BackupTasksTest(testtools.TestCase):
     def setUp(self):
@@ -595,7 +620,7 @@ class BackupTasksTest(testtools.TestCase):
         self.backup.created = 'yesterday'
         self.backup.updated = 'today'
         self.backup.size = 2.0
-        self.backup.state = backup_models.BackupState.NEW
+        self.backup.state = state.BackupState.NEW
         self.container_content = (None,
                                   [{'name': 'first'},
                                    {'name': 'second'},
@@ -636,7 +661,7 @@ class BackupTasksTest(testtools.TestCase):
                     'dummy context', self.backup.id)
                 self.assertFalse(backup_models.Backup.delete.called)
                 self.assertEqual(
-                    backup_models.BackupState.DELETE_FAILED,
+                    state.BackupState.DELETE_FAILED,
                     self.backup.state,
                     "backup should be in DELETE_FAILED status")
 
@@ -649,7 +674,7 @@ class BackupTasksTest(testtools.TestCase):
                 'dummy context', self.backup.id)
             self.assertFalse(backup_models.Backup.delete.called)
             self.assertEqual(
-                backup_models.BackupState.DELETE_FAILED,
+                state.BackupState.DELETE_FAILED,
                 self.backup.state,
                 "backup should be in DELETE_FAILED status")
 
