@@ -1,4 +1,4 @@
 [gerrit]
-host=review.openstack.org
+host=review.elasticdb.org
 port=29418
-project=openstack/trove.git
+project=tesora/tesora-trove.git
