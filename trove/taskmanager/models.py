@@ -21,6 +21,8 @@ from cinderclient import exceptions as cinder_exceptions
 from eventlet import greenthread
 from novaclient import exceptions as nova_exceptions
 
+from oslo.utils import timeutils
+
 from trove.backup import models as bkup_models
 from trove.backup.models import Backup
 from trove.backup.models import DBBackup
@@ -64,7 +66,6 @@ from trove.instance.models import InstanceServiceStatus
 from trove.openstack.common import log as logging
 from trove.openstack.common.gettextutils import _
 from trove.openstack.common.notifier import api as notifier
-from trove.openstack.common import timeutils
 from trove.quota.quota import run_with_quotas
 import trove.common.remote as remote
 
@@ -465,9 +466,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                 name, image_id, flavor_id,
                 files=files, volume=volume_ref,
                 security_groups=security_groups,
-                availability_zone=availability_zone, nics=nics,
-                key_name=CONF.use_nova_key_name,
-                config_drive=config_drive,
+                availability_zone=availability_zone,
+                nics=nics, config_drive=config_drive,
                 userdata=userdata)
             LOG.debug("Created new compute instance %(server_id)s "
                       "for id: %(id)s" %
@@ -734,7 +734,6 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             name, image_id, flavor_id, files=files, userdata=userdata,
             security_groups=security_groups, block_device_mapping=bdmap,
             availability_zone=availability_zone, nics=nics,
-            key_name=CONF.use_nova_key_name,
             config_drive=config_drive)
         LOG.debug("Created new compute instance %(server_id)s "
                   "for instance %(id)s" %

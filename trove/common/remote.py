@@ -13,10 +13,11 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from oslo.utils.importutils import import_class
+
 from trove.common import cfg
 from trove.common import exception
 from trove.common import strategy
-from trove.openstack.common.importutils import import_class
 
 from cinderclient.v2 import client as CinderClient
 from heatclient.v1 import client as HeatClient
@@ -38,16 +39,16 @@ def normalize_url(url):
         return url
 
 
-def get_endpoint(service_catalog, service_type=None, endpoint_region=None,
+def get_endpoint(service_catalog, service_type=None,
+                 endpoint_region=CONF.os_region_name,
                  endpoint_type='publicURL'):
     """
     Select an endpoint from the service catalog
 
     We search the full service catalog for services
-    matching both type and region. If the client
-    supplied no region then any endpoint matching service_type
-    is considered a match. There must be one -- and
-    only one -- successful match in the catalog,
+    matching both type and region. The client is expected to
+    supply the region matching the service_type. There must
+    be one -- and only one -- successful match in the catalog,
     otherwise we will raise an exception.
 
     Some parts copied from glance/common/auth.py.
@@ -67,10 +68,6 @@ def get_endpoint(service_catalog, service_type=None, endpoint_region=None,
         raise exception.NoServiceEndpoint(service_type=service_type,
                                           endpoint_region=endpoint_region,
                                           endpoint_type=endpoint_type)
-
-    if len(urls) > 1:
-        raise exception.RegionAmbiguity(service_type=service_type,
-                                        endpoint_region=endpoint_region)
 
     return urls[0]
 
@@ -100,11 +97,8 @@ def nova_client(context):
                            endpoint_region=CONF.os_region_name,
                            endpoint_type=CONF.nova_compute_endpoint_type)
 
-    client = Client(username=context.user,
-                    api_key=context.auth_token,
-                    project_id=CONF.nova_proxy_admin_tenant_name,
-                    bypass_url=url,
-                    auth_url=PROXY_AUTH_URL)
+    client = Client(context.user, context.auth_token,
+                    project_id=context.tenant, auth_url=PROXY_AUTH_URL)
     client.client.auth_token = context.auth_token
     client.client.management_url = url
     return client
