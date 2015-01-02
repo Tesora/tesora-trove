@@ -55,7 +55,7 @@ class RestoreRunner(Strategy):
         self.location = kwargs.pop('location')
         self.checksum = kwargs.pop('checksum')
         self.restore_location = kwargs.get('restore_location',
-                                           '/var/lib/mysql')
+                                           '/var/lib/mysql/data')
         self.restore_cmd = (self.decrypt_cmd +
                             self.unzip_cmd +
                             (self.base_restore_cmd % kwargs))

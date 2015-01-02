@@ -423,10 +423,6 @@ class MySqlAdmin(object):
         LOG.debug("---Listing Databases---")
         databases = []
         with LocalSqlClient(get_engine()) as client:
-            # If you have an external volume mounted at /var/lib/mysql
-            # the lost+found directory will show up in mysql as a database
-            # which will create errors if you try to do any database ops
-            # on it.  So we remove it here if it exists.
             q = sql_query.Query()
             q.columns = [
                 'schema_name as name',
@@ -435,8 +431,7 @@ class MySqlAdmin(object):
             ]
             q.tables = ['information_schema.schemata']
             q.where = ["schema_name NOT IN ("
-                       "'mysql', 'information_schema', "
-                       "'lost+found', '#mysql50#lost+found'"
+                       "'mysql', 'information_schema' "
                        ")"]
             q.order = ['schema_name ASC']
             if limit:
@@ -769,7 +764,7 @@ class MySqlApp(object):
                 # to be deleted. That's why its ok if they aren't found and
                 # that is why we use the "-f" option to "rm".
                 (utils.
-                 execute_with_timeout("sudo", "rm", "-f", "%s/ib_logfile%d"
+                 execute_with_timeout("sudo", "rm", "-f", "%s/data/ib_logfile%d"
                                                     % (MYSQL_BASE_DIR, index)))
             except exception.ProcessExecutionError:
                 LOG.exception("Could not delete logfile.")

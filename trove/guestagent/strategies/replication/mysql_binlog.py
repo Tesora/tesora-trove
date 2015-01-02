@@ -36,12 +36,12 @@ MANAGER = 'mysql' if not CONF.datastore_manager else CONF.datastore_manager
 
 MASTER_CONFIG = """
 [mysqld]
-log_bin = /var/lib/mysql/mysql-bin.log
+log_bin = /var/lib/mysql/data/mysql-bin.log
 """
 SLAVE_CONFIG = """
 [mysqld]
-log_bin = /var/lib/mysql/mysql-bin.log
-relay_log = /var/lib/mysql/mysql-relay-bin.log
+log_bin = /var/lib/mysql/data/mysql-bin.log
+relay_log = /var/lib/mysql/data/mysql-relay-bin.log
 read_only = true
 """
 
@@ -150,7 +150,7 @@ class MysqlBinlogReplication(base.Replication):
         service.restart()
 
     def _read_log_position(self):
-        INFO_FILE = '/var/lib/mysql/xtrabackup_binlog_info'
+        INFO_FILE = '/var/lib/mysql/data/xtrabackup_binlog_info'
         LOG.info(_("Setting read permissions on %s") % INFO_FILE)
         utils.execute_with_timeout("sudo", "chmod", "+r", INFO_FILE)
         LOG.info(_("Reading log position from %s") % INFO_FILE)

@@ -52,7 +52,7 @@ class InnoBackupEx(base.BackupRunner):
         cmd = ('sudo innobackupex'
                ' --stream=xbstream'
                ' %(extra_opts)s'
-               ' /var/lib/mysql 2>/tmp/innobackupex.log'
+               ' /var/lib/mysql/data 2>/tmp/innobackupex.log'
                )
         return cmd + self.zip_cmd + self.encrypt_cmd
 
@@ -106,7 +106,7 @@ class InnoBackupExIncremental(InnoBackupEx):
                ' --incremental'
                ' --incremental-lsn=%(lsn)s'
                ' %(extra_opts)s'
-               ' /var/lib/mysql'
+               ' /var/lib/mysql/data'
                ' 2>/tmp/innobackupex.log')
         return cmd + self.zip_cmd + self.encrypt_cmd
 
