@@ -53,7 +53,7 @@ class GuestAgentManagerTest(testtools.TestCase):
         self.mock_gfvs_class = self.patcher_gfvs.start()
         self.mock_rs_class = self.patcher_rs.start()
         self.repl_datastore_manager = 'mysql'
-        self.repl_replication_strategy = 'MysqlBinlogReplication'
+        self.repl_replication_strategy = 'MysqlGTIDReplication'
 
     def tearDown(self):
         super(GuestAgentManagerTest, self).tearDown()

@@ -878,27 +878,9 @@ class MySqlApp(object):
             }
             return binlog_position
 
-    def change_master_for_binlog(self, host, port, logging_config):
-        LOG.info(_("Configuring replication from %s.") % host)
-
-        replication_user = logging_config['replication_user']
-        change_master_cmd = ("CHANGE MASTER TO MASTER_HOST='%(host)s', "
-                             "MASTER_PORT=%(port)s, "
-                             "MASTER_USER='%(user)s', "
-                             "MASTER_PASSWORD='%(password)s', "
-                             "MASTER_LOG_FILE='%(log_file)s', "
-                             "MASTER_LOG_POS=%(log_pos)s" %
-                             {
-                                 'host': host,
-                                 'port': port,
-                                 'user': replication_user['name'],
-                                 'password': replication_user['password'],
-                                 'log_file': logging_config['log_file'],
-                                 'log_pos': logging_config['log_position']
-                             })
-
+    def execute_on_client(self, sql_statement):
         with LocalSqlClient(get_engine()) as client:
-            client.execute(change_master_cmd)
+            return client.execute(sql_statement)
 
     def start_slave(self):
         LOG.info(_("Starting slave replication."))

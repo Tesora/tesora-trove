@@ -14,66 +14,69 @@
 #    under the License.
 #
 
-import csv
-
 from trove.common import cfg
-from trove.common import exception
-from trove.common import utils
 from trove.guestagent.backup.backupagent import BackupAgent
 from trove.guestagent.strategies.replication import mysql_base
 from trove.openstack.common import log as logging
-from trove.openstack.common.gettextutils import _
 
 AGENT = BackupAgent()
 CONF = cfg.CONF
 
+MASTER_CONFIG = """
+[mysqld]
+log_bin = /var/lib/mysql/mysql-bin.log
+binlog_format = MIXED
+enforce_gtid_consistency = ON
+gtid_mode = ON
+"""
+
+PERCONA_CONFIG = """
+enforce_storage_engine = Inno
+"""
+
+SLAVE_CONFIG = """
+[mysqld]
+log_bin = /var/lib/mysql/mysql-bin.log
+relay_log = /var/lib/mysql/mysql-relay-bin.log
+relay_log_info_repository = TABLE
+relay_log_recovery = 1
+relay_log_purge = 1
+gtid_mode = ON
+read_only = true
+"""
+
 LOG = logging.getLogger(__name__)
 
 
-class MysqlBinlogReplication(mysql_base.MysqlReplicationBase):
-    """MySql Replication coordinated by binlog position."""
+class MysqlGTIDReplication(mysql_base.MysqlReplicationBase):
+    """MySql Replication coordinated by GTIDs."""
 
-    class UnableToDetermineBinlogPosition(exception.TroveError):
-        message = _("Unable to determine binlog position "
-                    "(from file %(binlog_file)).")
+    def _get_master_config(self):
+        config = MASTER_CONFIG
+        if (CONF.datastore_manager == "percona"):
+            config = config + PERCONA_CONFIG
+        return MASTER_CONFIG
+
+    def _get_slave_config(self):
+        return SLAVE_CONFIG
 
     def enable_as_slave(self, service, snapshot, slave_config):
+        if not slave_config:
+            slave_config = self._get_slave_config()
         service.write_replication_overrides(slave_config)
         service.restart()
         logging_config = snapshot['log_position']
-        logging_config.update(self._read_log_position())
         change_master_cmd = (
             "CHANGE MASTER TO MASTER_HOST='%(host)s', "
             "MASTER_PORT=%(port)s, "
             "MASTER_USER='%(user)s', "
             "MASTER_PASSWORD='%(password)s', "
-            "MASTER_LOG_FILE='%(log_file)s', "
-            "MASTER_LOG_POS=%(log_pos)s" %
+            "MASTER_AUTO_POSITION=1 " %
             {
                 'host': snapshot['master']['host'],
                 'port': snapshot['master']['port'],
                 'user': logging_config['replication_user']['name'],
-                'password': logging_config['replication_user']['password'],
-                'log_file': logging_config['log_file'],
-                'log_pos': logging_config['log_position']
+                'password': logging_config['replication_user']['password']
             })
         service.execute_on_client(change_master_cmd)
         service.start_slave()
-
-    def _read_log_position(self):
-        INFO_FILE = '/var/lib/mysql/data/xtrabackup_binlog_info'
-        LOG.info(_("Setting read permissions on %s") % INFO_FILE)
-        utils.execute_with_timeout("sudo", "chmod", "+r", INFO_FILE)
-        LOG.info(_("Reading log position from %s") % INFO_FILE)
-        try:
-            with open(INFO_FILE, 'rb') as f:
-                row = csv.reader(f, delimiter='\t',
-                                 skipinitialspace=True).next()
-                return {
-                    'log_file': row[0],
-                    'log_position': int(row[1])
-                }
-        except (IOError, IndexError) as ex:
-            LOG.exception(ex)
-            raise self.UnableToDetermineBinlogPosition(
-                {'info_file': INFO_FILE})
