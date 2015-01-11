@@ -25,7 +25,6 @@ from trove.guestagent.datastore.mysql.service import MySqlAdmin
 from trove.guestagent.db import models
 from trove.guestagent.strategies import backup
 from trove.guestagent.strategies.replication import base
-from trove.guestagent.strategies.storage import get_storage_strategy
 from trove.openstack.common import log as logging
 from trove.openstack.common.gettextutils import _
 
@@ -34,8 +33,11 @@ CONF = cfg.CONF
 
 REPL_BACKUP_NAMESPACE = 'trove.guestagent.strategies.backup.mysql_impl'
 REPL_BACKUP_STRATEGY = 'InnoBackupEx'
-REPL_BACKUP_RUNNER = backup.get_backup_strategy(REPL_BACKUP_STRATEGY,
-                                                REPL_BACKUP_NAMESPACE)
+REPL_BACKUP_INCREMENTAL_STRATEGY = 'InnoBackupExIncremental'
+REPL_BACKUP_RUNNER = backup.get_backup_strategy(
+    REPL_BACKUP_STRATEGY, REPL_BACKUP_NAMESPACE)
+REPL_BACKUP_INCREMENTAL_RUNNER = backup.get_backup_strategy(
+    REPL_BACKUP_INCREMENTAL_STRATEGY, REPL_BACKUP_NAMESPACE)
 REPL_EXTRA_OPTS = CONF.backup_runner_options.get(REPL_BACKUP_STRATEGY, '')
 
 LOG = logging.getLogger(__name__)
@@ -90,12 +92,9 @@ class MysqlReplicationBase(base.Replication):
                                  location, snapshot_info):
         snapshot_id = snapshot_info['id']
 
-        storage = get_storage_strategy(
-            CONF.storage_strategy,
-            CONF.storage_namespace)(context)
-
-        AGENT.stream_backup_to_storage(snapshot_info, REPL_BACKUP_RUNNER,
-                                       storage, {}, REPL_EXTRA_OPTS)
+        AGENT.execute_backup(context, snapshot_info, runner=REPL_BACKUP_RUNNER,
+                             extra_opts=REPL_EXTRA_OPTS,
+                             incremental_runner=REPL_BACKUP_INCREMENTAL_RUNNER)
 
         replication_user = self._create_replication_user()
         service.grant_replication_privilege(replication_user)
