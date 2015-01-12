@@ -203,7 +203,7 @@ class BackupAgentTest(testtools.TestCase):
         str_innobackup_cmd = ('sudo innobackupex'
                               ' --stream=xbstream'
                               ' %(extra_opts)s'
-                              ' /var/lib/mysql 2>/tmp/innobackupex.log'
+                              ' /var/lib/mysql/data 2>/tmp/innobackupex.log'
                               ' | gzip |'
                               ' openssl enc -aes-256-cbc -salt '
                               '-pass pass:default_aes_cbc_key')
@@ -364,7 +364,7 @@ class BackupAgentTest(testtools.TestCase):
                              }
                 agent.execute_restore(TroveContext(),
                                       bkup_info,
-                                      '/var/lib/mysql')
+                                      '/var/lib/mysql/data')
 
     def test_restore_unknown(self):
         with patch.object(backupagent, 'get_restore_strategy',
@@ -380,7 +380,7 @@ class BackupAgentTest(testtools.TestCase):
 
             self.assertRaises(UnknownBackupType, agent.execute_restore,
                               context=None, backup_info=bkup_info,
-                              restore_location='/var/lib/mysql')
+                              restore_location='/var/lib/mysql/data')
 
     def test_backup_incremental_metadata(self):
         with patch.object(backupagent, 'get_storage_strategy',
@@ -412,7 +412,7 @@ class BackupAgentTest(testtools.TestCase):
 
                 agent.execute_backup(TroveContext(),
                                      bkup_info,
-                                     '/var/lib/mysql')
+                                     '/var/lib/mysql/data')
 
                 self.assertTrue(MockStorage.save_metadata.called_once_with(
                                 ANY,

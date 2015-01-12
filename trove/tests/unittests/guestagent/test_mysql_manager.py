@@ -240,7 +240,7 @@ class GuestAgentManagerTest(testtools.TestCase):
         if backup_info:
             backup.restore.assert_any_call(self.context,
                                            backup_info,
-                                           '/var/lib/mysql')
+                                           '/var/lib/mysql/data')
         dbaas.MySqlApp.install_if_needed.assert_any_call(None)
         # We don't need to make sure the exact contents are there
         dbaas.MySqlApp.secure.assert_any_call(None, None)

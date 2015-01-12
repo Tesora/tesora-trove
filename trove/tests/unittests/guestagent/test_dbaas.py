@@ -329,8 +329,7 @@ class MySqlAdminTest(testtools.TestCase):
                     "default_collation_name as collation",
                     "FROM information_schema.schemata",
                     ("schema_name NOT IN ("
-                     "'mysql', 'information_schema', "
-                     "'lost+found', '#mysql50#lost+found'"
+                     "'mysql', 'information_schema'"
                      ")"),
                     "ORDER BY schema_name ASC",
                     ]
@@ -347,8 +346,7 @@ class MySqlAdminTest(testtools.TestCase):
                     "default_collation_name as collation",
                     "FROM information_schema.schemata",
                     ("schema_name NOT IN ("
-                     "'mysql', 'information_schema', "
-                     "'lost+found', '#mysql50#lost+found'"
+                     "'mysql', 'information_schema'"
                      ")"),
                     "ORDER BY schema_name ASC",
                     ]
@@ -366,8 +364,7 @@ class MySqlAdminTest(testtools.TestCase):
                     "default_collation_name as collation",
                     "FROM information_schema.schemata",
                     ("schema_name NOT IN ("
-                     "'mysql', 'information_schema', "
-                     "'lost+found', '#mysql50#lost+found'"
+                     "'mysql', 'information_schema'"
                      ")"),
                     "ORDER BY schema_name ASC",
                     ]
@@ -388,8 +385,7 @@ class MySqlAdminTest(testtools.TestCase):
                     "default_collation_name as collation",
                     "FROM information_schema.schemata",
                     ("schema_name NOT IN ("
-                     "'mysql', 'information_schema', "
-                     "'lost+found', '#mysql50#lost+found'"
+                     "'mysql', 'information_schema'"
                      ")"),
                     "ORDER BY schema_name ASC",
                     ]
