@@ -764,8 +764,9 @@ class MySqlApp(object):
                 # to be deleted. That's why its ok if they aren't found and
                 # that is why we use the "-f" option to "rm".
                 (utils.
-                 execute_with_timeout("sudo", "rm", "-f", "%s/data/ib_logfile%d"
-                                                    % (MYSQL_BASE_DIR, index)))
+                 execute_with_timeout("sudo", "rm", "-f",
+                                      "%s/data/ib_logfile%d"
+                                      % (MYSQL_BASE_DIR, index)))
             except exception.ProcessExecutionError:
                 LOG.exception("Could not delete logfile.")
                 raise

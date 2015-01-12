@@ -23,6 +23,7 @@ from trove.common import instance as rd_instance
 from trove.guestagent import dbaas
 from trove.guestagent import backup
 from trove.guestagent import volume
+from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.mysql.service import MySqlAppStatus
 from trove.guestagent.datastore.mysql.service import MySqlAdmin
 from trove.guestagent.datastore.mysql.service import MySqlApp
@@ -131,6 +132,10 @@ class Manager(periodic_task.PeriodicTasks):
                 device.migrate_data(mount_point, target_subdir="data")
             #mount the volume
             device.mount(mount_point)
+            operating_system.update_owner('mysql',
+                                          'mysql',
+                                          mount_point)
+
             LOG.debug("Mounted the volume at %s" % mount_point)
             # We need to temporarily update the default my.cnf so that
             # mysql will start after the volume is mounted. Later on it
