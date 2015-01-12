@@ -431,7 +431,7 @@ class MySqlAdmin(object):
             ]
             q.tables = ['information_schema.schemata']
             q.where = ["schema_name NOT IN ("
-                       "'mysql', 'information_schema' "
+                       "'mysql', 'information_schema'"
                        ")"]
             q.order = ['schema_name ASC']
             if limit:
