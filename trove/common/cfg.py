@@ -444,6 +444,65 @@ mysql_opts = [
                 deprecated_group='DEFAULT'),
 ]
 
+# Oracle
+oracle_group = cfg.OptGroup(
+    'oracle', title='Oracle options',
+    help="Oslo option group designed for Oracle datastore")
+oracle_opts = [
+    cfg.ListOpt('tcp_ports', default=["8888"],
+                help='List of TCP ports and/or port ranges to open '
+                     'in the security group (only applicable '
+                     'if trove_security_groups_support is True).'),
+    cfg.ListOpt('udp_ports', default=[],
+                help='List of UDP ports and/or port ranges to open '
+                     'in the security group (only applicable '
+                     'if trove_security_groups_support is True).'),
+    cfg.StrOpt('backup_strategy', default='OracleBackupEx',
+               help='Default strategy to perform backups.',
+               deprecated_name='backup_strategy',
+               deprecated_group='DEFAULT'),
+    cfg.StrOpt('replication_strategy', default='OracleBinlogReplication',
+               help='Default strategy for replication.'),
+    cfg.StrOpt('replication_namespace',
+               default='trove.guestagent.strategies.replication.oracle_binlog',
+               help='Namespace to load replication strategies from.'),
+    cfg.StrOpt('mount_point', default='/var/lib/oracle',
+               help="Filesystem path for mounting "
+                    "volumes if volume support is enabled."),
+    cfg.BoolOpt('root_on_create', default=False,
+                help='Enable the automatic creation of the root user for the '
+                'service during instance-create. The generated password for '
+                'the root user is immediately returned in the response of '
+                "instance-create as the 'password' field."),
+    cfg.IntOpt('usage_timeout', default=400,
+               help='Maximum time (in seconds) to wait for a Guest to become '
+                    'active.'),
+    cfg.StrOpt('backup_namespace',
+               default='trove.guestagent.strategies.backup.oracle_impl',
+               help='Namespace to load backup strategies from.',
+               deprecated_name='backup_namespace',
+               deprecated_group='DEFAULT'),
+    cfg.StrOpt('restore_namespace',
+               default='trove.guestagent.strategies.restore.oracle_impl',
+               help='Namespace to load restore strategies from.',
+               deprecated_name='restore_namespace',
+               deprecated_group='DEFAULT'),
+    cfg.BoolOpt('volume_support', default=False,
+                help='Whether to provision a Cinder volume for datadir.'),
+    cfg.StrOpt('device_path', default='',
+               help='Device path for volume if volume support is enabled.'),
+    cfg.DictOpt('backup_incremental_strategy',
+                default={'OracleBackupEx': 'OracleBackupExIncremental'},
+                help='Incremental Backup Runner based on the default '
+                'strategy. For strategies that do not implement an '
+                'incremental backup, the runner will use the default full '
+                'backup.',
+                deprecated_name='backup_incremental_strategy',
+                deprecated_group='DEFAULT'),
+
+]
+
+
 # Percona
 percona_group = cfg.OptGroup(
     'percona', title='Percona options',
@@ -749,6 +808,7 @@ CONF.register_opts(path_opts)
 CONF.register_opts(common_opts)
 
 CONF.register_group(mysql_group)
+CONF.register_group(oracle_group)
 CONF.register_group(percona_group)
 CONF.register_group(redis_group)
 CONF.register_group(cassandra_group)
@@ -757,6 +817,7 @@ CONF.register_group(mongodb_group)
 CONF.register_group(postgresql_group)
 
 CONF.register_opts(mysql_opts, mysql_group)
+CONF.register_opts(oracle_opts, oracle_group)
 CONF.register_opts(percona_opts, percona_group)
 CONF.register_opts(redis_opts, redis_group)
 CONF.register_opts(cassandra_opts, cassandra_group)

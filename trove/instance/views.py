@@ -52,6 +52,10 @@ class InstanceView(object):
         if self.instance.slave_of_id is not None:
             instance_dict['replica_of'] = self._build_master_info()
 
+        proxy_host = self.instance.proxy_host
+        if proxy_host is not None:
+            instance_dict['oracle_host'] = self.instance.proxy_host
+
         LOG.debug(instance_dict)
         return {"instance": instance_dict}
 

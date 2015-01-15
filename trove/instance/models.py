@@ -29,6 +29,7 @@ from trove.common.remote import create_nova_client
 from trove.common.remote import create_cinder_client
 from trove.common import utils
 from trove.configuration.models import Configuration
+from trove.configuration.models import DBConfigurationParameter
 from trove.extensions.security_group.models import SecurityGroup
 from trove.db import get_db_api
 from trove.db import models as dbmodels
@@ -197,6 +198,21 @@ class SimpleInstance(object):
     @property
     def hostname(self):
         return self.db_info.hostname
+
+    @property
+    def proxy_host(self):
+        # (Simon Chang) TO-DO: look up the Oracle proxy_host value from the
+        # configuration_parameters table via self.db_info
+        try:
+            config_id = self.db_info.configuration_id
+            config_item = DBConfigurationParameter.find_by(configuration_id=
+                                                           config_id,
+                                                           configuration_key=
+                                                           'oracle_host',
+                                                           deleted=False)
+            return config_item.configuration_value
+        except exception.ModelNotFoundError:
+            return None
 
     def get_visible_ip_addresses(self):
         """Returns IPs that will be visible to the user."""

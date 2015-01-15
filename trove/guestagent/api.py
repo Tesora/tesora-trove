@@ -181,14 +181,18 @@ class API(proxy.RpcProxy):
         return self._call("list_databases", AGENT_LOW_TIMEOUT, limit=limit,
                           marker=marker, include_marker=include_marker)
 
-    def delete_database(self, database):
+    def delete_database(self, database, is_async=True):
         """Make an asynchronous call to delete an existing database
            within the specified container
         """
         LOG.debug("Deleting database %(database)s for "
                   "instance %(instance_id)s." % {'database': database,
                                                  'instance_id': self.id})
-        self._cast("delete_database", database=database)
+        if not is_async:
+            return self._call("delete_database", AGENT_HIGH_TIMEOUT,
+                              database=database)
+        else:
+            self._cast("delete_database", database=database)
 
     def enable_root(self):
         """Make a synchronous call to enable the root user for

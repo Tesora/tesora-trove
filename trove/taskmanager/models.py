@@ -708,9 +708,11 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
 
     def _prepare_file_and_userdata(self, datastore_manager):
         files = {"/etc/guest_info": ("[DEFAULT]\nguest_id=%s\n"
+                                     "guest_name=%s\n"
                                      "datastore_manager=%s\n"
                                      "tenant_id=%s\n" %
-                                     (self.id, datastore_manager,
+                                     (self.id, self.name,
+                                      datastore_manager,
                                       self.tenant_id))}
         if os.path.isfile(CONF.get('guest_config')):
             with open(CONF.get('guest_config'), "r") as f:
@@ -731,13 +733,12 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
         name = self.hostname or self.name
         bdmap = block_device_mapping
         config_drive = CONF.use_nova_server_config_drive
-        key_name = CONF.use_nova_key_name
 
         server = self.nova_client.servers.create(
             name, image_id, flavor_id, files=files, userdata=userdata,
             security_groups=security_groups, block_device_mapping=bdmap,
             availability_zone=availability_zone, nics=nics,
-            key_name=key_name, config_drive=config_drive)
+            config_drive=config_drive)
         LOG.debug("Created new compute instance %(server_id)s "
                   "for instance %(id)s" %
                   {'server_id': server.id, 'id': self.id})
@@ -861,6 +862,14 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
     Performs the various asynchronous instance related tasks.
     """
 
+    def _delete_external_db(self):
+        # contact the guestagent to delete the pdb on Oracle
+        if self.datastore.db_info.name == 'oracle':
+            guest_client = self.get_guest()
+            # delete_database needs to be synchronous, otherwise Nova will
+            # delete the instance before deleting the db on Oracle
+            guest_client.delete_database(self.db_info.name, is_async=False)
+
     def _delete_resources(self, deleted_at):
         LOG.debug("Begin _delete_resources for instance %s" % self.id)
         server_id = self.db_info.compute_instance_id
@@ -879,6 +888,7 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
                 name = 'trove-%s' % self.id
                 heatclient.stacks.delete(name)
             else:
+                self._delete_external_db()
                 self.server.delete()
         except Exception as ex:
             LOG.exception(_("Error during delete compute server %s")

@@ -442,6 +442,99 @@ class MySQLUser(Base):
             self._host = value
 
 
+class OracleUser(Base):
+    """Represents a MySQL User and its associated properties."""
+
+    not_supported_chars = re.compile("^\s|\s$|'|\"|;|`|,|/|\\\\")
+    _ignore_users = CONF.ignore_users
+
+    def __init__(self):
+        self._name = None
+        self._host = None
+        self._password = None
+        self._databases = []
+
+    def _is_valid(self, value):
+        if (not value or
+                self.not_supported_chars.search(value) or
+                string.find("%r" % value, "\\") != -1):
+            return False
+        else:
+            return True
+
+    def _is_valid_user_name(self, value):
+        if (self._is_valid(value) and
+                value.lower() not in self._ignore_users):
+            return True
+        return False
+
+    def _is_valid_host_name(self, value):
+        if value in [None, "%"]:
+            # % is MySQL shorthand for "everywhere". Always permitted.
+            # Null host defaults to % anyway.
+            return True
+        if CONF.hostname_require_valid_ip:
+            try:
+                # '%' works as a MySQL wildcard, but it is not a valid
+                # part of an IPAddress
+                netaddr.IPAddress(value.replace('%', '1'))
+            except (ValueError, netaddr.AddrFormatError):
+                return False
+            else:
+                return True
+        else:
+            # If it wasn't required, anything else goes.
+            return True
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, value):
+        if not self._is_valid_user_name(value):
+            raise ValueError(_("'%s' is not a valid user name.") % value)
+        elif len(value) > 500:
+            raise ValueError(_("User name '%s' is too long. Max length = 16.")
+                             % value)
+        else:
+            self._name = value
+
+    @property
+    def password(self):
+        return self._password
+
+    @password.setter
+    def password(self, value):
+        if not self._is_valid(value):
+            raise ValueError(_("'%s' is not a valid password.") % value)
+        else:
+            self._password = value
+
+    @property
+    def databases(self):
+        return self._databases
+
+    @databases.setter
+    def databases(self, value):
+        mydb = ValidatedMySQLDatabase()
+        mydb.name = value
+        self._databases.append(mydb.serialize())
+
+    @property
+    def host(self):
+        if self._host is None:
+            return '%'
+        return self._host
+
+    @host.setter
+    def host(self, value):
+        if not self._is_valid_host_name(value):
+            raise ValueError(_("'%s' is not a valid hostname.") % value)
+        else:
+            self._host = value
+
+
 class RootUser(MySQLUser):
     """Overrides _ignore_users from the MySQLUser class."""
 
