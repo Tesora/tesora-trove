@@ -178,6 +178,12 @@ class DbaasTest(testtools.TestCase):
 
         self.assertFalse(dbaas.load_mysqld_options())
 
+    def test_get_datadir(self):
+        cnf_value = '[mysqld]\ndatadir=/var/lib/mysql/data'
+        with patch.object(dbaas, 'read_mycnf', Mock(return_value=cnf_value)):
+            self.assertEqual('/var/lib/mysql/data',
+                             dbaas.get_datadir(reset_cache=True))
+
 
 class ResultSetStub(object):
 
