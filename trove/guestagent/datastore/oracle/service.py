@@ -70,7 +70,6 @@ from trove.guestagent.common import sql_query
 from trove.guestagent.db import models
 from trove.guestagent import pkg
 from trove.guestagent.datastore import service
-from trove.instance import models as rd_models
 from trove.openstack.common import log as logging
 from trove.openstack.common.gettextutils import _
 
@@ -196,42 +195,6 @@ def load_mysqld_options():
 
 
 class OracleAppStatus(service.BaseDbStatus):
-    def __init__(self):
-        if self._instance is not None:
-            raise RuntimeError("Cannot instantiate twice.")
-        self.status = rd_models.InstanceServiceStatus(
-            instance_id=CONF.guest_id,
-            status=rd_instance.ServiceStatuses.NEW)
-        self.restart_mode = False
-
-    @property
-    def is_installed(self):
-        """
-        True if DB app should be installed and attempts to ascertain
-        its status won't result in nonsense.
-        """
-        # (Simon Chang) TO-DO: Fix this
-        return True
-#         return (self.status is not None and
-#                 self.status != rd_instance.ServiceStatuses.NEW and
-#                 self.status != rd_instance.ServiceStatuses.BUILDING and
-#                 self.status != rd_instance.ServiceStatuses.BUILD_PENDING and
-#                 self.status != rd_instance.ServiceStatuses.FAILED)
-
-    @property
-    def _is_restarting(self):
-        # (Simon Chang) TO-DO: Fix this
-        return False
-#        return self.restart_mode
-
-    @property
-    def is_running(self):
-        """True if DB server is running."""
-        # (Simon Chang) TO-DO: Fix this
-        return True
-#        return (self.status is not None and
-#                self.status == rd_instance.ServiceStatuses.RUNNING)
-
     @classmethod
     def get(cls):
         if not cls._instance:
