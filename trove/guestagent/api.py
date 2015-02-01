@@ -343,6 +343,37 @@ class API(proxy.RpcProxy):
         LOG.debug("Detaching replica %s from its replication source.", self.id)
         return self._call("detach_replica", AGENT_HIGH_TIMEOUT)
 
+    def get_replica_context(self):
+        LOG.debug("Getting replica context.")
+        return self._call("get_replica_context", AGENT_HIGH_TIMEOUT)
+
+    def attach_replica(self, replica_info, slave_config):
+        LOG.debug("Attaching replica %s." % replica_info)
+        self._call("attach_replica", AGENT_HIGH_TIMEOUT,
+                   replica_info=replica_info, slave_config=slave_config)
+
+    def make_read_only(self, read_only):
+        LOG.debug("Executing make_read_only(%s)" % read_only)
+        self._call("make_read_only", AGENT_HIGH_TIMEOUT,
+                   read_only=read_only)
+
+    def enable_as_master(self, replica_source_config):
+        LOG.debug("Executing enable_as_master")
+        self._call("enable_as_master", AGENT_HIGH_TIMEOUT,
+                   replica_source_config=replica_source_config)
+
+    def get_txn_count(self):
+        LOG.debug("Executing get_txn_count.")
+        return self._call("get_txn_count", AGENT_HIGH_TIMEOUT)
+
+    def get_latest_txn_id(self):
+        LOG.debug("Executing get_latest_txn_id.")
+        return self._call("get_latest_txn_id", AGENT_HIGH_TIMEOUT)
+
+    def wait_for_txn(self, txn):
+        LOG.debug("Executing wait_for_txn.")
+        self._call("wait_for_txn", AGENT_HIGH_TIMEOUT, txn=txn)
+
     def cleanup_source_on_replica_detach(self, replica_info):
         LOG.debug("Cleaning up master %s on detach of replica.", self.id)
         self._call("cleanup_source_on_replica_detach", AGENT_HIGH_TIMEOUT,
@@ -350,4 +381,4 @@ class API(proxy.RpcProxy):
 
     def demote_replication_master(self):
         LOG.debug("Demoting instance %s to non-master.", self.id)
-        self._call("demote_replication_master", AGENT_LOW_TIMEOUT)
+        self._call("demote_replication_master", AGENT_HIGH_TIMEOUT)

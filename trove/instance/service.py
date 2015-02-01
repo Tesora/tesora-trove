@@ -77,6 +77,9 @@ class InstanceController(wsgi.Controller):
             'restart': self._action_restart,
             'resize': self._action_resize,
             'reset_password': self._action_reset_password,
+            'promote_to_replica_source':
+            self._action_promote_to_replica_source,
+            'eject_replica_source': self._action_eject_replica_source,
         }
         selected_action = None
         action_name = None
@@ -128,6 +131,14 @@ class InstanceController(wsgi.Controller):
 
     def _action_reset_password(self, instance, body):
         raise webob.exc.HTTPNotImplemented()
+
+    def _action_promote_to_replica_source(self, instance, body):
+        instance.promote_to_replica_source()
+        return wsgi.Result(None, 202)
+
+    def _action_eject_replica_source(self, instance, body):
+        instance.eject_replica_source()
+        return wsgi.Result(None, 202)
 
     def index(self, req, tenant_id):
         """Return all instances."""

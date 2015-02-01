@@ -93,6 +93,20 @@ class API(proxy.RpcProxy):
         self.cast(self.context,
                   self.make_msg("detach_replica", instance_id=instance_id))
 
+    def promote_to_replica_source(self, instance_id):
+        LOG.debug("Making async call to promote replica to source: %s" %
+                  instance_id)
+        self.cast(self.context,
+                  self.make_msg("promote_to_replica_source",
+                                instance_id=instance_id))
+
+    def eject_replica_source(self, instance_id):
+        LOG.debug("Making async call to eject replica source: %s" %
+                  instance_id)
+        self.cast(self.context,
+                  self.make_msg("eject_replica_source",
+                                instance_id=instance_id))
+
     def migrate(self, instance_id, host):
         LOG.debug("Making async call to migrate instance: %s" % instance_id)
         self.cast(self.context,

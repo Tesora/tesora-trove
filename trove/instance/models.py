@@ -13,10 +13,12 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+from __builtin__ import setattr
 
 """Model classes that form the core of instances functionality."""
 import re
 from datetime import datetime
+from datetime import timedelta
 from novaclient import exceptions as nova_exceptions
 from oslo.config.cfg import NoSuchOptError
 from trove.common import cfg
@@ -92,6 +94,8 @@ class InstanceStatus(object):
     SHUTDOWN = "SHUTDOWN"
     ERROR = "ERROR"
     RESTART_REQUIRED = "RESTART_REQUIRED"
+    PROMOTE = "PROMOTE"
+    EJECT = "EJECT"
 
 
 def validate_volume_size(size):
@@ -122,7 +126,7 @@ def load_simple_instance_server_status(context, db_info):
 
 
 # Invalid states to contact the agent
-AGENT_INVALID_STATUSES = ["BUILD", "REBOOT", "RESIZE"]
+AGENT_INVALID_STATUSES = ["BUILD", "REBOOT", "RESIZE", "PROMOTE", "EJECT"]
 
 
 class SimpleInstance(object):
@@ -301,6 +305,10 @@ class SimpleInstance(object):
             return InstanceStatus.RESIZE
         if 'RESTART_REQUIRED' == action:
             return InstanceStatus.RESTART_REQUIRED
+        if InstanceTasks.PROMOTING.action == action:
+            return InstanceStatus.PROMOTE
+        if InstanceTasks.EJECTING.action == action:
+            return InstanceStatus.EJECT
 
         ### Check for server status.
         if self.db_info.server_status in ["BUILD", "ERROR", "REBOOT",
@@ -918,6 +926,44 @@ class Instance(BuiltInstance):
             raise exception.BadRequest(_("Instance %s is not a replica.")
                                        % self.id)
         task_api.API(self.context).detach_replica(self.id)
+
+    def promote_to_replica_source(self):
+        self.validate_can_perform_action()
+        LOG.info(_LI("Promoting instance %s to replication source."), self.id)
+        if not self.slave_of_id:
+            raise exception.BadRequest(_("Instance %s is not a replica.")
+                                       % self.id)
+
+        # Update task status of master and all slaves
+        master = BuiltInstance.load(self.context, self.slave_of_id)
+        for dbinfo in [master.db_info] + master.slaves:
+            setattr(dbinfo, 'task_status', InstanceTasks.PROMOTING)
+            dbinfo.save()
+
+        task_api.API(self.context).promote_to_replica_source(self.id)
+
+    def eject_replica_source(self):
+        self.validate_can_perform_action()
+        LOG.info(_LI("Ejecting replica source %s from it's replication set."),
+                 self.id)
+
+        if not self.slaves:
+            raise exception.BadRequest(_("Instance %s is not a replica"
+                                       " source.") % self.id)
+        service = InstanceServiceStatus.find_by(instance_id=self.id)
+        last_heartbeat_delta = datetime.now() - service.updated_at
+        agent_expiry_interval = timedelta(seconds=CONF.agent_heartbeat_expiry)
+        if last_heartbeat_delta < agent_expiry_interval:
+            raise exception.BadRequest(_("Replica Source %s cannot be ejected"
+                                         " as it has a current heartbeat")
+                                       % self.id)
+
+        # Update task status of master and all slaves
+        for dbinfo in [self.db_info] + self.slaves:
+            setattr(dbinfo, 'task_status', InstanceTasks.EJECTING)
+            dbinfo.save()
+
+        task_api.API(self.context).eject_replica_source(self.id)
 
     def migrate(self, host=None):
         self.validate_can_perform_action()

@@ -60,12 +60,9 @@ class MysqlGTIDReplication(mysql_base.MysqlReplicationBase):
     def _get_slave_config(self):
         return SLAVE_CONFIG
 
-    def enable_as_slave(self, service, snapshot, slave_config):
-        if not slave_config:
-            slave_config = self._get_slave_config()
-        service.write_replication_overrides(slave_config)
-        service.restart()
+    def connect_to_master(self, service, snapshot):
         logging_config = snapshot['log_position']
+        LOG.debug("connect_to_master %s" % logging_config['replication_user'])
         change_master_cmd = (
             "CHANGE MASTER TO MASTER_HOST='%(host)s', "
             "MASTER_PORT=%(port)s, "

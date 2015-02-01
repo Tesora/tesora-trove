@@ -107,22 +107,49 @@ class MysqlReplicationBase(base.Replication):
         }
         return snapshot_id, log_position
 
-    def enable_as_master(self, service, snapshot_info, master_config):
+    def enable_as_master(self, service, master_config):
         if not master_config:
             master_config = self._get_master_config()
-        service.write_replication_overrides(master_config)
+        service.write_replication_source_overrides(master_config)
         service.restart()
+
+    @abc.abstractmethod
+    def connect_to_master(self, service, snapshot):
+        """Connects a slave to a master"""
+
+    def enable_as_slave(self, service, snapshot, slave_config):
+        try:
+            LOG.debug("enable_as_slave: about to call write_overrides")
+            service.write_replication_replica_overrides(slave_config)
+            LOG.debug("enable_as_slave: about to call restart")
+            service.restart()
+            LOG.debug("enable_as_slave: about to call connect_to_master")
+            self.connect_to_master(service, snapshot)
+            LOG.debug("enable_as_slave: after call connect_to_master")
+        except Exception:
+            LOG.exception("Exception enabling guest as replica")
+            raise
 
     def detach_slave(self, service):
         replica_info = service.stop_slave()
-        service.remove_replication_overrides()
+        service.remove_replication_replica_overrides()
         service.restart()
         return replica_info
+
+    def get_replica_context(self, service):
+        replication_user = self._create_replication_user()
+        service.grant_replication_privilege(replication_user)
+        return {
+            'master': self.get_master_ref(service, None),
+            'log_position': {
+                'replication_user': replication_user
+            }
+        }
 
     def cleanup_source_on_replica_detach(self, admin_service, replica_info):
         admin_service.delete_user_by_name(replica_info['replication_user'])
 
     def demote_master(self, service):
-        service.revoke_replication_privilege()
-        service.remove_replication_overrides()
+        service.remove_replication_source_overrides()
+        service.stop_master()
         service.restart()

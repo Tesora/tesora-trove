@@ -986,15 +986,93 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
     def detach_replica(self, master):
         LOG.debug("Calling detach_replica on %s" % self.id)
         try:
-            replica_info = self.guest.detach_replica()
-            master.cleanup_source_on_replica_detach(replica_info)
+            self.guest.detach_replica()
             self.update_db(slave_of_id=None)
+            self.slave_list = None
         except (GuestError, GuestTimeout):
             LOG.exception(_("Failed to detach replica %s.") % self.id)
+            raise
+
+    def attach_replica(self, master):
+        LOG.debug("Calling attach_replica on %s" % self.id)
+        try:
+            replica_info = master.guest.get_replica_context()
+            flavor = self.nova_client.flavors.get(self.flavor_id)
+            slave_config = self._render_replica_config(flavor).config_contents
+            self.guest.attach_replica(replica_info, slave_config)
+            self.update_db(slave_of_id=master.id)
+            self.slave_list = None
+        except (GuestError, GuestTimeout):
+            LOG.exception(_("Failed to attach replica %s.") % self.id)
+            raise
+
+    def make_read_only(self, read_only):
+        LOG.debug("Calling make_read_only on %s" % self.id)
+        self.guest.make_read_only(read_only)
+
+    def _get_floating_ips(self):
+        """Returns floating ips as a dict indexed by the ip."""
+        floating_ips = {}
+        for ip in self.nova_client.floating_ips.list():
+            floating_ips.update({ip["addr"]: ip})
+        LOG.debug("_get_floating_ips returns %s" % floating_ips)
+        return floating_ips
+
+    def detach_public_ips(self):
+        LOG.debug("Begin detach_public_ips for instance %s" % self.id)
+        removed_ips = []
+        server_id = self.db_info.compute_instance_id
+        nova_instance = self.nova_client.servers.get(server_id)
+        floating_ips = self._get_floating_ips()
+        for ip in self.get_visible_ip_addresses():
+            if ip in floating_ips:
+                nova_instance.remove_floating_ip(ip)
+                removed_ips.append(ip)
+        LOG.debug("detach_public_ips returns %s" % removed_ips)
+        return removed_ips
+
+    def attach_public_ips(self, ips):
+        LOG.debug("Begin attach_public_ips for instance %s" % self.id)
+        server_id = self.db_info.compute_instance_id
+        nova_instance = self.nova_client.servers.get(server_id)
+        for ip in ips:
+            nova_instance.add_floating_ip(ip)
+
+    def enable_as_master(self):
+        LOG.debug("Calling enable_as_master on %s" % self.id)
+        flavor = self.nova_client.flavors.get(self.flavor_id)
+        replica_source_config = self._render_replica_source_config(flavor)
+        self.update_db(slave_of_id=None)
+        self.slave_list = None
+        self.guest.enable_as_master(replica_source_config.config_contents)
+
+    def get_txn_count(self):
+        LOG.debug("Calling get_txn_count on %s" % self.id)
+        return self.guest.get_txn_count()
+
+    def get_latest_txn_id(self):
+        LOG.debug("Calling get_latest_txn_id on %s" % self.id)
+        return self.guest.get_latest_txn_id()
+
+    def wait_for_txn(self, txn):
+        LOG.debug("Calling wait_for_txn on %s" % self.id)
+        if txn:
+            self.guest.wait_for_txn(txn)
+
+    def switch_master(self, new_master):
+        LOG.debug("calling switch_master on %s" % self.id)
+
+        self.guest.switch_master(new_master)
+        self.update_db(slave_of_id=new_master.id)
+        self.slave_list = None
 
     def cleanup_source_on_replica_detach(self, replica_info):
         LOG.debug("Calling cleanup_source_on_replica_detach on %s" % self.id)
         self.guest.cleanup_source_on_replica_detach(replica_info)
+
+    def demote_replication_master(self):
+        LOG.debug("Calling demote_replication_master on %s" % self.id)
+        self.guest.demote_replication_master()
 
     def reboot(self):
         try:
