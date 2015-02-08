@@ -216,6 +216,3 @@ device_path = /dev/vdb
 volume_support = True
 device_path = /dev/vdb
 
-[oracle]
-#tcp_ports =
-volume_support = False
