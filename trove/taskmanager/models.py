@@ -214,13 +214,36 @@ class ClusterTasks(Cluster):
 
 
 class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
+    def wait_for_instance(self, timeout, flavor):
+        # Make sure the service becomes active before sending a usage
+        # record to avoid over billing a customer for an instance that
+        # fails to build properly.
+        try:
+            utils.poll_until(self._service_is_active,
+                             sleep_time=USAGE_SLEEP_TIME,
+                             time_out=timeout)
+            LOG.info(_("Created instance %s successfully.") % self.id)
+            self.send_usage_event('create', instance_size=flavor['ram'])
+        except PollTimeOut:
+            LOG.error(_("Failed to create instance %s. "
+                        "Timeout waiting for instance to become active. "
+                        "No usage create-event was sent.") % self.id)
+            self.update_statuses_on_time_out()
+        except Exception:
+            LOG.exception(_("Failed to send usage create-event for "
+                            "instance %s.") % self.id)
+
     def create_instance(self, flavor, image_id, databases, users,
                         datastore_manager, packages, volume_size,
                         backup_id, availability_zone, root_password, nics,
-                        overrides, cluster_config):
+                        overrides, cluster_config, wait_for_instance=True):
 
         LOG.info(_("Creating instance %s.") % self.id)
         security_groups = None
+
+        # If wait_for_instance is set to False, it is the callers
+        # responsibility to ensure that FreshInstanceTasks.wait_for_instance
+        # is called to ensure that the proper usage event gets sent
 
         # If security group support is enabled and heat based instance
         # orchestration is disabled, create a security group.
@@ -304,25 +327,10 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             LOG.debug("Successfully created DNS entry for instance: %s" %
                       self.id)
 
-        # Make sure the service becomes active before sending a usage
-        # record to avoid over billing a customer for an instance that
-        # fails to build properly.
-        try:
+        if wait_for_instance:
             timeout = (CONF.restore_usage_timeout if backup_info
                        else CONF.usage_timeout)
-            utils.poll_until(self._service_is_active,
-                             sleep_time=USAGE_SLEEP_TIME,
-                             time_out=timeout)
-            LOG.info(_("Created instance %s successfully.") % self.id)
-            self.send_usage_event('create', instance_size=flavor['ram'])
-        except PollTimeOut:
-            LOG.error(_("Failed to create instance %s. "
-                        "Timeout waiting for instance to become active. "
-                        "No usage create-event was sent.") % self.id)
-            self.update_statuses_on_time_out()
-        except Exception:
-            LOG.exception(_("Failed to send usage create-event for "
-                            "instance %s.") % self.id)
+            self.wait_for_instance(timeout, flavor)
 
     def attach_replication_slave(self, snapshot, flavor):
         LOG.debug("Calling attach_replication_slave for %s.", self.id)
@@ -337,7 +345,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             self._log_and_raise(e, msg, err)
 
     def get_replication_master_snapshot(self, context, slave_of_id,
-                                        backup_id=None):
+                                        backup_id=None, replica_number=1):
         # if we aren't passed in a backup id, look it up to possibly do
         # an incremental backup, thus saving time
         if not backup_id:
@@ -354,32 +362,39 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             'tenant_id': self.tenant_id,
             'state': BackupState.NEW,
             'datastore_version_id': self.datastore_version.id,
-            'deleted': False
+            'deleted': False,
+            'replica_number': replica_number,
         }
 
-        try:
-            db_info = DBBackup.create(**snapshot_info)
-        except InvalidModelError:
-            msg = (_("Unable to create replication snapshot record for "
-                     "instance: %s") % self.id)
-            LOG.exception(msg)
-            raise BackupCreationError(msg)
+        # Only do a backup if it's the first replica
+        if replica_number == 1:
+            try:
+                db_info = DBBackup.create(**snapshot_info)
+                replica_backup_id = db_info.id
+            except InvalidModelError:
+                msg = (_("Unable to create replication snapshot record for "
+                         "instance: %s") % self.id)
+                LOG.exception(msg)
+                raise BackupCreationError(msg)
+            if backup_id:
+                # Look up the parent backup  info or fail early if not found or
+                # if the user does not have access to the parent.
+                _parent = Backup.get_by_id(context, backup_id)
+                parent = {
+                    'location': _parent.location,
+                    'checksum': _parent.checksum,
+                }
+                snapshot_info.update({
+                    'parent': parent,
+                })
+        else:
+            # we've been passed in the actual replica backup id, so just use it
+            replica_backup_id = backup_id
 
-        if backup_id:
-            # Look up the parent backup  info or fail early if not found or if
-            # the user does not have access to the parent.
-            _parent = Backup.get_by_id(context, backup_id)
-            parent = {
-                'location': _parent.location,
-                'checksum': _parent.checksum,
-            }
-            snapshot_info.update({
-                'parent': parent,
-            })
         try:
             master = BuiltInstanceTasks.load(context, slave_of_id)
             snapshot_info.update({
-                'id': db_info['id'],
+                'id': replica_backup_id,
                 'datastore': master.datastore.name,
                 'datastore_version': master.datastore_version.name,
             })
@@ -395,7 +410,9 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             # if the delete of the 'bad' backup fails, it'll mask the
             # create exception, so we trap it here
             try:
-                Backup.delete(context, snapshot_info['id'])
+                # Only try to delete the backup if it's the first replica
+                if replica_number == 1:
+                    Backup.delete(context, replica_backup_id)
             except Exception as e_delete:
                 LOG.error(msg_create)
                 # Make sure we log any unexpected errors from the create

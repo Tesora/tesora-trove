@@ -234,13 +234,14 @@ class InstanceController(wsgi.Controller):
         slave_of_id = body['instance'].get('replica_of',
                                            # also check for older name
                                            body['instance'].get('slave_of'))
-
+        replica_count = body['instance'].get('replica_count')
         instance = models.Instance.create(context, name, flavor_id,
                                           image_id, databases, users,
                                           datastore, datastore_version,
                                           volume_size, backup_id,
                                           availability_zone, nics,
-                                          configuration, slave_of_id)
+                                          configuration, slave_of_id,
+                                          replica_count=replica_count)
 
         view = views.InstanceDetailView(instance, req=req)
         return wsgi.Result(view.data(), 200)

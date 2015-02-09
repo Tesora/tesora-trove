@@ -91,10 +91,19 @@ class MysqlReplicationBase(base.Replication):
     def snapshot_for_replication(self, context, service,
                                  location, snapshot_info):
         snapshot_id = snapshot_info['id']
+        replica_number = snapshot_info.get('replica_number', 1)
 
-        AGENT.execute_backup(context, snapshot_info, runner=REPL_BACKUP_RUNNER,
-                             extra_opts=REPL_EXTRA_OPTS,
-                             incremental_runner=REPL_BACKUP_INCREMENTAL_RUNNER)
+        LOG.debug("Acquiring backup for replica number %d." % replica_number)
+        # Only create a backup if it's the first replica
+        if replica_number == 1:
+            AGENT.execute_backup(
+                context, snapshot_info, runner=REPL_BACKUP_RUNNER,
+                extra_opts=REPL_EXTRA_OPTS,
+                incremental_runner=REPL_BACKUP_INCREMENTAL_RUNNER)
+        else:
+            LOG.debug("Using existing backup created for previous replica.")
+        LOG.debug("Replication snapshot %s used for replica number %d."
+                  % (snapshot_id, replica_number))
 
         replication_user = self._create_replication_user()
         service.grant_replication_privilege(replication_user)

@@ -25,9 +25,9 @@ import trove.extensions.mgmt.instances.models as mgmtmodels
 from trove.instance.tasks import InstanceTasks
 from trove.openstack.common import log as logging
 from trove.openstack.common import periodic_task
+from trove.openstack.common.gettextutils import _
 from trove.taskmanager import models
 from trove.taskmanager.models import FreshInstanceTasks, BuiltInstanceTasks
-from trove.openstack.common.gettextutils import _
 
 LOG = logging.getLogger(__name__)
 RPC_API_VERSION = "1.0"
@@ -243,21 +243,53 @@ class Manager(periodic_task.PeriodicTasks):
                                   availability_zone, root_password, nics,
                                   overrides, slave_of_id, backup_id):
 
-        instance_tasks = FreshInstanceTasks.load(context, instance_id)
+        if type(instance_id) in [list]:
+            ids = instance_id
+            root_passwords = root_password
+        else:
+            ids = [instance_id]
+            root_passwords = [root_password]
+        replica_number = 0
+        replica_total = len(ids)
+        replica_backup_id = backup_id
+        replica_backup_created = False
 
-        snapshot = instance_tasks.get_replication_master_snapshot(
-            context, slave_of_id, backup_id)
         try:
-            instance_tasks.create_instance(flavor, image_id, databases, users,
-                                           datastore_manager, packages,
-                                           volume_size,
-                                           snapshot['dataset']['snapshot_id'],
-                                           availability_zone, root_password,
-                                           nics, overrides, None)
-        finally:
-            Backup.delete(context, snapshot['dataset']['snapshot_id'])
+            for replica_index in range(0, replica_total):
+                try:
+                    replica_number += 1
+                    LOG.debug("Creating replica %d of %d."
+                              % (replica_number, len(instance_id)))
+                    instance_tasks = FreshInstanceTasks.load(
+                        context, ids[replica_index])
+                    snapshot = instance_tasks.get_replication_master_snapshot(
+                        context, slave_of_id, replica_backup_id,
+                        replica_number=replica_number)
+                    replica_backup_id = snapshot['dataset']['snapshot_id']
+                    replica_backup_created = True
+                    instance_tasks.create_instance(
+                        flavor, image_id, databases, users, datastore_manager,
+                        packages, volume_size, replica_backup_id,
+                        availability_zone, root_passwords[replica_index],
+                        nics, overrides, None, wait_for_instance=False)
+                except Exception:
+                    # if it's the first replica, then we shouldn't continue
+                    LOG.exception(_(
+                        "Could not create replica %(num)d of %(count)d.")
+                        % {'num': replica_number, 'count': len(instance_id)})
+                    if replica_number == 1:
+                        raise
 
-        instance_tasks.attach_replication_slave(snapshot, flavor)
+            for replica_index in range(0, replica_total):
+                instance_tasks = FreshInstanceTasks.load(
+                    context, ids[replica_index])
+                # now wait for them to complete and attach them
+                instance_tasks.wait_for_instance(CONF.restore_usage_timeout,
+                                                 flavor)
+                instance_tasks.attach_replication_slave(snapshot, flavor)
+        finally:
+            if replica_backup_created:
+                Backup.delete(context, replica_backup_id)
 
     def create_instance(self, context, instance_id, name, flavor,
                         image_id, databases, users, datastore_manager,
@@ -273,6 +305,9 @@ class Manager(periodic_task.PeriodicTasks):
                                            nics, overrides, slave_of_id,
                                            backup_id)
         else:
+            if type(instance_id) in [list]:
+                raise AttributeError(_(
+                    "Cannot create multiple non-replica instances."))
             instance_tasks = FreshInstanceTasks.load(context, instance_id)
             instance_tasks.create_instance(flavor, image_id, databases, users,
                                            datastore_manager, packages,

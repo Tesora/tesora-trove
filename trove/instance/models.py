@@ -684,7 +684,7 @@ class Instance(BuiltInstance):
     def create(cls, context, name, flavor_id, image_id, databases, users,
                datastore, datastore_version, volume_size, backup_id,
                availability_zone=None, nics=None, configuration_id=None,
-               slave_of_id=None, cluster_config=None):
+               slave_of_id=None, cluster_config=None, replica_count=None):
 
         datastore_cfg = CONF.get(datastore_version.manager)
         client = create_nova_client(context)
@@ -752,6 +752,12 @@ class Instance(BuiltInstance):
                       "as that instance could not be found.")
                     % {'id': slave_of_id})
                 raise exception.NotFound(uuid=slave_of_id)
+        elif replica_count and replica_count != 1:
+            raise exception.Forbidden(_(
+                "Replica count only valid when creating replicas. Cannot "
+                "create %(count)d instances.") % {'count': replica_count})
+        multi_replica = slave_of_id and replica_count and replica_count > 1
+        instance_count = replica_count if multi_replica else 1
 
         if not nics:
             nics = []
@@ -768,50 +774,69 @@ class Instance(BuiltInstance):
             else:
                 cluster_id = shard_id = instance_type = None
 
-            db_info = DBInstance.create(name=name, flavor_id=flavor_id,
-                                        tenant_id=context.tenant,
-                                        volume_size=volume_size,
-                                        datastore_version_id=
-                                        datastore_version.id,
-                                        task_status=InstanceTasks.BUILDING,
-                                        configuration_id=configuration_id,
-                                        slave_of_id=slave_of_id,
-                                        cluster_id=cluster_id,
-                                        shard_id=shard_id,
-                                        type=instance_type)
-            LOG.debug("Tenant %(tenant)s created new Trove instance %(db)s.",
-                      {'tenant': context.tenant, 'db': db_info.id})
-
-            # if a configuration group is associated with an instance,
-            # generate an overrides dict to pass into the instance creation
-            # method
-
-            config = Configuration(context, configuration_id)
-            overrides = config.get_configuration_overrides()
-            service_status = InstanceServiceStatus.create(
-                instance_id=db_info.id,
-                status=tr_instance.ServiceStatuses.NEW)
-
-            if CONF.trove_dns_support:
-                dns_client = create_dns_client(context)
-                hostname = dns_client.determine_hostname(db_info.id)
-                db_info.hostname = hostname
-                db_info.save()
-
+            ids = []
+            names = []
+            root_passwords = []
             root_password = None
-            if cls.get_root_on_create(
-                    datastore_version.manager) and not backup_id:
-                root_password = utils.generate_random_password()
+            for instance_index in range(0, instance_count):
+                db_info = DBInstance.create(name=name, flavor_id=flavor_id,
+                                            tenant_id=context.tenant,
+                                            volume_size=volume_size,
+                                            datastore_version_id=
+                                            datastore_version.id,
+                                            task_status=InstanceTasks.BUILDING,
+                                            configuration_id=configuration_id,
+                                            slave_of_id=slave_of_id,
+                                            cluster_id=cluster_id,
+                                            shard_id=shard_id,
+                                            type=instance_type)
+                LOG.debug("Tenant %(tenant)s created new Trove instance "
+                          "%(db)s.",
+                          {'tenant': context.tenant, 'db': db_info.id})
 
-            task_api.API(context).create_instance(db_info.id, name, flavor,
-                                                  image_id, databases, users,
-                                                  datastore_version.manager,
-                                                  datastore_version.packages,
-                                                  volume_size, backup_id,
-                                                  availability_zone,
-                                                  root_password, nics,
-                                                  overrides, slave_of_id,
-                                                  cluster_config)
+                instance_id = db_info.id
+                instance_name = name
+                ids.append(instance_id)
+                names.append(instance_name)
+                root_passwords.append(None)
+                # change the name of a multi-replica to be name + id
+                if multi_replica:
+                    replica_number = instance_index + 1
+                    names[instance_index] += (
+                        '-' + str(replica_number) + '-' + ids[instance_index])
+                    setattr(db_info, 'name', names[instance_index])
+                    db_info.save()
+
+                # if a configuration group is associated with an instance,
+                # generate an overrides dict to pass into the instance creation
+                # method
+
+                config = Configuration(context, configuration_id)
+                overrides = config.get_configuration_overrides()
+                service_status = InstanceServiceStatus.create(
+                    instance_id=instance_id,
+                    status=tr_instance.ServiceStatuses.NEW)
+
+                if CONF.trove_dns_support:
+                    dns_client = create_dns_client(context)
+                    hostname = dns_client.determine_hostname(instance_id)
+                    db_info.hostname = hostname
+                    db_info.save()
+
+                if cls.get_root_on_create(
+                        datastore_version.manager) and not backup_id:
+                    root_password = utils.generate_random_password()
+                    root_passwords[instance_index] = root_password
+
+            if instance_count > 1:
+                instance_id = ids
+                instance_name = names
+                root_password = root_passwords
+            task_api.API(context).create_instance(
+                instance_id, instance_name, flavor, image_id, databases, users,
+                datastore_version.manager, datastore_version.packages,
+                volume_size, backup_id, availability_zone, root_password,
+                nics, overrides, slave_of_id, cluster_config)
 
             return SimpleInstance(context, db_info, service_status,
                                   root_password)
