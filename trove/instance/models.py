@@ -201,8 +201,6 @@ class SimpleInstance(object):
 
     @property
     def proxy_host(self):
-        # (Simon Chang) TO-DO: look up the Oracle proxy_host value from the
-        # configuration_parameters table via self.db_info
         try:
             config_id = self.db_info.configuration_id
             config_item = DBConfigurationParameter.find_by(configuration_id=

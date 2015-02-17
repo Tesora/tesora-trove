@@ -38,6 +38,8 @@ CONF = cfg.CONF
 # The guest_id opt definition must match the one in common/cfg.py
 CONF.register_opts([openstack_cfg.StrOpt('guest_id', default=None,
                                          help="ID of the Guest Instance.")])
+CONF.register_opts([openstack_cfg.StrOpt('guest_name', default=None,
+                                         help="Name of the Guest Instance.")])
 
 
 def main():

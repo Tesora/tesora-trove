@@ -154,6 +154,7 @@ common_opts = [
                     'Agent replication snapshot.'),
     # The guest_id opt definition must match the one in cmd/guest.py
     cfg.StrOpt('guest_id', default=None, help="ID of the Guest Instance."),
+    cfg.StrOpt('guest_name', default=None, help="Name of the Guest Instance."),
     cfg.IntOpt('state_change_wait_time', default=3 * 60,
                help='Maximum time (in seconds) to wait for a state change.'),
     cfg.IntOpt('agent_heartbeat_time', default=10,
@@ -449,7 +450,7 @@ oracle_group = cfg.OptGroup(
     'oracle', title='Oracle options',
     help="Oslo option group designed for Oracle datastore")
 oracle_opts = [
-    cfg.ListOpt('tcp_ports', default=["8888"],
+    cfg.ListOpt('tcp_ports', default=[],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
                      'if trove_security_groups_support is True).'),
@@ -457,16 +458,15 @@ oracle_opts = [
                 help='List of UDP ports and/or port ranges to open '
                      'in the security group (only applicable '
                      'if trove_security_groups_support is True).'),
-    cfg.StrOpt('backup_strategy', default='OracleBackupEx',
+    cfg.StrOpt('backup_strategy', default=None,
                help='Default strategy to perform backups.',
                deprecated_name='backup_strategy',
                deprecated_group='DEFAULT'),
-    cfg.StrOpt('replication_strategy', default='OracleBinlogReplication',
+    cfg.StrOpt('replication_strategy', default=None,
                help='Default strategy for replication.'),
-    cfg.StrOpt('replication_namespace',
-               default='trove.guestagent.strategies.replication.oracle_binlog',
+    cfg.StrOpt('replication_namespace', default=None,
                help='Namespace to load replication strategies from.'),
-    cfg.StrOpt('mount_point', default='/var/lib/oracle',
+    cfg.StrOpt('mount_point', default=None,
                help="Filesystem path for mounting "
                     "volumes if volume support is enabled."),
     cfg.BoolOpt('root_on_create', default=False,
@@ -477,29 +477,37 @@ oracle_opts = [
     cfg.IntOpt('usage_timeout', default=400,
                help='Maximum time (in seconds) to wait for a Guest to become '
                     'active.'),
-    cfg.StrOpt('backup_namespace',
-               default='trove.guestagent.strategies.backup.oracle_impl',
+    cfg.StrOpt('backup_namespace', default=None,
                help='Namespace to load backup strategies from.',
                deprecated_name='backup_namespace',
                deprecated_group='DEFAULT'),
-    cfg.StrOpt('restore_namespace',
-               default='trove.guestagent.strategies.restore.oracle_impl',
+    cfg.StrOpt('restore_namespace', default=None,
                help='Namespace to load restore strategies from.',
                deprecated_name='restore_namespace',
                deprecated_group='DEFAULT'),
     cfg.BoolOpt('volume_support', default=False,
                 help='Whether to provision a Cinder volume for datadir.'),
-    cfg.StrOpt('device_path', default='',
+    cfg.StrOpt('device_path', default=None,
                help='Device path for volume if volume support is enabled.'),
-    cfg.DictOpt('backup_incremental_strategy',
-                default={'OracleBackupEx': 'OracleBackupExIncremental'},
+    cfg.DictOpt('backup_incremental_strategy', default=None,
                 help='Incremental Backup Runner based on the default '
                 'strategy. For strategies that do not implement an '
                 'incremental backup, the runner will use the default full '
                 'backup.',
                 deprecated_name='backup_incremental_strategy',
                 deprecated_group='DEFAULT'),
-
+    cfg.StrOpt('oracle_host', default=None,
+               help='oracle_host'),
+    cfg.IntOpt('oracle_port', default=1526,
+               help='oracle_port'),
+    cfg.StrOpt('oracle_sys_usr', default=None,
+               help='oracle_sys_usr'),
+    cfg.StrOpt('oracle_sys_pswd', default=None,
+               help='oracle_sys_pswd'),
+    cfg.StrOpt('oracle_cdb_name', default=None,
+               help='oracle_cdb_name'),
+    cfg.StrOpt('proxy_status_file', default='/etc/trove/oracle-proxy-status',
+               help='proxy_status_file'),
 ]
 
 

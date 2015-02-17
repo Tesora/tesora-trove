@@ -863,14 +863,6 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
     Performs the various asynchronous instance related tasks.
     """
 
-    def _delete_external_db(self):
-        # contact the guestagent to delete the pdb on Oracle
-        if self.datastore.db_info.name == 'oracle':
-            guest_client = self.get_guest()
-            # delete_database needs to be synchronous, otherwise Nova will
-            # delete the instance before deleting the db on Oracle
-            guest_client.delete_database(self.db_info.name, is_async=False)
-
     def _delete_resources(self, deleted_at):
         LOG.debug("Begin _delete_resources for instance %s" % self.id)
         server_id = self.db_info.compute_instance_id
@@ -878,10 +870,21 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         LOG.debug("Stopping datastore on instance %s before deleting any "
                   "resources." % self.id)
         try:
-            self.guest.stop_db()
+            result = self.guest.stop_db()
         except Exception:
             LOG.exception(_("Error stopping the datastore before attempting "
                             "to delete instance id %s.") % self.id)
+
+        if result is not None:
+            # a situation occurred in the guest that requires us to
+            # halt any further cleanups.
+            # e.g. Oracle DB errors occuring in a proxy instance
+            raise Exception(_("Error stopping the datastore. Delete "
+                              "instance halted. Error Code: %(err_code)s; "
+                              "Error Message: '%(err_msg)s'") %
+                            {'err_code': result['error-code'],
+                             'err_msg': result['error-message']})
+
         try:
             if use_heat:
                 # Delete the server via heat
@@ -889,7 +892,6 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
                 name = 'trove-%s' % self.id
                 heatclient.stacks.delete(name)
             else:
-                self._delete_external_db()
                 self.server.delete()
         except Exception as ex:
             LOG.exception(_("Error during delete compute server %s")
