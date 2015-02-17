@@ -113,8 +113,8 @@ class MySQLRestoreMixin(object):
                                  time_out=self.RESET_ROOT_RETRY_TIMEOUT)
                 LOG.debug("Database successfully shutdown")
             except exception.PollTimeOut:
-                LOG.debug("Timeout shutting down database")
-                LOG.debug("Performing killall on mysqld_safe")
+                LOG.debug("Timeout shutting down database "
+                          "- performing killall on mysqld_safe.")
                 utils.execute_with_timeout("killall", "mysqld_safe",
                                            root_helper="sudo",
                                            run_as_root=True)
