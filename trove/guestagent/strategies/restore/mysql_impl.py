@@ -128,9 +128,17 @@ class MySQLRestoreMixin(object):
             utils.execute_with_timeout("sudo", "chmod", "a+r", init_file.name)
             self._writelines_one_per_line(init_file,
                                           self.RESET_ROOT_MYSQL_COMMANDS)
-            with tempfile.NamedTemporaryFile(
-                    suffix=self._ERROR_LOG_SUFFIX) as err_log_file:
+            # Do not attempt to delete the file as the 'trove' user.
+            # The process writing into it may have assumed it's ownership.
+            # Only owners can delete temporary
+            # files (restricted deletion).
+            err_log_file = tempfile.NamedTemporaryFile(
+                suffix=self._ERROR_LOG_SUFFIX,
+                delete=False)
+            try:
                 self._start_mysqld_safe_with_init_file(init_file, err_log_file)
+            finally:
+                MySQLRestoreMixin._silent_cleanup_temp_file(err_log_file)
 
     def _writelines_one_per_line(self, fp, lines):
         fp.write(os.linesep.join(lines))
@@ -143,6 +151,21 @@ class MySQLRestoreMixin(object):
                     self._ERROR_MESSAGE_PATTERN
                 )
         return None
+
+    @classmethod
+    def _silent_cleanup_temp_file(self, fp):
+        """Force-remove a given file as root.
+        Do not raise an exception on failure.
+        """
+        _file_path = fp.name
+        try:
+            fp.close()
+            utils.execute_with_timeout("rm", "-f", _file_path,
+                                       run_as_root=True,
+                                       root_helper="sudo")
+        except Exception:
+            LOG.debug("Could not cleanup temporary file: '%s'" % _file_path)
+            pass
 
     @classmethod
     def _is_non_zero_file(self, fp):
