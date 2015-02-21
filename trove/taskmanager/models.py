@@ -336,13 +336,21 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             err = inst_models.InstanceTasks.BUILDING_ERROR_REPLICA
             self._log_and_raise(e, msg, err)
 
-    def get_replication_master_snapshot(self, context, slave_of_id):
+    def get_replication_master_snapshot(self, context, slave_of_id,
+                                        backup_id=None):
+        # if we aren't passed in a backup id, look it up to possibly do
+        # an incremental backup, thus saving time
+        if not backup_id:
+            backup = Backup.get_last_completed(
+                context, slave_of_id, include_incremental=True)
+            if backup:
+                backup_id = backup.id
         snapshot_info = {
             'name': "Replication snapshot of %s" % self.id,
             'description': "Backup image used to initialize "
-            "replication slave",
+                           "replication slave",
             'instance_id': slave_of_id,
-            'parent_id': None,
+            'parent_id': backup_id,
             'tenant_id': self.tenant_id,
             'state': BackupState.NEW,
             'datastore_version_id': self.datastore_version.id,
@@ -357,6 +365,17 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             LOG.exception(msg)
             raise BackupCreationError(msg)
 
+        if backup_id:
+            # Look up the parent backup  info or fail early if not found or if
+            # the user does not have access to the parent.
+            _parent = Backup.get_by_id(context, backup_id)
+            parent = {
+                'location': _parent.location,
+                'checksum': _parent.checksum,
+            }
+            snapshot_info.update({
+                'parent': parent,
+            })
         try:
             master = BuiltInstanceTasks.load(context, slave_of_id)
             snapshot_info.update({

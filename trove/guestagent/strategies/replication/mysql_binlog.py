@@ -37,7 +37,9 @@ class MysqlBinlogReplication(mysql_base.MysqlReplicationBase):
         message = _("Unable to determine binlog position "
                     "(from file %(binlog_file)).")
 
-    def connect_to_master(self, service, snapshot):
+    def enable_as_slave(self, service, snapshot, slave_config):
+        service.write_replication_overrides(slave_config)
+        service.restart()
         logging_config = snapshot['log_position']
         logging_config.update(self._read_log_position())
         change_master_cmd = (

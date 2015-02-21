@@ -240,13 +240,13 @@ class Manager(periodic_task.PeriodicTasks):
     def _create_replication_slave(self, context, instance_id, name, flavor,
                                   image_id, databases, users,
                                   datastore_manager, packages, volume_size,
-                                  availability_zone,
-                                  root_password, nics, overrides, slave_of_id):
+                                  availability_zone, root_password, nics,
+                                  overrides, slave_of_id, backup_id):
 
         instance_tasks = FreshInstanceTasks.load(context, instance_id)
 
-        snapshot = instance_tasks.get_replication_master_snapshot(context,
-                                                                  slave_of_id)
+        snapshot = instance_tasks.get_replication_master_snapshot(
+            context, slave_of_id, backup_id)
         try:
             instance_tasks.create_instance(flavor, image_id, databases, users,
                                            datastore_manager, packages,
@@ -270,7 +270,8 @@ class Manager(periodic_task.PeriodicTasks):
                                            datastore_manager, packages,
                                            volume_size,
                                            availability_zone, root_password,
-                                           nics, overrides, slave_of_id)
+                                           nics, overrides, slave_of_id,
+                                           backup_id)
         else:
             instance_tasks = FreshInstanceTasks.load(context, instance_id)
             instance_tasks.create_instance(flavor, image_id, databases, users,
