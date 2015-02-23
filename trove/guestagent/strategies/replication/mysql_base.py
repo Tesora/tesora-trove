@@ -46,14 +46,6 @@ LOG = logging.getLogger(__name__)
 class MysqlReplicationBase(base.Replication):
     """Base class for MySql Replication strategies."""
 
-    @abc.abstractmethod
-    def _get_master_config(self):
-        "Returns the default configuration for a master site"
-
-    @abc.abstractmethod
-    def _get_slave_config(self):
-        "Returns the default configuration for a slave site"
-
     def get_master_ref(self, service, snapshot_info):
         master_ref = {
             'host': operating_system.get_ip_address(),

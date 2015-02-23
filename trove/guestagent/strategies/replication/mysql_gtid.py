@@ -22,43 +22,11 @@ from trove.openstack.common import log as logging
 AGENT = BackupAgent()
 CONF = cfg.CONF
 
-MASTER_CONFIG = """
-[mysqld]
-log_bin = /var/lib/mysql/mysql-bin.log
-binlog_format = MIXED
-enforce_gtid_consistency = ON
-gtid_mode = ON
-"""
-
-PERCONA_CONFIG = """
-enforce_storage_engine = Inno
-"""
-
-SLAVE_CONFIG = """
-[mysqld]
-log_bin = /var/lib/mysql/mysql-bin.log
-relay_log = /var/lib/mysql/mysql-relay-bin.log
-relay_log_info_repository = TABLE
-relay_log_recovery = 1
-relay_log_purge = 1
-gtid_mode = ON
-read_only = true
-"""
-
 LOG = logging.getLogger(__name__)
 
 
 class MysqlGTIDReplication(mysql_base.MysqlReplicationBase):
     """MySql Replication coordinated by GTIDs."""
-
-    def _get_master_config(self):
-        config = MASTER_CONFIG
-        if (CONF.datastore_manager == "percona"):
-            config = config + PERCONA_CONFIG
-        return MASTER_CONFIG
-
-    def _get_slave_config(self):
-        return SLAVE_CONFIG
 
     def connect_to_master(self, service, snapshot):
         logging_config = snapshot['log_position']
