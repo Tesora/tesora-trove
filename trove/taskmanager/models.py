@@ -236,7 +236,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
     def create_instance(self, flavor, image_id, databases, users,
                         datastore_manager, packages, volume_size,
                         backup_id, availability_zone, root_password, nics,
-                        overrides, cluster_config, wait_for_instance=True):
+                        overrides, cluster_config, snapshot=None):
 
         LOG.info(_("Creating instance %s.") % self.id)
         security_groups = None
@@ -305,7 +305,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                             packages, databases, users, backup_info,
                             config.config_contents, root_password,
                             config_overrides.config_contents,
-                            cluster_config)
+                            cluster_config, snapshot)
 
         if root_password:
             self.report_root_enabled()
@@ -327,11 +327,6 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             LOG.debug("Successfully created DNS entry for instance: %s" %
                       self.id)
 
-        if wait_for_instance:
-            timeout = (CONF.restore_usage_timeout if backup_info
-                       else CONF.usage_timeout)
-            self.wait_for_instance(timeout, flavor)
-
     def attach_replication_slave(self, snapshot, flavor):
         LOG.debug("Calling attach_replication_slave for %s.", self.id)
         try:
@@ -344,7 +339,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             err = inst_models.InstanceTasks.BUILDING_ERROR_REPLICA
             self._log_and_raise(e, msg, err)
 
-    def get_replication_master_snapshot(self, context, slave_of_id,
+    def get_replication_master_snapshot(self, context, slave_of_id, flavor,
                                         backup_id=None, replica_number=1):
         # if we aren't passed in a backup id, look it up to possibly do
         # an incremental backup, thus saving time
@@ -400,6 +395,9 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             })
             snapshot = master.get_replication_snapshot(
                 snapshot_info, flavor=master.flavor_id)
+            snapshot.update({
+                'config': self._render_replica_config(flavor).config_contents
+            })
             return snapshot
         except Exception as e_create:
             msg_create = (
@@ -784,7 +782,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
     def _guest_prepare(self, flavor_ram, volume_info,
                        packages, databases, users, backup_info=None,
                        config_contents=None, root_password=None,
-                       overrides=None, cluster_config=None):
+                       overrides=None, cluster_config=None, snapshot=None):
         LOG.debug("Entering guest_prepare")
         # Now wait for the response from the create to do additional work
         self.guest.prepare(flavor_ram, packages, databases, users,
@@ -794,7 +792,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                            config_contents=config_contents,
                            root_password=root_password,
                            overrides=overrides,
-                           cluster_config=cluster_config)
+                           cluster_config=cluster_config,
+                           snapshot=snapshot)
 
     def _create_dns_entry(self):
         dns_support = CONF.trove_dns_support
@@ -1019,10 +1018,10 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         return run_with_quotas(self.context.tenant, {'backups': 1},
                                _get_replication_snapshot)
 
-    def detach_replica(self, master):
+    def detach_replica(self, master, for_failover=False):
         LOG.debug("Calling detach_replica on %s" % self.id)
         try:
-            self.guest.detach_replica()
+            self.guest.detach_replica(for_failover)
             self.update_db(slave_of_id=None)
             self.slave_list = None
         except (GuestError, GuestTimeout):

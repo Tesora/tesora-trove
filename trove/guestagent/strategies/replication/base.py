@@ -49,7 +49,7 @@ class Replication(Strategy):
         """Configure underlying database as a slave of the given master."""
 
     @abc.abstractmethod
-    def detach_slave(self, service):
+    def detach_slave(self, service, for_failover):
         """Turn off replication on a slave site."""
 
     @abc.abstractmethod

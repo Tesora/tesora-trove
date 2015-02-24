@@ -85,7 +85,7 @@ class Manager(periodic_task.PeriodicTasks):
             slave_ips = master_candidate.detach_public_ips()
             latest_txn_id = old_master.get_latest_txn_id()
             master_candidate.wait_for_txn(latest_txn_id)
-            master_candidate.detach_replica(old_master)
+            master_candidate.detach_replica(old_master, for_failover=True)
             master_candidate.enable_as_master()
             old_master.attach_replica(master_candidate)
             master_candidate.attach_public_ips(master_ips)
@@ -101,7 +101,7 @@ class Manager(periodic_task.PeriodicTasks):
                 try:
                     replica.wait_for_txn(latest_txn_id)
                     if replica.id != master_candidate.id:
-                        replica.detach_replica(old_master)
+                        replica.detach_replica(old_master, for_failover=True)
                         replica.attach_replica(master_candidate)
                 except exception.TroveError:
                     msg = _("Unable to migrate replica %(slave)s from old "
@@ -170,7 +170,7 @@ class Manager(periodic_task.PeriodicTasks):
 
             master_ips = old_master.detach_public_ips()
             slave_ips = master_candidate.detach_public_ips()
-            master_candidate.detach_replica(old_master)
+            master_candidate.detach_replica(old_master, for_failover=True)
             master_candidate.enable_as_master()
             master_candidate.attach_public_ips(master_ips)
             master_candidate.make_read_only(False)
@@ -180,7 +180,7 @@ class Manager(periodic_task.PeriodicTasks):
             for replica in replica_models:
                 try:
                     if replica.id != master_candidate.id:
-                        replica.detach_replica(old_master)
+                        replica.detach_replica(old_master, for_failover=True)
                         replica.attach_replica(master_candidate)
                 except exception.TroveError:
                     msg = _("Unable to migrate replica %(slave)s from old "
@@ -250,12 +250,12 @@ class Manager(periodic_task.PeriodicTasks):
             ids = [instance_id]
             root_passwords = [root_password]
         replica_number = 0
-        replica_total = len(ids)
         replica_backup_id = backup_id
         replica_backup_created = False
+        replicas = []
 
         try:
-            for replica_index in range(0, replica_total):
+            for replica_index in range(0, len(ids)):
                 try:
                     replica_number += 1
                     LOG.debug("Creating replica %d of %d."
@@ -263,7 +263,7 @@ class Manager(periodic_task.PeriodicTasks):
                     instance_tasks = FreshInstanceTasks.load(
                         context, ids[replica_index])
                     snapshot = instance_tasks.get_replication_master_snapshot(
-                        context, slave_of_id, replica_backup_id,
+                        context, slave_of_id, flavor, replica_backup_id,
                         replica_number=replica_number)
                     replica_backup_id = snapshot['dataset']['snapshot_id']
                     replica_backup_created = True
@@ -271,7 +271,8 @@ class Manager(periodic_task.PeriodicTasks):
                         flavor, image_id, databases, users, datastore_manager,
                         packages, volume_size, replica_backup_id,
                         availability_zone, root_passwords[replica_index],
-                        nics, overrides, None, wait_for_instance=False)
+                        nics, overrides, None, snapshot)
+                    replicas.append(instance_tasks)
                 except Exception:
                     # if it's the first replica, then we shouldn't continue
                     LOG.exception(_(
@@ -280,13 +281,9 @@ class Manager(periodic_task.PeriodicTasks):
                     if replica_number == 1:
                         raise
 
-            for replica_index in range(0, replica_total):
-                instance_tasks = FreshInstanceTasks.load(
-                    context, ids[replica_index])
-                # now wait for them to complete and attach them
-                instance_tasks.wait_for_instance(CONF.restore_usage_timeout,
-                                                 flavor)
-                instance_tasks.attach_replication_slave(snapshot, flavor)
+            for replica in replicas:
+                replica.wait_for_instance(CONF.restore_usage_timeout, flavor)
+
         finally:
             if replica_backup_created:
                 Backup.delete(context, replica_backup_id)
@@ -314,6 +311,9 @@ class Manager(periodic_task.PeriodicTasks):
                                            volume_size, backup_id,
                                            availability_zone, root_password,
                                            nics, overrides, cluster_config)
+            timeout = (CONF.restore_usage_timeout if backup_id
+                       else CONF.usage_timeout)
+            instance_tasks.wait_for_instance(timeout, flavor)
 
     def update_overrides(self, context, instance_id, overrides):
         instance_tasks = models.BuiltInstanceTasks.load(context, instance_id)

@@ -113,7 +113,7 @@ class Manager(periodic_task.PeriodicTasks):
     def prepare(self, context, packages, databases, memory_mb, users,
                 device_path=None, mount_point=None, backup_info=None,
                 config_contents=None, root_password=None, overrides=None,
-                cluster_config=None):
+                cluster_config=None, snapshot=None):
         """Makes ready DBAAS on a Guest container."""
         MySqlAppStatus.get().begin_install()
         # status end_mysql_install set with secure()
@@ -165,6 +165,9 @@ class Manager(periodic_task.PeriodicTasks):
 
         if users:
             self.create_user(context, users)
+
+        if snapshot:
+            self.attach_replica(context, snapshot, snapshot['config'])
 
         LOG.info(_('Completed setup of MySQL database instance.'))
 
@@ -271,39 +274,11 @@ class Manager(periodic_task.PeriodicTasks):
         LOG.debug("Calling wait_for_txn.")
         MySqlApp(MySqlAppStatus.get()).wait_for_txn(txn)
 
-    def _validate_slave_for_replication(self, context, snapshot):
-        if (snapshot['replication_strategy'] != REPLICATION_STRATEGY):
-            raise exception.IncompatibleReplicationStrategy(
-                snapshot.update({
-                    'guest_strategy': REPLICATION_STRATEGY
-                }))
-
-        mount_point = CONF.get(MANAGER).mount_point
-        volume_stats = dbaas.get_filesystem_volume_stats(mount_point)
-        if (volume_stats.get('total', 0.0) <
-                snapshot['dataset']['dataset_size']):
-            raise exception.InsufficientSpaceForReplica(
-                snapshot.update({
-                    'slave_volume_size': volume_stats.get('total', 0.0)
-                }))
-
-    def attach_replication_slave(self, context, snapshot, slave_config):
-        LOG.debug("Attaching replication snapshot.")
-        app = MySqlApp(MySqlAppStatus.get())
-        try:
-            self._validate_slave_for_replication(context, snapshot)
-            replication = REPLICATION_STRATEGY_CLASS(context)
-            replication.enable_as_slave(app, snapshot, slave_config)
-        except Exception:
-            LOG.exception("Error enabling replication.")
-            app.status.set_status(rd_instance.ServiceStatuses.FAILED)
-            raise
-
-    def detach_replica(self, context):
+    def detach_replica(self, context, for_failover=False):
         LOG.debug("Detaching replica.")
         app = MySqlApp(MySqlAppStatus.get())
         replication = REPLICATION_STRATEGY_CLASS(context)
-        replica_info = replication.detach_slave(app)
+        replica_info = replication.detach_slave(app, for_failover)
         return replica_info
 
     def get_replica_context(self, context):

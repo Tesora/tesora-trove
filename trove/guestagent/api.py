@@ -228,7 +228,7 @@ class API(proxy.RpcProxy):
     def prepare(self, memory_mb, packages, databases, users,
                 device_path='/dev/vdb', mount_point='/mnt/volume',
                 backup_info=None, config_contents=None, root_password=None,
-                overrides=None, cluster_config=None):
+                overrides=None, cluster_config=None, snapshot=None):
         """Make an asynchronous call to prepare the guest
            as a database container optionally includes a backup id for restores
         """
@@ -239,7 +239,8 @@ class API(proxy.RpcProxy):
             memory_mb=memory_mb, users=users, device_path=device_path,
             mount_point=mount_point, backup_info=backup_info,
             config_contents=config_contents, root_password=root_password,
-            overrides=overrides, cluster_config=cluster_config)
+            overrides=overrides, cluster_config=cluster_config,
+            snapshot=snapshot)
 
     def restart(self):
         """Restart the MySQL server."""
@@ -339,9 +340,10 @@ class API(proxy.RpcProxy):
         self._cast("attach_replication_slave", snapshot=snapshot,
                    slave_config=replica_config)
 
-    def detach_replica(self):
+    def detach_replica(self, for_failover=False):
         LOG.debug("Detaching replica %s from its replication source.", self.id)
-        return self._call("detach_replica", AGENT_HIGH_TIMEOUT)
+        return self._call("detach_replica", AGENT_HIGH_TIMEOUT,
+                          for_failover=for_failover)
 
     def get_replica_context(self):
         LOG.debug("Getting replica context.")

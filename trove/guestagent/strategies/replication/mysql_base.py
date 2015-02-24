@@ -130,8 +130,8 @@ class MysqlReplicationBase(base.Replication):
             LOG.exception("Exception enabling guest as replica")
             raise
 
-    def detach_slave(self, service):
-        replica_info = service.stop_slave()
+    def detach_slave(self, service, for_failover):
+        replica_info = service.stop_slave(for_failover)
         service.remove_replication_replica_overrides()
         service.restart()
         return replica_info
