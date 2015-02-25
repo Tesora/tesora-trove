@@ -47,7 +47,7 @@ class Manager(periodic_task.PeriodicTasks):
     def prepare(self, context, packages, databases, memory_mb, users,
                 device_path=None, mount_point=None, backup_info=None,
                 config_contents=None, root_password=None, overrides=None,
-                cluster_config=None):
+                cluster_config=None, snapshot=None):
         """Makes ready DBAAS on a Guest container."""
 
         LOG.debug("Preparing MongoDB instance.")
