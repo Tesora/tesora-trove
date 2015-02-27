@@ -151,5 +151,4 @@ class MysqlReplicationBase(base.Replication):
 
     def demote_master(self, service):
         service.remove_replication_source_overrides()
-        service.stop_master()
         service.restart()
