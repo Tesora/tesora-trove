@@ -22,7 +22,7 @@ from trove.common import utils
 from trove.guestagent.backup.backupagent import BackupAgent
 from trove.guestagent.strategies.replication import mysql_base
 from trove.openstack.common import log as logging
-from trove.openstack.common.gettextutils import _
+from trove.common.i18n import _
 
 AGENT = BackupAgent()
 CONF = cfg.CONF

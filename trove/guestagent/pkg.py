@@ -29,7 +29,7 @@ from trove.common import utils
 from trove.common.exception import ProcessExecutionError
 from trove.guestagent.common import operating_system
 from trove.openstack.common import log as logging
-from trove.openstack.common.gettextutils import _
+from trove.common.i18n import _
 
 
 LOG = logging.getLogger(__name__)
@@ -72,6 +72,10 @@ class PkgSignError(exception.TroveError):
 
 
 class PkgBrokenError(exception.TroveError):
+    pass
+
+
+class PkgConfigureError(exception.TroveError):
     pass
 
 
@@ -263,10 +267,15 @@ class DebianPackagerMixin(BasePackagerMixin):
             with NamedTemporaryFile(delete=False) as f:
                 fname = f.name
                 f.write(selections)
-            utils.execute("debconf-set-selections %s && dpkg --configure -a"
-                          % fname, run_as_root=True, root_helper="sudo",
-                          shell=True)
-            os.remove(fname)
+            try:
+                utils.execute("debconf-set-selections", fname,
+                              run_as_root=True, root_helper="sudo")
+                utils.execute("dpkg", "--configure", "-a",
+                              run_as_root=True, root_helper="sudo")
+            except ProcessExecutionError:
+                raise PkgConfigureError("Error configuring package.")
+            finally:
+                os.remove(fname)
 
     def _install(self, packages, time_out):
         """Attempts to install packages.

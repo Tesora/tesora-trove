@@ -45,7 +45,7 @@ from trove.common.exception import TroveError
 from trove.common.exception import VolumeCreationFailure
 from trove.common.instance import ServiceStatuses
 from trove.common import instance as rd_instance
-from trove.common import strategy
+from trove.common.strategies.cluster import strategy
 from trove.common.remote import create_dns_client
 from trove.common.remote import create_heat_client
 from trove.common.remote import create_cinder_client
@@ -64,10 +64,10 @@ from trove.instance.tasks import InstanceTasks
 from trove.instance.models import InstanceStatus
 from trove.instance.models import InstanceServiceStatus
 from trove.openstack.common import log as logging
-from trove.openstack.common.gettextutils import _
-from trove.openstack.common.notifier import api as notifier
+from trove.common.i18n import _
 from trove.quota.quota import run_with_quotas
 import trove.common.remote as remote
+from trove import rpc
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
@@ -143,8 +143,11 @@ class NotifyMixin(object):
         payload.update(kwargs)
         LOG.debug('Sending event: %(event_type)s, %(payload)s' %
                   {'event_type': event_type, 'payload': payload})
-        notifier.notify(self.context, publisher_id, event_type, 'INFO',
-                        payload)
+
+        notifier = rpc.get_notifier(
+            service="taskmanager", publisher_id=publisher_id)
+
+        notifier.info(self.context, event_type, payload)
 
 
 class ConfigurationMixin(object):
@@ -961,6 +964,19 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
             LOG.exception(_("Failed to delete instance %(instance_id)s: "
                             "Timeout deleting compute server %(server_id)s") %
                           {'instance_id': self.id, 'server_id': server_id})
+
+        # If volume has been resized it must be manually removed in cinder
+        try:
+            if self.volume_id:
+                volume_client = create_cinder_client(self.context)
+                volume = volume_client.volumes.get(self.volume_id)
+                if volume.status == "available":
+                    LOG.info(_("Deleting volume %(v)s for instance: %(i)s.")
+                             % {'v': self.volume_id, 'i': self.id})
+                    volume.delete()
+        except Exception:
+            LOG.exception(_("Error deleting volume of instance %(id)s.") %
+                          {'id': self.db_info.id})
 
         self.send_usage_event('delete',
                               deleted_at=timeutils.isotime(deleted_at),

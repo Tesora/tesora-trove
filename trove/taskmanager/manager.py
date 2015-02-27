@@ -12,12 +12,14 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+from oslo import messaging
 from trove.common.context import TroveContext
 
 from oslo.utils import importutils
 
 from trove.backup.models import Backup
 import trove.common.cfg as cfg
+import trove.common.rpc.version as rpc_version
 from trove.common import exception
 from trove.common import strategy
 from trove.common.exception import ReplicationSlaveAttachError
@@ -30,11 +32,12 @@ from trove.taskmanager import models
 from trove.taskmanager.models import FreshInstanceTasks, BuiltInstanceTasks
 
 LOG = logging.getLogger(__name__)
-RPC_API_VERSION = "1.0"
 CONF = cfg.CONF
 
 
 class Manager(periodic_task.PeriodicTasks):
+
+    target = messaging.Target(version=rpc_version.RPC_API_VERSION)
 
     def __init__(self):
         super(Manager, self).__init__()

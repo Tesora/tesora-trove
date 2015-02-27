@@ -15,10 +15,11 @@
 #    under the License.
 """Routines for configuring Trove."""
 
-import trove
-from oslo.config import cfg
-
 import os.path
+
+from oslo.config import cfg
+import trove
+
 
 UNKNOWN_SERVICE_ID = 'unknown-service-id-error'
 
@@ -750,16 +751,16 @@ mongodb_opts = [
     cfg.BoolOpt('cluster_support', default=True,
                 help='Enable clusters to be created and managed.'),
     cfg.StrOpt('api_strategy',
-               default='trove.common.strategies.mongodb.api.'
+               default='trove.common.strategies.cluster.mongodb.api.'
                        'MongoDbAPIStrategy',
                help='Class that implements datastore-specific API logic.'),
     cfg.StrOpt('taskmanager_strategy',
-               default='trove.common.strategies.mongodb.taskmanager.'
+               default='trove.common.strategies.cluster.mongodb.taskmanager.'
                        'MongoDbTaskManagerStrategy',
                help='Class that implements datastore-specific task manager '
                     'logic.'),
     cfg.StrOpt('guestagent_strategy',
-               default='trove.common.strategies.mongodb.guestagent.'
+               default='trove.common.strategies.cluster.mongodb.guestagent.'
                        'MongoDbGuestAgentStrategy',
                help='Class that implements datastore-specific Guest Agent API '
                     'logic.'),
@@ -813,6 +814,24 @@ postgresql_opts = [
     cfg.ListOpt('ignore_dbs', default=['postgres']),
 ]
 
+# RPC version groups
+upgrade_levels = cfg.OptGroup(
+    'upgrade_levels',
+    title='RPC upgrade levels group for handling versions',
+    help='Contains the support version caps for each RPC API')
+
+rpcapi_cap_opts = [
+    cfg.StrOpt(
+        'taskmanager', default="icehouse",
+        help='Set a version cap for messages sent to taskmanager services'),
+    cfg.StrOpt(
+        'guestagent', default="icehouse",
+        help='Set a version cap for messages sent to guestagent services'),
+    cfg.StrOpt(
+        'conductor', default="icehouse",
+        help='Set a version cap for messages sent to conductor services'),
+]
+
 CONF = cfg.CONF
 
 CONF.register_opts(path_opts)
@@ -835,6 +854,8 @@ CONF.register_opts(cassandra_opts, cassandra_group)
 CONF.register_opts(couchbase_opts, couchbase_group)
 CONF.register_opts(mongodb_opts, mongodb_group)
 CONF.register_opts(postgresql_opts, postgresql_group)
+
+CONF.register_opts(rpcapi_cap_opts, upgrade_levels)
 
 
 def custom_parser(parsername, parser):

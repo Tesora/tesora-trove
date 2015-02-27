@@ -17,9 +17,11 @@ import re
 import webob.exc
 import wsgi
 
+from oslo.utils import strutils
+
 from trove.common import exception
 from trove.openstack.common import log as logging
-from trove.openstack.common.gettextutils import _
+from trove.common.i18n import _
 
 LOG = logging.getLogger(__name__)
 
@@ -59,7 +61,7 @@ class TenantBasedAuth(object):
         match_for_tenant = self.tenant_scoped_url.match(request.path_info)
         if (match_for_tenant and
                 tenant_id == match_for_tenant.group('tenant_id')):
-            LOG.debug(logging.mask_password(
+            LOG.debug(strutils.mask_password(
                       _("Authorized tenant '%(tenant_id)s' request: "
                         "%(request)s") %
                       {'tenant_id': tenant_id, 'request': request}))

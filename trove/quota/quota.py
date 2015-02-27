@@ -19,7 +19,7 @@ from oslo.config import cfg
 from oslo.utils import importutils
 
 from trove.openstack.common import log as logging
-from trove.openstack.common.gettextutils import _
+from trove.common.i18n import _
 from trove.common import exception
 from trove.quota.models import Quota
 from trove.quota.models import QuotaUsage
@@ -58,9 +58,8 @@ class DbQuotaDriver(object):
         """
 
         all_quotas = Quota.find_all(tenant_id=tenant_id).all()
-        result_quotas = dict((quota.resource, quota)
-                             for quota in all_quotas
-                             if quota.resource in resources)
+        result_quotas = {quota.resource: quota for quota in all_quotas
+                         if quota.resource in resources}
 
         if len(result_quotas) != len(resources):
             for resource in resources:
@@ -94,9 +93,8 @@ class DbQuotaDriver(object):
         """
 
         all_usages = QuotaUsage.find_all(tenant_id=tenant_id).all()
-        result_usages = dict((usage.resource, usage)
-                             for usage in all_usages
-                             if usage.resource in resources)
+        result_usages = {usage.resource: usage for usage in all_usages
+                         if usage.resource in resources}
         if len(result_usages) != len(resources):
             for resource in resources:
                 # Not in the DB, return default value

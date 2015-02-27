@@ -42,10 +42,9 @@ from trove.instance.tasks import InstanceTask
 from trove.instance.tasks import InstanceTasks
 from trove.taskmanager import api as task_api
 from trove.openstack.common import log as logging
-from trove.openstack.common import gettextutils
+from trove.common import i18n as i18n
 
-(_, _LE, _LI, _LW) = (gettextutils._, gettextutils._LE, gettextutils._LI,
-                      gettextutils._LW)
+(_, _LE, _LI, _LW) = (i18n._, i18n._LE, i18n._LI, i18n._LW)
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
@@ -600,12 +599,6 @@ class BaseInstance(SimpleInstance):
         deleted_at = datetime.utcnow()
         self._delete_resources(deleted_at)
         LOG.debug("Setting instance %s to be deleted.", self.id)
-        # Delete guest queue.
-        try:
-            guest = self.get_guest()
-            guest.delete_queue()
-        except Exception as ex:
-            LOG.warn(ex)
         self.update_db(deleted=True, deleted_at=deleted_at,
                        task_status=InstanceTasks.NONE)
         self.set_servicestatus_deleted()
@@ -710,10 +703,11 @@ class Instance(BuiltInstance):
                     raise exception.LocalStorageNotSpecified(flavor=flavor_id)
                 target_size = flavor.ephemeral  # ephemeral_Storage
 
-        if backup_id is not None:
+        if backup_id:
             backup_info = Backup.get_by_id(context, backup_id)
-            if backup_info.is_running:
-                raise exception.BackupNotCompleteError(backup_id=backup_id)
+            if not backup_info.is_done_successfuly:
+                raise exception.BackupNotCompleteError(
+                    backup_id=backup_id, state=backup_info.state)
 
             if backup_info.size > target_size:
                 raise exception.BackupTooLarge(

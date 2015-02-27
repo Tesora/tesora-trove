@@ -25,7 +25,7 @@ from trove.openstack.common import log as logging
 from trove.common import exception
 from trove.common import utils
 import trove.guestagent.datastore.mysql.service as dbaas
-from trove.openstack.common.gettextutils import _  # noqa
+from trove.common.i18n import _  # noqa
 
 LOG = logging.getLogger(__name__)
 
@@ -129,7 +129,7 @@ class MySQLRestoreMixin(object):
             self._writelines_one_per_line(init_file,
                                           self.RESET_ROOT_MYSQL_COMMANDS)
             # Do not attempt to delete the file as the 'trove' user.
-            # The process writing into it may have assumed it's ownership.
+            # The process writing into it may have assumed its ownership.
             # Only owners can delete temporary
             # files (restricted deletion).
             err_log_file = tempfile.NamedTemporaryFile(
@@ -138,7 +138,8 @@ class MySQLRestoreMixin(object):
             try:
                 self._start_mysqld_safe_with_init_file(init_file, err_log_file)
             finally:
-                MySQLRestoreMixin._silent_cleanup_temp_file(err_log_file)
+                err_log_file.close()
+                MySQLRestoreMixin._delete_file(err_log_file.name)
 
     def _writelines_one_per_line(self, fp, lines):
         fp.write(os.linesep.join(lines))
@@ -153,19 +154,18 @@ class MySQLRestoreMixin(object):
         return None
 
     @classmethod
-    def _silent_cleanup_temp_file(self, fp):
+    def _delete_file(self, file_path):
         """Force-remove a given file as root.
         Do not raise an exception on failure.
         """
-        _file_path = fp.name
-        try:
-            fp.close()
-            utils.execute_with_timeout("rm", "-f", _file_path,
-                                       run_as_root=True,
-                                       root_helper="sudo")
-        except Exception:
-            LOG.debug("Could not cleanup temporary file: '%s'" % _file_path)
-            pass
+
+        if os.path.isfile(file_path):
+            try:
+                utils.execute_with_timeout("rm", "-f", file_path,
+                                           run_as_root=True,
+                                           root_helper="sudo")
+            except Exception:
+                LOG.exception("Could not remove file: '%s'" % file_path)
 
     @classmethod
     def _is_non_zero_file(self, fp):

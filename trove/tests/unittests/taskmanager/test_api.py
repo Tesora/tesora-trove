@@ -16,12 +16,14 @@
 from mock import Mock
 from testtools import TestCase
 
-from trove.common.strategies.mongodb.taskmanager import MongoDbTaskManagerAPI
+from trove.common.strategies.cluster.mongodb.taskmanager import (
+    MongoDbTaskManagerAPI)
 from trove.taskmanager import api as task_api
 
 
 class TestAPI(TestCase):
     def test_load_api(self):
+        task_api.API.get_client = Mock()
         context = Mock()
         manager = 'mongodb'
 

@@ -51,7 +51,7 @@ The Trove project encourages the guidelines (below).
      * You have a question, or need a clarification from the author,
      * The proposed change is functional but you believe that there is
        a different, better, or more appropriate way in which to
-       acheive the end result being sought by the proposed change,
+       achieve the end result being sought by the proposed change,
      * There is an issue of some kind with the Commit Message,
        including violations of the Commit Message guidelines,
      * There is a typographical or formatting error in the commit
@@ -68,9 +68,7 @@ The Trove project encourages the guidelines (below).
      * The subject matter of the change (not the commit message)
        violates some well understood OpenStack procedure(s),
      * The change contains content that is demonstrably inappropriate,
-     * The test cases do not exercise the change(s) being proposed,
-     * You believe that the patch needs further work before it can be
-       merged.
+     * The test cases do not exercise the change(s) being proposed.
 
 
 Some other reviewing guidelines:

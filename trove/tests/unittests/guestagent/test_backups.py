@@ -14,9 +14,11 @@
 
 import testtools
 import mock
+from mock import patch, ANY
 
 import trove.guestagent.strategies.backup.base as backupBase
 import trove.guestagent.strategies.restore.base as restoreBase
+from trove.guestagent.strategies.restore.mysql_impl import MySQLRestoreMixin
 
 from trove.guestagent.strategies.backup import mysql_impl
 from trove.common import utils
@@ -94,16 +96,16 @@ class GuestAgentBackupTest(testtools.TestCase):
         backupBase.BackupRunner.is_encrypted = False
         RunnerClass = utils.import_class(BACKUP_XTRA_CLS)
         bkup = RunnerClass(12345, extra_opts="")
-        self.assertEqual(bkup.command, XTRA_BACKUP + PIPE + ZIP)
-        self.assertEqual(bkup.manifest, "12345.xbstream.gz")
+        self.assertEqual(XTRA_BACKUP + PIPE + ZIP, bkup.command)
+        self.assertEqual("12345.xbstream.gz", bkup.manifest)
 
     def test_backup_decrypted_xtrabackup_with_extra_opts_command(self):
         backupBase.BackupRunner.is_zipped = True
         backupBase.BackupRunner.is_encrypted = False
         RunnerClass = utils.import_class(BACKUP_XTRA_CLS)
         bkup = RunnerClass(12345, extra_opts="--no-lock")
-        self.assertEqual(bkup.command, XTRA_BACKUP_EXTRA_OPTS + PIPE + ZIP)
-        self.assertEqual(bkup.manifest, "12345.xbstream.gz")
+        self.assertEqual(XTRA_BACKUP_EXTRA_OPTS + PIPE + ZIP, bkup.command)
+        self.assertEqual("12345.xbstream.gz", bkup.manifest)
 
     def test_backup_encrypted_xtrabackup_command(self):
         backupBase.BackupRunner.is_zipped = True
@@ -111,9 +113,9 @@ class GuestAgentBackupTest(testtools.TestCase):
         backupBase.BackupRunner.encrypt_key = CRYPTO_KEY
         RunnerClass = utils.import_class(BACKUP_XTRA_CLS)
         bkup = RunnerClass(12345, extra_opts="")
-        self.assertEqual(bkup.command,
-                         XTRA_BACKUP + PIPE + ZIP + PIPE + ENCRYPT)
-        self.assertEqual(bkup.manifest, "12345.xbstream.gz.enc")
+        self.assertEqual(XTRA_BACKUP + PIPE + ZIP + PIPE + ENCRYPT,
+                         bkup.command)
+        self.assertEqual("12345.xbstream.gz.enc", bkup.manifest)
 
     def test_backup_xtrabackup_incremental(self):
         backupBase.BackupRunner.is_zipped = True
@@ -151,16 +153,16 @@ class GuestAgentBackupTest(testtools.TestCase):
         backupBase.BackupRunner.is_encrypted = False
         RunnerClass = utils.import_class(BACKUP_SQLDUMP_CLS)
         bkup = RunnerClass(12345, extra_opts="")
-        self.assertEqual(bkup.command, SQLDUMP_BACKUP + PIPE + ZIP)
-        self.assertEqual(bkup.manifest, "12345.gz")
+        self.assertEqual(SQLDUMP_BACKUP + PIPE + ZIP, bkup.command)
+        self.assertEqual("12345.gz", bkup.manifest)
 
     def test_backup_decrypted_mysqldump_with_extra_opts_command(self):
         backupBase.BackupRunner.is_zipped = True
         backupBase.BackupRunner.is_encrypted = False
         RunnerClass = utils.import_class(BACKUP_SQLDUMP_CLS)
         bkup = RunnerClass(12345, extra_opts="--events --routines --triggers")
-        self.assertEqual(bkup.command, SQLDUMP_BACKUP_EXTRA_OPTS + PIPE + ZIP)
-        self.assertEqual(bkup.manifest, "12345.gz")
+        self.assertEqual(SQLDUMP_BACKUP_EXTRA_OPTS + PIPE + ZIP, bkup.command)
+        self.assertEqual("12345.gz", bkup.manifest)
 
     def test_backup_encrypted_mysqldump_command(self):
         backupBase.BackupRunner.is_zipped = True
@@ -169,9 +171,9 @@ class GuestAgentBackupTest(testtools.TestCase):
         RunnerClass = utils.import_class(BACKUP_SQLDUMP_CLS)
         bkup = RunnerClass(12345, user="user",
                            password="password", extra_opts="")
-        self.assertEqual(bkup.command,
-                         SQLDUMP_BACKUP + PIPE + ZIP + PIPE + ENCRYPT)
-        self.assertEqual(bkup.manifest, "12345.gz.enc")
+        self.assertEqual(SQLDUMP_BACKUP + PIPE + ZIP + PIPE + ENCRYPT,
+                         bkup.command)
+        self.assertEqual("12345.gz.enc", bkup.manifest)
 
     def test_restore_decrypted_xtrabackup_command(self):
         restoreBase.RestoreRunner.is_zipped = True
@@ -179,8 +181,8 @@ class GuestAgentBackupTest(testtools.TestCase):
         RunnerClass = utils.import_class(RESTORE_XTRA_CLS)
         restr = RunnerClass(None, restore_location="/var/lib/mysql/data",
                             location="filename", checksum="md5")
-        self.assertEqual(restr.restore_cmd, UNZIP + PIPE + XTRA_RESTORE)
-        self.assertEqual(restr.prepare_cmd, PREPARE)
+        self.assertEqual(UNZIP + PIPE + XTRA_RESTORE, restr.restore_cmd)
+        self.assertEqual(PREPARE, restr.prepare_cmd)
 
     def test_restore_encrypted_xtrabackup_command(self):
         restoreBase.RestoreRunner.is_zipped = True
@@ -189,9 +191,9 @@ class GuestAgentBackupTest(testtools.TestCase):
         RunnerClass = utils.import_class(RESTORE_XTRA_CLS)
         restr = RunnerClass(None, restore_location="/var/lib/mysql/data",
                             location="filename", checksum="md5")
-        self.assertEqual(restr.restore_cmd,
-                         DECRYPT + PIPE + UNZIP + PIPE + XTRA_RESTORE)
-        self.assertEqual(restr.prepare_cmd, PREPARE)
+        self.assertEqual(DECRYPT + PIPE + UNZIP + PIPE + XTRA_RESTORE,
+                         restr.restore_cmd)
+        self.assertEqual(PREPARE, restr.prepare_cmd)
 
     def test_restore_xtrabackup_incremental_prepare_command(self):
         RunnerClass = utils.import_class(RESTORE_XTRA_INCR_CLS)
@@ -245,7 +247,7 @@ class GuestAgentBackupTest(testtools.TestCase):
         RunnerClass = utils.import_class(RESTORE_SQLDUMP_CLS)
         restr = RunnerClass(None, restore_location="/var/lib/mysql/data",
                             location="filename", checksum="md5")
-        self.assertEqual(restr.restore_cmd, UNZIP + PIPE + SQLDUMP_RESTORE)
+        self.assertEqual(UNZIP + PIPE + SQLDUMP_RESTORE, restr.restore_cmd)
 
     def test_restore_encrypted_mysqldump_command(self):
         restoreBase.RestoreRunner.is_zipped = True
@@ -254,8 +256,8 @@ class GuestAgentBackupTest(testtools.TestCase):
         RunnerClass = utils.import_class(RESTORE_SQLDUMP_CLS)
         restr = RunnerClass(None, restore_location="/var/lib/mysql/data",
                             location="filename", checksum="md5")
-        self.assertEqual(restr.restore_cmd,
-                         DECRYPT + PIPE + UNZIP + PIPE + SQLDUMP_RESTORE)
+        self.assertEqual(DECRYPT + PIPE + UNZIP + PIPE + SQLDUMP_RESTORE,
+                         restr.restore_cmd)
 
     def test_backup_encrypted_cbbackup_command(self):
         backupBase.BackupRunner.is_encrypted = True
@@ -284,7 +286,7 @@ class GuestAgentBackupTest(testtools.TestCase):
         RunnerClass = utils.import_class(RESTORE_CBBACKUP_CLS)
         restr = RunnerClass(None, restore_location="/tmp",
                             location="filename", checksum="md5")
-        self.assertEqual(restr.restore_cmd, UNZIP + PIPE + CBBACKUP_RESTORE)
+        self.assertEqual(UNZIP + PIPE + CBBACKUP_RESTORE, restr.restore_cmd)
 
     def test_restore_encrypted_cbbackup_command(self):
         restoreBase.RestoreRunner.is_zipped = True
@@ -293,8 +295,29 @@ class GuestAgentBackupTest(testtools.TestCase):
         RunnerClass = utils.import_class(RESTORE_CBBACKUP_CLS)
         restr = RunnerClass(None, restore_location="/tmp",
                             location="filename", checksum="md5")
-        self.assertEqual(restr.restore_cmd,
-                         DECRYPT + PIPE + UNZIP + PIPE + CBBACKUP_RESTORE)
+        self.assertEqual(DECRYPT + PIPE + UNZIP + PIPE + CBBACKUP_RESTORE,
+                         restr.restore_cmd)
+
+    def test_reset_root_password_on_mysql_restore(self):
+        with patch.object(utils, 'execute_with_timeout',
+                          return_value=True) as exec_call:
+            with patch.object(MySQLRestoreMixin,
+                              '_start_mysqld_safe_with_init_file',
+                              return_value=True):
+                inst = MySQLRestoreMixin()
+                inst.reset_root_password()
+
+                self.assertEqual(2, exec_call.call_count,
+                                 "'execute_with_timeout' "
+                                 "called an unexpected number of times")
+
+                exec_call.assert_any_call("sudo", "chmod", "a+r",
+                                          ANY)
+
+                # Make sure the temporary error log got deleted as root
+                # (see bug/1423759).
+                exec_call.assert_any_call("rm", "-f", ANY, run_as_root=True,
+                                          root_helper="sudo")
 
 
 class CouchbaseBackupTests(testtools.TestCase):

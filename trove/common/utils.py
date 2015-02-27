@@ -28,21 +28,22 @@ from passlib import utils as passlib_utils
 
 from oslo.utils import importutils
 from oslo.utils import timeutils
+from oslo.utils import strutils
+from oslo_concurrency import processutils
 
 from trove.common import cfg
 from trove.common import exception
+from trove.common.i18n import _
 from trove.openstack.common import log as logging
 from trove.openstack.common import loopingcall
-from trove.openstack.common import processutils
-from trove.openstack.common import utils as openstack_utils
-from trove.openstack.common.gettextutils import _
+
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 import_class = importutils.import_class
 import_object = importutils.import_object
 import_module = importutils.import_module
-bool_from_string = openstack_utils.bool_from_string
+bool_from_string = strutils.bool_from_string
 execute = processutils.execute
 isotime = timeutils.isotime
 
@@ -69,14 +70,14 @@ def create_method_args_string(*args, **kwargs):
 def stringify_keys(dictionary):
     if dictionary is None:
         return None
-    return dict((str(key), value) for key, value in dictionary.iteritems())
+    return {str(key): value for key, value in dictionary.iteritems()}
 
 
 def exclude(key_values, *exclude_keys):
     if key_values is None:
         return None
-    return dict((key, value) for key, value in key_values.iteritems()
-                if key not in exclude_keys)
+    return {key: value for key, value in key_values.iteritems()
+            if key not in exclude_keys}
 
 
 def generate_uuid():
@@ -190,7 +191,11 @@ def poll_until(retriever, condition=lambda value: value,
             raise loopingcall.LoopingCallDone(retvalue=obj)
         if time_out is not None and time.time() - start_time > time_out:
             raise exception.PollTimeOut
-    lc = loopingcall.LoopingCall(f=poll_and_check).start(sleep_time, True)
+
+    lc = loopingcall.FixedIntervalLoopingCall(
+        f=poll_and_check).start(
+            sleep_time, True)
+
     return lc.wait()
 
 

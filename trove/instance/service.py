@@ -15,6 +15,8 @@
 
 import webob.exc
 
+from oslo.utils import strutils
+
 from trove.common import cfg
 from trove.common import exception
 from trove.common import pagination
@@ -27,8 +29,8 @@ from trove.datastore import models as datastore_models
 from trove.backup.models import Backup as backup_model
 from trove.backup import views as backup_views
 from trove.openstack.common import log as logging
-from trove.openstack.common.gettextutils import _
-from trove.openstack.common.gettextutils import _LI
+from trove.common.i18n import _
+from trove.common.i18n import _LI
 import trove.common.apischema as apischema
 
 
@@ -195,8 +197,8 @@ class InstanceController(wsgi.Controller):
         # TODO(hub-cap): turn this into middleware
         LOG.info(_LI("Creating a database instance for tenant '%s'"),
                  tenant_id)
-        LOG.debug(logging.mask_password("req : '%s'\n\n", req))
-        LOG.debug(logging.mask_password("body : '%s'\n\n", body))
+        LOG.debug("req : '%s'\n\n", strutils.mask_password(req))
+        LOG.debug("body : '%s'\n\n", strutils.mask_password(body))
         context = req.environ[wsgi.CONTEXT_KEY]
         datastore_args = body['instance'].get('datastore', {})
         datastore, datastore_version = (
@@ -285,8 +287,8 @@ class InstanceController(wsgi.Controller):
         Updates the instance to set or unset one or more attributes.
         """
         LOG.info(_LI("Editing instance for tenant id %s."), tenant_id)
-        LOG.debug(logging.mask_password("req: %s"), req)
-        LOG.debug(logging.mask_password("body: %s"), body)
+        LOG.debug("req: %s", strutils.mask_password(req))
+        LOG.debug("body: %s", strutils.mask_password(body))
         context = req.environ[wsgi.CONTEXT_KEY]
 
         instance = models.Instance.load(context, id)

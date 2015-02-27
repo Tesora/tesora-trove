@@ -22,7 +22,7 @@ from trove.extensions.security_group import models
 from trove.extensions.security_group import views
 from trove.instance import models as instance_models
 from trove.openstack.common import log as logging
-from trove.openstack.common.gettextutils import _
+from trove.common.i18n import _
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
@@ -39,7 +39,7 @@ class SecurityGroupController(wsgi.Controller):
                                                      deleted=False)
 
         # Construct the mapping from Security Groups to Security Group Rules
-        rules_map = dict([(g.id, g.get_rules()) for g in sec_groups])
+        rules_map = {g.id: g.get_rules() for g in sec_groups}
 
         return wsgi.Result(
             views.SecurityGroupsView(sec_groups,

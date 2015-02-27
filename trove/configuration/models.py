@@ -24,7 +24,7 @@ from trove.datastore import models as dstore_models
 from trove.db import get_db_api
 from trove.db import models as dbmodels
 from trove.openstack.common import log as logging
-from trove.openstack.common.gettextutils import _
+from trove.common.i18n import _
 from trove.taskmanager import api as task_api
 
 
@@ -397,7 +397,7 @@ def load_datastore_configuration_parameters(datastore,
                                             config_file):
     get_db_api().configure_db(CONF)
     (ds, ds_v) = dstore_models.get_datastore_version(
-        type=datastore, version=datastore_version)
+        type=datastore, version=datastore_version, return_inactive=True)
     with open(config_file) as f:
         config = json.load(f)
         for param in config['configuration-parameters']:

@@ -19,13 +19,13 @@ from trove.common import cfg
 from trove.common.exception import PollTimeOut
 from trove.common.instance import ServiceStatuses
 from trove.common.remote import create_guest_client
-from trove.common.strategies import base
+from trove.common.strategies.cluster import base
 from trove.common import utils
 from trove.instance.models import DBInstance
 from trove.instance.models import Instance
 from trove.instance.models import InstanceServiceStatus
 from trove.instance.tasks import InstanceTasks
-from trove.openstack.common.gettextutils import _
+from trove.common.i18n import _
 from trove.openstack.common import log as logging
 from trove.taskmanager import api as task_api
 import trove.taskmanager.models as task_models
@@ -315,8 +315,9 @@ class MongoDbTaskManagerAPI(task_api.API):
     def mongodb_add_shard_cluster(self, cluster_id, shard_id,
                                   replica_set_name):
         LOG.debug("Making async call to add shard cluster %s " % cluster_id)
-        self.cast(self.context,
-                  self.make_msg("mongodb_add_shard_cluster",
-                                cluster_id=cluster_id,
-                                shard_id=shard_id,
-                                replica_set_name=replica_set_name))
+        cctxt = self.client.prepare(version=self.version_cap)
+        cctxt.cast(self.context,
+                   "mongodb_add_shard_cluster",
+                   cluster_id=cluster_id,
+                   shard_id=shard_id,
+                   replica_set_name=replica_set_name)

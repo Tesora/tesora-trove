@@ -24,7 +24,7 @@ from trove.guestagent.common import operating_system
 from trove.guestagent.datastore import service
 from trove.guestagent.datastore.redis import system
 from trove.openstack.common import log as logging
-from trove.openstack.common.gettextutils import _
+from trove.common.i18n import _
 
 LOG = logging.getLogger(__name__)
 TMP_REDIS_CONF = '/tmp/redis.conf.tmp'
@@ -76,7 +76,7 @@ class RedisAppStatus(service.BaseDbStatus):
         running ps.
         We attempt to locate the PID file and see if the process
         is crashed or shutdown.
-        Remeber by default execute_with_timeout raises this exception
+        Remember by default execute_with_timeout raises this exception
         if a non 0 status code is returned from the cmd called.
         """
         options = _load_redis_options()

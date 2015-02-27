@@ -24,7 +24,7 @@ from trove.cluster.models import DBCluster
 from trove.common import cfg
 from trove.common import exception
 from trove.common import remote
-from trove.common.strategies.mongodb import api as mongodb_api
+from trove.common.strategies.cluster.mongodb import api as mongodb_api
 from trove.datastore import models as datastore_models
 from trove.instance import models as inst_models
 from trove.instance.models import DBInstance
@@ -38,6 +38,7 @@ CONF = cfg.CONF
 class ClusterTest(TestCase):
     def setUp(self):
         super(ClusterTest, self).setUp()
+        task_api.API.get_client = Mock()
         self.cluster_id = str(uuid.uuid4())
         self.cluster_name = "Cluster" + self.cluster_id
         self.tenant_id = "23423432"

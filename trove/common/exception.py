@@ -17,10 +17,11 @@
 
 import re
 
+from oslo_concurrency import processutils
+
 from trove.openstack.common import log as logging
-from trove.openstack.common import exception as openstack_exception
-from trove.openstack.common import processutils
-from trove.openstack.common.gettextutils import _
+from trove.common import base_exception as openstack_exception
+from trove.common.i18n import _
 
 
 ClientConnectionError = openstack_exception.ClientConnectionError
@@ -367,7 +368,7 @@ class MalformedSecurityGroupRuleError(TroveError):
 class BackupNotCompleteError(TroveError):
 
     message = _("Unable to create instance because backup %(backup_id)s is "
-                "not completed.")
+                "not completed. Actual state: %(state)s.")
 
 
 class BackupFileNotFound(NotFound):
@@ -383,6 +384,10 @@ class BackupDatastoreMismatchError(TroveError):
 
 class SwiftAuthError(TroveError):
     message = _("Swift account not accessible for tenant %(tenant_id)s.")
+
+
+class SwiftNotFound(TroveError):
+    message = _("Swift is disabled for tenant %(tenant_id)s.")
 
 
 class DatabaseForUserNotInDatabaseListError(TroveError):
