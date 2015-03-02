@@ -108,7 +108,7 @@ class Manager(periodic_task.PeriodicTasks):
                         replica.attach_replica(master_candidate)
                 except exception.TroveError:
                     msg = _("Unable to migrate replica %(slave)s from old "
-                            "replica source %(old_master) to new source "
+                            "replica source %(old_master)s to new source "
                             "%(new_master)s.")
                     msg_values = {
                         "slave": replica.id,
