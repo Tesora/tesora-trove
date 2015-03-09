@@ -176,9 +176,9 @@ class API(object):
                                                  'instance_id': self.id})
         if not is_async:
             return self._call("delete_database", AGENT_HIGH_TIMEOUT,
-                              database=database)
+                              self.version_cap, database=database)
         else:
-            self._cast("delete_database", database=database)
+            self._cast("delete_database", self.version_cap, database=database)
 
     def enable_root(self):
         """Make a synchronous call to enable the root user for
