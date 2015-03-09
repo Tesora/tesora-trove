@@ -82,7 +82,7 @@ class RootActionsGroup(TestGroup):
     @test(depends_on=[check_root_enabled],
           runs_after=[check_root_still_enabled])
     def disable_root(self):
-        """Check the root is still enabled."""
+        """Disable root."""
         self.test_runner.run_disable_root()
 
     @test(depends_on=[disable_root])

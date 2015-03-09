@@ -172,9 +172,9 @@ register(["root"], root_actions_groups)
 
 # Datastore based groups - these should contain all functionality
 # currently supported by the datastore
-register(["cassandra_supported"], backup_groups, instance_actions_groups,
-         user_actions_groups, database_actions_group, root_actions_groups,
-         cluster_actions_groups)
+register(["cassandra_supported", "dse_supported"], backup_groups,
+         instance_actions_groups, user_actions_groups, database_actions_group,
+         root_actions_groups, cluster_actions_groups)
 register(["couchbase_supported"], instance_actions_groups, root_actions_groups,
          backup_groups, cluster_actions_groups)
 register(["couchdb_supported"], instance_actions_groups)

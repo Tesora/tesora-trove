@@ -13,21 +13,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from trove.tests.scenario.helpers.mysql_helper import MysqlHelper
+from trove.tests.scenario.helpers.cassandra_helper import CassandraHelper
 
 
-class MariadbHelper(MysqlHelper):
+class DseHelper(CassandraHelper):
 
     def __init__(self, expected_override_name):
-        super(MariadbHelper, self).__init__(expected_override_name)
-
-    # Mariadb currently does not support configuration groups.
-    # see: bug/1532256
-    def get_dynamic_group(self):
-        return dict()
-
-    def get_non_dynamic_group(self):
-        return dict()
-
-    def get_invalid_groups(self):
-        return []
+        super(DseHelper, self).__init__(expected_override_name)
