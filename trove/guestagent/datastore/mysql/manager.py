@@ -18,7 +18,6 @@
 
 import os
 from trove.common import cfg
-from trove.common import exception
 from trove.common import instance as rd_instance
 from trove.guestagent import dbaas
 from trove.guestagent import backup
