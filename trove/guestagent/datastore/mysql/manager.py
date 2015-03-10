@@ -18,6 +18,7 @@
 
 import os
 from trove.common import cfg
+from trove.common import exception
 from trove.common import instance as rd_instance
 from trove.guestagent import dbaas
 from trove.guestagent import backup
@@ -287,11 +288,33 @@ class Manager(periodic_task.PeriodicTasks):
         replica_info = replication.get_replica_context(app)
         return replica_info
 
+    def _validate_slave_for_replication(self, context, replica_info):
+        if (replica_info['replication_strategy'] != REPLICATION_STRATEGY):
+            raise exception.IncompatibleReplicationStrategy(
+                replica_info.update({
+                    'guest_strategy': REPLICATION_STRATEGY
+                }))
+
+        mount_point = CONF.get(MANAGER).mount_point
+        volume_stats = dbaas.get_filesystem_volume_stats(mount_point)
+        if (volume_stats.get('total', 0.0) <
+                replica_info['dataset']['dataset_size']):
+            raise exception.InsufficientSpaceForReplica(
+                replica_info.update({
+                    'slave_volume_size': volume_stats.get('total', 0.0)
+                }))
+
     def attach_replica(self, context, replica_info, slave_config):
         LOG.debug("Attaching replica.")
         app = MySqlApp(MySqlAppStatus.get())
-        replication = REPLICATION_STRATEGY_CLASS(context)
-        replication.enable_as_slave(app, replica_info, slave_config)
+        try:
+            self._validate_slave_for_replication(context, replica_info)
+            replication = REPLICATION_STRATEGY_CLASS(context)
+            replication.enable_as_slave(app, replica_info, slave_config)
+        except Exception:
+            LOG.exception("Error enabling replication.")
+            app.status.set_status(rd_instance.ServiceStatuses.FAILED)
+            raise
 
     def make_read_only(self, context, read_only):
         LOG.debug("Executing make_read_only(%s)" % read_only)

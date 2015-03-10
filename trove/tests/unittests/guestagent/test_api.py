@@ -256,7 +256,7 @@ class ApiTest(testtools.TestCase):
         self.api.detach_replica()
         # verify
         self._verify_rpc_prepare_before_call()
-        self._verify_call('detach_replica')
+        self._verify_call('detach_replica', for_failover=False)
 
     def test_demote_replication_master(self):
         # execute
@@ -275,9 +275,10 @@ class ApiTest(testtools.TestCase):
         self._verify_cast(
             'prepare', packages=['package1'], databases='db1',
             memory_mb='2048', users='user1', device_path='/dev/vdt',
-            mount_point='/mnt/opt', backup_info=None,
+            mount_point='/mnt/opt', snapshot=None,
             config_contents='cont', root_password='1-2-3-4',
-            overrides='override', cluster_config={'id': '2-3-4-5'})
+            backup_info=None, overrides='override',
+            cluster_config={'id': '2-3-4-5'})
 
     def test_prepare_with_backup(self):
         self.api._create_guest_queue = mock.Mock()
@@ -290,9 +291,10 @@ class ApiTest(testtools.TestCase):
         self._verify_cast(
             'prepare', packages=['package1'], databases='db1',
             memory_mb='2048', users='user1', device_path='/dev/vdt',
-            mount_point='/mnt/opt', backup_info=backup,
+            mount_point='/mnt/opt', snapshot=None,
             config_contents='cont', root_password='1-2-3-4',
-            overrides='overrides', cluster_config={'id': '2-3-4-5'})
+            backup_info=backup, overrides='overrides',
+            cluster_config={'id': '2-3-4-5'})
 
     def test_upgrade(self):
         instance_version = "v1.0.1"
