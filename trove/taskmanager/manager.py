@@ -262,7 +262,7 @@ class Manager(periodic_task.PeriodicTasks):
                 try:
                     replica_number += 1
                     LOG.debug("Creating replica %d of %d."
-                              % (replica_number, len(instance_id)))
+                              % (replica_number, len(ids)))
                     instance_tasks = FreshInstanceTasks.load(
                         context, ids[replica_index])
                     snapshot = instance_tasks.get_replication_master_snapshot(

@@ -793,11 +793,10 @@ class Instance(BuiltInstance):
                 ids.append(instance_id)
                 names.append(instance_name)
                 root_passwords.append(None)
-                # change the name of a multi-replica to be name + id
+                # change the name to be name + replica_number if more than one
                 if multi_replica:
                     replica_number = instance_index + 1
-                    names[instance_index] += (
-                        '-' + str(replica_number) + '-' + ids[instance_index])
+                    names[instance_index] += '-' + str(replica_number)
                     setattr(db_info, 'name', names[instance_index])
                     db_info.save()
 
