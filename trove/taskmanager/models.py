@@ -237,13 +237,12 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                         datastore_manager, packages, volume_size,
                         backup_id, availability_zone, root_password, nics,
                         overrides, cluster_config, snapshot=None):
+        # It is the caller's responsibility to ensure that
+        # FreshInstanceTasks.wait_for_instance is called after
+        # create_instance to ensure that the proper usage event gets sent
 
         LOG.info(_("Creating instance %s.") % self.id)
         security_groups = None
-
-        # If wait_for_instance is set to False, it is the callers
-        # responsibility to ensure that FreshInstanceTasks.wait_for_instance
-        # is called to ensure that the proper usage event gets sent
 
         # If security group support is enabled and heat based instance
         # orchestration is disabled, create a security group.
@@ -349,7 +348,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             if backup:
                 backup_id = backup.id
         snapshot_info = {
-            'name': "Replication snapshot of %s" % self.id,
+            'name': "Replication snapshot for %s" % self.id,
             'description': "Backup image used to initialize "
                            "replication slave",
             'instance_id': slave_of_id,
