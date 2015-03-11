@@ -131,6 +131,28 @@ class CassandraApp(object):
         packager.pkg_install(packages, None, system.INSTALL_TIMEOUT)
         LOG.debug("Finished installing Cassandra server")
 
+    def _remove_system_tables(self):
+        """
+        Clean up the system keyspace.
+
+        System tables are initialized on the first boot.
+        They store certain properties, such as 'cluster_name',
+        that cannot be easily changed once afterwards.
+        The system keyspace needs to be cleaned up first. The
+        tables will be regenerated on the next startup.
+
+        The service should not be running at this point.
+        """
+        if self.status.is_running:
+            raise RuntimeError(_("Cannot remove system tables. "
+                                 "The service is still running."))
+
+        LOG.info(_('Removing existing system tables.'))
+        system_keyspace_dir = '%s/%s/' % (system.CASSANDRA_DATA_DIR,
+                                          system.CASSANDRA_SYSTEM_KEYSPACE)
+        utils.execute_with_timeout('rm', '-r', '-f', system_keyspace_dir,
+                                   run_as_root=True, root_helper='sudo')
+
     def configure_superuser_access(self):
         LOG.info(_('Configuring Cassandra superuser.'))
         current_superuser = CassandraApp.get_current_superuser()
@@ -143,6 +165,63 @@ class CassandraApp(object):
         self.status.set_superuser(cassandra)
 
         return cassandra
+
+    def _reset_superuser_password(self):
+        """
+        The service should not be running at this point.
+
+        A general password reset procedure is:
+            - disable user authentication and remote access
+            - restart the service
+            - update the password in the 'system_auth.credentials' table
+            - re-enable authentication and make the host reachable
+            - restart the service
+        """
+        if self.status.is_running:
+            raise RuntimeError(_("Cannot reset the superuser password. "
+                                 "The service is still running."))
+
+        LOG.debug("Resetting the superuser password to '%s'."
+                  % system.DEFAULT_SUPERUSER_PASSWORD)
+
+        try:
+            # Disable automatic startup in case the node goes down before
+            # we have the superuser secured.
+            self._disable_db_on_boot()
+
+            self.__disable_remote_access()
+            self.__disable_authentication()
+
+            # We now start up the service and immediately re-enable
+            # authentication in the configuration file (takes effect after
+            # restart).
+            # Then we reset the superuser password to its default value
+            # and restart the service to get user functions back.
+            self.start_db(update_db=False)
+            self.__enable_authentication()
+            self.__reset_superuser_password()
+            self.restart()
+
+            # Now we configure the superuser access the same way as during
+            # normal provisioning and restart to apply the changes.
+            self.configure_superuser_access()
+            self.restart()
+        finally:
+            self.stop_db()  # Always restore the initial state of the service.
+
+        # At this point, we should have a secured database with new Trove-only
+        # superuser password.
+        # Proceed to re-enable remote access and automatic startup.
+        self.__enable_remote_access()
+        self._enable_db_on_boot()
+
+    def __reset_superuser_password(self):
+        current_superuser = CassandraApp.get_current_superuser()
+        with CassandraLocalhostConnection(current_superuser) as client:
+            client.execute(
+                "UPDATE system_auth.credentials SET salted_hash=%s "
+                "WHERE username='{}';", (current_superuser.name,),
+                (system.DEFAULT_SUPERUSER_PWD_HASH,))
 
     def __create_cqlsh_config(self, sections):
         config_path = self._get_cqlsh_conf_path()
@@ -188,10 +267,6 @@ class CassandraApp(object):
         Some of these settings may be overriden by user defined
         configuration groups.
 
-        cluster_name
-            - Use the unique guest id by default.
-            - Prevents nodes from one logical cluster from talking
-              to another. All nodes in a cluster must have the same value.
         authenticator and authorizer
             - Necessary to enable users and permissions.
         rpc_address - Enable remote connections on all interfaces.
@@ -203,10 +278,11 @@ class CassandraApp(object):
                          other nodes. Can never be 0.0.0.0.
         seed_provider - A list of discovery contact points.
         """
+        self.__enable_authentication()
+        self.__enable_remote_access()
+
+    def __enable_remote_access(self):
         updates = {
-            'cluster_name': CONF.guest_id,
-            'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
-            'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer',
             'rpc_address': "0.0.0.0",
             'broadcast_rpc_address': netutils.get_my_ipv4(),
             'listen_address': netutils.get_my_ipv4(),
@@ -216,6 +292,40 @@ class CassandraApp(object):
         }
 
         self._update_config(updates)
+
+    def __disable_remote_access(self):
+        updates = {
+            'rpc_address': "127.0.0.1",
+            'listen_address': '127.0.0.1',
+            'seed_provider': {'parameters':
+                              [{'seeds': '127.0.0.1'}]
+                              }
+        }
+
+        self._update_config(updates)
+
+    def __enable_authentication(self):
+        updates = {
+            'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
+            'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer'
+        }
+
+        self._update_config(updates)
+
+    def __disable_authentication(self):
+        updates = {
+            'authenticator': 'org.apache.cassandra.auth.AllowAllAuthenticator',
+            'authorizer': 'org.apache.cassandra.auth.AllowAllAuthorizer'
+        }
+
+        self._update_config(updates)
+
+    def update_cluster_name_property(self, name):
+        """This 'cluster_name' property prevents nodes from one
+        logical cluster from talking to another.
+        All nodes in a cluster must have the same value.
+        """
+        self._update_config({'cluster_name': name})
 
     def update_overrides(self, context, overrides, remove=False):
         if overrides:

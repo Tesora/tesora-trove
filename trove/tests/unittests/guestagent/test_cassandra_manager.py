@@ -18,11 +18,12 @@ import string
 
 import testtools
 from testtools import ExpectedException
-from mock import ANY, call, MagicMock, patch, NonCallableMagicMock
+from mock import ANY, call, DEFAULT, MagicMock, patch, NonCallableMagicMock
 from trove.common import exception
 from oslo_utils import netutils
 from trove.common.context import TroveContext
 from trove.common.instance import ServiceStatuses
+from trove.guestagent import backup
 from trove.guestagent import pkg as pkg
 from trove.guestagent import volume
 from trove.guestagent.datastore.experimental.cassandra import (
@@ -33,6 +34,8 @@ from trove.guestagent.db import models
 
 
 class GuestAgentCassandraDBManagerTest(testtools.TestCase):
+
+    __MOUNT_POINT = '/var/lib/cassandra'
 
     __N_GAK = '_get_available_keyspaces'
     __N_GSU = '_get_non_system_users'
@@ -125,22 +128,69 @@ class GuestAgentCassandraDBManagerTest(testtools.TestCase):
         self._prepare_dynamic([], is_db_installed=False)
 
     def test_prepare_db_not_installed_no_package(self):
-        self._prepare_dynamic([],
-                              is_db_installed=True)
+        self._prepare_dynamic([], is_db_installed=True)
+
+    @patch.object(backup, 'restore')
+    def test_prepare_db_restore(self, restore):
+        backup_info = {'id': 'backup_id',
+                       'instance_id': 'fake-instance-id',
+                       'location': 'fake-location',
+                       'type': 'InnoBackupEx',
+                       'checksum': 'fake-checksum'}
+
+        self._prepare_dynamic(['cassandra'], is_db_installed=False,
+                              backup_info=backup_info)
+        restore.assert_called_once_with(
+            self.context, backup_info, self.__MOUNT_POINT)
+
+    def test_superuser_password_reset(self):
+        fake_status = MagicMock()
+        fake_status.is_running = False
+
+        test_app = cass_service.CassandraApp(fake_status)
+        with patch.multiple(
+                test_app,
+                start_db=DEFAULT,
+                stop_db=DEFAULT,
+                restart=DEFAULT,
+                _disable_db_on_boot=DEFAULT,
+                _enable_db_on_boot=DEFAULT,
+                _CassandraApp__disable_remote_access=DEFAULT,
+                _CassandraApp__enable_remote_access=DEFAULT,
+                _CassandraApp__disable_authentication=DEFAULT,
+                _CassandraApp__enable_authentication=DEFAULT,
+                _CassandraApp__reset_superuser_password=DEFAULT,
+                configure_superuser_access=DEFAULT) as calls:
+
+                test_app._reset_superuser_password()
+
+                calls['_disable_db_on_boot'].assert_called_once_with()
+                calls[
+                    '_CassandraApp__disable_remote_access'
+                ].assert_called_once_with()
+                calls[
+                    '_CassandraApp__disable_authentication'
+                ].assert_called_once_with()
+                calls['start_db'].assert_called_once_with(update_db=False),
+                calls[
+                    '_CassandraApp__enable_authentication'
+                ].assert_called_once_with()
+                calls[
+                    '_CassandraApp__reset_superuser_password'
+                ].assert_called_once_with()
+                calls['configure_superuser_access'].assert_called_once_with()
+                self.assertEqual(2, calls['restart'].call_count)
+                calls['stop_db'].assert_called_once_with()
+                calls[
+                    '_CassandraApp__enable_remote_access'
+                ].assert_called_once_with()
+                calls['_enable_db_on_boot'].assert_called_once_with()
 
     def _prepare_dynamic(self, packages,
                          config_content='MockContent', device_path='/dev/vdb',
-                         is_db_installed=True, backup_id=None,
+                         is_db_installed=True, backup_info=None,
                          is_root_enabled=False,
                          overrides=None):
-        # covering all outcomes is starting to cause trouble here
-        if not backup_id:
-            backup_info = {'id': backup_id,
-                           'location': 'fake-location',
-                           'type': 'InnoBackupEx',
-                           'checksum': 'fake-checksum',
-                           }
-
         mock_status = MagicMock()
         mock_app = MagicMock()
         self.manager.appStatus = mock_status
@@ -155,19 +205,19 @@ class GuestAgentCassandraDBManagerTest(testtools.TestCase):
         mock_app.restart = MagicMock(return_value=None)
         mock_app.start_db = MagicMock(return_value=None)
         mock_app.stop_db = MagicMock(return_value=None)
+        mock_app._remove_system_tables = MagicMock(return_value=None)
         os.path.exists = MagicMock(return_value=True)
         volume.VolumeDevice.format = MagicMock(return_value=None)
         volume.VolumeDevice.migrate_data = MagicMock(return_value=None)
         volume.VolumeDevice.mount = MagicMock(return_value=None)
         volume.VolumeDevice.mount_points = MagicMock(return_value=[])
-
         # invocation
         self.manager.prepare(context=self.context, packages=packages,
                              config_contents=config_content,
                              databases=None,
                              memory_mb='2048', users=None,
                              device_path=device_path,
-                             mount_point="/var/lib/cassandra",
+                             mount_point=self.__MOUNT_POINT,
                              backup_info=backup_info,
                              overrides=None,
                              cluster_config=None)
@@ -175,10 +225,17 @@ class GuestAgentCassandraDBManagerTest(testtools.TestCase):
         # verification/assertion
         mock_status.begin_install.assert_any_call()
         mock_app.install_if_needed.assert_any_call(packages)
+        mock_app._remove_system_tables.assert_any_call()
         mock_app.init_storage_structure.assert_any_call('/var/lib/cassandra')
         mock_app.make_host_reachable.assert_any_call()
         mock_app.start_db.assert_any_call(update_db=False)
         mock_app.stop_db.assert_any_call()
+        if backup_info:
+            mock_app.update_cluster_name_property.assert_any_call(
+                backup_info['instance_id'])
+            mock_app._reset_superuser_password.assert_any_call()
+        else:
+            mock_app.update_cluster_name_property.assert_any_call(ANY)
 
     def test_keyspace_validation(self):
         valid_name = self._get_random_name(32)

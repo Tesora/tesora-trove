@@ -176,7 +176,7 @@ class BackupAgentTest(testtools.TestCase):
 
     def test_backup_impl_MySQLDump(self):
         """This test is for
-           guestagent/strategies/backup/impl
+           guestagent/strategies/backup/mysql_impl
         """
         mysql_dump = mysql_impl.MySQLDump(
             'abc', extra_opts='')
@@ -197,7 +197,7 @@ class BackupAgentTest(testtools.TestCase):
 
     def test_backup_impl_InnoBackupEx(self):
         """This test is for
-           guestagent/strategies/backup/impl
+           guestagent/strategies/backup/mysql_impl
         """
         inno_backup_ex = mysql_impl.InnoBackupEx('innobackupex', extra_opts='')
         self.assertIsNotNone(inno_backup_ex.cmd)

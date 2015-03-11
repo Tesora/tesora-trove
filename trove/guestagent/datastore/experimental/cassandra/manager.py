@@ -17,6 +17,8 @@
 import os
 from trove.common import cfg
 from trove.common import exception
+from trove.common import instance as trove_instance
+from trove.guestagent import backup
 from trove.guestagent import volume
 from trove.guestagent.datastore.experimental.cassandra import service
 from trove.openstack.common import periodic_task
@@ -73,22 +75,42 @@ class Manager(periodic_task.PeriodicTasks):
                 cluster_config=None, snapshot=None):
         LOG.info(_("Preparing Cassandra guest."))
         self.appStatus.begin_install()
-        LOG.debug("Installing cassandra.")
+        LOG.debug("Installing Cassandra.")
         self.app.install_if_needed(packages)
         self.app.init_storage_structure(mount_point)
+        if config_contents or device_path or backup_info:
 
-        if config_contents or device_path:
-            # Stop the db while we configure
-            # FIXME(amrith) Once the cassandra bug
+            # FIXME(pmalik) Once the cassandra bug
             # https://issues.apache.org/jira/browse/CASSANDRA-2356
             # is fixed, this code may have to be revisited.
-            LOG.debug("Stopping database prior to initial configuration.")
-            self.app.stop_db()
+            #
+            # Cassandra generates system keyspaces on the first start.
+            # The stored properties include the 'cluster_name', which once
+            # saved cannot be easily changed without removing the system
+            # tables. It is crucial that the service does not boot up in
+            # the middle of the configuration procedure.
+            # We wait here for the service to come up, stop it properly and
+            # remove the generated keyspaces before proceeding with
+            # configuration. If it does not start up within the time limit
+            # we assume it is not going to and proceed with configuration
+            # right away.
+            LOG.debug("Waiting for database first boot.")
+            if (self.appStatus.wait_for_real_status_to_change_to(
+                    trove_instance.ServiceStatuses.RUNNING,
+                    CONF.state_change_wait_time,
+                    False)):
+                LOG.debug("Stopping database prior to initial configuration.")
+                self.app.stop_db()
+                self.app._remove_system_tables()
 
+            LOG.debug("Starting initial configuration.")
             if config_contents:
                 LOG.debug("Applying configuration.")
                 self.app.write_config(config_contents, is_raw=True)
                 self.app.make_host_reachable()
+
+                # Instance nodes use the unique guest id by default.
+                self.app.update_cluster_name_property(CONF.guest_id)
 
             if device_path:
                 LOG.debug("Preparing data volume.")
@@ -104,6 +126,9 @@ class Manager(periodic_task.PeriodicTasks):
                 LOG.debug("Mounting new volume.")
                 device.mount(mount_point)
 
+            if backup_info:
+                self._perform_restore(backup_info, context, mount_point)
+
             LOG.debug("Starting database with configuration changes.")
             self.app.start_db(update_db=False)
 
@@ -112,7 +137,7 @@ class Manager(periodic_task.PeriodicTasks):
                 self.app.configure_superuser_access()
                 self.app.restart()
 
-            self.__admin = CassandraAdmin(self.app.get_current_superuser())
+        self.__admin = CassandraAdmin(self.app.get_current_superuser())
 
         self.appStatus.end_install_or_restart()
 
@@ -171,13 +196,44 @@ class Manager(periodic_task.PeriodicTasks):
         raise exception.DatastoreOperationNotSupported(
             operation='is_root_enabled', datastore=MANAGER)
 
-    def _perform_restore(self, backup_info, context, restore_location, app):
-        raise exception.DatastoreOperationNotSupported(
-            operation='_perform_restore', datastore=MANAGER)
+    def _perform_restore(self, backup_info, context, restore_location):
+        LOG.info(_("Restoring database from backup %s.") % backup_info['id'])
+        try:
+            backup.restore(context, backup_info, restore_location)
+
+            # Update the 'cluster_name' property to the original value
+            # (instance ID).
+            #
+            # The main reasons for this are:
+            # - Cluster name is stored in the database and is required
+            #   to match the current configuration value.
+            #   Cassandra fails to start otherwise.
+            # - The restored node should still belong to the same cluster.
+            self.app.update_cluster_name_property(backup_info['instance_id'])
+
+            # Now we proceed to reset the administrator's password.
+            # The original password comes from the parent instance and
+            # may be long lost.
+            self.app._reset_superuser_password()
+
+        except Exception as e:
+            LOG.error(e)
+            LOG.error(_("Error performing restore from backup %s.") %
+                      backup_info['id'])
+            self.app.status.set_status(trove_instance.ServiceStatuses.FAILED)
+            raise
+        LOG.info(_("Restored database successfully."))
 
     def create_backup(self, context, backup_info):
-        raise exception.DatastoreOperationNotSupported(
-            operation='create_backup', datastore=MANAGER)
+        """
+        Entry point for initiating a backup for this instance.
+        The call currently blocks guestagent until the backup is finished.
+
+        :param backup_info: a dictionary containing the db instance id of the
+                            backup task, location, type, and other data.
+        """
+
+        backup.backup(context, backup_info)
 
     def mount_volume(self, context, device_path=None, mount_point=None):
         device = volume.VolumeDevice(device_path)
