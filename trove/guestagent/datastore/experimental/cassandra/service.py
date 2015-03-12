@@ -75,8 +75,7 @@ class CassandraApp(object):
 
     def init_storage_structure(self, mount_point):
         try:
-            cmd = system.INIT_FS % mount_point
-            utils.execute_with_timeout(cmd, shell=True)
+            operating_system.create_directory(mount_point, as_root=True)
         except exception.ProcessExecutionError:
             LOG.exception(_("Error while initiating storage structure."))
 
