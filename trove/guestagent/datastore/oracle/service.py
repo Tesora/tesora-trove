@@ -224,7 +224,12 @@ class OracleAdmin(object):
         LOG.debug("---Listing Users---")
         users = []
         with LocalOracleClient(CONF.guest_name, service=True) as client:
-            client.execute('SELECT USERNAME FROM ALL_USERS')
+            # filter out Oracle system users by id
+            # Oracle docs say that new users are given id's between
+            # 100 and 60000
+            client.execute("SELECT USERNAME FROM ALL_USERS "
+                           "WHERE (USER_ID BETWEEN 100 AND 60000) "
+                           "AND USERNAME <> '%s'" % PDB_ADMIN_ID.upper())
             for row in client:
                 oracle_user = models.OracleUser()
                 oracle_user.name = row[0]
