@@ -49,6 +49,7 @@
 # the logo is not reasonably feasible for technical reasons.
 
 import os
+import re
 
 import cx_Oracle
 
@@ -124,11 +125,18 @@ class OracleAdmin(object):
     def create_database(self):
         """Create the list of specified databases."""
         LOG.debug("Creating pluggable database")
+        pdb_name = CONF.guest_name
+        if not re.match(r'[a-zA-Z0-9]\w{,63}$', pdb_name):
+            raise exception.BadRequest(
+                _('Database name %(name)s is not valid. Oracle pluggable '
+                  'database names restrictions: limit of 64 characters, use '
+                  'only alphanumerics and underscores, cannot start with an '
+                  'underscore.') % {'name': pdb_name})
         with LocalOracleClient(CONF.get(MANAGER).oracle_cdb_name) as client:
             client.execute("CREATE PLUGGABLE DATABASE %(pdb_name)s "
                            "ADMIN USER %(admin_id)s "
                            "IDENTIFIED BY %(admin_pswd)s" %
-                           {'pdb_name': CONF.guest_name,
+                           {'pdb_name': pdb_name,
                             'admin_id': PDB_ADMIN_ID,
                             'admin_pswd': PDB_ADMIN_PSWD})
             client.execute("ALTER PLUGGABLE DATABASE %s OPEN" %
@@ -227,9 +235,9 @@ class OracleAdmin(object):
             # filter out Oracle system users by id
             # Oracle docs say that new users are given id's between
             # 100 and 60000
-            client.execute("SELECT USERNAME FROM ALL_USERS "
-                           "WHERE (USER_ID BETWEEN 100 AND 60000) "
-                           "AND USERNAME <> '%s'" % PDB_ADMIN_ID.upper())
+            client.execute('SELECT USERNAME FROM ALL_USERS '
+                           'WHERE (USER_ID BETWEEN 100 AND 60000) '
+                           'AND USERNAME <> "%s"' % PDB_ADMIN_ID.upper())
             for row in client:
                 oracle_user = models.OracleUser()
                 oracle_user.name = row[0]
