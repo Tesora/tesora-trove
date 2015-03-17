@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import abc
 import re
 import string
 
@@ -30,6 +31,81 @@ class Base(object):
 
     def deserialize(self, o):
         self.__dict__ = o
+
+
+class DatastoreSchema(Base):
+    """Represents a database schema."""
+
+    def __init__(self):
+        self._name = None
+        self._collate = None
+        self._character_set = None
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, value):
+        self._validate_schema_name(value)
+        self._name = value
+
+    @property
+    def collate(self):
+        return self._collate
+
+    @property
+    def character_set(self):
+        return self._character_set
+
+    def _validate_schema_name(self, value):
+        """Perform validations on a given schema name.
+        :param value:        Validated schema name.
+        :type value:         string
+        :raises:             ValueError On validation errors.
+        """
+        if self._max_schema_name_length and (len(value) >
+                                             self._max_schema_name_length):
+            raise ValueError(_("Schema name '%(name)s' is too long. "
+                               "Max length = %(max_length)d.")
+                             % {'name': value,
+                                'max_length': self._max_schema_name_length})
+        elif not self._is_valid_schema_name(value):
+            raise ValueError(_("'%s' is not a valid schema name.") % value)
+
+    @abc.abstractproperty
+    def _max_schema_name_length(self):
+        """Return the maximum valid schema name length if any.
+        :returns:            Maximum schema name length or None if unlimited.
+        """
+
+    @abc.abstractmethod
+    def _is_valid_schema_name(self, value):
+        """Validate a given schema name.
+        :param value:        Validated schema name.
+        :type value:         string
+        :returns:            TRUE if valid, FALSE otherwise.
+        """
+
+
+class CassandraSchema(DatastoreSchema):
+    """Represents a Cassandra schema and its associated properties.
+
+    Keyspace names are 32 or fewer alpha-numeric characters and underscores,
+    the first of which is an alpha character.
+    """
+
+    def __init__(self, name):
+        super(CassandraSchema, self).__init__()
+        if name:
+            self.name = name
+
+    @property
+    def _max_schema_name_length(self):
+        return 32
+
+    def _is_valid_schema_name(self, value):
+        return True
 
 
 class MySQLDatabase(Base):
@@ -347,6 +423,140 @@ class ValidatedMySQLDatabase(MySQLDatabase):
             raise ValueError(msg % value)
         else:
             self._name = value
+
+
+class DatastoreUser(Base):
+    """Represents a datastore user."""
+
+    _HOSTNAME_WILDCARD = '%'
+
+    def __init__(self):
+        self._name = None
+        self._password = None
+        self._host = None
+        self._databases = []
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, value):
+        self._validate_user_name(value)
+        self._name = value
+
+    @property
+    def password(self):
+        return self._password
+
+    @password.setter
+    def password(self, value):
+        if self._is_valid_password(value):
+            self._password = value
+        else:
+            raise ValueError(_("'%s' is not a valid password.") % value)
+
+    @property
+    def databases(self):
+        return self._databases
+
+    @databases.setter
+    def databases(self, value):
+        mydb = self._build_database_schema(value)
+        self._databases.append(mydb.serialize())
+
+    @property
+    def host(self):
+        if self._host is None:
+            return self._HOSTNAME_WILDCARD
+        return self._host
+
+    @host.setter
+    def host(self, value):
+        if self._is_valid_host_name(value):
+            self._host = value
+        else:
+            raise ValueError(_("'%s' is not a valid hostname.") % value)
+
+    @abc.abstractmethod
+    def _build_database_schema(self, name):
+        """Build a schema for this user.
+        :type name:              string
+        :type character_set:     string
+        :type collate:           string
+        """
+
+    def _validate_user_name(self, value):
+        """Perform validations on a given user name.
+        :param value:        Validated user name.
+        :type value:         string
+        :raises:             ValueError On validation errors.
+        """
+        if self._max_username_length and (len(value) >
+                                          self._max_username_length):
+            raise ValueError(_("User name '%(name)s' is too long. "
+                               "Max length = %(max_length)d.")
+                             % {'name': value,
+                                'max_length': self._max_username_length})
+        elif not self._is_valid_user_name(value):
+            raise ValueError(_("'%s' is not a valid user name.") % value)
+
+    @abc.abstractproperty
+    def _max_username_length(self):
+        """Return the maximum valid user name length if any.
+        :returns:            Maximum user name length or None if unlimited.
+        """
+
+    @abc.abstractmethod
+    def _is_valid_user_name(self, value):
+        """Validate a given user name.
+        :param value:        User name to be validated.
+        :type value:         string
+        :returns:            TRUE if valid, FALSE otherwise.
+        """
+
+    @abc.abstractmethod
+    def _is_valid_host_name(self, value):
+        """Validate a given host name.
+        :param value:        Host name to be validated.
+        :type value:         string
+        :returns:            TRUE if valid, FALSE otherwise.
+        """
+
+    @abc.abstractmethod
+    def _is_valid_password(self, value):
+        """Validate a given password.
+        :param value:        Password to be validated.
+        :type value:         string
+        :returns:            TRUE if valid, FALSE otherwise.
+        """
+
+
+class CassandraUser(DatastoreUser):
+    """Represents a Cassandra user and its associated properties."""
+
+    def __init__(self, name, password=None):
+        super(CassandraUser, self).__init__()
+        if name:
+            self.name = name
+        if password is not None:
+            self.password = password
+
+    def _build_database_schema(self, name):
+        return CassandraSchema(name)
+
+    @property
+    def _max_username_length(self):
+        return 65535
+
+    def _is_valid_user_name(self, value):
+        return True
+
+    def _is_valid_host_name(self, value):
+        return True
+
+    def _is_valid_password(self, value):
+        return True
 
 
 class MySQLUser(Base):

@@ -15,6 +15,7 @@
 #
 
 import os
+import yaml
 from trove.common import cfg
 from trove.common import exception
 from trove.guestagent import volume
@@ -23,6 +24,9 @@ from trove.openstack.common import periodic_task
 from trove.openstack.common import log as logging
 from trove.common.i18n import _
 from trove.guestagent import dbaas
+from trove.guestagent.datastore.experimental.cassandra.service import (
+    CassandraAdmin
+)
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
@@ -32,8 +36,10 @@ MANAGER = CONF.datastore_manager
 class Manager(periodic_task.PeriodicTasks):
 
     def __init__(self):
-        self.appStatus = service.CassandraAppStatus()
+        self.appStatus = service.CassandraAppStatus(
+            service.CassandraApp.get_current_superuser())
         self.app = service.CassandraApp(self.appStatus)
+        self.__admin = CassandraAdmin(self.app.get_current_superuser())
 
     @periodic_task.periodic_task(ticks_between_runs=3)
     def update_status(self, context):
@@ -66,7 +72,7 @@ class Manager(periodic_task.PeriodicTasks):
                 device_path=None, mount_point=None, backup_info=None,
                 config_contents=None, root_password=None, overrides=None,
                 cluster_config=None, snapshot=None):
-        LOG.info(_("Setting status of instance to BUILDING."))
+        LOG.info(_("Preparing Cassandra guest."))
         self.appStatus.begin_install()
         LOG.debug("Installing cassandra.")
         self.app.install_if_needed(packages)
@@ -77,81 +83,86 @@ class Manager(periodic_task.PeriodicTasks):
             # FIXME(amrith) Once the cassandra bug
             # https://issues.apache.org/jira/browse/CASSANDRA-2356
             # is fixed, this code may have to be revisited.
-            LOG.debug("Stopping database prior to changes.")
+            LOG.debug("Stopping database prior to initial configuration.")
             self.app.stop_db()
 
             if config_contents:
-                LOG.debug("Processing configuration.")
-                self.app.write_config(config_contents)
+                LOG.debug("Applying configuration.")
+                self.app.write_config(yaml.load(config_contents))
                 self.app.make_host_reachable()
 
             if device_path:
+                LOG.debug("Preparing data volume.")
                 device = volume.VolumeDevice(device_path)
                 # unmount if device is already mounted
                 device.unmount_device(device_path)
                 device.format()
                 if os.path.exists(mount_point):
                     #rsync exiting data
+                    LOG.debug("Migrating existing data.")
                     device.migrate_data(mount_point)
                 #mount the volume
-                device.mount(mount_point)
                 LOG.debug("Mounting new volume.")
+                device.mount(mount_point)
 
-            LOG.debug("Restarting database after changes.")
-            self.app.start_db()
+            LOG.debug("Starting database with configuration changes.")
+            self.app.start_db(update_db=False)
+
+            if not service.CassandraApp.has_user_config():
+                LOG.debug("Securing superuser access.")
+                self.app.configure_superuser_access()
+                self.app.restart()
+
+            self.__admin = CassandraAdmin(self.app.get_current_superuser())
 
         self.appStatus.end_install_or_restart()
+
+        if databases:
+            self.create_database(context, databases)
+
+        if users:
+            self.create_user(context, users)
+
         LOG.info(_("Completed setup of Cassandra database instance."))
 
     def change_passwords(self, context, users):
-        raise exception.DatastoreOperationNotSupported(
-            operation='change_passwords', datastore=MANAGER)
+        self.__admin.change_passwords(context, users)
 
     def update_attributes(self, context, username, hostname, user_attrs):
-        raise exception.DatastoreOperationNotSupported(
-            operation='update_attributes', datastore=MANAGER)
+        self.__admin.update_attributes(context, username, hostname, user_attrs)
 
     def create_database(self, context, databases):
-        raise exception.DatastoreOperationNotSupported(
-            operation='create_database', datastore=MANAGER)
+        self.__admin.create_database(context, databases)
 
     def create_user(self, context, users):
-        raise exception.DatastoreOperationNotSupported(
-            operation='create_user', datastore=MANAGER)
+        self.__admin.create_user(context, users)
 
     def delete_database(self, context, database):
-        raise exception.DatastoreOperationNotSupported(
-            operation='delete_database', datastore=MANAGER)
+        self.__admin.delete_database(context, database)
 
     def delete_user(self, context, user):
-        raise exception.DatastoreOperationNotSupported(
-            operation='delete_user', datastore=MANAGER)
+        self.__admin.delete_user(context, user)
 
     def get_user(self, context, username, hostname):
-        raise exception.DatastoreOperationNotSupported(
-            operation='get_user', datastore=MANAGER)
+        return self.__admin.get_user(context, username, hostname)
 
     def grant_access(self, context, username, hostname, databases):
-        raise exception.DatastoreOperationNotSupported(
-            operation='grant_access', datastore=MANAGER)
+        self.__admin.grant_access(context, username, hostname, databases)
 
     def revoke_access(self, context, username, hostname, database):
-        raise exception.DatastoreOperationNotSupported(
-            operation='revoke_access', datastore=MANAGER)
+        self.__admin.revoke_access(context, username, hostname, database)
 
     def list_access(self, context, username, hostname):
-        raise exception.DatastoreOperationNotSupported(
-            operation='list_access', datastore=MANAGER)
+        return self.__admin.list_access(context, username, hostname)
 
     def list_databases(self, context, limit=None, marker=None,
                        include_marker=False):
-        raise exception.DatastoreOperationNotSupported(
-            operation='list_databases', datastore=MANAGER)
+        return self.__admin.list_databases(context, limit, marker,
+                                           include_marker)
 
     def list_users(self, context, limit=None, marker=None,
                    include_marker=False):
-        raise exception.DatastoreOperationNotSupported(
-            operation='list_users', datastore=MANAGER)
+        return self.__admin.list_users(context, limit, marker, include_marker)
 
     def enable_root(self, context):
         raise exception.DatastoreOperationNotSupported(

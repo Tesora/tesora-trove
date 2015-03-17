@@ -1634,7 +1634,7 @@ class CassandraDBAppTest(testtools.TestCase):
         (temp_handle, temp_config_name) = tempfile.mkstemp()
         mock_mkstemp = MagicMock(return_value=(temp_handle, temp_config_name))
 
-        configuration = 'this is my configuration'
+        configuration = {'key': 'some arbitrary configuration text'}
 
         self.assertRaises(ProcessExecutionError,
                           self.cassandra.write_config,
@@ -1658,30 +1658,26 @@ class CassandraDBAppTest(testtools.TestCase):
         (temp_handle, temp_config_name) = tempfile.mkstemp()
         mock_mkstemp = MagicMock(return_value=(temp_handle, temp_config_name))
 
-        configuration = 'some arbitrary configuration text'
+        configuration = {'key': 'some arbitrary configuration text'}
 
         mock_execute = MagicMock(return_value=('', ''))
 
-        self.cassandra.write_config(configuration,
-                                    execute_function=mock_execute,
-                                    mkstemp_function=mock_mkstemp)
+        with patch.object(operating_system, 'update_owner') as chown:
+            self.cassandra.write_config(configuration,
+                                        execute_function=mock_execute,
+                                        mkstemp_function=mock_mkstemp)
+            mv, chmod = mock_execute.call_args_list
+            mv.assert_called_with("sudo", "mv",
+                                  temp_config_name,
+                                  cass_system.CASSANDRA_CONF)
+            chmod.assert_called_with("sudo", "chmod", "a+r",
+                                     cass_system.CASSANDRA_CONF)
+            mock_mkstemp.assert_called_once()
+            chown.assert_called_once_with('cassandra', 'cassandra',
+                                          cass_system.CASSANDRA_CONF)
 
-        mv, chown, chmod = mock_execute.call_args_list
-
-        mv.assert_called_with("sudo", "mv",
-                              temp_config_name,
-                              cass_system.CASSANDRA_CONF)
-        chown.assert_called_with("sudo", "chown", "cassandra:cassandra",
-                                 cass_system.CASSANDRA_CONF)
-        chmod.assert_called_with("sudo", "chmod", "a+r",
-                                 cass_system.CASSANDRA_CONF)
-
-        mock_mkstemp.assert_called_once()
-
-        with open(temp_config_name, 'r') as config_file:
-            configuration_data = config_file.read()
-
-        self.assertEqual(configuration, configuration_data)
+        actual = operating_system.read_yaml_file(temp_config_name)
+        self.assertEqual(configuration, actual)
 
         # really delete the temporary_config_file
         os.unlink(temp_config_name)

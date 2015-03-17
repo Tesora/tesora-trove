@@ -13,21 +13,54 @@
 #    under the License.
 
 import os
+import random
+import string
 
 import testtools
-from mock import MagicMock
+from testtools import ExpectedException
+from mock import ANY, call, MagicMock, patch, NonCallableMagicMock
+from trove.common import exception
 from oslo_utils import netutils
 from trove.common.context import TroveContext
 from trove.common.instance import ServiceStatuses
+from trove.guestagent import pkg as pkg
 from trove.guestagent import volume
 from trove.guestagent.datastore.experimental.cassandra import (
     service as cass_service)
 from trove.guestagent.datastore.experimental.cassandra import (
     manager as cass_manager)
-from trove.guestagent import pkg as pkg
+from trove.guestagent.db import models
 
 
 class GuestAgentCassandraDBManagerTest(testtools.TestCase):
+
+    __N_GAK = '_get_available_keyspaces'
+    __N_GSU = '_get_non_system_users'
+    __N_BU = '_build_user'
+    __N_RU = '_rename_user'
+    __N_AUP = '_alter_user_password'
+    __N_CAU = 'trove.guestagent.db.models.CassandraUser'
+    __N_CU = '_create_user'
+    __N_GFA = '_grant_full_access_on_keyspace'
+    __N_DU = '_drop_user'
+
+    __ACCESS_MODIFIERS = ('ALTER', 'CREATE', 'DROP', 'MODIFY', 'SELECT')
+    __CREATE_DB_FORMAT = (
+        "CREATE KEYSPACE \"{}\" WITH REPLICATION = "
+        "{{ 'class' : 'SimpleStrategy', 'replication_factor' : 1 }};"
+    )
+    __DROP_DB_FORMAT = "DROP KEYSPACE \"{}\";"
+    __CREATE_USR_FORMAT = "CREATE USER '{}' WITH PASSWORD %s NOSUPERUSER;"
+    __ALTER_USR_FORMAT = "ALTER USER '{}' WITH PASSWORD %s;"
+    __DROP_USR_FORMAT = "DROP USER '{}';"
+    __GRANT_FORMAT = "GRANT {} ON KEYSPACE \"{}\" TO '{}';"
+    __REVOKE_FORMAT = "REVOKE ALL PERMISSIONS ON KEYSPACE \"{}\" FROM '{}';"
+    __LIST_PERMISSIONS = (
+        "LIST ALL PERMISSIONS ON KEYSPACE \"{}\" "
+        "OF '{}' NORECURSIVE;"
+    )
+    __LIST_DB_FORMAT = "SELECT * FROM system.schema_keyspaces;"
+    __LIST_USR_FORMAT = "LIST USERS;"
 
     def setUp(self):
         super(GuestAgentCassandraDBManagerTest, self).setUp()
@@ -43,6 +76,9 @@ class GuestAgentCassandraDBManagerTest(testtools.TestCase):
             return_value=FakeInstanceServiceStatus())
         self.context = TroveContext()
         self.manager = cass_manager.Manager()
+        self.manager._Manager__admin = cass_service.CassandraAdmin(
+            models.CassandraUser('Test'))
+        self.admin = self.manager._Manager__admin
         self.pkg = cass_service.packager
         self.real_db_app_status = cass_service.CassandraAppStatus
         self.origin_os_path_exists = os.path.exists
@@ -141,5 +177,330 @@ class GuestAgentCassandraDBManagerTest(testtools.TestCase):
         mock_app.install_if_needed.assert_any_call(packages)
         mock_app.init_storage_structure.assert_any_call('/var/lib/cassandra')
         mock_app.make_host_reachable.assert_any_call()
-        mock_app.start_db.assert_any_call()
+        mock_app.start_db.assert_any_call(update_db=False)
         mock_app.stop_db.assert_any_call()
+
+    def test_keyspace_validation(self):
+        valid_name = self._get_random_name(32)
+        db = models.CassandraSchema(valid_name)
+        self.assertEqual(valid_name, db.name)
+        with ExpectedException(ValueError):
+            models.CassandraSchema(self._get_random_name(33))
+
+    def test_user_validation(self):
+        valid_name = self._get_random_name(65535)
+        usr = models.CassandraUser(valid_name, 'password')
+        self.assertEqual(valid_name, usr.name)
+        self.assertEqual('password', usr.password)
+        with ExpectedException(ValueError):
+            models.CassandraUser(self._get_random_name(65536))
+
+    @classmethod
+    def _serialize_collection(self, *collection):
+        return [item.serialize() for item in collection]
+
+    @classmethod
+    def _get_random_name(self, size, chars=string.letters + string.digits):
+        return ''.join(random.choice(chars) for _ in range(size))
+
+    @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
+    def test_create_database(self, conn):
+        db1 = models.CassandraSchema('db1')
+        db2 = models.CassandraSchema('db2')
+        db3 = models.CassandraSchema(self._get_random_name(32))
+
+        self.manager.create_database(self.context,
+                                     self._serialize_collection(db1, db2, db3))
+        conn.return_value.execute.assert_has_calls([
+            call(self.__CREATE_DB_FORMAT, (db1.name,)),
+            call(self.__CREATE_DB_FORMAT, (db2.name,)),
+            call(self.__CREATE_DB_FORMAT, (db3.name,))
+        ])
+
+    @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
+    def test_delete_database(self, conn):
+        db = models.CassandraSchema(self._get_random_name(32))
+        self.manager.delete_database(self.context, db.serialize())
+        conn.return_value.execute.assert_called_once_with(
+            self.__DROP_DB_FORMAT, (db.name,))
+
+    @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
+    def test_create_user(self, conn):
+        usr1 = models.CassandraUser('usr1')
+        usr2 = models.CassandraUser('usr2', '')
+        usr3 = models.CassandraUser(self._get_random_name(1025), 'password')
+
+        self.manager.create_user(self.context,
+                                 self._serialize_collection(usr1, usr2, usr3))
+        conn.return_value.execute.assert_has_calls([
+            call(self.__CREATE_USR_FORMAT, (usr1.name,), (usr1.password,)),
+            call(self.__CREATE_USR_FORMAT, (usr2.name,), (usr2.password,)),
+            call(self.__CREATE_USR_FORMAT, (usr3.name,), (usr3.password,))
+        ])
+
+    @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
+    def test_delete_user(self, conn):
+        usr = models.CassandraUser(self._get_random_name(1025), 'password')
+        self.manager.delete_user(self.context, usr.serialize())
+        conn.return_value.execute.assert_called_once_with(
+            self.__DROP_USR_FORMAT, (usr.name,))
+
+    @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
+    def test_change_passwords(self, conn):
+        usr1 = models.CassandraUser('usr1')
+        usr2 = models.CassandraUser('usr2', '')
+        usr3 = models.CassandraUser(self._get_random_name(1025), 'password')
+
+        self.manager.change_passwords(self.context, self._serialize_collection(
+            usr1, usr2, usr3))
+        conn.return_value.execute.assert_has_calls([
+            call(self.__ALTER_USR_FORMAT, (usr1.name,), (usr1.password,)),
+            call(self.__ALTER_USR_FORMAT, (usr2.name,), (usr2.password,)),
+            call(self.__ALTER_USR_FORMAT, (usr3.name,), (usr3.password,))
+        ])
+
+    @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
+    def test_alter_user_password(self, conn):
+        usr1 = models.CassandraUser('usr1')
+        usr2 = models.CassandraUser('usr2', '')
+        usr3 = models.CassandraUser(self._get_random_name(1025), 'password')
+
+        self.admin.alter_user_password(usr1)
+        self.admin.alter_user_password(usr2)
+        self.admin.alter_user_password(usr3)
+        conn.return_value.execute.assert_has_calls([
+            call(self.__ALTER_USR_FORMAT, (usr1.name,), (usr1.password,)),
+            call(self.__ALTER_USR_FORMAT, (usr2.name,), (usr2.password,)),
+            call(self.__ALTER_USR_FORMAT, (usr3.name,), (usr3.password,))
+        ])
+
+    @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
+    def test_grant_access(self, conn):
+        usr1 = models.CassandraUser('usr1')
+        usr2 = models.CassandraUser('usr1', 'password')
+        db1 = models.CassandraSchema('db1')
+        db2 = models.CassandraSchema('db2')
+        db3 = models.CassandraSchema('db3')
+
+        self.manager.grant_access(self.context, usr1.name, None, [db1.name,
+                                                                  db2.name])
+        self.manager.grant_access(self.context, usr2.name, None, [db3.name])
+
+        expected = []
+        for modifier in self.__ACCESS_MODIFIERS:
+            expected.append(call(self.__GRANT_FORMAT,
+                                 (modifier, db1.name, usr1.name)))
+            expected.append(call(self.__GRANT_FORMAT,
+                                 (modifier, db3.name, usr2.name)))
+
+        conn.return_value.execute.assert_has_calls(expected, any_order=True)
+
+    @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
+    def test_revoke_access(self, conn):
+        usr1 = models.CassandraUser('usr1')
+        usr2 = models.CassandraUser('usr1', 'password')
+        db1 = models.CassandraSchema('db1')
+        db2 = models.CassandraSchema('db2')
+
+        self.manager.revoke_access(self.context, usr1.name, None, db1.name)
+        self.manager.revoke_access(self.context, usr2.name, None, db2.name)
+        conn.return_value.execute.assert_has_calls([
+            call(self.__REVOKE_FORMAT, (db1.name, usr1.name)),
+            call(self.__REVOKE_FORMAT, (db2.name, usr2.name))
+        ])
+
+    @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
+    def test_get_available_keyspaces(self, conn):
+        self.manager.list_databases(self.context)
+        conn.return_value.execute.assert_called_once_with(
+            self.__LIST_DB_FORMAT)
+
+    @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
+    def test_list_databases(self, conn):
+        db1 = models.CassandraSchema('db1')
+        db2 = models.CassandraSchema('db2')
+        db3 = models.CassandraSchema(self._get_random_name(32))
+
+        with patch.object(self.admin, self.__N_GAK, return_value={db1, db2,
+                                                                  db3}):
+            found = self.manager.list_databases(self.context)
+            self.assertEqual(2, len(found))
+            self.assertEqual(3, len(found[0]))
+            self.assertEqual(None, found[1])
+            self.assertIn(db1.serialize(), found[0])
+            self.assertIn(db2.serialize(), found[0])
+            self.assertIn(db3.serialize(), found[0])
+
+        with patch.object(self.admin, self.__N_GAK, return_value=set()):
+            found = self.manager.list_databases(self.context)
+            self.assertEqual(([], None), found)
+
+    @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
+    def test_get_non_system_users(self, conn):
+        usr = models.CassandraUser(self._get_random_name(1025), 'password')
+        db1 = models.CassandraSchema('db1')
+        db2 = models.CassandraSchema('db2')
+        usr.databases.append(db1)
+        usr.databases.append(db2)
+
+        rv_1 = NonCallableMagicMock()
+        rv_1.configure_mock(name=usr.name, super=False)
+        rv_2 = NonCallableMagicMock()
+        rv_2.configure_mock(keyspace_name=db1.name)
+        rv_3 = NonCallableMagicMock()
+        rv_3.configure_mock(keyspace_name=db2.name)
+
+        with patch.object(conn.return_value, 'execute', return_value=iter(
+                [rv_1, rv_2, rv_3])):
+            self.manager.list_users(self.context)
+            conn.return_value.execute.assert_has_calls([
+                call(self.__LIST_USR_FORMAT),
+                call(self.__LIST_DB_FORMAT),
+                call(self.__LIST_PERMISSIONS, (db1.name, usr.name)),
+                call(self.__LIST_PERMISSIONS, (db2.name, usr.name))
+            ], any_order=True)
+
+    @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
+    def test_list_access(self, conn):
+        usr1 = models.CassandraUser('usr1')
+        usr2 = models.CassandraUser('usr2')
+        usr3 = models.CassandraUser(self._get_random_name(1025), 'password')
+        db1 = models.CassandraSchema('db1')
+        db2 = models.CassandraSchema('db2')
+        usr2.databases.append(db1)
+        usr3.databases.append(db1)
+        usr3.databases.append(db2)
+
+        with patch.object(self.admin, self.__N_GSU, return_value={usr1, usr2,
+                                                                  usr3}):
+            usr1_dbs = self.manager.list_access(self.context, usr1.name, None)
+            usr2_dbs = self.manager.list_access(self.context, usr2.name, None)
+            usr3_dbs = self.manager.list_access(self.context, usr3.name, None)
+            self.assertEqual([], usr1_dbs)
+            self.assertEqual([db1], usr2_dbs)
+            self.assertEqual([db1, db2], usr3_dbs)
+
+        with patch.object(self.admin, self.__N_GSU, return_value=set()):
+            with ExpectedException(exception.UserNotFound):
+                self.manager.list_access(self.context, usr3.name, None)
+
+    @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
+    def test_list_users(self, conn):
+        usr1 = models.CassandraUser('usr1')
+        usr2 = models.CassandraUser('usr2')
+        usr3 = models.CassandraUser(self._get_random_name(1025), 'password')
+
+        with patch.object(self.admin, self.__N_GSU, return_value={usr1, usr2,
+                                                                  usr3}):
+            found = self.manager.list_users(self.context)
+            self.assertEqual(2, len(found))
+            self.assertEqual(3, len(found[0]))
+            self.assertEqual(None, found[1])
+            self.assertIn(usr1.serialize(), found[0])
+            self.assertIn(usr2.serialize(), found[0])
+            self.assertIn(usr3.serialize(), found[0])
+
+        with patch.object(self.admin, self.__N_GSU, return_value=set()):
+            self.assertEqual(([], None), self.manager.list_users(self.context))
+
+    @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
+    def test_get_user(self, conn):
+        usr1 = models.CassandraUser('usr1')
+        usr2 = models.CassandraUser('usr2')
+        usr3 = models.CassandraUser(self._get_random_name(1025), 'password')
+
+        with patch.object(self.admin, self.__N_GSU, return_value={usr1, usr2,
+                                                                  usr3}):
+            found = self.manager.get_user(self.context, usr2.name, None)
+            self.assertEqual(usr2.serialize(), found)
+
+        with patch.object(self.admin, self.__N_GSU, return_value=set()):
+            with ExpectedException(exception.UserNotFound):
+                self.manager.get_user(self.context, usr2.name, None)
+
+    @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
+    def test_rename_user(self, conn):
+        usr = models.CassandraUser('usr')
+        db1 = models.CassandraSchema('db1')
+        db2 = models.CassandraSchema('db2')
+        usr.databases.append(db1)
+        usr.databases.append(db2)
+
+        new_user = models.CassandraUser('new_user')
+        with patch(self.__N_CAU, return_value=new_user):
+            with patch.object(self.admin, self.__N_BU, return_value=usr):
+                with patch.object(self.admin, self.__N_CU) as create:
+                    with patch.object(self.admin, self.__N_GFA) as grant:
+                        with patch.object(self.admin, self.__N_DU) as drop:
+                            usr_attrs = {'name': 'user', 'password': 'trove'}
+                            self.manager.update_attributes(self.context,
+                                                           usr.name, None,
+                                                           usr_attrs)
+                            create.assert_called_once_with(ANY, new_user)
+                            grant.assert_has_calls([call(ANY, db1, ANY),
+                                                   call(ANY, db2, ANY)])
+                            drop.assert_called_once_with(ANY, usr)
+
+    @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
+    def test_update_attributes(self, conn):
+        usr = models.CassandraUser('usr', 'pwd')
+
+        with patch.object(self.admin, self.__N_BU, return_value=usr):
+            usr_attrs = {'name': usr.name, 'password': usr.password}
+            with patch.object(self.admin, self.__N_RU) as rename:
+                with patch.object(self.admin, self.__N_AUP) as alter:
+                    self.manager.update_attributes(self.context, usr.name,
+                                                   None, usr_attrs)
+                    self.assertEqual(0, rename.call_count)
+                    self.assertEqual(0, alter.call_count)
+
+            usr_attrs = {'name': 'user', 'password': 'password'}
+            with patch.object(self.admin, self.__N_RU) as rename:
+                with patch.object(self.admin, self.__N_AUP) as alter:
+                    self.manager.update_attributes(self.context, usr.name,
+                                                   None, usr_attrs)
+                    rename.assert_called_once_with(ANY, usr, usr_attrs['name'],
+                                                   usr_attrs['password'])
+                    self.assertEqual(0, alter.call_count)
+
+            usr_attrs = {'name': 'user', 'password': usr.password}
+            with patch.object(self.admin, self.__N_RU) as rename:
+                with patch.object(self.admin, self.__N_AUP) as alter:
+                    self.manager.update_attributes(self.context, usr.name,
+                                                   None, usr_attrs)
+                    rename.assert_called_once_with(ANY, usr, usr_attrs['name'],
+                                                   usr_attrs['password'])
+                    self.assertEqual(0, alter.call_count)
+
+            usr_attrs = {'name': 'user'}
+            with patch.object(self.admin, self.__N_RU) as rename:
+                with patch.object(self.admin, self.__N_AUP) as alter:
+                    self.manager.update_attributes(self.context, usr.name,
+                                                   None, usr_attrs)
+                    rename.assert_called_once_with(ANY, usr, usr_attrs['name'],
+                                                   None)
+                    self.assertEqual(0, alter.call_count)
+
+            usr_attrs = {'name': usr.name, 'password': 'password'}
+            with patch.object(self.admin, self.__N_RU) as rename:
+                with patch.object(self.admin, self.__N_AUP) as alter:
+                    self.manager.update_attributes(self.context, usr.name,
+                                                   None, usr_attrs)
+                    alter.assert_called_once_with(ANY, usr)
+                    self.assertEqual(0, rename.call_count)
+
+            usr_attrs = {'password': usr.password}
+            with patch.object(self.admin, self.__N_RU) as rename:
+                with patch.object(self.admin, self.__N_AUP) as alter:
+                    self.manager.update_attributes(self.context, usr.name,
+                                                   None, usr_attrs)
+                    self.assertEqual(0, rename.call_count)
+                    self.assertEqual(0, alter.call_count)
+
+            usr_attrs = {'password': 'trove'}
+            with patch.object(self.admin, self.__N_RU) as rename:
+                with patch.object(self.admin, self.__N_AUP) as alter:
+                    self.manager.update_attributes(self.context, usr.name,
+                                                   None, usr_attrs)
+                    alter.assert_called_once_with(ANY, usr)
+                    self.assertEqual(0, rename.call_count)
