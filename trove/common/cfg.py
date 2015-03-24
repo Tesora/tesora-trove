@@ -1,4 +1,4 @@
-# Copyright 2011 OpenStack Foundation
+# copyright 2011 OpenStack Foundation
 # Copyright 2014 Rackspace Hosting
 # All Rights Reserved.
 #
@@ -31,19 +31,6 @@ path_opts = [
 ]
 
 common_opts = [
-    cfg.StrOpt('sql_connection',
-               default='sqlite:///trove_test.sqlite',
-               help='SQL Connection.',
-               secret=True),
-    cfg.IntOpt('sql_idle_timeout', default=3600,
-               help="Idle time (in seconds) after which the connection to the "
-                    "database is reestablished. Some databases will drop "
-                    "connections after a specific amount of idle time. "
-                    "Setting sql_idle_timeout to a lower value than this will "
-                    "ensure that a reconnect occurs before the database can "
-                    "drop the connection."),
-    cfg.BoolOpt('sql_query_log', default=False,
-                help='Write all SQL queries to a log.'),
     cfg.StrOpt('bind_host', default='0.0.0.0',
                help='IP address the API server will listen on.'),
     cfg.IntOpt('bind_port', default=8779,
@@ -331,7 +318,9 @@ common_opts = [
                          'cassandra': '459a230d-4e97-4344-9067-2a54a310b0ed',
                          'couchbase': 'fa62fe68-74d9-4779-a24e-36f19602c415',
                          'mongodb': 'c8c907af-7375-456f-b929-b637ff9209ee',
-                         'postgresql': 'ac277e0d-4f21-40aa-b347-1ea31e571720'},
+                         'postgresql': 'ac277e0d-4f21-40aa-b347-1ea31e571720',
+                         'couchdb': 'f0a9ab7b-66f7-4352-93d7-071521d44c7c',
+                         'vertica': 'a8d805ae-a3b2-c4fd-gb23-b62cee5201ae'},
                 help='Unique ID to tag notification events.'),
     cfg.StrOpt('nova_proxy_admin_user', default='',
                help="Admin username used to connect to Nova.", secret=True),
@@ -349,9 +338,18 @@ common_opts = [
                     'expression.'),
     cfg.StrOpt('cloudinit_location', default='/etc/trove/cloudinit',
                help='Path to folder with cloudinit scripts.'),
+    cfg.StrOpt('injected_config_location', default='/etc/trove/conf.d',
+               help='Path to folder on the Guest where config files will be '
+                    'injected during instance creation.'),
     cfg.StrOpt('guest_config',
-               default='$pybasedir/etc/trove/trove-guestagent.conf.sample',
-               help='Path to the Guest Agent config file.'),
+               default='/etc/trove/trove-guestagent.conf',
+               help='Path to the Guest Agent config file to be injected '
+                    'during instance creation.'),
+    cfg.StrOpt('guest_info',
+               default='guest_info.conf',
+               help='The guest info filename found in the injected config '
+                    'location.  If a full path is specified then it will '
+                    'be used as the path to the guest info file'),
     cfg.DictOpt('datastore_registry_ext', default=dict(),
                 help='Extension for default datastore managers. '
                      'Allows the use of custom managers for each of '
@@ -389,6 +387,37 @@ common_opts = [
                help='Maximum time (in seconds) to wait for a cluster to '
                     'become active.'),
 ]
+
+# Profiling specific option groups
+
+profiler_group = cfg.OptGroup(
+    'profiler', title='Profiler options',
+    help="Oslo option group designed for profiler")
+profiler_opts = [
+    cfg.BoolOpt("enabled", default=False,
+                help="If False fully disable profiling feature."),
+    cfg.BoolOpt("trace_sqlalchemy", default=True,
+                help="If False doesn't trace SQL requests.")
+]
+
+
+database_opts = [
+    cfg.StrOpt('connection',
+               default='sqlite:///trove_test.sqlite',
+               help='SQL Connection.',
+               secret=True,
+               deprecated_name='sql_connection',
+               deprecated_group='DEFAULT'),
+    cfg.IntOpt('idle_timeout',
+               default=3600,
+               deprecated_name='sql_idle_timeout',
+               deprecated_group='DEFAULT'),
+    cfg.BoolOpt('query_log',
+                default=False,
+                deprecated_name='sql_query_log',
+                deprecated_group='DEFAULT'),
+]
+
 
 # Datastore specific option groups
 
@@ -818,6 +847,82 @@ postgresql_opts = [
     cfg.ListOpt('ignore_dbs', default=['postgres']),
 ]
 
+# Apache CouchDB
+couchdb_group = cfg.OptGroup(
+    'couchdb', title='CouchDB options',
+    help="Oslo option group designed for CouchDB datastore")
+couchdb_opts = [
+    cfg.ListOpt('tcp_ports',
+                default=["5984"],
+                help='List of TCP ports and/or port ranges to open '
+                     'in the security group (only applicable '
+                     'if trove_security_groups_support is True).'),
+    cfg.ListOpt('udp_ports', default=[],
+                help='List of UDP ports and/or port ranges to open '
+                     'in the security group (only applicable '
+                     'if trove_security_groups_support is True).'),
+    cfg.StrOpt('mount_point', default='/var/lib/couchdb',
+               help="Filesystem path for mounting "
+               "volumes if volume support is enabled."),
+    cfg.BoolOpt('volume_support', default=True,
+                help='Whether to provision a Cinder volume for datadir.'),
+    cfg.StrOpt('device_path', default='/dev/vdb',
+               help='Device path for volume if volume support is enabled.'),
+    cfg.StrOpt('backup_strategy', default=None,
+               help='Default strategy to perform backups.'),
+    cfg.StrOpt('replication_strategy', default=None,
+               help='Default strategy for replication.'),
+    cfg.StrOpt('backup_namespace', default=None,
+               help='Namespace to load backup strategies from.'),
+    cfg.StrOpt('restore_namespace', default=None,
+               help='Namespace to load restore strategies from.'),
+    cfg.DictOpt('backup_incremental_strategy', default={},
+                help='Incremental Backup Runner based on the default '
+                'strategy. For strategies that do not implement an '
+                'incremental, the runner will use the default full backup.'),
+    cfg.BoolOpt('root_on_create', default=False,
+                help='Enable the automatic creation of the root user for the '
+                'service during instance-create. The generated password for '
+                'the root user is immediately returned in the response of '
+                'instance-create as the "password" field.'),
+]
+
+# Vertica
+vertica_group = cfg.OptGroup(
+    'vertica', title='Vertica options',
+    help="Oslo option group designed for Vertica datastore")
+vertica_opts = [
+    cfg.ListOpt('tcp_ports', default=["5433"],
+                help='List of TCP ports and/or port ranges to open '
+                     'in the security group (only applicable '
+                     'if trove_security_groups_support is True).'),
+    cfg.ListOpt('udp_ports', default=["5433"],
+                help='List of UDP ports and/or port ranges to open '
+                     'in the security group (only applicable '
+                     'if trove_security_groups_support is True).'),
+    cfg.StrOpt('backup_strategy', default=None,
+               help='Default strategy to perform backups.'),
+    cfg.DictOpt('backup_incremental_strategy', default={},
+                help='Incremental Backup Runner based on the default '
+                'strategy. For strategies that do not implement an '
+                'incremental, the runner will use the default full backup.'),
+    cfg.StrOpt('replication_strategy', default=None,
+               help='Default strategy for replication.'),
+    cfg.StrOpt('mount_point', default='/var/lib/vertica',
+               help="Filesystem path for mounting "
+               "volumes if volume support is enabled."),
+    cfg.BoolOpt('volume_support', default=True,
+                help='Whether to provision a Cinder volume for datadir.'),
+    cfg.StrOpt('device_path', default='/dev/vdb',
+               help='Device path for volume if volume support is enabled.'),
+    cfg.StrOpt('backup_namespace', default=None,
+               help='Namespace to load backup strategies from.'),
+    cfg.StrOpt('restore_namespace', default=None,
+               help='Namespace to load restore strategies from.'),
+    cfg.IntOpt('readahead_size', default=2048,
+               help='Size(MB) to be set as readahead_size for data volume'),
+]
+
 # RPC version groups
 upgrade_levels = cfg.OptGroup(
     'upgrade_levels',
@@ -841,6 +946,11 @@ CONF = cfg.CONF
 CONF.register_opts(path_opts)
 CONF.register_opts(common_opts)
 
+CONF.register_group(profiler_group)
+CONF.register_opts(profiler_opts, profiler_group)
+
+CONF.register_opts(database_opts, 'database')
+
 CONF.register_group(mysql_group)
 CONF.register_group(oracle_group)
 CONF.register_group(percona_group)
@@ -849,6 +959,8 @@ CONF.register_group(cassandra_group)
 CONF.register_group(couchbase_group)
 CONF.register_group(mongodb_group)
 CONF.register_group(postgresql_group)
+CONF.register_group(couchdb_group)
+CONF.register_group(vertica_group)
 
 CONF.register_opts(mysql_opts, mysql_group)
 CONF.register_opts(oracle_opts, oracle_group)
@@ -858,6 +970,8 @@ CONF.register_opts(cassandra_opts, cassandra_group)
 CONF.register_opts(couchbase_opts, couchbase_group)
 CONF.register_opts(mongodb_opts, mongodb_group)
 CONF.register_opts(postgresql_opts, postgresql_group)
+CONF.register_opts(couchdb_opts, couchdb_group)
+CONF.register_opts(vertica_opts, vertica_group)
 
 CONF.register_opts(rpcapi_cap_opts, upgrade_levels)
 

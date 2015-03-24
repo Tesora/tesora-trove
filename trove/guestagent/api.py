@@ -213,6 +213,11 @@ class API(object):
         return self._call("get_diagnostics", AGENT_LOW_TIMEOUT,
                           self.version_cap)
 
+    def rpc_ping(self):
+        """Make a synchronous RPC call to check if we can ping the instance."""
+        LOG.debug("Check RPC ping on instance %s.", self.id)
+        return self._call("rpc_ping", AGENT_LOW_TIMEOUT, self.version_cap)
+
     def prepare(self, memory_mb, packages, databases, users,
                 device_path='/dev/vdb', mount_point='/mnt/volume',
                 backup_info=None, config_contents=None, root_password=None,
@@ -360,8 +365,8 @@ class API(object):
 
     def get_replica_context(self):
         LOG.debug("Getting replica context.")
-        return self._call("get_replica_context", AGENT_HIGH_TIMEOUT,
-                          self.version_cap)
+        return self._call("get_replica_context",
+                          AGENT_HIGH_TIMEOUT, self.version_cap)
 
     def attach_replica(self, replica_info, slave_config):
         LOG.debug("Attaching replica %s." % replica_info)
@@ -380,18 +385,18 @@ class API(object):
 
     def get_txn_count(self):
         LOG.debug("Executing get_txn_count.")
-        return self._call("get_txn_count", AGENT_HIGH_TIMEOUT,
-                          self.version_cap)
+        return self._call("get_txn_count",
+                          AGENT_HIGH_TIMEOUT, self.version_cap)
 
     def get_latest_txn_id(self):
         LOG.debug("Executing get_latest_txn_id.")
-        return self._call("get_latest_txn_id", AGENT_HIGH_TIMEOUT,
-                          self.version_cap)
+        return self._call("get_latest_txn_id",
+                          AGENT_HIGH_TIMEOUT, self.version_cap)
 
     def wait_for_txn(self, txn):
         LOG.debug("Executing wait_for_txn.")
-        self._call("wait_for_txn", AGENT_HIGH_TIMEOUT,
-                   self.version_cap, txn=txn)
+        self._call("wait_for_txn", AGENT_HIGH_TIMEOUT, self.version_cap,
+                   txn=txn)
 
     def cleanup_source_on_replica_detach(self, replica_info):
         LOG.debug("Cleaning up master %s on detach of replica.", self.id)
