@@ -127,7 +127,7 @@ class MysqlReplicationBase(base.Replication):
             self.connect_to_master(service, snapshot)
             LOG.debug("enable_as_slave: after call connect_to_master")
         except Exception:
-            LOG.exception("Exception enabling guest as replica")
+            LOG.exception(_("Exception enabling guest as replica"))
             raise
 
     def detach_slave(self, service, for_failover):

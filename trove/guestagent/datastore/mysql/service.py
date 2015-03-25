@@ -58,7 +58,7 @@ INCLUDE_MARKER_OPERATORS = {
 }
 
 OS_NAME = operating_system.get_os()
-MYSQL_CONFIG = {operating_system.REDHAT: "/etc/mysql/my.cnf",
+MYSQL_CONFIG = {operating_system.REDHAT: "/etc/my.cnf",
                 operating_system.DEBIAN: "/etc/mysql/my.cnf",
                 operating_system.SUSE: "/etc/my.cnf"}[OS_NAME]
 MYSQL_SERVICE_CANDIDATES = ["mysql", "mysqld", "mysql-server"]
@@ -707,22 +707,18 @@ class MySqlApp(object):
         finally:
             self.status.end_install_or_restart()
 
-    def update_overrides(self, overrides_file, remove=False):
+    def update_overrides(self, override_values):
         """
-        This function will either update or remove the MySQL overrides.cnf file
-        If remove is set to True the function will remove the overrides file.
+        This function will update the MySQL overrides.cnf file
+        if there is content to write.
 
-        :param overrides:
-        :param remove:
+        :param override_values:
         :return:
         """
 
-        if overrides_file:
+        if override_values:
             LOG.debug("Writing new overrides.cnf config file.")
-            self._write_config_overrides(overrides_file)
-        if remove:
-            LOG.debug("Removing overrides.cnf config file.")
-            self._remove_overrides()
+            self._write_config_overrides(override_values)
 
     def apply_overrides(self, overrides):
         LOG.debug("Applying overrides to MySQL.")
@@ -823,7 +819,7 @@ class MySqlApp(object):
         utils.execute_with_timeout("sudo", "chmod", "0644",
                                    MYCNF_OVERRIDES)
 
-    def _remove_overrides(self):
+    def remove_overrides(self):
         LOG.info(_("Removing overrides configuration file."))
         if os.path.exists(MYCNF_OVERRIDES):
             utils.execute_with_timeout("sudo", "rm", MYCNF_OVERRIDES)

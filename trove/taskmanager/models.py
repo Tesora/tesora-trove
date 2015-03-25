@@ -217,6 +217,33 @@ class ClusterTasks(Cluster):
 
 
 class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
+
+    def _get_injected_files(self, datastore_manager):
+        injected_config_location = CONF.get('injected_config_location')
+        guest_info = CONF.get('guest_info')
+
+        if ('/' in guest_info):
+            # Set guest_info_file to exactly guest_info from the conf file.
+            # This should be /etc/guest_info for pre-Kilo compatibility.
+            guest_info_file = guest_info
+        else:
+            guest_info_file = os.path.join(injected_config_location,
+                                           guest_info)
+
+        files = {guest_info_file: (
+            "[DEFAULT]\n"
+            "guest_id=%s\n"
+            "datastore_manager=%s\n"
+            "tenant_id=%s\n"
+            % (self.id, datastore_manager, self.tenant_id))}
+
+        if os.path.isfile(CONF.get('guest_config')):
+            with open(CONF.get('guest_config'), "r") as f:
+                files[os.path.join(injected_config_location,
+                                   "trove-guestagent.conf")] = f.read()
+
+        return files
+
     def wait_for_instance(self, timeout, flavor):
         # Make sure the service becomes active before sending a usage
         # record to avoid over billing a customer for an instance that
@@ -264,6 +291,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                 LOG.debug("Successfully created security group for "
                           "instance: %s" % self.id)
 
+        files = self._get_injected_files(datastore_manager)
+
         if use_heat:
             volume_info = self._create_server_volume_heat(
                 flavor,
@@ -271,7 +300,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                 datastore_manager,
                 volume_size,
                 availability_zone,
-                nics)
+                nics,
+                files)
         elif use_nova_server_volume:
             volume_info = self._create_server_volume(
                 flavor['id'],
@@ -280,7 +310,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                 datastore_manager,
                 volume_size,
                 availability_zone,
-                nics)
+                nics,
+                files)
         else:
             volume_info = self._create_server_volume_individually(
                 flavor['id'],
@@ -289,7 +320,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                 datastore_manager,
                 volume_size,
                 availability_zone,
-                nics)
+                nics,
+                files)
 
         config = self._render_config(flavor)
         config_overrides = self._render_override_config(flavor,
@@ -487,11 +519,10 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
 
     def _create_server_volume(self, flavor_id, image_id, security_groups,
                               datastore_manager, volume_size,
-                              availability_zone, nics):
+                              availability_zone, nics, files):
         LOG.debug("Begin _create_server_volume for id: %s" % self.id)
         try:
-            files, userdata = self._prepare_file_and_userdata(
-                datastore_manager)
+            userdata = self._prepare_userdata(datastore_manager)
             name = self.hostname or self.name
             volume_desc = ("datastore volume for %s" % self.id)
             volume_name = ("datastore-%s" % self.id)
@@ -543,10 +574,9 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
         return final
 
     def _create_server_volume_heat(self, flavor, image_id,
-                                   datastore_manager,
-                                   volume_size, availability_zone,
-                                   nics):
-        LOG.debug("begin _create_server_volume_heat for id: %s" % self.id)
+                                   datastore_manager, volume_size,
+                                   availability_zone, nics, files):
+        LOG.debug("Begin _create_server_volume_heat for id: %s" % self.id)
         try:
             client = create_heat_client(self.context)
             tcp_rules_mapping_list = self._build_sg_rules_mapping(CONF.get(
@@ -561,7 +591,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                 ifaces=ifaces, ports=ports,
                 tcp_rules=tcp_rules_mapping_list,
                 udp_rules=udp_ports_mapping_list,
-                datastore_manager=datastore_manager)
+                datastore_manager=datastore_manager,
+                files=files)
             try:
                 heat_template = heat_template_unicode.encode('utf-8')
             except UnicodeEncodeError:
@@ -639,8 +670,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
 
     def _create_server_volume_individually(self, flavor_id, image_id,
                                            security_groups, datastore_manager,
-                                           volume_size,
-                                           availability_zone, nics):
+                                           volume_size, availability_zone,
+                                           nics, files):
         LOG.debug("Begin _create_server_volume_individually for id: %s" %
                   self.id)
         server = None
@@ -651,7 +682,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             server = self._create_server(flavor_id, image_id, security_groups,
                                          datastore_manager,
                                          block_device_mapping,
-                                         availability_zone, nics)
+                                         availability_zone, nics, files)
             server_id = server.id
             # Save server ID.
             self.update_db(compute_instance_id=server_id)
@@ -742,30 +773,19 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                        'volumes': created_volumes}
         return volume_info
 
-    def _prepare_file_and_userdata(self, datastore_manager):
-        files = {"/etc/guest_info": ("[DEFAULT]\nguest_id=%s\n"
-                                     "guest_name=%s\n"
-                                     "datastore_manager=%s\n"
-                                     "tenant_id=%s\n" %
-                                     (self.id, self.name,
-                                      datastore_manager,
-                                      self.tenant_id))}
-        if os.path.isfile(CONF.get('guest_config')):
-            with open(CONF.get('guest_config'), "r") as f:
-                files["/etc/trove-guestagent.conf"] = f.read()
+    def _prepare_userdata(self, datastore_manager):
         userdata = None
         cloudinit = os.path.join(CONF.get('cloudinit_location'),
                                  "%s.cloudinit" % datastore_manager)
         if os.path.isfile(cloudinit):
             with open(cloudinit, "r") as f:
                 userdata = f.read()
-        return files, userdata
+        return userdata
 
     def _create_server(self, flavor_id, image_id, security_groups,
                        datastore_manager, block_device_mapping,
-                       availability_zone, nics):
-        files, userdata = self._prepare_file_and_userdata(
-            datastore_manager)
+                       availability_zone, nics, files={}):
+        userdata = self._prepare_userdata(datastore_manager)
         name = self.hostname or self.name
         bdmap = block_device_mapping
         config_drive = CONF.use_nova_server_config_drive
@@ -1064,8 +1084,7 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         """Returns floating ips as a dict indexed by the ip."""
         floating_ips = {}
         for ip in self.nova_client.floating_ips.list():
-            floating_ips.update({ip["addr"]: ip})
-        LOG.debug("_get_floating_ips returns %s" % floating_ips)
+            floating_ips.update({ip.ip: ip})
         return floating_ips
 
     def detach_public_ips(self):
@@ -1078,7 +1097,6 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
             if ip in floating_ips:
                 nova_instance.remove_floating_ip(ip)
                 removed_ips.append(ip)
-        LOG.debug("detach_public_ips returns %s" % removed_ips)
         return removed_ips
 
     def attach_public_ips(self, ips):
