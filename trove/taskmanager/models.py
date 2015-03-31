@@ -233,9 +233,10 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
         files = {guest_info_file: (
             "[DEFAULT]\n"
             "guest_id=%s\n"
+            "guest_name=%s\n"
             "datastore_manager=%s\n"
             "tenant_id=%s\n"
-            % (self.id, datastore_manager, self.tenant_id))}
+            % (self.id, self.name, datastore_manager, self.tenant_id))}
 
         if os.path.isfile(CONF.get('guest_config')):
             with open(CONF.get('guest_config'), "r") as f:
