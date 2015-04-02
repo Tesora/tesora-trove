@@ -51,8 +51,12 @@
 import sys
 import testtools
 import mock
-from testtools.matchers import Equals
-from trove.common.context import TroveContext
+
+import testtools.content as content
+import testtools.matchers as matchers
+import trove.common.cfg as cfg
+import trove.common.context as context
+import trove.common.exception as exception
 
 # cx_Oracle library requires an Oracle installation, but we don't
 # need it for the unittests, so just mock it
@@ -61,11 +65,13 @@ import trove.guestagent.datastore.oracle.manager as manager
 import trove.guestagent.datastore.oracle.service as dbaas
 
 
+CONF = cfg.CONF
+
 class GuestAgentManagerTest(testtools.TestCase):
     def setUp(self):
         super(GuestAgentManagerTest, self).setUp()
         self.origin_OracleAppStatus = dbaas.OracleAppStatus
-        self.context = TroveContext()
+        self.context = context.TroveContext()
         self.manager = manager.Manager()
 
     def tearDown(self):
@@ -75,5 +81,37 @@ class GuestAgentManagerTest(testtools.TestCase):
     def test_list_users(self):
         dbaas.OracleAdmin.list_users = mock.MagicMock(return_value=['user1'])
         users = self.manager.list_users(self.context)
-        self.assertThat(users, Equals(['user1']))
+        self.assertThat(users, matchers.Equals(['user1']))
         dbaas.OracleAdmin.list_users.assert_any_call(None, None, False)
+
+    def test_create_database(self):
+        # codepath to create
+        with mock.patch.object(dbaas.OracleAdmin, 'create_database'):
+            self.manager.create_database(self.context)
+            dbaas.OracleAdmin.create_database.assert_any_call()
+
+        # verify names
+        data = [{'name': 'valid', 'result': True},
+                {'name': 'underscore_allowed', 'result': True},
+                {'name': '_underscores_allowed_EXCEPT_at_the_start', 'result': False},
+                {'name': 'CAPS_are_OK', 'result': True},
+                {'name': '123_numbers_allowed_890', 'result': True},
+                {'name': 'dashes-not-allowed', 'result': False},
+                {'name': 'this_IS_valid_but_is_the_max_size_1234567890_fyi_max_len_is_64__',
+                 'result': True},
+                {'name': 'this_IS_NOT_valid_as_it_is_greater_than_the_max_size_of_64_chars_',
+                 'result': False}]
+
+        def _test_name(test):
+            CONF.guest_name = test['name']
+            # this will cause the name to be dumped if the test fails
+            self.addDetail('dbname', content.text_content(test['name']))
+            if test['result']:
+                self.manager.create_database(self.context)
+            else:
+                self.assertRaises(exception.BadRequest,
+                                  self.manager.create_database,
+                                  self.context)
+
+        for set in data:
+            _test_name(set)
