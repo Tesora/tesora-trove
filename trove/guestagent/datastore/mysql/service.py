@@ -422,6 +422,9 @@ class MySqlAdmin(object):
     def list_databases(self, limit=None, marker=None, include_marker=False):
         """List databases the user created on this mysql instance."""
         LOG.debug("---Listing Databases---")
+        ignored_database_names = "'%s'" % "', '".join(CONF.ignore_dbs)
+        LOG.debug("The following database names are on ignore list and will "
+                  "be omitted from the listing: %s" % ignored_database_names)
         databases = []
         with LocalSqlClient(get_engine()) as client:
             q = sql_query.Query()
