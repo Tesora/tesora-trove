@@ -479,11 +479,11 @@ mysql_opts = [
                 deprecated_group='DEFAULT'),
 ]
 
-# Oracle
-oracle_group = cfg.OptGroup(
-    'oracle', title='Oracle options',
-    help="Oslo option group designed for Oracle datastore")
-oracle_opts = [
+# Oracle remote agent
+oracle_ra_group = cfg.OptGroup(
+    'oracle_ra', title='Oracle Remote Agent options',
+    help="Oslo option group designed for the Oracle Remote Agent datastore")
+oracle_ra_opts = [
     cfg.ListOpt('tcp_ports', default=[],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
@@ -540,8 +540,8 @@ oracle_opts = [
                help='oracle_sys_pswd'),
     cfg.StrOpt('oracle_cdb_name', default=None,
                help='oracle_cdb_name'),
-    cfg.StrOpt('proxy_status_file', default='/etc/trove/oracle-proxy-status',
-               help='proxy_status_file'),
+    cfg.StrOpt('oracle_ra_status_file', default='/etc/trove/oracle-ra-status',
+               help='oracle_ra_status_file'),
 ]
 
 
@@ -1014,7 +1014,7 @@ CONF.register_opts(profiler_opts, profiler_group)
 CONF.register_opts(database_opts, 'database')
 
 CONF.register_group(mysql_group)
-CONF.register_group(oracle_group)
+CONF.register_group(oracle_ra_group)
 CONF.register_group(percona_group)
 CONF.register_group(redis_group)
 CONF.register_group(cassandra_group)
@@ -1026,7 +1026,7 @@ CONF.register_group(vertica_group)
 CONF.register_group(db2_group)
 
 CONF.register_opts(mysql_opts, mysql_group)
-CONF.register_opts(oracle_opts, oracle_group)
+CONF.register_opts(oracle_ra_opts, oracle_ra_group)
 CONF.register_opts(percona_opts, percona_group)
 CONF.register_opts(redis_opts, redis_group)
 CONF.register_opts(cassandra_opts, cassandra_group)

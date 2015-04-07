@@ -56,9 +56,9 @@ import cx_Oracle
 from trove.common import cfg
 from trove.common import exception
 from trove.common import utils as utils
-from trove.guestagent.datastore.oracle.service import OracleAppStatus
-from trove.guestagent.datastore.oracle.service import OracleAdmin
-from trove.guestagent.datastore.oracle.service import OracleApp
+from trove.guestagent.datastore.oracle_ra.service import OracleAppStatus
+from trove.guestagent.datastore.oracle_ra.service import OracleAdmin
+from trove.guestagent.datastore.oracle_ra.service import OracleApp
 from trove.openstack.common import log as logging
 from trove.openstack.common.gettextutils import _
 from trove.openstack.common import periodic_task
@@ -66,7 +66,7 @@ from trove.openstack.common import periodic_task
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
-MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'oracle'
+MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'oracle_ra'
 
 
 class Manager(periodic_task.PeriodicTasks):
@@ -139,7 +139,7 @@ class Manager(periodic_task.PeriodicTasks):
         /etc/trove/trove-guestagent.conf, so that the instance can
         recover the Oracle connectivity after rebooting.
         """
-        ORACLE_CONFIG_FILE_TEMP = '/tmp/oracle-proxy.cnf.tmp'
+        ORACLE_CONFIG_FILE_TEMP = '/tmp/oracle-ra.cnf.tmp'
         TROVEGUEST_CONFIG_FILE = '/etc/trove/trove-guestagent.conf'
         TROVEGUEST_CONFIG_FILE_TEMP = '/tmp/trove-guestagent.conf.tmp'
 
@@ -190,14 +190,14 @@ class Manager(periodic_task.PeriodicTasks):
                                    TROVEGUEST_CONFIG_FILE_TEMP,
                                    TROVEGUEST_CONFIG_FILE)
 
-    def _create_proxy_status_file(self, status):
-        PROXY_STATUS_FILE_TEMP = '/tmp/oracle-proxy-status'
-        with open(PROXY_STATUS_FILE_TEMP, 'w') as statusfile:
+    def _create_ra_status_file(self, status):
+        RA_STATUS_FILE_TEMP = '/tmp/oracle-ra-status'
+        with open(RA_STATUS_FILE_TEMP, 'w') as statusfile:
             statusfile.write(status)
 
         utils.execute_with_timeout("sudo", "mv", "-f",
-                                   PROXY_STATUS_FILE_TEMP,
-                                   CONF.get(MANAGER).proxy_status_file)
+                                   RA_STATUS_FILE_TEMP,
+                                   CONF.get(MANAGER).oracle_ra_status_file)
 
     def prepare(self, context, packages, databases, memory_mb, users,
                 device_path=None, mount_point=None, backup_info=None,
@@ -212,7 +212,7 @@ class Manager(periodic_task.PeriodicTasks):
         except Exception as e:
             LOG.exception(_('%s Invalid configuration detail.'
                             % ERROR_MSG))
-            self._create_proxy_status_file('ERROR-CONN')
+            self._create_ra_status_file('ERROR-CONN')
             raise e
 
         try:
@@ -230,24 +230,24 @@ class Manager(periodic_task.PeriodicTasks):
                 # This branch distinguish Oracle issues that occurs
                 # at the init stage, so that the user can later on
                 # delete the resultant ERROR trove instances.
-                self._create_proxy_status_file('ERROR-CONN')
+                self._create_ra_status_file('ERROR-CONN')
             else:
-                self._create_proxy_status_file('ERROR')
+                self._create_ra_status_file('ERROR')
             raise e
         except Exception as e:
             LOG.exception(_(ERROR_MSG))
-            self._create_proxy_status_file('ERROR')
+            self._create_ra_status_file('ERROR')
             raise e
 
         try:
             if users:
                 self.create_user(context, users)
         except Exception as e:
-            self._create_proxy_status_file('ERROR')
+            self._create_ra_status_file('ERROR')
             LOG.exception(_(ERROR_MSG))
             raise e
 
-        self._create_proxy_status_file('OK')
+        self._create_ra_status_file('OK')
 
     def restart(self, context):
         app = OracleApp(OracleAppStatus.get())
