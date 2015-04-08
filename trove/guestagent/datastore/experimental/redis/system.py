@@ -14,7 +14,7 @@
 #    under the License.
 
 """
-Determines operating system version and os depended commands.
+Determines operating system version and OS dependent commands.
 """
 from trove.guestagent.common.operating_system import get_os
 
@@ -33,8 +33,9 @@ SERVICE_CANDIDATES = ['redis-server', 'redis']
 
 if OS is 'redhat':
     REDIS_CONFIG = '/etc/redis.conf'
-    REDIS_CONF_DIR = '/etc'
-    REDIS_CMD_ENABLE = 'chkconfig redis on'
-    REDIS_CMD_DISABLE = 'chkconfig redis off'
-    REDIS_CMD_START = 'service redis start'
-    REDIS_CMD_STOP = 'service redis stop'
+    REDIS_CMD_ENABLE = 'systemctl enable redis'
+    REDIS_CMD_DISABLE = 'systemctl disable redis'
+    REDIS_CMD_START = 'systemctl start redis'
+    REDIS_CMD_STOP = 'systemctl stop redis'
+    REDIS_PACKAGE = 'redis'
+    SERVICE_CANDIDATES = ['redis']

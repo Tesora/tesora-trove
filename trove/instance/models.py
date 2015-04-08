@@ -743,6 +743,18 @@ class Instance(BuiltInstance):
                     raise exception.Forbidden(
                         _("Cannot create a replica of a replica %(id)s.")
                         % {'id': slave_of_id})
+                # load the replica source status to check if
+                # source is available
+                load_simple_instance_server_status(
+                    context,
+                    replica_source)
+                replica_source_instance = Instance(
+                    context, replica_source,
+                    None,
+                    InstanceServiceStatus.find_by(
+                        context,
+                        instance_id=slave_of_id))
+                replica_source_instance.validate_can_perform_action()
             except exception.ModelNotFoundError:
                 LOG.exception(
                     _("Cannot create a replica of %(id)s "
@@ -969,7 +981,7 @@ class Instance(BuiltInstance):
             raise exception.BadRequest(_("Instance %s is not a replica"
                                        " source.") % self.id)
         service = InstanceServiceStatus.find_by(instance_id=self.id)
-        last_heartbeat_delta = datetime.now() - service.updated_at
+        last_heartbeat_delta = datetime.utcnow() - service.updated_at
         agent_expiry_interval = timedelta(seconds=CONF.agent_heartbeat_expiry)
         if last_heartbeat_delta < agent_expiry_interval:
             raise exception.BadRequest(_("Replica Source %s cannot be ejected"
