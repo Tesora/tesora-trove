@@ -4,7 +4,6 @@
             "basedir": "/usr",
             "connect_timeout": "15",
             "datadir": "/var/lib/mysql/data",
-            "socket": "/var/lib/mysql/data/mysql.sock",
             "default_storage_engine": "innodb",
             "innodb_buffer_pool_size": "150M",
             "innodb_data_file_path": "ibdata1:10M:autoextend",
