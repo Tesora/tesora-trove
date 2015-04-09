@@ -203,7 +203,7 @@ class SimpleInstance(object):
         return self.db_info.hostname
 
     @property
-    def proxy_host(self):
+    def remote_agent_host(self):
         try:
             config_id = self.db_info.configuration_id
             config_item = DBConfigurationParameter.find_by(configuration_id=

@@ -64,10 +64,10 @@ from trove.openstack.common.gettextutils import _
 LOG = logging.getLogger(__name__)
 
 CONF = cfg.CONF
-MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'oracle'
+MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'oracle_ra'
 
-ORACLE_CONFIG_FILE = "/etc/oracle/oracle-proxy.cnf"
-ORACLE_CONFIG_FILE_TEMP = "/tmp/oracle-proxy.cnf.tmp"
+ORACLE_RA_CONFIG_FILE = "/etc/oracle/oracle-ra.cnf"
+ORACLE_RA_CONFIG_FILE_TEMP = "/tmp/oracle-ra.cnf.tmp"
 GUEST_INFO_FILE = "/etc/guest_info"
 
 PDB_ADMIN_ID = "pdbadmin"
@@ -82,9 +82,9 @@ class OracleAppStatus(service.BaseDbStatus):
         return cls._instance
 
     def _get_actual_db_status(self):
-        if os.path.exists(CONF.get(MANAGER).proxy_status_file):
-            with open(CONF.get(MANAGER).proxy_status_file, 'r') as proxy_file:
-                status = proxy_file.readline()
+        if os.path.exists(CONF.get(MANAGER).oracle_ra_status_file):
+            with open(CONF.get(MANAGER).oracle_ra_status_file, 'r') as ra_file:
+                status = ra_file.readline()
             if status.startswith('OK'):
                 return rd_instance.ServiceStatuses.RUNNING
             elif status.startswith('ERROR'):
@@ -256,9 +256,9 @@ class OracleApp(object):
         self.status = status
 
     def _needs_pdb_cleanup(self):
-        if os.path.exists(CONF.get(MANAGER).proxy_status_file):
-            with open(CONF.get(MANAGER).proxy_status_file, 'r') as proxy_file:
-                status = proxy_file.readline()
+        if os.path.exists(CONF.get(MANAGER).oracle_ra_status_file):
+            with open(CONF.get(MANAGER).oracle_ra_status_file, 'r') as ra_file:
+                status = ra_file.readline()
             if status.startswith('ERROR-CONN'):
                 return False
             else:

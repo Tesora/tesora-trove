@@ -936,7 +936,7 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         if result is not None:
             # a situation occurred in the guest that requires us to
             # halt any further cleanups.
-            # e.g. Oracle DB errors occuring in a proxy instance
+            # e.g. Oracle DB errors occuring in a remote agent instance
             raise Exception(_("Error stopping the datastore. Delete "
                               "instance halted. Error Code: %(err_code)s; "
                               "Error Message: '%(err_msg)s'") %

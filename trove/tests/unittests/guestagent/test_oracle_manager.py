@@ -61,8 +61,8 @@ import trove.common.exception as exception
 # cx_Oracle library requires an Oracle installation, but we don't
 # need it for the unittests, so just mock it
 sys.modules['cx_Oracle'] = mock.Mock()
-import trove.guestagent.datastore.oracle.manager as manager
-import trove.guestagent.datastore.oracle.service as dbaas
+import trove.guestagent.datastore.oracle_ra.manager as manager
+import trove.guestagent.datastore.oracle_ra.service as dbaas
 
 
 CONF = cfg.CONF
