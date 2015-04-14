@@ -77,12 +77,10 @@ class Manager(periodic_task.PeriodicTasks):
         OracleAppStatus.get().update()
 
     def change_passwords(self, context, users):
-        raise exception.DatastoreOperationNotSupported(
-            operation='change_passwords', datastore=MANAGER)
+        OracleAdmin().change_passwords(users)
 
     def update_attributes(self, context, username, hostname, user_attrs):
-        raise exception.DatastoreOperationNotSupported(
-            operation='update_attributes', datastore=MANAGER)
+        OracleAdmin().update_attributes(username, hostname, user_attrs)
 
     def reset_configuration(self, context, configuration):
         raise exception.DatastoreOperationNotSupported(
@@ -126,12 +124,10 @@ class Manager(periodic_task.PeriodicTasks):
                                         include_marker)
 
     def enable_root(self, context):
-        raise exception.DatastoreOperationNotSupported(
-            operation='enable_root', datastore=MANAGER)
+        return OracleAdmin().enable_root()
 
     def is_root_enabled(self, context):
-        raise exception.DatastoreOperationNotSupported(
-            operation='is_root_enabled', datastore=MANAGER)
+        return OracleAdmin().is_root_enabled()
 
     def _load_oracle_config(self, config_contents):
         """
