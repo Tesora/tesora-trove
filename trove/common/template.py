@@ -21,8 +21,8 @@ from trove.common import cfg
 from trove.common import configurations
 from trove.common import exception
 from trove.common import utils
-from trove.openstack.common import log as logging
 from trove.common.i18n import _
+from trove.openstack.common import log as logging
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
@@ -33,6 +33,7 @@ ENV = utils.ENV
 SERVICE_PARSERS = {
     'mysql': configurations.MySQLConfParser,
     'percona': configurations.MySQLConfParser,
+    'cassandra': configurations.CassandraConfParser,
 }
 
 

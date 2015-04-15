@@ -504,3 +504,50 @@ class GuestAgentCassandraDBManagerTest(testtools.TestCase):
                                                    None, usr_attrs)
                     alter.assert_called_once_with(ANY, usr)
                     self.assertEqual(0, rename.call_count)
+
+    def test_update_dict(self):
+        data = {'rpc_address': "0.0.0.0",
+                'broadcast_rpc_address': '0.0.0.0',
+                'listen_address': '0.0.0.0',
+                'seed_provider': [{
+                    'class_name':
+                    'org.apache.cassandra.locator.SimpleSeedProvider',
+                    'parameters': [{'seeds': '0.0.0.0'}]}]
+                }
+
+        updates = {'rpc_address': "127.0.0.1",
+                   'seed_provider': {'parameters':
+                                     {'seeds': '127.0.0.1'}
+                                     }
+                   }
+
+        updated = self.manager.app._update_dict(updates, data)
+
+        expected = {'rpc_address': "127.0.0.1",
+                    'broadcast_rpc_address': '0.0.0.0',
+                    'listen_address': '0.0.0.0',
+                    'seed_provider': [{
+                        'class_name':
+                        'org.apache.cassandra.locator.SimpleSeedProvider',
+                        'parameters': [{'seeds': '127.0.0.1'}]}]
+                    }
+
+        self.assertEqual(expected, updated)
+
+        updates = {'seed_provider':
+                   [{'class_name':
+                     'org.apache.cassandra.locator.SimpleSeedProvider'
+                     }]
+                   }
+
+        updated = self.manager.app._update_dict(updates, data)
+
+        expected = {'rpc_address': "127.0.0.1",
+                    'broadcast_rpc_address': '0.0.0.0',
+                    'listen_address': '0.0.0.0',
+                    'seed_provider': [{
+                        'class_name':
+                        'org.apache.cassandra.locator.SimpleSeedProvider'}]
+                    }
+
+        self.assertEqual(expected, updated)

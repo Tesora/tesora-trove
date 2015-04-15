@@ -16,6 +16,7 @@ import ConfigParser
 import os
 import subprocess
 import tempfile
+import yaml
 from uuid import uuid4
 import time
 from mock import Mock
@@ -1495,7 +1496,6 @@ class CassandraDBAppTest(testtools.TestCase):
         self.appStatus = FakeAppStatus(self.FAKE_ID,
                                        rd_instance.ServiceStatuses.NEW)
         self.cassandra = cass_service.CassandraApp(self.appStatus)
-        self.orig_unlink = os.unlink
 
     def tearDown(self):
 
@@ -1619,68 +1619,25 @@ class CassandraDBAppTest(testtools.TestCase):
 
         self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
 
-    def test_cassandra_error_in_write_config_verify_unlink(self):
-        # this test verifies not only that the write_config
-        # method properly invoked execute, but also that it properly
-        # attempted to unlink the file (as a result of the exception)
-        from trove.common.exception import ProcessExecutionError
-        execute_with_timeout = Mock(
-            side_effect=ProcessExecutionError('some exception'))
-
-        mock_unlink = Mock(return_value=0)
-
-        # We call tempfile.mkstemp() here and Mock() the mkstemp()
-        # parameter to write_config for testability.
-        (temp_handle, temp_config_name) = tempfile.mkstemp()
-        mock_mkstemp = MagicMock(return_value=(temp_handle, temp_config_name))
-
-        configuration = {'key': 'some arbitrary configuration text'}
-
-        self.assertRaises(ProcessExecutionError,
-                          self.cassandra.write_config,
-                          config_contents=configuration,
-                          execute_function=execute_with_timeout,
-                          mkstemp_function=mock_mkstemp,
-                          unlink_function=mock_unlink)
-
-        self.assertEqual(mock_unlink.call_count, 1)
-
-        # really delete the temporary_config_file
-        os.unlink(temp_config_name)
-
     def test_cassandra_write_config(self):
-        # ensure that write_config creates a temporary file, and then
-        # moves the file to the final place. Also validate the
-        # contents of the file written.
+        conf_dict = {'key': 'some arbitrary configuration text'}
+        self._test_cassandra_write_config(conf_dict, False)
+        self._test_cassandra_write_config(yaml.dump(conf_dict), True)
 
-        # We call tempfile.mkstemp() here and Mock() the mkstemp()
-        # parameter to write_config for testability.
-        (temp_handle, temp_config_name) = tempfile.mkstemp()
-        mock_mkstemp = MagicMock(return_value=(temp_handle, temp_config_name))
-
-        configuration = {'key': 'some arbitrary configuration text'}
-
-        mock_execute = MagicMock(return_value=('', ''))
-
-        with patch.object(operating_system, 'update_owner') as chown:
-            self.cassandra.write_config(configuration,
-                                        execute_function=mock_execute,
-                                        mkstemp_function=mock_mkstemp)
-            mv, chmod = mock_execute.call_args_list
-            mv.assert_called_with("sudo", "mv",
-                                  temp_config_name,
-                                  cass_system.CASSANDRA_CONF)
-            chmod.assert_called_with("sudo", "chmod", "a+r",
-                                     cass_system.CASSANDRA_CONF)
-            mock_mkstemp.assert_called_once()
-            chown.assert_called_once_with('cassandra', 'cassandra',
-                                          cass_system.CASSANDRA_CONF)
-
-        actual = operating_system.read_yaml_file(temp_config_name)
-        self.assertEqual(configuration, actual)
-
-        # really delete the temporary_config_file
-        os.unlink(temp_config_name)
+    @patch('trove.guestagent.common.operating_system.update_owner')
+    @patch('trove.common.utils.execute_with_timeout')
+    def _test_cassandra_write_config(self, data, is_raw,
+                                     execute, update_owner):
+        with patch('trove.guestagent.common.operating_system.%s'
+                   % ('write_file' if is_raw else 'write_yaml_file')) as write:
+            self.cassandra.write_config(data, is_raw=is_raw)
+            write.assert_called_once_with(
+                cass_system.CASSANDRA_CONF, data, as_root=True)
+            update_owner.assert_called_once_with(
+                'cassandra', 'cassandra', cass_system.CASSANDRA_CONF)
+            execute.assert_called_with(
+                "chmod", "a+r", cass_system.CASSANDRA_CONF,
+                run_as_root=True, root_helper='sudo')
 
 
 class CouchbaseAppTest(testtools.TestCase):
