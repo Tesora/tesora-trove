@@ -88,6 +88,27 @@ class DatastoreSchema(Base):
         """
 
 
+class OracleSchema(DatastoreSchema):
+    """Represents a Oracle schema and its associated properties.
+
+    Oracle database names need to be alphanumeric and the length cannot exceed
+    8 characters.
+    """
+    name_regex = re.compile(r'[a-zA-Z0-9]\w+$')
+
+    def __init__(self, name):
+        super(OracleSchema, self).__init__()
+        if name:
+            self.name = name
+
+    @property
+    def _max_schema_name_length(self):
+        return 8
+
+    def _is_valid_schema_name(self, value):
+        return self.name_regex.match(value) is not None
+
+
 class CassandraSchema(DatastoreSchema):
     """Represents a Cassandra schema and its associated properties.
 
@@ -424,6 +445,51 @@ class ValidatedMySQLDatabase(MySQLDatabase):
         else:
             self._name = value
 
+    @property
+    def collate(self):
+        """Get the appropriate collate value."""
+        if not self._collate and not self._character_set:
+            return self.__collation__
+        elif not self._collate:
+            return self.charset[self._character_set][0]
+        else:
+            return self._collate
+
+    @collate.setter
+    def collate(self, value):
+        """Validate the collation and set it."""
+        if not value:
+            pass
+        elif self._character_set:
+            if value not in self.charset[self._character_set]:
+                msg = (_("%(val)s not a valid collation for charset %(char)s.")
+                       % {'val': value, 'char': self._character_set})
+                raise ValueError(msg)
+            self._collate = value
+        else:
+            if value not in self.collation:
+                raise ValueError(_("'%s' not a valid collation.") % value)
+            self._collate = value
+            self._character_set = self.collation[value]
+
+    @property
+    def character_set(self):
+        """Get the appropriate character set value."""
+        if not self._character_set:
+            return self.__charset__
+        else:
+            return self._character_set
+
+    @character_set.setter
+    def character_set(self, value):
+        """Validate the character set and set it."""
+        if not value:
+            pass
+        elif not value in self.charset:
+            raise ValueError(_("'%s' not a valid character set.") % value)
+        else:
+            self._character_set = value
+
 
 class DatastoreUser(Base):
     """Represents a datastore user."""
@@ -652,97 +718,31 @@ class MySQLUser(Base):
             self._host = value
 
 
-class OracleUser(Base):
-    """Represents a MySQL User and its associated properties."""
+class OracleUser(DatastoreUser):
+    """Represents an Oracle user and its associated properties."""
 
-    not_supported_chars = re.compile("^\s|\s$|'|\"|;|`|,|/|\\\\")
-    _ignore_users = CONF.ignore_users
+    def __init__(self, name, password=None):
+        super(OracleUser, self).__init__()
+        if name:
+            self.name = name
+        if password is not None:
+            self.password = password
 
-    def __init__(self):
-        self._name = None
-        self._host = None
-        self._password = None
-        self._databases = []
+    def _build_database_schema(self, name):
+        return OracleSchema(name)
 
-    def _is_valid(self, value):
-        if (not value or
-                self.not_supported_chars.search(value) or
-                string.find("%r" % value, "\\") != -1):
-            return False
-        else:
-            return True
+    @property
+    def _max_username_length(self):
+        return 30
 
     def _is_valid_user_name(self, value):
-        if (self._is_valid(value) and
-                value.lower() not in self._ignore_users):
-            return True
-        return False
+        return True
 
     def _is_valid_host_name(self, value):
-        if value in [None, "%"]:
-            # % is MySQL shorthand for "everywhere". Always permitted.
-            # Null host defaults to % anyway.
-            return True
-        if CONF.hostname_require_valid_ip:
-            try:
-                # '%' works as a MySQL wildcard, but it is not a valid
-                # part of an IPAddress
-                netaddr.IPAddress(value.replace('%', '1'))
-            except (ValueError, netaddr.AddrFormatError):
-                return False
-            else:
-                return True
-        else:
-            # If it wasn't required, anything else goes.
-            return True
+        return True
 
-    @property
-    def name(self):
-        return self._name
-
-    @name.setter
-    def name(self, value):
-        if not self._is_valid_user_name(value):
-            raise ValueError(_("'%s' is not a valid user name.") % value)
-        elif len(value) > 500:
-            raise ValueError(_("User name '%s' is too long. Max length = 16.")
-                             % value)
-        else:
-            self._name = value
-
-    @property
-    def password(self):
-        return self._password
-
-    @password.setter
-    def password(self, value):
-        if not self._is_valid(value):
-            raise ValueError(_("'%s' is not a valid password.") % value)
-        else:
-            self._password = value
-
-    @property
-    def databases(self):
-        return self._databases
-
-    @databases.setter
-    def databases(self, value):
-        mydb = ValidatedMySQLDatabase()
-        mydb.name = value
-        self._databases.append(mydb.serialize())
-
-    @property
-    def host(self):
-        if self._host is None:
-            return '%'
-        return self._host
-
-    @host.setter
-    def host(self, value):
-        if not self._is_valid_host_name(value):
-            raise ValueError(_("'%s' is not a valid hostname.") % value)
-        else:
-            self._host = value
+    def _is_valid_password(self, value):
+        return True
 
 
 class RootUser(MySQLUser):

@@ -53,6 +53,8 @@ defaults = {
     'trove.guestagent.datastore.experimental.vertica.manager.Manager',
     'db2':
     'trove.guestagent.datastore.experimental.db2.manager.Manager',
+    'oracle':
+    'trove.guestagent.datastore.oracle.manager.Manager',
     'oracle_ra':
     'trove.guestagent.datastore.oracle_ra.manager.Manager',
 }

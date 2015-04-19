@@ -545,6 +545,58 @@ oracle_ra_opts = [
                help='oracle_ra_status_file'),
 ]
 
+# Oracle
+oracle_group = cfg.OptGroup(
+    'oracle', title='Oracle options',
+    help="Oslo option group designed for Oracle datastore")
+oracle_opts = [
+    cfg.ListOpt('tcp_ports',
+                default=["1521"],
+                help='List of TCP ports and/or port ranges to open '
+                'in the security group (only applicable '
+                'if trove_security_groups_support is True).'),
+    cfg.ListOpt('udp_ports', default=[],
+                help='List of UDP ports and/or port ranges to open '
+                'in the security group (only applicable '
+                'if trove_security_groups_support is True).'),
+    cfg.StrOpt('mount_point', default="/u01/app/oracle/oradata",
+               help="Filesystem path for mounting "
+               "volumes if volume support is enabled."),
+    cfg.BoolOpt('volume_support', default=True,
+                help='Whether to provision a Cinder volume for datadir.'),
+    cfg.StrOpt('device_path', default='/dev/vdb',
+               help='Device path for volume if volume support is enabled.'),
+    cfg.StrOpt('backup_strategy', default=None,
+               help='Default strategy to perform backups.'),
+    cfg.StrOpt('replication_strategy', default=None,
+               help='Default strategy for replication.'),
+    cfg.BoolOpt('root_on_create', default=False,
+                help='Enable the automatic creation of the root user for the '
+                'service during instance-create. The generated password for '
+                'the root user is immediately returned in the response of '
+                "instance-create as the 'password' field."),
+    cfg.IntOpt('usage_timeout', default=1500,
+               help='Maximum time (in seconds) to wait for a Guest to become '
+                    'active.'),
+    cfg.StrOpt('backup_namespace', default=None,
+               help='Namespace to load backup strategies from.'),
+    cfg.StrOpt('restore_namespace', default=None,
+               help='Namespace to load restore strategies from.'),
+    cfg.DictOpt('backup_incremental_strategy', default={},
+                help='Incremental Backup Runner based on the default '
+                'strategy. For strategies that do not implement an '
+                'incremental, the runner will use the default full backup.'),
+    cfg.StrOpt('oracle_home',
+               default='/u01/app/oracle/product/11.2.0/dbhome_1',
+               help='Default $ORACLE_HOME directory'),
+    cfg.IntOpt('listener_port', default=1521,
+               help='Default Oracle listerner port'),
+    cfg.StrOpt('cloud_user_role', default='CLOUD_USER_ROLE',
+               help='Default role name of all regular cloud db users'),
+    cfg.IntOpt('db_ram_size', default=500,
+               help='Default memory size (MB) of each Oracle database '
+                    'instance.')
+]
 
 # Percona
 percona_group = cfg.OptGroup(
@@ -1025,6 +1077,7 @@ CONF.register_opts(database_opts, 'database')
 
 CONF.register_group(mysql_group)
 CONF.register_group(oracle_ra_group)
+CONF.register_group(oracle_group)
 CONF.register_group(percona_group)
 CONF.register_group(redis_group)
 CONF.register_group(cassandra_group)
@@ -1037,6 +1090,7 @@ CONF.register_group(db2_group)
 
 CONF.register_opts(mysql_opts, mysql_group)
 CONF.register_opts(oracle_ra_opts, oracle_ra_group)
+CONF.register_opts(oracle_opts, oracle_group)
 CONF.register_opts(percona_opts, percona_group)
 CONF.register_opts(redis_opts, redis_group)
 CONF.register_opts(cassandra_opts, cassandra_group)
