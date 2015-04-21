@@ -53,10 +53,10 @@ import testtools
 import mock
 
 import testtools.content as content
-import testtools.matchers as matchers
 import trove.common.cfg as cfg
 import trove.common.context as context
 import trove.common.exception as exception
+import trove.guestagent.db.models as models
 
 # cx_Oracle library requires an Oracle installation, but we don't
 # need it for the unittests, so just mock it
@@ -70,19 +70,21 @@ CONF = cfg.CONF
 class GuestAgentManagerTest(testtools.TestCase):
     def setUp(self):
         super(GuestAgentManagerTest, self).setUp()
-        self.origin_OracleAppStatus = dbaas.OracleAppStatus
         self.context = context.TroveContext()
         self.manager = manager.Manager()
+        self.LocalOracleClient = dbaas.LocalOracleClient
+        dbaas.LocalOracleClient = mock.MagicMock()
 
     def tearDown(self):
+        dbaas.LocalOracleClient = self.LocalOracleClient
         super(GuestAgentManagerTest, self).tearDown()
-        dbaas.OracleAppStatus = self.origin_OracleAppStatus
 
-    def test_list_users(self):
-        dbaas.OracleAdmin.list_users = mock.MagicMock(return_value=['user1'])
-        users = self.manager.list_users(self.context)
-        self.assertThat(users, matchers.Equals(['user1']))
-        dbaas.OracleAdmin.list_users.assert_any_call(None, None, False)
+    def test_update_state(self):
+        mock_status = mock.MagicMock()
+        with mock.patch.object(dbaas.OracleAppStatus, 'get', return_value=mock_status):
+            self.manager.update_status(self.context)
+            dbaas.OracleAppStatus.get.assert_any_call()
+            mock_status.update.assert_any_call()
 
     def test_create_database(self):
         # codepath to create
@@ -115,3 +117,44 @@ class GuestAgentManagerTest(testtools.TestCase):
 
         for set in data:
             _test_name(set)
+
+    def test_update_attributes(self):
+        # update hostname
+        self.assertRaises(exception.DatastoreOperationNotSupported,
+                          self.manager.update_attributes,
+                          self.context, 'old_user', 'old_host',
+                          {'host': 'a_new_hostname'})
+        # update username
+        self.assertRaises(exception.DatastoreOperationNotSupported,
+                          self.manager.update_attributes,
+                          self.context, 'old_user', 'old_host',
+                          {'name': 'a_new_username'})
+        # update password
+        with mock.patch.object(dbaas.OracleAdmin, 'change_passwords') as change_passwords:
+            user_attr = {'host': None, 'name': None,
+                         'password': 'a_new_password'}
+            self.manager.update_attributes(self.context,
+                                           'old_user', 'old_host',
+                                           user_attr)
+            # do a manual 'is called' assert as the passed in object is
+            # not mocked, then check the type of the arg
+            self.assertEqual(change_passwords.called, True,
+                             'OracleAdmin.change_passwords was not called.')
+            self.assertEqual(type(change_passwords.call_args[0][0][0]),
+                             models.OracleUser)
+
+    def test_delete_user(self):
+        user = models.OracleUser()
+        user.name = 'username'
+        with mock.patch.object(dbaas.OracleAdmin, 'delete_user_by_name') as delete_user_by_name:
+            self.manager.delete_user(self.context, user.serialize())
+            delete_user_by_name.assert_any_call(user.name, user.host)
+
+    def test_root_enable(self):
+        with mock.patch.object(models.OracleUser, '_is_valid_user_name', return_value=True):
+            root_user = models.OracleUser()
+            root_user.deserialize(self.manager.enable_root(self.context))
+            self.assertEqual(dbaas.ROOT_USERNAME, root_user.name,
+                             'Username does not match.')
+            self.assertEqual(dbaas.PASSWORD_MAX_LEN, len(root_user.password),
+                             'Password length does not match.')
