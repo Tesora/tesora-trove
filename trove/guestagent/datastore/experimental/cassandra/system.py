@@ -19,6 +19,7 @@ CONF = cfg.CONF
 
 CASSANDRA_OWNER = 'cassandra'
 CASSANDRA_DATA_DIR = "/var/lib/cassandra/data"
+CASSANDRA_SYSTEM_KEYSPACE = 'system'
 CASSANDRA_CONF = "/etc/cassandra/cassandra.yaml"
 CASSANDRA_CONF_BACKUP = "/etc/cassandra/cassandra.yaml.old"
 CASSANDRA_TEMP_CONF = "/tmp/cassandra.yaml"
@@ -38,4 +39,10 @@ INSTALL_TIMEOUT = 10000
 
 DEFAULT_SUPERUSER_NAME = "cassandra"
 DEFAULT_SUPERUSER_PASSWORD = "cassandra"
+
+# Default 'salted_hash' value for 'cassandra' user on Cassandra 2.1.
+DEFAULT_SUPERUSER_PWD_HASH = (
+    "$2a$10$wPEVuXBU7WE2Uwzqq3t19ObRJyoKztzC/Doyfr0VtDmVXC4GDAV3e"
+)
+
 CQLSH_CONF_PATH = "~/.cassandra/cqlshrc"

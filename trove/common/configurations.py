@@ -24,7 +24,7 @@ class CassandraConfParser(object):
         self.config = config
 
     def parse(self):
-        return yaml.load(self.config).items()
+        return yaml.safe_load(self.config).items()
 
 
 class MySQLConfParser(object):

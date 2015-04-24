@@ -27,7 +27,7 @@ from trove.guestagent.common.operating_system import (IdentityCodec,
                                                       IniCodec, YamlCodec)
 
 
-class Test(testtools.TestCase):
+class TestOperatingSystem(testtools.TestCase):
 
     def test_identity_file_codec(self):
         data = ("Lorem Ipsum, Lorem Ipsum\n"
@@ -141,7 +141,7 @@ class Test(testtools.TestCase):
         self._test_read_write_file(
             operating_system.read_yaml_file,
             operating_system.write_yaml_file,
-            'trove.guestagent.common.operating_system.YamlCodec')
+            'trove.guestagent.common.operating_system.SafeYamlCodec')
 
     def _test_read_write_file(self, read_func, write_func, expected_codec_cls):
         with tempfile.NamedTemporaryFile() as test_file:

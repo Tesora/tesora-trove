@@ -84,11 +84,34 @@ class YamlCodec(StreamCodec):
         self.__default_flow_style = default_flow_style
 
     def serialize(self, dict_data):
-        return yaml.dump(dict_data,
+        return yaml.dump(dict_data, Dumper=self._get_dumper(),
                          default_flow_style=self.__default_flow_style)
 
     def deserialize(self, stream):
-        return yaml.load(stream)
+        return yaml.load(stream, Loader=self._get_loader())
+
+    def _get_loader(self):
+        return yaml.loader.Loader
+
+    def _get_dumper(self):
+        return yaml.dumper.Dumper
+
+
+class SafeYamlCodec(YamlCodec):
+    """
+    Same as YamlCodec except that it uses safe Loader and Dumper which
+    encode Unicode strings and produce only basic YAML tags.
+    """
+
+    def __init__(self, default_flow_style=False):
+        super(SafeYamlCodec, self).__init__(
+            default_flow_style=default_flow_style)
+
+    def _get_loader(self):
+        return yaml.loader.SafeLoader
+
+    def _get_dumper(self):
+        return yaml.dumper.SafeDumper
 
 
 class IniCodec(StreamCodec):
@@ -121,21 +144,21 @@ class IniCodec(StreamCodec):
         self.__allow_no_value = allow_no_value
 
     def serialize(self, dict_data):
-        parser = self.__build_config_parser(dict_data)
+        parser = self.__init_config_parser(dict_data)
         output = StringIO.StringIO()
         parser.write(output)
 
         return output.getvalue()
 
     def deserialize(self, stream):
-        parser = self.__build_config_parser()
+        parser = self.__init_config_parser()
         parser.readfp(StringIO.StringIO(stream))
 
         return {s: {k: v for k, v in parser.items(s, raw=True)}
                 for s in parser.sections()}
 
-    def __build_config_parser(self, sections=None):
-        parser = SafeConfigParser(allow_no_value=self.__allow_no_value)
+    def __init_config_parser(self, sections=None):
+        parser = self._build_parser()
         if sections:
             for section in sections:
                     parser.add_section(section)
@@ -143,6 +166,9 @@ class IniCodec(StreamCodec):
                         parser.set(section, key, value)
 
         return parser
+
+    def _build_parser(self):
+        return SafeConfigParser(allow_no_value=self.__allow_no_value)
 
 
 def read_config_file(path, allow_no_value=False):
@@ -155,11 +181,11 @@ def write_config_file(path, data, allow_no_value=False, as_root=False):
 
 
 def read_yaml_file(path):
-    return read_file(path, codec=YamlCodec())
+    return read_file(path, codec=SafeYamlCodec())
 
 
 def write_yaml_file(path, data, default_flow_style=False, as_root=False):
-    codec = YamlCodec(default_flow_style=default_flow_style)
+    codec = SafeYamlCodec(default_flow_style=default_flow_style)
     write_file(path, data, codec=codec, as_root=as_root)
 
 

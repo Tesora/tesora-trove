@@ -114,12 +114,10 @@ log_file = logfile.txt
 # ========== Datastore Specific Configuration Options ==========
 
 [mysql]
-
 # For mysql, the following are the defaults for backup, and restore:
 # backup_strategy = InnoBackupEx
 # backup_namespace = trove.guestagent.strategies.backup.mysql_impl
 # restore_namespace = trove.guestagent.strategies.restore.mysql_impl
-
 # Default configuration for mysql replication
 # replication_strategy = MysqlBinlogReplication
 # replication_namespace = trove.guestagent.strategies.replication.mysql_binlog
@@ -131,3 +129,15 @@ log_file = logfile.txt
 # mount_point = /var/lib/vertica
 # readahead_size = 2048
 # guestagent_strategy = trove.common.strategies.cluster.experimental.vertica.guestagent.VerticaGuestAgentStrategy
+
+[percona]
+backup_namespace = trove.guestagent.strategies.backup.mysql_impl
+restore_namespace = trove.guestagent.strategies.restore.mysql_impl
+
+[couchbase]
+backup_namespace = trove.guestagent.strategies.backup.experimental.couchbase_impl
+restore_namespace = trove.guestagent.strategies.restore.experimental.couchbase_impl
+
+[cassandra]
+backup_namespace = trove.guestagent.strategies.backup.experimental.cassandra_impl
+restore_namespace = trove.guestagent.strategies.restore.experimental.cassandra_impl
