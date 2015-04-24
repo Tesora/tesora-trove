@@ -13,8 +13,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import abc
 import os
-
+import StringIO
+import tempfile
 import yaml
 from ConfigParser import SafeConfigParser
 from trove.common import exception
@@ -32,38 +34,66 @@ SUSE = 'suse'
 NEWLINE = '\n'
 
 
-def read_config_file(path, allow_no_value=False):
+class StreamCodec(object):
+
+    @abc.abstractmethod
+    def serialize(self, data):
+        """Serialize a Python object into a stream.
+        """
+
+    @abc.abstractmethod
+    def deserialize(self, stream):
+        """Deserialize stream data into a Python structure.
+        """
+
+
+class IdentityCodec(StreamCodec):
     """
-    Read a given ini-style config file into a nested dictionary
-    digestible by 'write_config_file'.
-
-    :param path             Path to the read config file.
-    :type path              string
-
-    :param allow_no_value:  Allow keys without values.
-    :type allow_no_value:   boolean
-
-    :returns:               A nested dictionary where the outer level
-                            represents whole sections of inner key-value pairs.
-
-    :raises:                :class:`UnprocessableEntity` if file doesn't exist.
+    A basic passthrough codec.
+    Does not modify the data in any way.
     """
-    if path and os.path.exists(path):
-        config = __create_config_parser(allow_no_value)
-        with open(path, 'r') as fp:
-            config.readfp(fp)
 
-        return {s: {k: v for k, v in config.items(s, raw=True)}
-                for s in config.sections()}
+    def serialize(self, data):
+        return data
 
-    raise exception.UnprocessableEntity(_("File does not exist: %s") % path)
+    def deserialize(self, stream):
+        return stream
 
 
-def write_config_file(path, sections, allow_no_value=False):
+class YamlCodec(StreamCodec):
     """
-    Write given sections into an ini-style config file.
-    The written file can be read back into its original dictionary
-    form by 'read_config_file'.
+    Read/write data from/into a YAML config file.
+
+    a: 1
+    b: {c: 3, d: 4}
+    ...
+
+    The above file content (flow-style) would be represented as:
+    {'a': 1,
+     'b': {'c': 3, 'd': 4,}
+     ...
+    }
+    """
+
+    def __init__(self, default_flow_style=False):
+        """
+        :param default_flow_style:  Use flow-style (inline) formatting of
+                                    nested collections.
+        :type default_flow_style:   boolean
+        """
+        self.__default_flow_style = default_flow_style
+
+    def serialize(self, dict_data):
+        return yaml.dump(dict_data,
+                         default_flow_style=self.__default_flow_style)
+
+    def deserialize(self, stream):
+        return yaml.load(stream)
+
+
+class IniCodec(StreamCodec):
+    """
+    Read/write data from/into an ini-style config file.
 
     [section_1]
     key = value
@@ -80,95 +110,131 @@ def write_config_file(path, sections, allow_no_value=False):
      'section_2': {'key': value, key': value, ...}
      ...
     }
-
-    :param path             Path to the written config file.
-    :type path              string
-
-    :param sections:        A nested dictionary where the outer level
-                            represents whole sections of inner key-value pairs.
-    :type sections:         dict
-
-    :param allow_no_value:  Allow keys without values
-                            (one line each, written without trailing '=').
-    :type allow_no_value:   boolean
-
-    :raises:                :class:`UnprocessableEntity` if path not given.
     """
-    if path:
-        config = __build_config_parser(sections, allow_no_value)
-        with open(path, 'w', 0) as fp:
-            config.write(fp)
-    else:
-        raise exception.UnprocessableEntity(_("Invalid path: %s") % path)
+
+    def __init__(self, allow_no_value=False):
+        """
+        :param allow_no_value:  Allow keys without values
+                                (one line each, written without trailing '=').
+        :type allow_no_value:   boolean
+        """
+        self.__allow_no_value = allow_no_value
+
+    def serialize(self, dict_data):
+        parser = self.__build_config_parser(dict_data)
+        output = StringIO.StringIO()
+        parser.write(output)
+
+        return output.getvalue()
+
+    def deserialize(self, stream):
+        parser = self.__build_config_parser()
+        parser.readfp(StringIO.StringIO(stream))
+
+        return {s: {k: v for k, v in parser.items(s, raw=True)}
+                for s in parser.sections()}
+
+    def __build_config_parser(self, sections=None):
+        parser = SafeConfigParser(allow_no_value=self.__allow_no_value)
+        if sections:
+            for section in sections:
+                    parser.add_section(section)
+                    for key, value in sections[section].items():
+                        parser.set(section, key, value)
+
+        return parser
+
+
+def read_config_file(path, allow_no_value=False):
+    return read_file(path, codec=IniCodec(allow_no_value=allow_no_value))
+
+
+def write_config_file(path, data, allow_no_value=False, as_root=False):
+    codec = IniCodec(allow_no_value=allow_no_value)
+    write_file(path, data, codec=codec, as_root=as_root)
 
 
 def read_yaml_file(path):
+    return read_file(path, codec=YamlCodec())
+
+
+def write_yaml_file(path, data, default_flow_style=False, as_root=False):
+    codec = YamlCodec(default_flow_style=default_flow_style)
+    write_file(path, data, codec=codec, as_root=as_root)
+
+
+def read_file(path, codec=IdentityCodec()):
     """
-    Read a given YAML config file into a dictionary
-    digestible by 'write_yaml_file'.
+    Read a file into a Python data structure
+    digestible by 'write_file'.
 
     :param path             Path to the read config file.
     :type path              string
 
+    :param codec:           A codec used to deserialize the data.
+    :type codec:            StreamCodec
+
     :returns:               A dictionary of key-value pairs.
 
     :raises:                :class:`UnprocessableEntity` if file doesn't exist.
+    :raises:                :class:`UnprocessableEntity` if codec not given.
     """
     if path and os.path.exists(path):
         with open(path, 'r') as fp:
-            return yaml.load(fp.read())
+            return codec.deserialize(fp.read())
 
     raise exception.UnprocessableEntity(_("File does not exist: %s") % path)
 
 
-def write_yaml_file(path, sections, default_flow_style=False):
-    """Write given sections into an YAML config file.
-    The written file can be read back into its original dictionary
-    form by 'read_yaml_file'.
+def write_file(path, data, codec=IdentityCodec(), as_root=False):
+    """Write data into file using a given codec.
+    Overwrite any existing contents.
+    The written file can be read back into its original
+    form by 'read_file'.
 
-    a: 1
-    b: {c: 3, d: 4}
-    ...
+    :param path                Path to the written config file.
+    :type path                 string
 
-    The above file content (flow-style) would be represented as:
-    {'a': 1,
-     'b': {'c': 3, 'd': 4,}
-     ...
-    }
+    :param data:               An object representing the file contents.
+    :type data:                object
 
-    :param path                 Path to the written config file.
-    :type path                  string
+    :param codec:              A codec used to serialize the data.
+    :type codec:               StreamCodec
 
-    :param sections:            A dictionary representing the file contents
-                                (see above).
-    :type sections:             dict
+    :param codec:              Execute as root.
+    :type codec:               boolean
 
-    :param default_flow_style:  Use flow-style (inline) formatting of nested
-                                collections.
-    :type default_flow_style:   boolean
-
-    :raises:                    :class:`UnprocessableEntity` if path not given.
+    :raises:                   :class:`UnprocessableEntity` if path not given.
     """
     if path:
-        with open(path, 'w', 0) as fp:
-            fp.write(yaml.dump(sections,
-                               default_flow_style=default_flow_style))
+        if as_root:
+            _write_file_as_root(path, data, codec)
+        else:
+            with open(path, 'w', 0) as fp:
+                fp.write(codec.serialize(data))
     else:
         raise exception.UnprocessableEntity(_("Invalid path: %s") % path)
 
 
-def __build_config_parser(sections, allow_no_value=False):
-    config = __create_config_parser(allow_no_value)
-    for section in sections:
-            config.add_section(section)
-            for key, value in sections[section].items():
-                config.set(section, key, value)
+def _write_file_as_root(path, data, codec=IdentityCodec):
+    """Write a file as root. Overwrite any existing contents.
 
-    return config
+    :param path                Path to the written file.
+    :type path                 string
 
+    :param data:               An object representing the file contents.
+    :type data:                StreamCodec
 
-def __create_config_parser(allow_no_value=False):
-    return SafeConfigParser(allow_no_value=allow_no_value)
+    :param codec:              A codec used to serialize the data.
+    :type codec:               StreamCodec
+    """
+    # The files gets removed automatically once the managing object goes
+    # out of scope.
+    with tempfile.NamedTemporaryFile('w', 0, delete=False) as fp:
+        fp.write(codec.serialize(data))
+        fp.close()  # Release the resource before proceeding.
+        utils.execute_with_timeout("cp", "-f", fp.name, path,
+                                   run_as_root=True, root_helper="sudo")
 
 
 def get_os():

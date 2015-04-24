@@ -13,9 +13,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import collections
 import os
 import stat
-import tempfile
 from cassandra import OperationTimedOut
 from cassandra.auth import PlainTextAuthProvider
 from cassandra.cluster import Cluster
@@ -80,6 +80,7 @@ class CassandraApp(object):
             LOG.exception(_("Error while initiating storage structure."))
 
     def start_db(self, update_db=False):
+        LOG.info(_("Starting Cassandra server."))
         self._enable_db_on_boot()
         try:
             utils.execute_with_timeout(system.START_CASSANDRA,
@@ -126,11 +127,12 @@ class CassandraApp(object):
 
     def _install_db(self, packages):
         """Install cassandra server"""
-        LOG.debug("Installing cassandra server.")
+        LOG.debug("Installing Cassandra server.")
         packager.pkg_install(packages, None, system.INSTALL_TIMEOUT)
         LOG.debug("Finished installing Cassandra server")
 
     def configure_superuser_access(self):
+        LOG.info(_('Configuring Cassandra superuser.'))
         current_superuser = CassandraApp.get_current_superuser()
         cassandra = models.CassandraUser(system.DEFAULT_SUPERUSER_NAME,
                                          utils.generate_random_password())
@@ -181,93 +183,123 @@ class CassandraApp(object):
             config[self._CONF_AUTH_SEC][self._CONF_PWD_KEY]
         )
 
-    def write_config(self, config_contents,
-                     execute_function=utils.execute_with_timeout,
-                     mkstemp_function=tempfile.mkstemp,
-                     unlink_function=os.unlink):
-
-        # first securely create a temp file. mkstemp() will set
-        # os.O_EXCL on the open() call, and we get a file with
-        # permissions of 600 by default.
-        (conf_fd, conf_path) = mkstemp_function()
-
-        LOG.debug('Storing temporary configuration at %s.' % conf_path)
-
-        # write config and close the file, delete it if there is an
-        # error. only unlink if there is a problem. In normal course,
-        # we move the file.
-        try:
-            operating_system.write_yaml_file(conf_path, config_contents)
-            execute_function("sudo", "mv", conf_path, system.CASSANDRA_CONF)
-            #TODO(denis_makogon): figure out the dynamic way to discover
-            # configs owner since it can cause errors if there is
-            # no cassandra user in operating system
-            operating_system.update_owner(system.CASSANDRA_OWNER,
-                                          system.CASSANDRA_OWNER,
-                                          system.CASSANDRA_CONF)
-            execute_function("sudo", "chmod", "a+r", system.CASSANDRA_CONF)
-        except Exception:
-            LOG.exception(
-                _("Exception generating Cassandra configuration %s.") %
-                conf_path)
-            unlink_function(conf_path)
-            raise
-        finally:
-            os.close(conf_fd)
-
-        LOG.info(_('Wrote new Cassandra configuration.'))
-
-    def update_config_with_single(self, key, value):
-        """Updates single key:value in 'cassandra.yaml'."""
-
-        yamled = operating_system.read_yaml_file(system.CASSANDRA_CONF)
-        yamled.update({key: value})
-        LOG.debug("Updating cassandra.yaml with %(key)s: %(value)s."
-                  % {'key': key, 'value': value})
-        LOG.debug("Dumping YAML to stream.")
-        self.write_config(yamled)
-
-    def update_conf_with_group(self, group):
-        """Updates group of key:value in 'cassandra.yaml'."""
-
-        yamled = operating_system.read_yaml_file(system.CASSANDRA_CONF)
-        for key, value in group.iteritems():
-            if key == 'seed':
-                (yamled.get('seed_provider')[0].
-                 get('parameters')[0].
-                 update({'seeds': value}))
-            else:
-                yamled.update({key: value})
-            LOG.debug("Updating cassandra.yaml with %(key)s: %(value)s."
-                      % {'key': key, 'value': value})
-        LOG.debug("Dumping YAML to stream")
-        self.write_config(yamled)
-
     def make_host_reachable(self):
+        """
+        Some of these settings may be overriden by user defined
+        configuration groups.
+
+        cluster_name
+            - Use the unique guest id by default.
+            - Prevents nodes from one logical cluster from talking
+              to another. All nodes in a cluster must have the same value.
+        authenticator and authorizer
+            - Necessary to enable users and permissions.
+        rpc_address - Enable remote connections on all interfaces.
+        broadcast_rpc_address - RPC address to broadcast to drivers and
+                                other clients. Must be set if
+                                rpc_address = 0.0.0.0 and can never be
+                                0.0.0.0 itself.
+        listen_address - The address on which the node communicates with
+                         other nodes. Can never be 0.0.0.0.
+        seed_provider - A list of discovery contact points.
+        """
         updates = {
+            'cluster_name': CONF.guest_id,
+            'authenticator': 'org.apache.cassandra.auth.PasswordAuthenticator',
+            'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer',
             'rpc_address': "0.0.0.0",
             'broadcast_rpc_address': netutils.get_my_ipv4(),
             'listen_address': netutils.get_my_ipv4(),
-            'seed': netutils.get_my_ipv4()
+            'seed_provider': {'parameters':
+                              [{'seeds': netutils.get_my_ipv4()}]
+                              }
         }
-        self.update_conf_with_group(updates)
+
+        self._update_config(updates)
+
+    def update_overrides(self, context, overrides, remove=False):
+        if overrides:
+            if not os.path.exists(system.CASSANDRA_CONF_BACKUP):
+                utils.execute_with_timeout("cp", "-f", "-p",
+                                           system.CASSANDRA_CONF,
+                                           system.CASSANDRA_CONF_BACKUP,
+                                           run_as_root=True,
+                                           root_helper="sudo")
+                LOG.info(_("The old configuration has been saved to '%s'.")
+                         % system.CASSANDRA_CONF_BACKUP)
+                self._update_config(overrides)
+            else:
+                raise exception.TroveError(
+                    _("This instance already has a "
+                      "Configuration Group attached."))
+
+    def remove_overrides(self):
+        if os.path.exists(system.CASSANDRA_CONF_BACKUP):
+            LOG.info(_("Restoring previous configuration from '%s'.")
+                     % system.CASSANDRA_CONF_BACKUP)
+            utils.execute_with_timeout("mv", "-f",
+                                       system.CASSANDRA_CONF_BACKUP,
+                                       system.CASSANDRA_CONF,
+                                       run_as_root=True, root_helper="sudo")
+        else:
+            raise exception.TroveError(
+                _("This instance does not have a "
+                  "Configuration Group attached."))
+
+    def _update_config(self, options):
+        config = operating_system.read_yaml_file(system.CASSANDRA_CONF)
+        self.write_config(CassandraApp._update_dict(options, config))
+
+    @staticmethod
+    def _update_dict(updates, target):
+        """Recursively update a target dictionary with given updates.
+
+        Updates are provided as a dictionary of key-value pairs
+        where a value can also be a nested dictionary in which case
+        its key is treated as a sub-section of the outer key.
+        If a list value is encountered the update is applied
+        iteratively on all its items.
+        """
+        if isinstance(target, list):
+            for index, item in enumerate(target):
+                target[index] = CassandraApp._update_dict(updates, item)
+            return target
+
+        for k, v in updates.iteritems():
+            if isinstance(v, collections.Mapping):
+                    target[k] = CassandraApp._update_dict(v, target.get(k, {}))
+            else:
+                target[k] = updates[k]
+        return target
+
+    def write_config(self, config, is_raw=False):
+        LOG.info(_('Saving Cassandra configuration.'))
+
+        if is_raw:
+            operating_system.write_file(system.CASSANDRA_CONF, config,
+                                        as_root=True)
+        else:
+            operating_system.write_yaml_file(system.CASSANDRA_CONF, config,
+                                             as_root=True)
+
+        operating_system.update_owner(system.CASSANDRA_OWNER,
+                                      system.CASSANDRA_OWNER,
+                                      system.CASSANDRA_CONF)
+        utils.execute_with_timeout("chmod", "a+r", system.CASSANDRA_CONF,
+                                   run_as_root=True,
+                                   root_helper="sudo")
 
     def start_db_with_conf_changes(self, config_contents):
-        LOG.info(_("Starting Cassandra with configuration changes."))
-        LOG.debug("Inside the guest - Cassandra is running %s."
-                  % self.status.is_running)
+        LOG.debug("Starting database with configuration changes.")
         if self.status.is_running:
-            LOG.error(_("Cannot execute start_db_with_conf_changes because "
-                        "Cassandra state == %s.") % self.status)
-            raise RuntimeError("Cassandra not stopped.")
-        LOG.debug("Initiating config.")
-        self.write_config(config_contents)
+            raise RuntimeError(_("The service is still running."))
+
+        self.write_config(config_contents, is_raw=True)
         self.start_db(True)
 
     def reset_configuration(self, configuration):
-        config_contents = configuration['config_contents']
-        LOG.debug("Resetting configuration")
-        self.write_config(config_contents)
+        LOG.debug("Resetting configuration.")
+        self.write_config(configuration['config_contents'], is_raw=True)
 
     @classmethod
     def _get_cqlsh_conf_path(self):

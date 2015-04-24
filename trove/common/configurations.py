@@ -14,7 +14,17 @@
 #    under the License.
 
 import io
+import yaml
 from six.moves import configparser
+
+
+class CassandraConfParser(object):
+
+    def __init__(self, config):
+        self.config = config
+
+    def parse(self):
+        return yaml.load(self.config).items()
 
 
 class MySQLConfParser(object):

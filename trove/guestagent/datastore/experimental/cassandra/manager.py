@@ -15,7 +15,6 @@
 #
 
 import os
-import yaml
 from trove.common import cfg
 from trove.common import exception
 from trove.guestagent import volume
@@ -88,7 +87,7 @@ class Manager(periodic_task.PeriodicTasks):
 
             if config_contents:
                 LOG.debug("Applying configuration.")
-                self.app.write_config(yaml.load(config_contents))
+                self.app.write_config(config_contents, is_raw=True)
                 self.app.make_host_reachable()
 
             if device_path:
@@ -199,13 +198,15 @@ class Manager(periodic_task.PeriodicTasks):
 
     def update_overrides(self, context, overrides, remove=False):
         LOG.debug("Updating overrides.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='update_overrides', datastore=MANAGER)
+        if remove:
+            self.app.remove_overrides()
+        self.app.update_overrides(context, overrides, remove)
 
     def apply_overrides(self, context, overrides):
-        LOG.debug("Applying overrides.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='apply_overrides', datastore=MANAGER)
+        """Configuration changes are made in the config YAML file and
+        require restart, so this is a no-op.
+        """
+        pass
 
     def get_replication_snapshot(self, context, snapshot_info,
                                  replica_source_config=None):
