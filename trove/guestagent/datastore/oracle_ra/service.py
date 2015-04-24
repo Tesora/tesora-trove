@@ -56,6 +56,7 @@ import cx_Oracle
 from trove.common import cfg
 from trove.common import exception
 from trove.common import instance as rd_instance
+from trove.common import utils
 from trove.guestagent.db import models
 from trove.guestagent.datastore import service
 from trove.openstack.common import log as logging
@@ -70,8 +71,9 @@ ORACLE_RA_CONFIG_FILE = "/etc/oracle/oracle-ra.cnf"
 ORACLE_RA_CONFIG_FILE_TEMP = "/tmp/oracle-ra.cnf.tmp"
 GUEST_INFO_FILE = "/etc/guest_info"
 
-PDB_ADMIN_ID = "pdbadmin"
-PDB_ADMIN_PSWD = "pdbpassword"
+ROOT_USERNAME = 'ROOT'
+ADMIN_USERNAME = 'DFT_ADMIN_USER'
+PASSWORD_MAX_LEN = 30
 
 
 class OracleAppStatus(service.BaseDbStatus):
@@ -132,13 +134,14 @@ class OracleAdmin(object):
                   'database names restrictions: limit of 64 characters, use '
                   'only alphanumerics and underscores, cannot start with an '
                   'underscore.') % {'name': pdb_name})
+        admin_password = utils.generate_random_password(PASSWORD_MAX_LEN)
         with LocalOracleClient(CONF.get(MANAGER).oracle_cdb_name) as client:
             client.execute("CREATE PLUGGABLE DATABASE %(pdb_name)s "
-                           "ADMIN USER %(admin_id)s "
-                           "IDENTIFIED BY %(admin_pswd)s" %
+                           "ADMIN USER %(username)s "
+                           "IDENTIFIED BY %(password)s" %
                            {'pdb_name': pdb_name,
-                            'admin_id': PDB_ADMIN_ID,
-                            'admin_pswd': PDB_ADMIN_PSWD})
+                            'username': ROOT_USERNAME,
+                            'password': admin_password})
             client.execute("ALTER PLUGGABLE DATABASE %s OPEN" %
                            CONF.guest_name)
         LOG.debug("Finished creating pluggable database")
@@ -237,12 +240,75 @@ class OracleAdmin(object):
             # 100 and 60000
             client.execute("SELECT USERNAME FROM ALL_USERS "
                            "WHERE (USER_ID BETWEEN 100 AND 60000) "
-                           "AND USERNAME != '%s'" % PDB_ADMIN_ID.upper())
+                           "AND USERNAME != '%s'" % ROOT_USERNAME.upper())
             for row in client:
                 oracle_user = models.OracleUser()
                 oracle_user.name = row[0]
                 users.append(oracle_user.serialize())
         return users, None
+
+    def change_passwords(self, users):
+        """Change the passwords of one or more users."""
+        LOG.debug("Changing the passwords of some users.")
+        with LocalOracleClient(CONF.guest_name, service=True) as client:
+            for item in users:
+                LOG.debug("Changing password for user %s." % item.name)
+                client.execute('ALTER USER %(username)s '
+                               'IDENTIFIED BY %(password)s'
+                               % {'username': item.name,
+                                  'password': item.password})
+
+    def update_attributes(self, username, hostname, user_attrs):
+        """Change the attributes of an existing user."""
+        LOG.debug("Changing user attributes for user %s." % username)
+        if user_attrs.get('host'):
+            raise exception.DatastoreOperationNotSupported(
+                operation='update_attributes:new_host', datastore=MANAGER)
+        if user_attrs.get('name'):
+            raise exception.DatastoreOperationNotSupported(
+                operation='update_attributes:new_name', datastore=MANAGER)
+        new_password = user_attrs.get('password')
+        if new_password:
+            user = models.OracleUser()
+            user.name = username
+            user.password = new_password
+            self.change_passwords([user])
+
+    def enable_root(self, root_password=None):
+        """Create user 'root' with the dba_user role and/or reset the root
+           user password.
+        """
+        LOG.debug("---Enabling root user---")
+        if not root_password:
+            root_password = utils.generate_random_password(PASSWORD_MAX_LEN)
+        root_user = models.OracleUser()
+        root_user.name = ROOT_USERNAME
+        root_user.password = root_password
+        with LocalOracleClient(CONF.guest_name, service=True) as client:
+            client.execute("SELECT USERNAME FROM ALL_USERS "
+                           "WHERE USERNAME = upper('%s')"
+                           % root_user.name.upper())
+            if client.rowcount == 0:
+                client.execute("CREATE USER %(username)s "
+                               "IDENTIFIED BY %(password)s"
+                               % {'username': root_user.name,
+                                  'password': root_user.password})
+            else:
+                client.execute("ALTER USER %(username)s "
+                               "IDENTIFIED BY %(password)s"
+                               % {'username': root_user.name,
+                                  'password': root_user.password})
+            client.execute("GRANT PDB_DBA TO %s" % ROOT_USERNAME)
+        return root_user.serialize()
+
+    def is_root_enabled(self):
+        """Return True if root access is enabled; False otherwise."""
+        LOG.debug("---Checking if root is enabled---")
+        with LocalOracleClient(CONF.guest_name, service=True) as client:
+            client.execute("SELECT USERNAME FROM ALL_USERS "
+                           "WHERE USERNAME = upper('%s')"
+                           % ROOT_USERNAME.upper())
+            return client.rowcount != 0
 
 
 class OracleApp(object):
