@@ -3,8 +3,8 @@
 # process, which may cause wedges in the gate later.
 pbr>=0.6,!=0.7,<1.0
 SQLAlchemy>=0.9.7,<=0.9.99
-eventlet>=0.15.2
-keystonemiddleware>=1.0.0
+eventlet>=0.15.2,!=0.17.0
+keystonemiddleware>=1.0.0,<1.6.0
 kombu>=2.5.0
 Routes>=1.12.3,!=2.0
 WebOb>=1.2.3
@@ -16,22 +16,22 @@ netifaces>=0.10.4
 httplib2>=0.7.5
 lxml>=2.3
 passlib
-python-heatclient>=0.2.9
-python-novaclient>=2.18.0
-python-cinderclient>=1.1.0
-python-keystoneclient>=0.11.1
-python-swiftclient>=2.2.0
-python-designateclient>=1.0.0
-python-neutronclient>=2.3.6,<3
+python-heatclient>=0.2.9,<0.5.0
+python-novaclient>=2.18.0,<2.24.0
+python-cinderclient>=1.1.0,<1.2.0
+python-keystoneclient>=0.11.1,<1.4.0
+python-swiftclient>=2.2.0,<2.5.0
+python-designateclient>=1.0.0,<1.2.0
+python-neutronclient>=2.3.6,<2.5.0
 iso8601>=0.1.9
 jsonschema>=2.0.0,<3.0.0
 Jinja2>=2.6  # BSD License (3 clause)
 pexpect>=3.1,!=3.3 # ISC License
-oslo.config>=1.4.0  # Apache-2.0
-oslo.serialization>=1.0.0
-oslo.utils>=1.1.0
+oslo.config>=1.4.0,<1.10.0  # Apache-2.0
+oslo.serialization>=1.0.0,<1.5.0
+oslo.utils>=1.1.0,<1.5.0
 MySQL-python
 Babel>=1.3
 six>=1.7.0
-stevedore>=1.1.0  # Apache-2.0
+stevedore>=1.1.0<<1.4.0  # Apache-2.0
 ordereddict
