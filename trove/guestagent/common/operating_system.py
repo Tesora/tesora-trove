@@ -15,7 +15,9 @@
 
 import os
 
+from trove.common import exception
 from trove.common import utils
+from trove.common.i18n import _
 
 REDHAT = 'redhat'
 DEBIAN = 'debian'
@@ -35,6 +37,46 @@ def file_discovery(file_candidates):
     for file in file_candidates:
         if os.path.isfile(file):
             return file
+
+
+def start_service(service_candidates):
+    _execute_service_command(service_candidates, 'cmd_start')
+
+
+def stop_service(service_candidates):
+    _execute_service_command(service_candidates, 'cmd_stop')
+
+
+def enable_service_on_boot(service_candidates):
+    _execute_service_command(service_candidates, 'cmd_enable')
+
+
+def disable_service_on_boot(service_candidates):
+    _execute_service_command(service_candidates, 'cmd_disable')
+
+
+def _execute_service_command(service_candidates, command_key):
+    """
+    :param service_candidates        List of possible system service names.
+    :type service_candidates         list
+
+    :param command_key               One of the actions returned by
+                                     'service_discovery'.
+    :type command_key                string
+
+    :raises:          :class:`UnprocessableEntity` if no candidate names given.
+    :raises:          :class:`RuntimeError` if command not found.
+    """
+    if service_candidates:
+        service = service_discovery(service_candidates)
+        if command_key in service:
+            utils.execute_with_timeout(service[command_key], shell=True)
+        else:
+            raise RuntimeError(_("Service control command not available: %s")
+                               % command_key)
+    else:
+        raise exception.UnprocessableEntity(_("Candidate service names not "
+                                              "specified."))
 
 
 def service_discovery(service_candidates):
@@ -90,6 +132,7 @@ def service_discovery(service_candidates):
                 result['cmd_enable'] = "sudo systemctl enable %s" % service
                 result['cmd_disable'] = "sudo systemctl disable %s" % service
             break
+
     return result
 
 
