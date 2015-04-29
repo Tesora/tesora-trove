@@ -17,6 +17,8 @@ from trove.common import cfg
 
 CONF = cfg.CONF
 
+SERVICE_CANDIDATES = ['cassandra']
+
 CASSANDRA_OWNER = 'cassandra'
 CASSANDRA_DATA_DIR = "/var/lib/cassandra/data"
 CASSANDRA_SYSTEM_KEYSPACE = 'system'
@@ -26,12 +28,6 @@ CASSANDRA_TEMP_CONF = "/tmp/cassandra.yaml"
 CASSANDRA_TEMP_DIR = "/tmp/cassandra"
 
 INIT_FS = "sudo mkdir -p %s"
-ENABLE_CASSANDRA_ON_BOOT = "sudo update-rc.d cassandra enable"
-DISABLE_CASSANDRA_ON_BOOT = "sudo update-rc.d cassandra disable"
-
-# Use service command to start and stop cassandra
-START_CASSANDRA = "sudo service cassandra start"
-STOP_CASSANDRA = "sudo service cassandra stop"
 
 CASSANDRA_KILL = "sudo killall java  || true"
 SERVICE_STOP_TIMEOUT = 60

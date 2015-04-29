@@ -65,12 +65,10 @@ class CassandraApp(object):
         self.status.end_install_or_restart()
 
     def _enable_db_on_boot(self):
-        utils.execute_with_timeout(system.ENABLE_CASSANDRA_ON_BOOT,
-                                   shell=True)
+        operating_system.enable_service_on_boot(system.SERVICE_CANDIDATES)
 
     def _disable_db_on_boot(self):
-        utils.execute_with_timeout(system.DISABLE_CASSANDRA_ON_BOOT,
-                                   shell=True)
+        operating_system.disable_service_on_boot(system.SERVICE_CANDIDATES)
 
     def init_storage_structure(self, mount_point):
         try:
@@ -83,8 +81,7 @@ class CassandraApp(object):
         LOG.info(_("Starting Cassandra server."))
         self._enable_db_on_boot()
         try:
-            utils.execute_with_timeout(system.START_CASSANDRA,
-                                       shell=True)
+            operating_system.start_service(system.SERVICE_CANDIDATES)
         except exception.ProcessExecutionError:
             LOG.exception(_("Error starting Cassandra"))
             pass
@@ -105,9 +102,7 @@ class CassandraApp(object):
     def stop_db(self, update_db=False, do_not_start_on_reboot=False):
         if do_not_start_on_reboot:
             self._disable_db_on_boot()
-        utils.execute_with_timeout(system.STOP_CASSANDRA,
-                                   shell=True,
-                                   timeout=system.SERVICE_STOP_TIMEOUT)
+        operating_system.stop_service(system.SERVICE_CANDIDATES)
 
         if not (self.status.wait_for_real_status_to_change_to(
                 rd_instance.ServiceStatuses.SHUTDOWN,
