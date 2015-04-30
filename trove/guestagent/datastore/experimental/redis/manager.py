@@ -16,9 +16,9 @@
 from trove.common import cfg
 from trove.common import exception
 from trove.common import instance as rd_instance
+from trove.guestagent import backup
 from trove.guestagent.common import operating_system
-from trove.guestagent.datastore.experimental.redis.service import (
-    RedisApp)
+from trove.guestagent.datastore.experimental.redis import service
 from trove.guestagent import dbaas
 from trove.guestagent import volume
 from trove.openstack.common import log as logging
@@ -38,9 +38,9 @@ class Manager(periodic_task.PeriodicTasks):
     """
 
     def __init__(self):
-        self._app = RedisApp()
+        self._app = service.RedisApp()
 
-    @periodic_task.periodic_task(ticks_between_runs=3)
+    @periodic_task.periodic_task
     def update_status(self, context):
         """
         Updates the redis trove instance. It is decorated with
@@ -71,13 +71,16 @@ class Manager(periodic_task.PeriodicTasks):
         self._app.reset_configuration(configuration)
 
     def _perform_restore(self, backup_info, context, restore_location, app):
-        """
-        Perform a restore on this instance,
-        currently it is not implemented.
-        """
-        LOG.debug("Perform restore called.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='_perform_restore', datastore=MANAGER)
+        """Perform a restore on this instance."""
+        LOG.info(_("Restoring database from backup %s.") % backup_info['id'])
+        try:
+            backup.restore(context, backup_info, restore_location)
+        except Exception:
+            LOG.exception(_("Error performing restore from backup %s.") %
+                          backup_info['id'])
+            app.status.set_status(rd_instance.ServiceStatuses.FAILED)
+            raise
+        LOG.info(_("Restored database successfully."))
 
     def prepare(self, context, packages, databases, memory_mb, users,
                 device_path=None, mount_point=None, backup_info=None,
@@ -109,6 +112,10 @@ class Manager(periodic_task.PeriodicTasks):
             self._app.apply_initial_guestagent_configuration()
             self._app.restart()
             LOG.info(_('Redis instance has been setup and configured.'))
+            if backup_info:
+                persistence_dir = self._app.get_working_dir()
+                self._perform_restore(backup_info, context, persistence_dir,
+                                      self._app)
         except Exception:
             LOG.exception(_("Error setting up Redis instance."))
             self._app.status.set_status(rd_instance.ServiceStatuses.FAILED)
@@ -147,13 +154,9 @@ class Manager(periodic_task.PeriodicTasks):
         return dbaas.get_filesystem_volume_stats(mount_point)
 
     def create_backup(self, context, backup_info):
-        """
-        This will eventually create a backup. Right now
-        it does nothing.
-        """
-        LOG.debug("Create Backup called.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='create_backup', datastore=MANAGER)
+        """Create a backup of the database."""
+        LOG.debug("Creating backup.")
+        backup.backup(context, backup_info)
 
     def mount_volume(self, context, device_path=None, mount_point=None):
         device = volume.VolumeDevice(device_path)
