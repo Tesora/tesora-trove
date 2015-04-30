@@ -14,14 +14,22 @@
 #    under the License.
 
 from trove.common import cfg
+from trove.guestagent.common import operating_system
 
 CONF = cfg.CONF
 
 CASSANDRA_OWNER = 'cassandra'
 CASSANDRA_DATA_DIR = "/var/lib/cassandra/data"
 CASSANDRA_SYSTEM_KEYSPACE = 'system'
-CASSANDRA_CONF = "/etc/cassandra/cassandra.yaml"
-CASSANDRA_CONF_BACKUP = "/etc/cassandra/cassandra.yaml.old"
+
+CASSANDRA_CONF = {
+    operating_system.REDHAT: "/etc/cassandra/default.conf/cassandra.yaml",
+    operating_system.DEBIAN: "/etc/cassandra/cassandra.yaml",
+    operating_system.SUSE: "/etc/cassandra/default.conf/cassandra.yaml"
+}
+CASSANDRA_CONF_BACKUP = {key: value + '.old'
+                         for key, value in CASSANDRA_CONF.items()}
+
 CASSANDRA_TEMP_CONF = "/tmp/cassandra.yaml"
 CASSANDRA_TEMP_DIR = "/tmp/cassandra"
 
