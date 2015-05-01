@@ -58,17 +58,21 @@ INCLUDE_MARKER_OPERATORS = {
 }
 
 OS_NAME = operating_system.get_os()
-MYSQL_CONFIG = {operating_system.REDHAT: "/etc/my.cnf",
-                operating_system.DEBIAN: "/etc/mysql/my.cnf",
-                operating_system.SUSE: "/etc/my.cnf"}[OS_NAME]
+MYSQL_CONFIG_BASEDIR = {operating_system.REDHAT: "/etc",
+                        operating_system.DEBIAN: "/etc/mysql",
+                        operating_system.SUSE: "/etc"}[OS_NAME]
+MYSQL_CONFD_DIRNAME = {operating_system.REDHAT: "my.cnf.d",
+                       operating_system.DEBIAN: "conf.d",
+                       operating_system.SUSE: "my.cnf.d"}[OS_NAME]
+MYSQL_CONFIG = MYSQL_CONFIG_BASEDIR + "/my.cnf"
+MYSQL_CONFD_DIR = MYSQL_CONFIG_BASEDIR + "/" + MYSQL_CONFD_DIRNAME
+MYCNF_OVERRIDES = MYSQL_CONFD_DIR + "/overrides.cnf"
+MYCNF_OVERRIDES_TMP = "/tmp/overrides.cnf.tmp"
+MYCNF_REPLMASTER = MYSQL_CONFD_DIR + "/0replmaster.cnf"
+MYCNF_REPLSLAVE = MYSQL_CONFD_DIR + "/1replslave.cnf"
+MYCNF_REPLCONFIG_TMP = "/tmp/replication.cnf.tmp"
 MYSQL_SERVICE_CANDIDATES = ["mysql", "mysqld", "mysql-server"]
 MYSQL_BIN_CANDIDATES = ["/usr/sbin/mysqld", "/usr/libexec/mysqld"]
-MYCNF_OVERRIDES = "/etc/mysql/conf.d/overrides.cnf"
-MYCNF_OVERRIDES_TMP = "/tmp/overrides.cnf.tmp"
-MYCNF_REPLMASTER = "/etc/mysql/conf.d/0replmaster.cnf"
-MYCNF_REPLSLAVE = "/etc/mysql/conf.d/1replslave.cnf"
-MYCNF_REPLCONFIG_TMP = "/tmp/replication.cnf.tmp"
-
 
 # Create a package impl
 packager = pkg.Package()
