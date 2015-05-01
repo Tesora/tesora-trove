@@ -78,7 +78,8 @@ class NodetoolSnapshot(base.BackupRunner):
         """Command to collect and package keyspace snapshot(s).
         """
 
-        conf = operating_system.read_yaml_file(system.CASSANDRA_CONF)
+        conf = operating_system.read_yaml_file(
+            system.CASSANDRA_CONF[operating_system.get_os()])
         data_dir = conf['data_file_directories'][0]
         return self._build_snapshot_package_cmd(data_dir, self.filename)
 

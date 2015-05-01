@@ -48,6 +48,9 @@ class CassandraApp(object):
     _CONF_PWD_KEY = 'password'
     _CONF_DIR_MODS = stat.S_IRWXU
     _CONF_FILE_MODS = stat.S_IRUSR
+    _CASSANDRA_CONF = system.CASSANDRA_CONF[operating_system.get_os()]
+    _CASSANDRA_CONF_BACKUP = system.CASSANDRA_CONF_BACKUP[
+        operating_system.get_os()]
 
     def __init__(self, status):
         """By default login with root no password for initial setup."""
@@ -324,14 +327,14 @@ class CassandraApp(object):
 
     def update_overrides(self, context, overrides, remove=False):
         if overrides:
-            if not os.path.exists(system.CASSANDRA_CONF_BACKUP):
+            if not os.path.exists(self._CASSANDRA_CONF_BACKUP):
                 utils.execute_with_timeout("cp", "-f", "-p",
-                                           system.CASSANDRA_CONF,
-                                           system.CASSANDRA_CONF_BACKUP,
+                                           self._CASSANDRA_CONF,
+                                           self._CASSANDRA_CONF_BACKUP,
                                            run_as_root=True,
                                            root_helper="sudo")
                 LOG.info(_("The old configuration has been saved to '%s'.")
-                         % system.CASSANDRA_CONF_BACKUP)
+                         % self._CASSANDRA_CONF_BACKUP)
                 self._update_config(overrides)
             else:
                 raise exception.TroveError(
@@ -339,12 +342,12 @@ class CassandraApp(object):
                       "Configuration Group attached."))
 
     def remove_overrides(self):
-        if os.path.exists(system.CASSANDRA_CONF_BACKUP):
+        if os.path.exists(self._CASSANDRA_CONF_BACKUP):
             LOG.info(_("Restoring previous configuration from '%s'.")
-                     % system.CASSANDRA_CONF_BACKUP)
+                     % self._CASSANDRA_CONF_BACKUP)
             utils.execute_with_timeout("mv", "-f",
-                                       system.CASSANDRA_CONF_BACKUP,
-                                       system.CASSANDRA_CONF,
+                                       self._CASSANDRA_CONF_BACKUP,
+                                       self._CASSANDRA_CONF,
                                        run_as_root=True, root_helper="sudo")
         else:
             raise exception.TroveError(
@@ -352,7 +355,7 @@ class CassandraApp(object):
                   "Configuration Group attached."))
 
     def _update_config(self, options):
-        config = operating_system.read_yaml_file(system.CASSANDRA_CONF)
+        config = operating_system.read_yaml_file(self._CASSANDRA_CONF)
         self.write_config(CassandraApp._update_dict(options, config))
 
     @staticmethod
@@ -381,16 +384,16 @@ class CassandraApp(object):
         LOG.info(_('Saving Cassandra configuration.'))
 
         if is_raw:
-            operating_system.write_file(system.CASSANDRA_CONF, config,
+            operating_system.write_file(self._CASSANDRA_CONF, config,
                                         as_root=True)
         else:
-            operating_system.write_yaml_file(system.CASSANDRA_CONF, config,
+            operating_system.write_yaml_file(self._CASSANDRA_CONF, config,
                                              as_root=True)
 
         operating_system.update_owner(system.CASSANDRA_OWNER,
                                       system.CASSANDRA_OWNER,
-                                      system.CASSANDRA_CONF)
-        utils.execute_with_timeout("chmod", "a+r", system.CASSANDRA_CONF,
+                                      self._CASSANDRA_CONF)
+        utils.execute_with_timeout("chmod", "a+r", self._CASSANDRA_CONF,
                                    run_as_root=True,
                                    root_helper="sudo")
 

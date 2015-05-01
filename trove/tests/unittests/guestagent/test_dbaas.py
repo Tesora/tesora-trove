@@ -1636,15 +1636,15 @@ class CassandraDBAppTest(testtools.TestCase):
     @patch('trove.common.utils.execute_with_timeout')
     def _test_cassandra_write_config(self, data, is_raw,
                                      execute, update_owner):
+        cassandra_conf = cass_system.CASSANDRA_CONF[operating_system.get_os()]
         with patch('trove.guestagent.common.operating_system.%s'
                    % ('write_file' if is_raw else 'write_yaml_file')) as write:
             self.cassandra.write_config(data, is_raw=is_raw)
-            write.assert_called_once_with(
-                cass_system.CASSANDRA_CONF, data, as_root=True)
+            write.assert_called_once_with(cassandra_conf, data, as_root=True)
             update_owner.assert_called_once_with(
-                'cassandra', 'cassandra', cass_system.CASSANDRA_CONF)
+                'cassandra', 'cassandra', cassandra_conf)
             execute.assert_called_with(
-                "chmod", "a+r", cass_system.CASSANDRA_CONF,
+                "chmod", "a+r", cassandra_conf,
                 run_as_root=True, root_helper='sudo')
 
 

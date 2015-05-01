@@ -33,7 +33,8 @@ class NodetoolSnapshot(base.RestoreRunner):
     __strategy_name__ = 'nodetoolsnapshot'
 
     def __init__(self, storage, **kwargs):
-        conf = operating_system.read_yaml_file(system.CASSANDRA_CONF)
+        conf = operating_system.read_yaml_file(
+            system.CASSANDRA_CONF[operating_system.get_os()])
         kwargs.update({'restore_location': conf['data_file_directories'][0]})
         super(NodetoolSnapshot, self).__init__(storage, **kwargs)
 
