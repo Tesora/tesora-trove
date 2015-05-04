@@ -14,16 +14,97 @@
 #    under the License.
 
 import os
+import re
 import tempfile
 import uuid
 
+from jinja2 import Template, DebugUndefined
 from oslo_log import log as logging
-
+from trove.common import cfg
 from trove.common import utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.common.operating_system import FileMode
 
 LOG = logging.getLogger(__name__)
+CONF = cfg.CONF
+
+# Moved from config.py since we want to render these as well
+PGSQL_CONFIG = \
+    '{{base_conf_dir}}/{{version}}/{{data_dir_postfix}}/postgresql.conf'
+PGSQL_HBA_CONFIG = \
+    '{{base_conf_dir}}/{{version}}/{{conf_dir_postfix}}/pg_hba.conf'
+PGSQL_PID = '{{pid}}'
+
+# We can also add another dimension here to support different pgsql variants
+PGSQL_OS_CONFIG = {
+    operating_system.DEBIAN: {
+        'base_data_dir': '/var/lib/postgresql',
+        'data_dir_postfix': 'main',
+        'base_conf_dir': '/etc/postgresql',
+        'conf_dir_postfix': 'main',
+        'pid': '/var/run/postgresql/postmaster.pid',
+        'client_bindir': '/usr/lib/postgresql/{version}/bin',
+        'unix_socket_directory': '/var/run/postgresql'
+    },
+    operating_system.REDHAT: {
+        'base_data_dir': '/var/lib/postgresql',
+        'data_dir_postfix': 'data',
+        'base_conf_dir': '/var/lib/postgresql',
+        'conf_dir_postfix': 'data',
+        'pid': '/var/run/postgresql.pid',
+        'client_bindir': '/usr/pgsql-{version}/bin',
+        'unix_socket_directory': '/tmp'
+    }
+}
+
+
+def get_psql_version():
+    """Poll PgSql for the version number.
+    :return: version number
+    :rtype: string
+    """
+    LOG.debug(
+        "{guest_id}: Polling for postgresql version.".format(
+            guest_id=CONF.guest_id,
+        )
+    )
+    out, err = execute('psql', '--version', timeout=30)
+    pattern = re.compile('\d\.\d')
+    return pattern.search(out).group(0)
+
+
+def render_config(config_contents, *args, **kwargs):
+    templ = Template(config_contents, undefined=DebugUndefined)
+    opsys = operating_system.get_os()
+    d = dict(PGSQL_OS_CONFIG[opsys])
+    d.update(dict(*args, **kwargs))
+    return templ.render(d)
+
+
+def get_pgsql_conf_location():
+    return render_config(PGSQL_CONFIG,
+                         version=get_psql_version())
+
+
+def get_pgsql_hba_location():
+    return render_config(PGSQL_HBA_CONFIG,
+                         version=get_psql_version())
+
+
+def get_pgsql_pid_location():
+    return render_config(PGSQL_PID,
+                         version=get_psql_version())
+
+
+def get_pgsql_bin_dir():
+    opsys = operating_system.get_os()
+    return PGSQL_OS_CONFIG[opsys]['client_bindir'].format(
+        version=get_psql_version())
+
+
+def get_pgsql_socket_dir():
+    opsys = operating_system.get_os()
+    return PGSQL_OS_CONFIG[opsys]['unix_socket_directory']
 
 
 def execute(*command, **kwargs):
@@ -64,7 +145,8 @@ def psql(statement, timeout=30):
     """Execute a statement using the psql client."""
 
     LOG.debug('Sending to local db: {0}'.format(statement))
-    return execute('psql', '-c', statement, timeout=timeout)
+    hostopt = '--host=' + get_pgsql_socket_dir()
+    return execute('psql', hostopt, '-c', statement, timeout=timeout)
 
 
 def query(statement, timeout=30):

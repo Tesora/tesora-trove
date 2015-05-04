@@ -25,8 +25,6 @@ from trove.guestagent.datastore import service
 
 LOG = logging.getLogger(__name__)
 
-PGSQL_PID = "'/var/run/postgresql/postgresql.pid'"
-
 
 class PgSqlAppStatus(service.BaseDbStatus):
     @classmethod
@@ -58,9 +56,11 @@ class PgSqlAppStatus(service.BaseDbStatus):
                 The process was gracefully shut down.
         """
 
-        # Run a simple scalar query to make sure the process is responsive.
         try:
-            pgutil.execute('psql', '-c', 'SELECT 1')
+            pg_isready = pgutil.get_pgsql_bin_dir() + '/pg_isready'
+            cmdopt = '--host=' + pgutil.get_pgsql_socket_dir()
+            utils.execute_with_timeout(pg_isready, cmdopt,
+                                       log_output_on_error=True)
         except utils.Timeout:
             return instance.ServiceStatuses.BLOCKED
         except exception.ProcessExecutionError:
@@ -69,7 +69,7 @@ class PgSqlAppStatus(service.BaseDbStatus):
                     "/bin/ps", "-C", "postgres", "h"
                 )
             except exception.ProcessExecutionError:
-                if os.path.exists(PGSQL_PID):
+                if os.path.exists(pgutil.get_pgsql_pid_location()):
                     return instance.ServiceStatuses.CRASHED
                 return instance.ServiceStatuses.SHUTDOWN
             else:

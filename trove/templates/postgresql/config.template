@@ -1,10 +1,8 @@
-data_directory = '/var/lib/postgresql/{{datastore['version']}}/main'
+data_directory = '{{base_data_dir}}/{{datastore['version']}}/{{data_dir_postfix}}'
 
-hba_file = '/etc/postgresql/{{datastore['version']}}/main/pg_hba.conf'
+hba_file = '{{base_conf_dir}}/{{datastore['version']}}/{{conf_dir_postfix}}/pg_hba.conf'
 
-ident_file = '/etc/postgresql/{{datastore['version']}}/main/pg_ident.conf'
-
-external_pid_file = '/var/run/postgresql/postgresql.pid'
+ident_file = '{{base_conf_dir}}/{{datastore['version']}}/{{conf_dir_postfix}}/pg_ident.conf'
 
 listen_addresses = '*'
 
@@ -23,4 +21,4 @@ lc_time = 'en_US.UTF-8'
 
 default_text_search_config = 'pg_catalog.english'
 
-unix_socket_directories = '/var/run/postgresql'
+unix_socket_directories = '{{unix_socket_directory}}'

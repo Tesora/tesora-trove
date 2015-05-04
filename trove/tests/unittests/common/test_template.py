@@ -17,6 +17,7 @@ from trove.common import exception
 from trove.common import template
 from trove.common import utils
 from trove.datastore.models import DatastoreVersion
+from trove.guestagent.datastore.experimental.postgresql import pgutil
 from trove.tests.unittests import trove_testtools
 from trove.tests.unittests.util import util
 
@@ -103,6 +104,25 @@ class TemplateTest(trove_testtools.TestCase):
                                                 self.flavor_dict,
                                                 self.server_id)
         self.assertTrue(self._find_in_template(config.render(), "relay_log"))
+
+    def test_pgsql_second_stage_render(self):
+        datastore = Mock(spec=DatastoreVersion)
+        datastore.datastore_name = 'PostgreSQL'
+        # 'name' really is version for some reason in SingleInstConfTemplate
+        datastore.name = '9.4'
+        # datastore.version = '9.4'
+        datastore.manager = 'postgresql'
+
+        config = template.SingleInstanceConfigTemplate(datastore,
+                                                       self.flavor_dict,
+                                                       self.server_id)
+        first_pass = config.render()
+        self.assertTrue('base_data_dir' in first_pass)
+        self.assertTrue('base_conf_dir' in first_pass)
+
+        second_pass = pgutil.render_config(first_pass)
+        self.assertFalse('base_data_dir' in second_pass)
+        self.assertFalse('base_conf_dir' in second_pass)
 
 
 class HeatTemplateLoadTest(trove_testtools.TestCase):
