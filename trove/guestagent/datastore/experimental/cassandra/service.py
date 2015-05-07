@@ -785,7 +785,7 @@ class CassandraConnection(object):
             raise exception.UnprocessableEntity()
 
     def __disconnect(self):
-        if not self.__is_active():
+        if self.__is_active():
             try:
                 LOG.debug("Disconnecting from cluster: '%s'"
                           % self._cluster.metadata.cluster_name)
