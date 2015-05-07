@@ -19,11 +19,26 @@ from trove.common import stream_codecs
 
 class CassandraConfParser(object):
 
+    CODEC = stream_codecs.PropertiesCodec()
+
     def __init__(self, config):
         self.config = config
 
     def parse(self):
         return yaml.safe_load(self.config).items()
+        return self.CODEC.deserialize(self.config).items()
+
+
+class RedisConfParser(object):
+
+    CODEC = stream_codecs.PropertiesCodec()
+
+    def __init__(self, config):
+        self.config = config
+
+    def parse(self):
+        return yaml.safe_load(self.config).items()
+        return self.CODEC.deserialize(self.config).items()
 
 
 class MySQLConfParser(object):

@@ -21,3 +21,5 @@ testtools>=0.9.36,!=1.2.0
 discover
 testrepository>=0.0.18
 cassandra-driver>=2.1.4 # Apache-2.0
+pymongo>=3.0.2
+redis>=2.10.0

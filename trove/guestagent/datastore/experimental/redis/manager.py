@@ -15,14 +15,12 @@
 
 from trove.common import cfg
 from trove.common import exception
-from trove.guestagent import dbaas
-from trove.guestagent import volume
 from trove.common import instance as rd_instance
 from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.experimental.redis.service import (
-    RedisAppStatus)
-from trove.guestagent.datastore.experimental.redis.service import (
     RedisApp)
+from trove.guestagent import dbaas
+from trove.guestagent import volume
 from trove.openstack.common import log as logging
 from trove.common.i18n import _
 from trove.openstack.common import periodic_task
@@ -39,6 +37,9 @@ class Manager(periodic_task.PeriodicTasks):
     based off of the service_type of the trove instance
     """
 
+    def __init__(self):
+        self._app = RedisApp()
+
     @periodic_task.periodic_task(ticks_between_runs=3)
     def update_status(self, context):
         """
@@ -46,7 +47,7 @@ class Manager(periodic_task.PeriodicTasks):
         perodic task so it is automatically called every 3 ticks.
         """
         LOG.debug("Update status called.")
-        RedisAppStatus.get().update()
+        self._app.status.update()
 
     def rpc_ping(self, context):
         LOG.debug("Responding to RPC ping.")
@@ -67,8 +68,7 @@ class Manager(periodic_task.PeriodicTasks):
         currently this does nothing.
         """
         LOG.debug("Reset configuration called.")
-        app = RedisApp(RedisAppStatus.get())
-        app.reset_configuration(configuration)
+        self._app.reset_configuration(configuration)
 
     def _perform_restore(self, backup_info, context, restore_location, app):
         """
@@ -89,8 +89,7 @@ class Manager(periodic_task.PeriodicTasks):
         prepare handles all the base configuration of the redis instance.
         """
         try:
-            app = RedisApp(RedisAppStatus.get())
-            RedisAppStatus.get().begin_install()
+            self._app.status.begin_install()
             if device_path:
                 device = volume.VolumeDevice(device_path)
                 # unmount if device is already mounted
@@ -100,14 +99,15 @@ class Manager(periodic_task.PeriodicTasks):
                 operating_system.chown(mount_point, 'redis', 'redis',
                                        as_root=True)
                 LOG.debug('Mounted the volume.')
-            app.install_if_needed(packages)
+            self._app.install_if_needed(packages)
             LOG.info(_('Writing redis configuration.'))
-            app.write_config(config_contents)
-            app.restart()
+            self._app.configuration_manager.save_configuration(config_contents)
+            self._app.apply_initial_guestagent_configuration()
+            self._app.restart()
             LOG.info(_('Redis instance has been setup and configured.'))
         except Exception:
             LOG.exception(_("Error setting up Redis instance."))
-            app.status.set_status(rd_instance.ServiceStatuses.FAILED)
+            self._app.status.set_status(rd_instance.ServiceStatuses.FAILED)
             raise RuntimeError("prepare call has failed.")
 
     def restart(self, context):
@@ -117,16 +117,14 @@ class Manager(periodic_task.PeriodicTasks):
         gets a restart message from the taskmanager.
         """
         LOG.debug("Restart called.")
-        app = RedisApp(RedisAppStatus.get())
-        app.restart()
+        self._app.restart()
 
     def start_db_with_conf_changes(self, context, config_contents):
         """
         Start this redis instance with new conf changes.
         """
         LOG.debug("Start DB with conf changes called.")
-        app = RedisApp(RedisAppStatus.get())
-        app.start_db_with_conf_changes(config_contents)
+        self._app.start_db_with_conf_changes(config_contents)
 
     def stop_db(self, context, do_not_start_on_reboot=False):
         """
@@ -135,8 +133,7 @@ class Manager(periodic_task.PeriodicTasks):
         gets a stop message from the taskmanager.
         """
         LOG.debug("Stop DB called.")
-        app = RedisApp(RedisAppStatus.get())
-        app.stop_db(do_not_start_on_reboot=do_not_start_on_reboot)
+        self._app.stop_db(do_not_start_on_reboot=do_not_start_on_reboot)
 
     def get_filesystem_stats(self, context, fs_path):
         """Gets the filesystem stats for the path given."""
@@ -173,13 +170,14 @@ class Manager(periodic_task.PeriodicTasks):
 
     def update_overrides(self, context, overrides, remove=False):
         LOG.debug("Updating overrides.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='update_overrides', datastore=MANAGER)
+        if remove:
+            self._app.remove_overrides()
+        else:
+            self._app.update_overrides(context, overrides, remove)
 
     def apply_overrides(self, context, overrides):
         LOG.debug("Applying overrides.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='apply_overrides', datastore=MANAGER)
+        self._app.apply_overrides(self._app.admin, overrides)
 
     def update_attributes(self, context, username, hostname, user_attrs):
         LOG.debug("Updating attributes.")
