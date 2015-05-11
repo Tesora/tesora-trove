@@ -59,7 +59,6 @@ CHANGE_DB_DIR_OWNER = "sudo chown " + ORACLE_INSTANCE_OWNER + " %(datadir)s"
 CHANGE_DB_DIR_GROUP_OWNER = (
     "sudo chgrp " + ORACLE_GROUP_OWNER + " %(datadir)s")
 
-# TO-DO: totalMemory values will be provided through configuration group.
 CREATE_DB_COMMAND = ("dbca -silent -createDatabase "
                      "-templateName General_Purpose.dbc "
                      "-gdbName %(gdbname)s "
