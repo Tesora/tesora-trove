@@ -107,10 +107,8 @@ class Manager(periodic_task.PeriodicTasks):
             if config_contents:
                 LOG.debug("Applying configuration.")
                 self.app.write_config(config_contents, is_raw=True)
-                self.app.make_host_reachable()
-
                 # Instance nodes use the unique guest id by default.
-                self.app.update_cluster_name_property(CONF.guest_id)
+                self.app.apply_initial_guestagent_configuration()
 
             if device_path:
                 LOG.debug("Preparing data volume.")

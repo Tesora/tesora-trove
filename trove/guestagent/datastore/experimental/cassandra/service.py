@@ -260,6 +260,18 @@ class CassandraApp(object):
             config[self._CONF_AUTH_SEC][self._CONF_PWD_KEY]
         )
 
+    def apply_initial_guestagent_configuration(self, cluster_name=None):
+        """Update guestagent-controlled configuration properties.
+        These changes to the default template are necessary in order to make
+        the database service bootable and accessible in the guestagent context.
+
+        :param cluster_name:  The 'cluster_name' configuration property.
+                              Use the unique guest id by default.
+        :type cluster_name:   string
+        """
+        self.make_host_reachable()
+        self.update_cluster_name_property(cluster_name or CONF.guest_id)
+
     def make_host_reachable(self):
         """
         Some of these settings may be overriden by user defined
@@ -403,6 +415,9 @@ class CassandraApp(object):
             raise RuntimeError(_("The service is still running."))
 
         self.write_config(config_contents, is_raw=True)
+        # The configuration template has to be updated with
+        # guestagent-controlled settings.
+        self.apply_initial_guestagent_configuration()
         self.start_db(True)
 
     def reset_configuration(self, configuration):

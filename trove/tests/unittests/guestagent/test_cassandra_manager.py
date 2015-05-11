@@ -201,7 +201,8 @@ class GuestAgentCassandraDBManagerTest(testtools.TestCase):
         pkg.Package.pkg_is_installed = MagicMock(return_value=is_db_installed)
         mock_app.init_storage_structure = MagicMock(return_value=None)
         mock_app.write_config = MagicMock(return_value=None)
-        mock_app.make_host_reachable = MagicMock(return_value=None)
+        mock_app.apply_initial_guestagent_configuration = MagicMock(
+            return_value=None)
         mock_app.restart = MagicMock(return_value=None)
         mock_app.start_db = MagicMock(return_value=None)
         mock_app.stop_db = MagicMock(return_value=None)
@@ -227,15 +228,11 @@ class GuestAgentCassandraDBManagerTest(testtools.TestCase):
         mock_app.install_if_needed.assert_any_call(packages)
         mock_app._remove_system_tables.assert_any_call()
         mock_app.init_storage_structure.assert_any_call('/var/lib/cassandra')
-        mock_app.make_host_reachable.assert_any_call()
+        mock_app.apply_initial_guestagent_configuration.assert_any_call()
         mock_app.start_db.assert_any_call(update_db=False)
         mock_app.stop_db.assert_any_call()
         if backup_info:
-            mock_app.update_cluster_name_property.assert_any_call(
-                backup_info['instance_id'])
             mock_app._reset_superuser_password.assert_any_call()
-        else:
-            mock_app.update_cluster_name_property.assert_any_call(ANY)
 
     def test_keyspace_validation(self):
         valid_name = self._get_random_name(32)
