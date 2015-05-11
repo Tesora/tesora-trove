@@ -437,6 +437,7 @@ class CassandraAppStatus(service.BaseDbStatus):
                                  to the database.
         :type superuser:         CassandraUser
         """
+        super(CassandraAppStatus, self).__init__()
         self.__user = superuser
 
     def set_superuser(self, user):
