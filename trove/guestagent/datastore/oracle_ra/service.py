@@ -195,11 +195,10 @@ class OracleAdmin(object):
 
     def delete_user(self, user):
         """Delete the specified user."""
-        oracle_user = models.OracleUser()
-        oracle_user.deserialize(user)
-        self.delete_user_by_name(oracle_user.name, oracle_user.host)
+        oracle_user = self._deserialize_user(user)
+        self.delete_user_by_name(oracle_user.name)
 
-    def delete_user_by_name(self, name, host='%'):
+    def delete_user_by_name(self, name):
         LOG.debug("Deleting user %s" % name)
         with LocalOracleClient(CONF.guest_name, service=True) as client:
             client.execute("DROP USER %s" % name)
@@ -219,16 +218,15 @@ class OracleAdmin(object):
             users = client.fetchall()
         if client.rowcount != 1:
             return None
-        user = models.OracleUser()
         try:
-            user.name = users[0][0]  # Could possibly throw a BadRequest here.
+            user = models.OracleUser(users[0][0])
+            return user
         except exception.ValueError as ve:
             LOG.exception(_("Error Getting user information"))
             raise exception.BadRequest(_("Username %(user)s is not valid"
                                          ": %(reason)s") %
                                        {'user': username, 'reason': ve.message}
                                        )
-        return user
 
     def list_users(self, limit=None, marker=None, include_marker=False):
         """List users that have access to the database."""
@@ -242,8 +240,7 @@ class OracleAdmin(object):
                            "WHERE (USER_ID BETWEEN 100 AND 60000) "
                            "AND USERNAME != '%s'" % ROOT_USERNAME.upper())
             for row in client:
-                oracle_user = models.OracleUser()
-                oracle_user.name = row[0]
+                oracle_user = models.OracleUser(row[0])
                 users.append(oracle_user.serialize())
         return users, None
 
@@ -269,9 +266,7 @@ class OracleAdmin(object):
                 operation='update_attributes:new_name', datastore=MANAGER)
         new_password = user_attrs.get('password')
         if new_password:
-            user = models.OracleUser()
-            user.name = username
-            user.password = new_password
+            user = models.OracleUser(username, new_password)
             self.change_passwords([user])
 
     def enable_root(self, root_password=None):
@@ -281,9 +276,7 @@ class OracleAdmin(object):
         LOG.debug("---Enabling root user---")
         if not root_password:
             root_password = utils.generate_random_password(PASSWORD_MAX_LEN)
-        root_user = models.OracleUser()
-        root_user.name = ROOT_USERNAME
-        root_user.password = root_password
+        root_user = models.OracleUser(ROOT_USERNAME, root_password)
         with LocalOracleClient(CONF.guest_name, service=True) as client:
             client.execute("SELECT USERNAME FROM ALL_USERS "
                            "WHERE USERNAME = upper('%s')"
@@ -309,6 +302,14 @@ class OracleAdmin(object):
                            "WHERE USERNAME = upper('%s')"
                            % ROOT_USERNAME.upper())
             return client.rowcount != 0
+
+    def _deserialize_user(self, user_dict):
+        if user_dict:
+            user = models.OracleUser(None)
+            user.deserialize(user_dict)
+            return user
+
+        return None
 
 
 class OracleApp(object):
