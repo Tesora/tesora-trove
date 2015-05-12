@@ -119,7 +119,7 @@ class GuestAgentDB2ManagerTest(testtools.TestCase):
                              overrides=None,
                              cluster_config=None)
         mock_status.begin_install.assert_any_call()
-        self.assertEqual(mock_app.change_ownership.call_count, 1)
+        self.assertEqual(1, mock_app.change_ownership.call_count)
         if databases:
             self.assertTrue(db2_service.DB2Admin.create_database.called)
         else:
@@ -204,6 +204,13 @@ class GuestAgentDB2ManagerTest(testtools.TestCase):
         self.assertThat(users, Equals(['user1']))
         db2_service.DB2Admin.get_user.assert_any_call(username, hostname)
 
+    def test_reset_configuration(self):
+        try:
+            configuration = {'config_contents': 'some junk'}
+            self.manager.reset_configuration(self.context, configuration)
+        except Exception:
+            self.fail("reset_configuration raised exception unexpectedly.")
+
     def test_rpc_ping(self):
         output = self.manager.rpc_ping(self.context)
-        self.assertEqual(output, True)
+        self.assertTrue(output)

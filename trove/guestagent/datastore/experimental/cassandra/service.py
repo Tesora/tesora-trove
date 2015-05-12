@@ -28,6 +28,7 @@ from trove.common import instance as rd_instance
 from trove.common.i18n import _
 from trove.guestagent import pkg
 from trove.guestagent.common import operating_system
+from trove.guestagent.common.operating_system import FileMode
 from trove.guestagent.datastore.experimental.cassandra import system
 from trove.guestagent.datastore import service
 from trove.guestagent.db import models
@@ -75,8 +76,7 @@ class CassandraApp(object):
 
     def init_storage_structure(self, mount_point):
         try:
-            cmd = system.INIT_FS % mount_point
-            utils.execute_with_timeout(cmd, shell=True)
+            operating_system.create_directory(mount_point, as_root=True)
         except exception.ProcessExecutionError:
             LOG.exception(_("Error while initiating storage structure."))
 
@@ -402,12 +402,11 @@ class CassandraApp(object):
             operating_system.write_yaml_file(self._CASSANDRA_CONF, config,
                                              as_root=True)
 
-        operating_system.update_owner(system.CASSANDRA_OWNER,
-                                      system.CASSANDRA_OWNER,
-                                      self._CASSANDRA_CONF)
-        utils.execute_with_timeout("chmod", "a+r", self._CASSANDRA_CONF,
-                                   run_as_root=True,
-                                   root_helper="sudo")
+        operating_system.chown(self._CASSANDRA_CONF,
+                               system.CASSANDRA_OWNER, system.CASSANDRA_OWNER,
+                               as_root=True)
+        operating_system.chmod(self._CASSANDRA_CONF, FileMode.ADD_READ_ALL,
+                               as_root=True)
 
     def start_db_with_conf_changes(self, config_contents):
         LOG.debug("Starting database with configuration changes.")

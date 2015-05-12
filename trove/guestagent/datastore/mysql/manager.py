@@ -135,9 +135,7 @@ class Manager(periodic_task.PeriodicTasks):
                 device.migrate_data(mount_point, target_subdir="data")
             #mount the volume
             device.mount(mount_point)
-            operating_system.update_owner('mysql',
-                                          'mysql',
-                                          mount_point)
+            operating_system.chown(mount_point, 'mysql', 'mysql', as_root=True)
 
             LOG.debug("Mounted the volume at %s" % mount_point)
             # We need to temporarily update the default my.cnf so that

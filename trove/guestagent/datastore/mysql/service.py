@@ -32,6 +32,7 @@ from trove.common import exception
 from trove.common import instance as rd_instance
 from trove.common.exception import PollTimeOut
 from trove.guestagent.common import operating_system
+from trove.guestagent.common.operating_system import FileMode
 from trove.guestagent.common import sql_query
 from trove.guestagent.db import models
 from trove.guestagent import pkg
@@ -98,8 +99,7 @@ def clear_expired_password():
         except exception.ProcessExecutionError:
             LOG.exception(_("Cannot change mysql password."))
             return
-        utils.execute("rm", "-f", secret_file, run_as_root=True,
-                      root_helper="sudo")
+        operating_system.remove(secret_file, force=True, as_root=True)
         LOG.debug("Expired password removed.")
 
 
@@ -365,7 +365,7 @@ class MySqlAdmin(object):
         user = models.MySQLUser()
         try:
             user.name = username  # Could possibly throw a BadRequest here.
-        except exception.ValueError as ve:
+        except ValueError as ve:
             LOG.exception(_("Error Getting user information"))
             raise exception.BadRequest(_("Username %(user)s is not valid"
                                          ": %(reason)s") %
@@ -641,10 +641,9 @@ class MySqlApp(object):
         random_uuid = str(uuid.uuid4())
         configs = ["/etc/my.cnf", "/etc/mysql/conf.d", "/etc/mysql/my.cnf"]
         for config in configs:
-            command = "mv %s %s_%s" % (config, config, random_uuid)
             try:
-                utils.execute_with_timeout(command, shell=True,
-                                           root_helper="sudo")
+                old_conf_backup = "%s_%s" % (config, random_uuid)
+                operating_system.move(config, old_conf_backup, as_root=True)
                 LOG.debug("%s saved to %s_%s." %
                           (config, config, random_uuid))
             except exception.ProcessExecutionError:
@@ -653,8 +652,7 @@ class MySqlApp(object):
     def _create_mysql_confd_dir(self):
         conf_dir = "/etc/mysql/conf.d"
         LOG.debug("Creating %s." % conf_dir)
-        command = "sudo mkdir -p %s" % conf_dir
-        utils.execute_with_timeout(command, shell=True)
+        operating_system.create_directory(conf_dir, as_root=True)
 
     def _enable_mysql_on_boot(self):
         LOG.debug("Enabling MySQL on boot.")
@@ -767,11 +765,10 @@ class MySqlApp(object):
                 # On restarts, sometimes these are wiped. So it can be a race
                 # to have MySQL start up before it's restarted and these have
                 # to be deleted. That's why its ok if they aren't found and
-                # that is why we use the "-f" option to "rm".
-                (utils.
-                 execute_with_timeout("sudo", "rm", "-f",
-                                      "%s/data/ib_logfile%d"
-                                      % (MYSQL_BASE_DIR, index)))
+                # that is why we use the "force" option to "remove".
+                operating_system.remove("%s/data/ib_logfile%d"
+                                        % (MYSQL_BASE_DIR, index), force=True,
+                                        as_root=True)
             except exception.ProcessExecutionError:
                 LOG.exception("Could not delete logfile.")
                 raise
@@ -790,15 +787,11 @@ class MySqlApp(object):
             with open(TMP_MYCNF, 'w') as t:
                 t.write(config_contents)
 
-            utils.execute_with_timeout("sudo", "mv", TMP_MYCNF,
-                                       MYSQL_CONFIG)
-
+            operating_system.move(TMP_MYCNF, MYSQL_CONFIG, as_root=True)
             self._write_temp_mycnf_with_admin_account(MYSQL_CONFIG,
                                                       TMP_MYCNF,
                                                       admin_password)
-
-            utils.execute_with_timeout("sudo", "mv", TMP_MYCNF,
-                                       MYSQL_CONFIG)
+            operating_system.move(TMP_MYCNF, MYSQL_CONFIG, as_root=True)
         except Exception:
             os.unlink(TMP_MYCNF)
             raise
@@ -815,17 +808,16 @@ class MySqlApp(object):
         with open(MYCNF_OVERRIDES_TMP, 'w') as overrides:
             overrides.write(overrideValues)
         LOG.info(_("Moving overrides.cnf into correct location."))
-        utils.execute_with_timeout("sudo", "mv", MYCNF_OVERRIDES_TMP,
-                                   MYCNF_OVERRIDES)
-
+        operating_system.move(MYCNF_OVERRIDES_TMP, MYCNF_OVERRIDES,
+                              as_root=True)
         LOG.info(_("Setting permissions on overrides.cnf."))
-        utils.execute_with_timeout("sudo", "chmod", "0644",
-                                   MYCNF_OVERRIDES)
+        operating_system.chmod(MYCNF_OVERRIDES, FileMode.SET_GRP_RW_OTH_R,
+                               as_root=True)
 
     def remove_overrides(self):
         LOG.info(_("Removing overrides configuration file."))
         if os.path.exists(MYCNF_OVERRIDES):
-            utils.execute_with_timeout("sudo", "rm", MYCNF_OVERRIDES)
+            operating_system.remove(MYCNF_OVERRIDES, as_root=True)
 
     def _write_replication_overrides(self, overrideValues, cnf_file):
         LOG.info(_("Writing replication.cnf file."))
@@ -833,16 +825,15 @@ class MySqlApp(object):
         with open(MYCNF_REPLCONFIG_TMP, 'w') as overrides:
             overrides.write(overrideValues)
         LOG.debug("Moving temp replication.cnf into correct location.")
-        utils.execute_with_timeout("sudo", "mv", MYCNF_REPLCONFIG_TMP,
-                                   cnf_file)
-
+        operating_system.move(MYCNF_REPLCONFIG_TMP, cnf_file, as_root=True)
         LOG.debug("Setting permissions on replication.cnf.")
-        utils.execute_with_timeout("sudo", "chmod", "0644", cnf_file)
+        operating_system.chmod(cnf_file, FileMode.SET_GRP_RW_OTH_R,
+                               as_root=True)
 
     def _remove_replication_overrides(self, cnf_file):
         LOG.info(_("Removing replication configuration file."))
         if os.path.exists(cnf_file):
-            utils.execute_with_timeout("sudo", "rm", cnf_file)
+            operating_system.remove(cnf_file, as_root=True)
 
     def exists_replication_source_overrides(self):
         return os.path.exists(MYCNF_REPLMASTER)
