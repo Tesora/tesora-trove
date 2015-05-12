@@ -21,6 +21,7 @@ from trove.common import instance as rd_instance
 from trove.common import utils as utils
 from trove.guestagent import pkg
 from trove.guestagent.common import operating_system
+from trove.guestagent.common.operating_system import FileMode
 from trove.guestagent.datastore import service
 from trove.guestagent.datastore.experimental.couchdb import system
 from trove.openstack.common import log as logging
@@ -77,34 +78,26 @@ class CouchDBApp(object):
         """
         try:
             LOG.debug("Changing permissions.")
-            operating_system.update_owner(
-                'couchdb', 'couchdb', COUCHDB_LIB_DIR
+            operating_system.chown(
+                COUCHDB_LIB_DIR, 'couchdb', 'couchdb', as_root=True
             )
-            operating_system.update_owner(
-                'couchdb', 'couchdb', COUCHDB_LOG_DIR
+            operating_system.chown(
+                COUCHDB_LOG_DIR, 'couchdb', 'couchdb', as_root=True
             )
-            operating_system.update_owner(
-                'couchdb', 'couchdb', COUCHDB_BIN_DIR
+            operating_system.chown(
+                COUCHDB_BIN_DIR, 'couchdb', 'couchdb', as_root=True
             )
-            operating_system.update_owner(
-                'couchdb', 'couchdb', COUCHDB_CONFIG_DIR
+            operating_system.chown(
+                COUCHDB_CONFIG_DIR, 'couchdb', 'couchdb', as_root=True
             )
-            self.execute_change_permission_commands(
-                system.UPDATE_LIB_DIR_PERMISSIONS %
-                {'libdir': COUCHDB_LIB_DIR}
-            )
-            self.execute_change_permission_commands(
-                system.UPDATE_LOG_DIR_PERMISSIONS %
-                {'logdir': COUCHDB_LOG_DIR}
-            )
-            self.execute_change_permission_commands(
-                system.UPDATE_BIN_DIR_PERMISSIONS %
-                {'bindir': COUCHDB_BIN_DIR}
-            )
-            self.execute_change_permission_commands(
-                system.UPDATE_CONF_DIR_PERMISSIONS %
-                {'confdir': COUCHDB_CONFIG_DIR}
-            )
+            operating_system.chmod(COUCHDB_LIB_DIR, FileMode.ADD_GRP_RW,
+                                   as_root=True)
+            operating_system.chmod(COUCHDB_LOG_DIR, FileMode.ADD_GRP_RW,
+                                   as_root=True)
+            operating_system.chmod(COUCHDB_BIN_DIR, FileMode.ADD_GRP_RW,
+                                   as_root=True)
+            operating_system.chmod(COUCHDB_CONFIG_DIR, FileMode.ADD_GRP_RW,
+                                   as_root=True)
             self.execute_change_permission_commands(
                 system.UPDATE_GROUP_MEMBERSHIP
             )

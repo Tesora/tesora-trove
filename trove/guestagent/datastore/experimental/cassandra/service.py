@@ -28,6 +28,7 @@ from trove.common import instance as rd_instance
 from trove.common.i18n import _
 from trove.guestagent import pkg
 from trove.guestagent.common import operating_system
+from trove.guestagent.common.operating_system import FileMode
 from trove.guestagent.datastore.experimental.cassandra import system
 from trove.guestagent.datastore import service
 from trove.guestagent.db import models
@@ -75,8 +76,7 @@ class CassandraApp(object):
 
     def init_storage_structure(self, mount_point):
         try:
-            cmd = system.INIT_FS % mount_point
-            utils.execute_with_timeout(cmd, shell=True)
+            operating_system.create_directory(mount_point, as_root=True)
         except exception.ProcessExecutionError:
             LOG.exception(_("Error while initiating storage structure."))
 

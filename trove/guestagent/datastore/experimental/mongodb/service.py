@@ -178,11 +178,8 @@ class MongoDBApp(object):
 
                 LOG.info(_("Moving %(a)s to %(b)s.")
                          % {'a': system.TMP_CONFIG, 'b': CONFIG_FILE})
-                utils.execute_with_timeout("mv",
-                                           system.TMP_CONFIG,
-                                           CONFIG_FILE,
-                                           run_as_root=True,
-                                           root_helper="sudo")
+                operating_system.move(system.TMP_CONFIG, CONFIG_FILE,
+                                      as_root=True)
             except Exception:
                 os.unlink(system.TMP_CONFIG)
                 raise
@@ -214,8 +211,7 @@ class MongoDBApp(object):
         mount_point = "/var/lib/mongodb/*"
         LOG.debug("Clearing storage at %s." % mount_point)
         try:
-            cmd = "sudo rm -rf %s" % mount_point
-            utils.execute_with_timeout(cmd, shell=True)
+            operating_system.remove(mount_point, force=True, as_root=True)
         except exception.ProcessExecutionError:
             LOG.exception(_("Error clearing storage."))
 
@@ -249,11 +245,10 @@ class MongoDBApp(object):
         LOG.info(_("Moving %(a)s to %(b)s.")
                  % {'a': system.TMP_MONGOS_UPSTART,
                     'b': system.MONGOS_UPSTART})
-        utils.execute_with_timeout("mv", system.TMP_MONGOS_UPSTART,
-                                   system.MONGOS_UPSTART,
-                                   run_as_root=True, root_helper="sudo")
-        cmd = "sudo rm -f /etc/init/mongodb.conf"
-        utils.execute_with_timeout(cmd, shell=True)
+        operating_system.move(system.TMP_MONGOS_UPSTART, system.MONGOS_UPSTART,
+                              as_root=True)
+        operating_system.remove('/etc/init/mongodb.conf', force=True,
+                                as_root=True)
 
     def do_mongo(self, db_cmd):
         cmd = ('mongo --host ' + netutils.get_my_ipv4() +

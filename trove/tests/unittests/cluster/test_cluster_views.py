@@ -17,17 +17,18 @@
 from mock import Mock
 from mock import MagicMock
 from mock import patch
-from testtools import TestCase
 from trove.cluster.views import ClusterInstanceDetailView
 from trove.cluster.views import ClusterView
 from trove.cluster.views import load_view
 from trove.common import cfg
 from trove.common.strategies.cluster.experimental.mongodb.api import (
     MongoDbClusterView)
+from trove.tests.unittests import trove_testtools
+
 CONF = cfg.CONF
 
 
-class ClusterViewTest(TestCase):
+class ClusterViewTest(trove_testtools.TestCase):
 
     def setUp(self):
         super(ClusterViewTest, self).setUp()
@@ -97,8 +98,8 @@ class ClusterViewTest(TestCase):
             instances, ip_list = view._build_instances(
                 ip_to_be_published_for, instance_dict_to_be_published_for)
 
-            self.assertEqual(len(ip_list), number_of_ip_published)
-            self.assertEqual(len(instances), number_of_instance_dict_published)
+            self.assertEqual(number_of_ip_published, len(ip_list))
+            self.assertEqual(number_of_instance_dict_published, len(instances))
 
         test_case([], [], 0, 0)
         test_case(['abc'], ['def'], 0, 0)
@@ -108,7 +109,7 @@ class ClusterViewTest(TestCase):
         test_case(['query_router', 'member'], ['member'], 2, 1)
 
 
-class ClusterInstanceDetailViewTest(TestCase):
+class ClusterInstanceDetailViewTest(trove_testtools.TestCase):
 
     def setUp(self):
         super(ClusterInstanceDetailViewTest, self).setUp()
