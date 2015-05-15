@@ -615,28 +615,32 @@ class CassandraAdmin(object):
         """
         Update a user of a given username.
         Updatable attributes include username and password.
-        If a new username is given a new user with that name
-        is created and all permissions from the original
+        If a new username and password are given a new user with those
+        attributes is created and all permissions from the original
         user get transfered to it. The original user is then dropped
         therefore revoking its permissions.
         If only new password is specified the existing user gets altered
         with that password.
         """
         if new_username is not None and user.name != new_username:
-            self._rename_user(client, user, new_username, new_password)
+            if new_password is not None:
+                self._rename_user(client, user, new_username, new_password)
+            else:
+                raise exception.UnprocessableEntity(
+                    _("Updating username requires specifying a password "
+                      "as well."))
         elif new_password is not None and user.password != new_password:
             user.password = new_password
             self._alter_user_password(client, user)
 
-    def _rename_user(self, client, user, new_username, new_password=None):
+    def _rename_user(self, client, user, new_username, new_password):
         """
-        Rename a given user also updating its password if given.
+        Rename a given user also updating its password.
         Transfer the current permissions to the new username.
         Drop the old username therefore revoking its permissions.
         """
         LOG.debug("Renaming user '%s' to '%s'" % (user.name, new_username))
-        new_user = models.CassandraUser(new_username,
-                                        new_password or user.password)
+        new_user = models.CassandraUser(new_username, new_password)
         new_user.databases.extend(user.databases)
         self._create_user_and_grant(client, new_user)
         self._drop_user(client, user)
