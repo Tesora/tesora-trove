@@ -155,6 +155,56 @@ class CassandraApp(object):
         utils.execute_with_timeout('rm', '-r', '-f', system_keyspace_dir,
                                    run_as_root=True, root_helper='sudo')
 
+    def _apply_post_restore_updates(self, backup_info):
+        """The service should not be running at this point.
+
+        The restored database files carry some properties over from the
+        original instance that need to be updated with appropriate
+        values for the new instance.
+        These include:
+
+            - Reset the 'cluster_name' property to match the new unique
+              ID of this instance.
+              This is to ensure that the restored instance is a part of a new
+              single-node cluster rather than forming a one with the
+              original node.
+            - Reset the administrator's password.
+              The original password from the parent instance may be
+              compromised or long lost.
+
+        A general procedure is:
+            - update the configuration property with the current value
+              so that the service can start up
+            - reset the superuser password
+            - restart the service
+            - change the cluster name
+            - restart the service
+
+        :seealso: _reset_superuser_password
+        :seealso: change_cluster_name
+        """
+
+        if self.status.is_running:
+            raise RuntimeError(_("Cannot reset the cluster name. "
+                                 "The service is still running."))
+
+        LOG.debug("Applying post-restore updates to the database.")
+
+        try:
+            # Change the 'cluster_name' property to the current in-database
+            # value so that the database can start up.
+            self._update_cluster_name_property(backup_info['instance_id'])
+
+            # Reset the superuser password so that we can log-in.
+            self._reset_superuser_password()
+
+            # Start the database and update the 'cluster_name' to the
+            # new value.
+            self.start_db(update_db=False)
+            self.change_cluster_name(CONF.guest_id)
+        finally:
+            self.stop_db()  # Always restore the initial state of the service.
+
     def configure_superuser_access(self):
         LOG.info(_('Configuring Cassandra superuser.'))
         current_superuser = CassandraApp.get_current_superuser()
@@ -225,6 +275,33 @@ class CassandraApp(object):
                 "WHERE username='{}';", (current_superuser.name,),
                 (system.DEFAULT_SUPERUSER_PWD_HASH,))
 
+    def change_cluster_name(self, cluster_name):
+        """Change the 'cluster_name' property of an exesting running instance.
+        Cluster name is stored in the database and is required to match the
+        configuration value. Cassandra fails to start otherwise.
+        """
+
+        if not self.status.is_running:
+            raise RuntimeError(_("Cannot change the cluster name. "
+                                 "The service is not running."))
+
+        LOG.debug("Changing the cluster name to '%s'." % cluster_name)
+
+        # Update the in-database value.
+        self.__reset_cluster_name(cluster_name)
+
+        # Update the configuration property.
+        self._update_cluster_name_property(cluster_name)
+
+        self.restart()
+
+    def __reset_cluster_name(self, cluster_name):
+        current_superuser = CassandraApp.get_current_superuser()
+        with CassandraLocalhostConnection(current_superuser) as client:
+            client.execute(
+                "UPDATE system.local SET cluster_name = '{}' "
+                "WHERE key='local';", (cluster_name,))
+
     def __create_cqlsh_config(self, sections):
         config_path = self._get_cqlsh_conf_path()
         config_dir = os.path.dirname(config_path)
@@ -274,7 +351,7 @@ class CassandraApp(object):
         :type cluster_name:   string
         """
         self.make_host_reachable()
-        self.update_cluster_name_property(cluster_name or CONF.guest_id)
+        self._update_cluster_name_property(cluster_name or CONF.guest_id)
 
     def make_host_reachable(self):
         """
@@ -334,7 +411,7 @@ class CassandraApp(object):
 
         self._update_config(updates)
 
-    def update_cluster_name_property(self, name):
+    def _update_cluster_name_property(self, name):
         """This 'cluster_name' property prevents nodes from one
         logical cluster from talking to another.
         All nodes in a cluster must have the same value.
@@ -430,6 +507,12 @@ class CassandraApp(object):
     @classmethod
     def _get_cqlsh_conf_path(self):
         return os.path.expanduser(system.CQLSH_CONF_PATH)
+
+    def get_data_directory(self):
+        """Return current data directory.
+        """
+        config = operating_system.read_yaml_file(self._CASSANDRA_CONF)
+        return config['data_file_directories'][0]
 
 
 class CassandraAppStatus(service.BaseDbStatus):

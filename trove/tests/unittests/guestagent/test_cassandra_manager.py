@@ -186,6 +186,50 @@ class GuestAgentCassandraDBManagerTest(testtools.TestCase):
             ].assert_called_once_with()
             calls['_enable_db_on_boot'].assert_called_once_with()
 
+    def test_change_cluster_name(self):
+        fake_status = MagicMock()
+        fake_status.is_running = True
+
+        test_app = cass_service.CassandraApp(fake_status)
+        with patch.multiple(
+                test_app,
+                start_db=DEFAULT,
+                stop_db=DEFAULT,
+                restart=DEFAULT,
+                _update_cluster_name_property=DEFAULT,
+                _CassandraApp__reset_cluster_name=DEFAULT) as calls:
+
+            sample_name = NonCallableMagicMock()
+            test_app.change_cluster_name(sample_name)
+            calls['_CassandraApp__reset_cluster_name'].assert_called_once_with(
+                sample_name)
+            calls['_update_cluster_name_property'].assert_called_once_with(
+                sample_name)
+            calls['restart'].assert_called_once_with()
+
+    @patch.object(cass_service, 'CONF', DEFAULT)
+    def test_apply_post_restore_updates(self, conf_mock):
+        fake_status = MagicMock()
+        fake_status.is_running = False
+
+        test_app = cass_service.CassandraApp(fake_status)
+        with patch.multiple(
+                test_app,
+                start_db=DEFAULT,
+                stop_db=DEFAULT,
+                _update_cluster_name_property=DEFAULT,
+                _reset_superuser_password=DEFAULT,
+                change_cluster_name=DEFAULT) as calls:
+            backup_info = {'instance_id': 'old_id'}
+            conf_mock.guest_id = 'new_id'
+            test_app._apply_post_restore_updates(backup_info)
+            calls['_update_cluster_name_property'].assert_called_once_with(
+                'old_id')
+            calls['_reset_superuser_password'].assert_called_once_with()
+            calls['start_db'].assert_called_once_with(update_db=False)
+            calls['change_cluster_name'].assert_called_once_with('new_id')
+            calls['stop_db'].assert_called_once_with()
+
     def _prepare_dynamic(self, packages,
                          config_content='MockContent', device_path='/dev/vdb',
                          is_db_installed=True, backup_info=None,
@@ -232,7 +276,8 @@ class GuestAgentCassandraDBManagerTest(testtools.TestCase):
         mock_app.start_db.assert_any_call(update_db=False)
         mock_app.stop_db.assert_any_call()
         if backup_info:
-            mock_app._reset_superuser_password.assert_any_call()
+            mock_app._apply_post_restore_updates.assert_called_once_with(
+                backup_info)
 
     def test_keyspace_validation(self):
         valid_name = self._get_random_name(32)

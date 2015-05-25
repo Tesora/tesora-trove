@@ -18,8 +18,7 @@
 import os
 from trove.common import exception
 from trove.common import utils
-from trove.guestagent.common import operating_system
-from trove.guestagent.datastore.experimental.cassandra import system
+from trove.guestagent.datastore.experimental.cassandra import service
 from trove.guestagent.strategies.backup import base
 from trove.openstack.common import log as logging
 
@@ -78,9 +77,7 @@ class NodetoolSnapshot(base.BackupRunner):
         """Command to collect and package keyspace snapshot(s).
         """
 
-        conf = operating_system.read_yaml_file(
-            system.CASSANDRA_CONF[operating_system.get_os()])
-        data_dir = conf['data_file_directories'][0]
+        data_dir = service.CassandraApp(None).get_data_directory()
         return self._build_snapshot_package_cmd(data_dir, self.filename)
 
     def _build_snapshot_package_cmd(self, data_dir, snapshot_name):

@@ -15,8 +15,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from trove.guestagent.common import operating_system as os_utils
 from trove.guestagent.common import operating_system
+from trove.guestagent.datastore.experimental.cassandra import service
 from trove.guestagent.datastore.experimental.cassandra import system
 from trove.guestagent.strategies.restore import base
 from trove.openstack.common import log as logging
@@ -32,9 +32,8 @@ class NodetoolSnapshot(base.RestoreRunner):
     __strategy_name__ = 'nodetoolsnapshot'
 
     def __init__(self, storage, **kwargs):
-        conf = operating_system.read_yaml_file(
-            system.CASSANDRA_CONF[operating_system.get_os()])
-        kwargs.update({'restore_location': conf['data_file_directories'][0]})
+        data_dir = service.CassandraApp(None).get_data_directory()
+        kwargs.update({'restore_location': data_dir})
         super(NodetoolSnapshot, self).__init__(storage, **kwargs)
 
     def pre_restore(self):
@@ -46,19 +45,19 @@ class NodetoolSnapshot(base.RestoreRunner):
         """
 
         LOG.debug('Initializing a data directory.')
-        operating_system.create_directory(
-            self.restore_location,
-            user=system.CASSANDRA_OWNER, group=system.CASSANDRA_OWNER,
-            as_root=True)
+        operating_system.create_directory(self.restore_location,
+                                          user=system.CASSANDRA_OWNER,
+                                          group=system.CASSANDRA_OWNER,
+                                          force=True, as_root=True)
 
     def post_restore(self):
         """Updated ownership on the restored files.
         """
 
         LOG.debug('Updating ownership of the restored files.')
-        os_utils.chown(self.restore_location,
-                       system.CASSANDRA_OWNER, system.CASSANDRA_OWNER,
-                       as_root=True)
+        operating_system.chown(self.restore_location,
+                               system.CASSANDRA_OWNER, system.CASSANDRA_OWNER,
+                               recursive=True, force=True, as_root=True)
 
     @property
     def base_restore_cmd(self):
