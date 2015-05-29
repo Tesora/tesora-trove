@@ -23,6 +23,7 @@ from trove.common import instance as rd_instance
 from trove.guestagent import dbaas
 from trove.guestagent import backup
 from trove.guestagent import volume
+from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.mysql.service import MySqlAppStatus
 from trove.guestagent.datastore.mysql.service import MySqlAdmin
 from trove.guestagent.datastore.mysql.service import MySqlApp
@@ -129,15 +130,24 @@ class Manager(periodic_task.PeriodicTasks):
             device.unmount_device(device_path)
             device.format()
             if os.path.exists(mount_point):
-                #rsync exiting data
-                device.migrate_data(mount_point)
+                # rsync existing data to a "data" sub-directory
+                # on the new volume
+                device.migrate_data(mount_point, target_subdir="data")
             #mount the volume
             device.mount(mount_point)
-            LOG.debug("Mounted the volume.")
+            operating_system.update_owner('mysql',
+                                          'mysql',
+                                          mount_point)
+
+            LOG.debug("Mounted the volume at %s." % mount_point)
+            # We need to temporarily update the default my.cnf so that
+            # mysql will start after the volume is mounted. Later on it
+            # will be changed based on the config template and restart.
+            app.update_overrides("[mysqld]\ndatadir=/var/lib/mysql/data\n")
             app.start_mysql()
         if backup_info:
             self._perform_restore(backup_info, context,
-                                  mount_point, app)
+                                  mount_point + "/data", app)
         LOG.debug("Securing MySQL now.")
         app.secure(config_contents, overrides)
         enable_root_on_restore = (backup_info and
