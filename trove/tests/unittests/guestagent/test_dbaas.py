@@ -1492,10 +1492,18 @@ class CassandraDBAppTest(testtools.TestCase):
                                        rd_instance.ServiceStatuses.NEW)
         self.cassandra = cass_service.CassandraApp(self.appStatus)
         self.orig_unlink = os.unlink
+        self.service_discovery_patch = patch.object(
+            operating_system, 'service_discovery',
+            return_value={'cmd_start': 'start',
+                          'cmd_stop': 'stop',
+                          'cmd_enable': 'enable',
+                          'cmd_disable': 'disable'})
+        self.service_discovery_patch.start()
 
     def tearDown(self):
 
         super(CassandraDBAppTest, self).tearDown()
+        self.service_discovery_patch.stop()
         cass_service.utils.execute_with_timeout = (self.
                                                    utils_execute_with_timeout)
         time.sleep = self.sleep
