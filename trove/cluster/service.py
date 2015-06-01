@@ -13,7 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from oslo.config.cfg import NoSuchOptError
+from oslo_config.cfg import NoSuchOptError
 
 from trove.cluster import models
 from trove.cluster import views
@@ -152,12 +152,18 @@ class ClusterController(wsgi.Controller):
         instances = []
         for node in nodes:
             flavor_id = utils.get_id_from_href(node['flavorRef'])
+            volume_size = nics = availability_zone = None
             if 'volume' in node:
                 volume_size = int(node['volume']['size'])
-            else:
-                volume_size = None
+            if 'nics' in node:
+                nics = node['nics']
+            if 'availability_zone' in node:
+                availability_zone = node['availability_zone']
+
             instances.append({"flavor_id": flavor_id,
-                              "volume_size": volume_size})
+                              "volume_size": volume_size,
+                              "nics": nics,
+                              "availability_zone": availability_zone})
 
         cluster = models.Cluster.create(context, name, datastore,
                                         datastore_version, instances)

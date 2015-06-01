@@ -17,7 +17,7 @@ import re
 import webob.exc
 import wsgi
 
-from oslo.utils import strutils
+from oslo_utils import strutils
 
 from trove.common import exception
 from trove.openstack.common import log as logging
@@ -66,8 +66,11 @@ class TenantBasedAuth(object):
                         "%(request)s") %
                       {'tenant_id': tenant_id, 'request': request}))
             return True
-        msg = _("User with tenant id %s cannot access this resource")
-        LOG.debug(msg % tenant_id)
+
+        msg = _(
+            "User with tenant id %s cannot access this resource.") % tenant_id
+
+        LOG.error(msg)
         raise webob.exc.HTTPForbidden(msg)
 
 
