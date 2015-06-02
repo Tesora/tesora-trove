@@ -20,6 +20,7 @@ from mock import patch
 from trove.common import utils
 from trove.common.context import TroveContext
 from trove.guestagent import volume
+from trove.guestagent import backup
 from trove.guestagent.datastore.experimental.mongodb import (
     service as mongo_service)
 from trove.guestagent.datastore.experimental.mongodb import (
@@ -42,6 +43,7 @@ class GuestAgentMongoDBManagerTest(testtools.TestCase):
         self.origin_stop_db = mongo_service.MongoDBApp.stop_db
         self.origin_start_db = mongo_service.MongoDBApp.start_db
         self.orig_exec_with_to = utils.execute_with_timeout
+        self.orig_backup_restore = backup.restore
 
     def tearDown(self):
         super(GuestAgentMongoDBManagerTest, self).tearDown()
@@ -54,6 +56,7 @@ class GuestAgentMongoDBManagerTest(testtools.TestCase):
         mongo_service.MongoDBApp.stop_db = self.origin_stop_db
         mongo_service.MongoDBApp.start_db = self.origin_start_db
         utils.execute_with_timeout = self.orig_exec_with_to
+        backup.restore = self.orig_backup_restore
 
     def test_update_status(self):
         self.manager.status = MagicMock()
@@ -69,7 +72,7 @@ class GuestAgentMongoDBManagerTest(testtools.TestCase):
         # covering all outcomes is starting to cause trouble here
         backup_info = {'id': backup_id,
                        'location': 'fake-location',
-                       'type': 'MongoDBDump',
+                       'type': 'MongoDump',
                        'checksum': 'fake-checksum'} if backup_id else None
 
         mock_status = MagicMock()
@@ -82,6 +85,7 @@ class GuestAgentMongoDBManagerTest(testtools.TestCase):
         volume.VolumeDevice.migrate_data = MagicMock(return_value=None)
         volume.VolumeDevice.mount = MagicMock(return_value=None)
         volume.VolumeDevice.mount_points = MagicMock(return_value=[])
+        backup.restore = MagicMock(return_value=None)
 
         mock_app.stop_db = MagicMock(return_value=None)
         mock_app.start_db = MagicMock(return_value=None)
@@ -105,3 +109,7 @@ class GuestAgentMongoDBManagerTest(testtools.TestCase):
         mock_app.stop_db.assert_any_call()
         VolumeDevice.format.assert_any_call()
         VolumeDevice.migrate_data.assert_any_call('/var/lib/mongodb')
+        if backup_info:
+            backup.restore.assert_any_call(self.context,
+                                           backup_info,
+                                           '/var/lib/mongodb')
