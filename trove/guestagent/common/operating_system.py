@@ -15,14 +15,16 @@
 
 import abc
 import StringIO
-import tempfile
 import yaml
 from ConfigParser import SafeConfigParser
 import inspect
 import os
+import re
 import stat
+import tempfile
 
 import operator
+from functools import reduce
 from oslo_concurrency.processutils import UnknownArgumentError
 from trove.common import exception
 from trove.common import utils
@@ -759,3 +761,23 @@ def _build_command_options(options):
     """
 
     return ['-' + item[0] for item in options if item[1]]
+
+
+def list_files_in_directory(root_dir, recursive=False, pattern=None):
+    """
+    Return absolute paths to all files in a given root directory.
+
+    :param root_dir            Path to the root directory.
+    :type root_dir             string
+
+    :param recursive           Also probe subdirectories if True.
+    :type recursive            boolean
+
+    :param pattern             Return only files matching the pattern.
+    :type pattern              string
+    """
+    return {os.path.abspath(os.path.join(root, name))
+            for (root, _, files) in os.walk(root_dir, topdown=True)
+            if recursive or (root == root_dir)
+            for name in files
+            if not pattern or re.match(pattern, name)}
