@@ -24,6 +24,7 @@ from trove.guestagent.datastore.experimental.postgresql.service.users import (
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 IGNORE_USERS_LIST = CONF.get(CONF.datastore_manager).ignore_users
+MANAGER = CONF.datastore_manager
 
 
 class PgSqlRoot(PgSqlUsers):
@@ -39,14 +40,6 @@ class PgSqlRoot(PgSqlUsers):
 
         # There should be only one superuser (Trove's administrative account).
         return len(results) > 1 or (results[0] != self.ADMIN_USER)
-
-# TODO(pmalik): For future use by 'root-disable'.
-#     def disable_root(self, context):
-#         """Generate a new random password for the public superuser account.
-#         Do not disable its access rights. Once enabled the account should
-#         stay that way.
-#         """
-#         self.enable_root(context)
 
     def enable_root(self, context, root_password=None):
         """Create a superuser user or reset the superuser password.
@@ -85,3 +78,10 @@ class PgSqlRoot(PgSqlUsers):
         )
         pgutil.psql(query, timeout=30)
         return user
+
+    def disable_root(self, context):
+        """Generate a new random password for the public superuser account.
+        Do not disable its access rights. Once enabled the account should
+        stay that way.
+        """
+        self.enable_root(context)

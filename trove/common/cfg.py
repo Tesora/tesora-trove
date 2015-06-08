@@ -485,7 +485,7 @@ mysql_opts = [
                 deprecated_name='backup_incremental_strategy',
                 deprecated_group='DEFAULT'),
     cfg.StrOpt('root_controller',
-               default='trove.extensions.common.service.DefaultRootController',
+               default='trove.extensions.mysql.service.MySQLRootController',
                help='Root controller implementation for mysql.'),
 ]
 
