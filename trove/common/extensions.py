@@ -302,6 +302,26 @@ class ExtensionMiddleware(wsgi.Middleware):
 
         super(ExtensionMiddleware, self).__init__(application)
 
+    def _map_custom_routes(self, resource_ext, mapper, controller_resource):
+        for custom_route in resource_ext.custom_routes:
+            include_parent_path = custom_route["include_parent_path"]
+            path = custom_route["path"]
+            action = custom_route["action"]
+            method = custom_route["method"]
+
+            path_prefix = ""
+            parent = resource_ext.parent
+            if parent and include_parent_path:
+                path_prefix = "/%s/{%s_id}" % (parent["collection_name"],
+                                               parent["member_name"])
+
+            with mapper.submapper(controller=controller_resource,
+                                  action=action,
+                                  path_prefix=path_prefix,
+                                  conditions=dict(method=[method])) as submap:
+                submap.connect(path)
+                submap.connect("%s.:(format)" % path)
+
     def _map_custom_collection_actions(self, resource_ext, mapper,
                                        controller_resource):
         for action, method in resource_ext.collection_actions.iteritems():
@@ -448,11 +468,13 @@ class BaseResourceExtension(object):
 
     def __init__(self, collection, controller, parent=None,
                  collection_actions=None, member_actions=None,
-                 deserializer=None, serializer=None):
+                 deserializer=None, serializer=None, custom_routes=None):
         if not collection_actions:
             collection_actions = {}
         if not member_actions:
             member_actions = {}
+        if not custom_routes:
+            custom_routes = []
         self.collection = collection
         self.controller = controller
         self.parent = parent
@@ -460,6 +482,7 @@ class BaseResourceExtension(object):
         self.member_actions = member_actions
         self.deserializer = deserializer
         self.serializer = serializer
+        self.custom_routes = custom_routes
 
 
 class ExtensionsXMLSerializer(base_wsgi.XMLDictSerializer):
@@ -505,14 +528,16 @@ class ExtensionsXMLSerializer(base_wsgi.XMLDictSerializer):
 class ResourceExtension(BaseResourceExtension):
     def __init__(self, collection, controller, parent=None,
                  collection_actions=None, member_actions=None,
-                 deserializer=None, serializer=None):
+                 deserializer=None, serializer=None,
+                 custom_routes=None):
         super(ResourceExtension, self).__init__(
             collection, controller,
             parent=parent,
             collection_actions=collection_actions,
             member_actions=member_actions,
             deserializer=wsgi.RequestDeserializer(),
-            serializer=wsgi.TroveResponseSerializer())
+            serializer=wsgi.TroveResponseSerializer(),
+            custom_routes=custom_routes)
 
 
 class TroveExtensionMiddleware(ExtensionMiddleware):
@@ -534,7 +559,7 @@ class TroveExtensionMiddleware(ExtensionMiddleware):
                                                 resource_ext.deserializer,
                                                 resource_ext.serializer,
                                                 exception_map)
-
+            self._map_custom_routes(resource_ext, mapper, controller_resource)
             self._map_custom_collection_actions(resource_ext, mapper,
                                                 controller_resource)
             kargs = dict(controller=controller_resource,

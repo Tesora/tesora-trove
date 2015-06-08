@@ -57,6 +57,27 @@ class RootController(wsgi.Controller):
         root = models.Root.create(context, instance_id, user_name)
         return wsgi.Result(views.RootCreatedView(root).data(), 200)
 
+    def delete(self, req, tenant_id, instance_id):
+        """Disable the root user for the db instance."""
+        LOG.info(_("Disabling root for instance '%s'.") % instance_id)
+        LOG.info(_("req : '%s'\n\n") % req)
+        context = req.environ[wsgi.CONTEXT_KEY]
+        try:
+            user = guest_models.RootUser()
+            user.name = "root"
+            user.host = "%"
+            found_user = models.User.load(context, instance_id,
+                                          user.name, user.host,
+                                          root_user=True)
+            if not found_user:
+                user = None
+        except (ValueError, AttributeError) as e:
+            raise exception.BadRequest(msg=str(e))
+        if not user:
+            raise exception.UserNotFound(uuid="root")
+        models.Root.delete(context, instance_id)
+        return wsgi.Result(None, 200)
+
 
 class UserController(wsgi.Controller):
     """Controller for instance functionality."""

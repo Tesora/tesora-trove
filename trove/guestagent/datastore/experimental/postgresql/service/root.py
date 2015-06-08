@@ -15,12 +15,14 @@
 
 import uuid
 from trove.common import cfg
+from trove.common import exception
 from trove.guestagent.datastore.experimental.postgresql import pgutil
 from trove.openstack.common import log as logging
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 IGNORE_USERS_LIST = CONF.get(CONF.datastore_manager).ignore_users
+MANAGER = CONF.datastore_manager
 
 
 class PgSqlRoot(object):
@@ -75,3 +77,13 @@ class PgSqlRoot(object):
             )
         pgutil.psql(query, timeout=30)
         return user
+
+    def disable_root(self, context):
+        LOG.debug("Disabling root.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='disable_root', datastore=MANAGER)
+
+    def get_root_user(self, context):
+        LOG.debug("Get root user.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='get_root_user', datastore=MANAGER)

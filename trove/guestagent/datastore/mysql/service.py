@@ -419,6 +419,16 @@ class MySqlAdmin(object):
         """
         return MySqlRootAccess.enable_root(root_password)
 
+    def disable_root(self):
+        """Disable the root user global access
+        """
+        return MySqlRootAccess.disable_root()
+
+    def get_root_user(self):
+        """Return the root user
+        """
+        return MySqlRootAccess.get_root_user()
+
     def list_databases(self, limit=None, marker=None, include_marker=False):
         """List databases the user created on this mysql instance."""
         LOG.debug("---Listing Databases---")
@@ -1050,9 +1060,7 @@ class MySqlRootAccess(object):
         """Enable the root user global access and/or
            reset the root password.
         """
-        user = models.RootUser()
-        user.name = "root"
-        user.host = "%"
+        user = cls.get_root_user(return_serialized=False)
         user.password = root_password or utils.generate_random_password()
         with LocalSqlClient(get_engine()) as client:
             print(client)
@@ -1083,3 +1091,22 @@ class MySqlRootAccess(object):
             t = text(str(g))
             client.execute(t)
             return user.serialize()
+
+    @classmethod
+    def disable_root(cls):
+        """Disable the root user global access
+        """
+        with LocalSqlClient(get_engine()) as client:
+            client.execute(text(sql_query.REMOVE_ROOT))
+
+    @classmethod
+    def get_root_user(cls, return_serialized=True):
+        """Get the root user
+        """
+        user = models.RootUser()
+        user.name = "root"
+        user.host = "%"
+        if return_serialized:
+            return user.serialize()
+        else:
+            return user

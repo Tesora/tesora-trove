@@ -40,6 +40,7 @@ import trove.guestagent.datastore.mysql.service as dbaas
 from trove.guestagent import dbaas as dbaas_sr
 from trove.guestagent import pkg
 from trove.guestagent.common import operating_system
+from trove.guestagent.common import sql_query
 from trove.guestagent.dbaas import to_gb
 from trove.guestagent.dbaas import get_filesystem_volume_stats
 from trove.guestagent.datastore.service import BaseDbStatus
@@ -933,6 +934,14 @@ class MySqlRootStatusTest(testtools.TestCase):
         with patch.object(models.MySQLUser, '_is_valid_user_name',
                           return_value=False):
             self.assertRaises(ValueError, MySqlAdmin().enable_root)
+
+    def test_root_disable(self):
+        mock_conn = mock_sql_connection()
+
+        with patch.object(mock_conn, 'execute', return_value=None):
+            MySqlRootAccess.disable_root()
+            mock_conn.execute.assert_any_call(
+                TextClauseMatcher(sql_query.REMOVE_ROOT))
 
 
 class MockStats:

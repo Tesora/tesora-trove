@@ -194,6 +194,12 @@ class API(object):
         LOG.debug("Disable root user for instance %s.", self.id)
         return self._call("disable_root", AGENT_LOW_TIMEOUT, self.version_cap)
 
+    def get_root_user(self):
+        """Make a synchronous call to get the root user
+        """
+        LOG.debug("Get the root user for instance %s.", self.id)
+        return self._call("get_root_user", AGENT_LOW_TIMEOUT, self.version_cap)
+
     def is_root_enabled(self):
         """Make a synchronous call to check if root access is
            available for the container
