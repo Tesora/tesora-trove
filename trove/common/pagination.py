@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import bisect
 import urllib
 import six.moves.urllib.parse as urlparse
 
@@ -26,6 +27,27 @@ def url_quote(s):
     if s is None:
         return s
     return urllib.quote(str(s))
+
+
+def paginate_list(li, limit=None, marker=None, include_marker=False):
+    """Sort the given list and return a sublist containing a page of items
+
+    Keyword arguments:
+    li -- The list to be paginated
+    limit -- Maximum number of items to be returned
+    marker -- Key of the first item to appear on the sublist
+    include_marker -- Include the marker value itself in the returned sublist
+    """
+    li.sort()
+    if include_marker:
+        pos = bisect.bisect_left(li, marker)
+    else:
+        pos = bisect.bisect(li, marker)
+
+    if limit and pos + limit < len(li):
+        return li[pos:pos + limit], li[pos + limit]
+    else:
+        return li[pos:], None
 
 
 class PaginatedDataView(object):

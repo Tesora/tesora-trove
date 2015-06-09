@@ -57,6 +57,7 @@ import cx_Oracle
 from trove.common import cfg
 from trove.common import exception
 from trove.common import instance as rd_instance
+from trove.common import pagination
 from trove.common import utils as utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.oracle import sql_query
@@ -109,7 +110,7 @@ class OracleApp(object):
             oradb = models.OracleSchema(None)
             oradb.deserialize(database)
             # at this point the trove instance is in reboot mode and
-            # the DB is not running, pass in the SID is through
+            # the DB is not running, pass in the SID through
             # environment variable
             os.environ["ORACLE_SID"] = oradb.name
             connection = cx_Oracle.connect(user=ADMIN_USER_NAME,
@@ -279,6 +280,8 @@ class OracleAdmin(object):
     """
     Handles administrative tasks on the Oracle instance.
     """
+    _DBNAME_REGEX = re.compile(r'^([a-zA-Z0-9]+):*:')
+
     def create_database(self, databases):
         """Create the given database(s)."""
         dbName = None
@@ -365,24 +368,14 @@ class OracleAdmin(object):
 
     def list_databases(self, limit=None, marker=None, include_marker=False,
                        online_only=True):
-        next_marker = None
         with open('/etc/oratab') as oratab:
-            dblist = [ re.search('^([a-zA-Z0-9]+):*:', line)
-                      for line in oratab if re.search('^([a-zA-Z0-9]+):*:', line) ]
-            if online_only:
-                dblist = [ db.group(1) for db in dblist
-                          if self._database_is_up(db.group(1)) ]
-            else:
-                dblist = [ db.group(1) for db in dblist ]
-        if marker:
-            try:
-                start = dblist.index(marker)
-                next_marker = dblist[start+limit]
-                dblist = dblist[start:start+limit]
-            except ValueError:
-                # move on if the marker cannot be found in the dblist
-                pass
-        result = [ models.OracleSchema(name).serialize() for name in dblist]
+            dblist = [ self._DBNAME_REGEX.search(line)
+                      for line in oratab if self._DBNAME_REGEX.search(line) ]
+            dblist = [ db.group(1) for db in dblist
+                      if online_only or self._database_is_up(db.group(1)) ]
+        dblist_page, next_marker = pagination.paginate_list(dblist, limit, marker,
+                                                            include_marker)
+        result = [ models.OracleSchema(name).serialize() for name in dblist_page ]
         return result, next_marker
 
     def create_cloud_user_role(self, database):

@@ -58,7 +58,7 @@ from trove.guestagent.datastore.oracle import service
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
-MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'oracle'
+MANAGER = 'oracle'
 
 
 class Manager(periodic_task.PeriodicTasks):
@@ -104,6 +104,9 @@ class Manager(periodic_task.PeriodicTasks):
 
         if users:
             self.create_user(context, users)
+
+        if root_password:
+            self.admin.enable_root(root_password)
 
         self.app.complete_install_or_restart()
 
