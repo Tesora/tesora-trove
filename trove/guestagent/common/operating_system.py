@@ -196,7 +196,7 @@ def write_yaml_file(path, data, default_flow_style=False, as_root=False):
     write_file(path, data, codec=codec, as_root=as_root)
 
 
-def read_file(path, codec=IdentityCodec()):
+def read_file(path, codec=IdentityCodec(), as_root=False):
     """
     Read a file into a Python data structure
     digestible by 'write_file'.
@@ -209,14 +209,34 @@ def read_file(path, codec=IdentityCodec()):
 
     :returns:               A dictionary of key-value pairs.
 
+    :param as_root:         Execute as root.
+    :type as_root:          boolean
+
     :raises:                :class:`UnprocessableEntity` if file doesn't exist.
     :raises:                :class:`UnprocessableEntity` if codec not given.
     """
     if path and os.path.exists(path):
+        if as_root:
+            return _read_file_as_root(path, codec)
         with open(path, 'r') as fp:
             return codec.deserialize(fp.read())
 
     raise exception.UnprocessableEntity(_("File does not exist: %s") % path)
+
+
+def _read_file_as_root(path, codec=IdentityCodec):
+    """Read a file as root.
+
+    :param path                Path to the written file.
+    :type path                 string
+
+    :param codec:              A codec used to serialize the data.
+    :type codec:               StreamCodec
+    """
+    with tempfile.NamedTemporaryFile() as fp:
+        copy(path, fp.name, force=True, as_root=True)
+        chmod(fp.name, FileMode.ADD_READ_ALL(), as_root=True)
+        return codec.deserialize(fp.read())
 
 
 def write_file(path, data, codec=IdentityCodec(), as_root=False):

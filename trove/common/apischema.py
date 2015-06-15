@@ -196,9 +196,14 @@ users_list = {
     }
 }
 
+null_configuration_id = {
+    "type": "null"
+}
+
 configuration_id = {
     'oneOf': [
-        uuid
+        uuid,
+        null_configuration_id
     ]
 }
 
@@ -267,7 +272,8 @@ cluster = {
                         "flavorRef": flavorref,
                         "volume": volume,
                         "nics": nics,
-                        "availability_zone": non_empty_string
+                        "related_to": non_empty_string,
+                        "type": non_empty_string
                     }
                 }
             }
@@ -340,10 +346,12 @@ instance = {
             "instance": {
                 "type": "object",
                 "required": [],
+                "additionalProperties": False,
                 "properties": {
                     "slave_of": {},
+                    "replica_of": {},
                     "name": non_empty_string,
-                    "configuration_id": configuration_id,
+                    "configuration": configuration_id,
                 }
             }
         }

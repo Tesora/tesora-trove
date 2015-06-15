@@ -38,8 +38,7 @@ class MongoDump(base.RestoreRunner):
 
     def __init__(self, *args, **kwargs):
         super(MongoDump, self).__init__(*args, **kwargs)
-        self.status = mongo_service.MongoDBAppStatus()
-        self.app = mongo_service.MongoDBApp(self.status)
+        self.app = mongo_service.MongoDBApp()
 
     def post_restore(self):
         """
