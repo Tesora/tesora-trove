@@ -11,12 +11,14 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-import testtools
-from trove.guestagent.db import models as dbmodels
+
 from mock import MagicMock
 
+from trove.guestagent.db import models as dbmodels
+from trove.tests.unittests import trove_testtools
 
-class MySQLDatabaseTest(testtools.TestCase):
+
+class MySQLDatabaseTest(trove_testtools.TestCase):
 
     def setUp(self):
         super(MySQLDatabaseTest, self).setUp()
@@ -44,7 +46,7 @@ class MySQLDatabaseTest(testtools.TestCase):
         self.assertFalse(self.mysqlDb._is_valid('mysql'))
 
 
-class MySQLUserTest(testtools.TestCase):
+class MySQLUserTest(trove_testtools.TestCase):
     def setUp(self):
         super(MySQLUserTest, self).setUp()
         self.mysqlUser = dbmodels.MySQLUser()
@@ -61,7 +63,7 @@ class MySQLUserTest(testtools.TestCase):
         self.assertTrue(self.mysqlUser._is_valid("real_name"))
 
 
-class IsValidUsernameTest(testtools.TestCase):
+class IsValidUsernameTest(trove_testtools.TestCase):
     def setUp(self):
         super(IsValidUsernameTest, self).setUp()
         self.mysqlUser = dbmodels.MySQLUser()
@@ -86,7 +88,7 @@ class IsValidUsernameTest(testtools.TestCase):
         self.assertFalse(self.mysqlUser._is_valid_user_name("king"))
 
 
-class IsValidHostnameTest(testtools.TestCase):
+class IsValidHostnameTest(trove_testtools.TestCase):
     def setUp(self):
         super(IsValidHostnameTest, self).setUp()
         self.mysqlUser = dbmodels.MySQLUser()

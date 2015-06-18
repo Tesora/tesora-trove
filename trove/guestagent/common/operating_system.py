@@ -14,19 +14,20 @@
 #    under the License.
 
 import abc
-import os
+from ConfigParser import SafeConfigParser
 import inspect
-import StringIO
+import operator
+import os
 import stat
+import StringIO
 import tempfile
 import yaml
-from ConfigParser import SafeConfigParser
 
-import operator
 from oslo_concurrency.processutils import UnknownArgumentError
+
 from trove.common import exception
-from trove.common import utils
 from trove.common.i18n import _
+from trove.common import utils
 
 REDHAT = 'redhat'
 DEBIAN = 'debian'
@@ -718,6 +719,14 @@ def copy(source, destination, force=False, preserve=False, recursive=True,
 
     options = (('f', force), ('p', preserve), ('R', recursive))
     _execute_shell_cmd('cp', options, source, destination, **kwargs)
+
+
+def get_bytes_free_on_fs(path):
+    """
+    Returns the number of bytes free for the filesystem that path is on
+    """
+    v = os.statvfs(path)
+    return v.f_bsize * v.f_bavail
 
 
 def _execute_shell_cmd(cmd, options, *args, **kwargs):

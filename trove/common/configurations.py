@@ -14,8 +14,8 @@
 #    under the License.
 
 import io
-import yaml
 from six.moves import configparser
+import yaml
 
 
 class CassandraConfParser(object):

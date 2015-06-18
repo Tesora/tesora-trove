@@ -23,11 +23,12 @@ gettext.install('trove', unicode=1)
 
 from trove.common import cfg
 from trove.common import exception
+from trove.common.i18n import _
 from trove.common import utils
 from trove.configuration import models as config_models
+from trove.datastore import models as datastore_models
 from trove.db import get_db_api
 from trove.openstack.common import log as logging
-from trove.datastore import models as datastore_models
 
 
 CONF = cfg.CONF
@@ -42,10 +43,10 @@ class Commands(object):
         self.db_api.db_sync(CONF, repo_path=repo_path)
 
     def db_upgrade(self, version=None, repo_path=None):
-        self.db_api.db_upgrade(CONF, version, repo_path=None)
+        self.db_api.db_upgrade(CONF, version, repo_path=repo_path)
 
     def db_downgrade(self, version, repo_path=None):
-        self.db_api.db_downgrade(CONF, version, repo_path=None)
+        self.db_api.db_downgrade(CONF, version, repo_path=repo_path)
 
     def execute(self):
         exec_method = getattr(self, CONF.action.name)

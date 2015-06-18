@@ -16,21 +16,22 @@ import os
 import random
 import string
 
+from mock import ANY, call, DEFAULT, MagicMock, patch, NonCallableMagicMock
+from oslo_utils import netutils
 import testtools
 from testtools import ExpectedException
-from mock import ANY, call, DEFAULT, MagicMock, patch, NonCallableMagicMock
 from trove.common import exception
-from oslo_utils import netutils
+
 from trove.common.context import TroveContext
 from trove.common.instance import ServiceStatuses
 from trove.guestagent import backup
-from trove.guestagent import pkg as pkg
-from trove.guestagent import volume
-from trove.guestagent.datastore.experimental.cassandra import (
-    service as cass_service)
 from trove.guestagent.datastore.experimental.cassandra import (
     manager as cass_manager)
+from trove.guestagent.datastore.experimental.cassandra import (
+    service as cass_service)
 from trove.guestagent.db import models
+from trove.guestagent import pkg as pkg
+from trove.guestagent import volume
 
 
 class GuestAgentCassandraDBManagerTest(testtools.TestCase):

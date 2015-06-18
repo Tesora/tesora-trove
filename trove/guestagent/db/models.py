@@ -425,7 +425,7 @@ class MySQLDatabase(Base):
         """Validate the character set and set it."""
         if not value:
             pass
-        elif not value in self.charset:
+        elif value not in self.charset:
             raise ValueError(_("'%s' not a valid character set.") % value)
         else:
             self._character_set = value
@@ -485,7 +485,7 @@ class ValidatedMySQLDatabase(MySQLDatabase):
         """Validate the character set and set it."""
         if not value:
             pass
-        elif not value in self.charset:
+        elif value not in self.charset:
             raise ValueError(_("'%s' not a valid character set.") % value)
         else:
             self._character_set = value

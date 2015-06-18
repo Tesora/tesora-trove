@@ -13,36 +13,38 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-from __builtin__ import setattr
 
 """Model classes that form the core of instances functionality."""
-import re
+from __builtin__ import setattr
 from datetime import datetime
 from datetime import timedelta
+import re
+
 from novaclient import exceptions as nova_exceptions
 from oslo_config.cfg import NoSuchOptError
+
+from trove.backup.models import Backup
 from trove.common import cfg
 from trove.common import exception
-from trove.common import template
+from trove.common import i18n as i18n
 import trove.common.instance as tr_instance
+from trove.common.remote import create_cinder_client
 from trove.common.remote import create_dns_client
 from trove.common.remote import create_guest_client
 from trove.common.remote import create_nova_client
-from trove.common.remote import create_cinder_client
+from trove.common import template
 from trove.common import utils
 from trove.configuration.models import Configuration
 from trove.configuration.models import DBConfigurationParameter
-from trove.extensions.security_group.models import SecurityGroup
+from trove.datastore import models as datastore_models
 from trove.db import get_db_api
 from trove.db import models as dbmodels
-from trove.datastore import models as datastore_models
-from trove.backup.models import Backup
-from trove.quota.quota import run_with_quotas
+from trove.extensions.security_group.models import SecurityGroup
 from trove.instance.tasks import InstanceTask
 from trove.instance.tasks import InstanceTasks
-from trove.taskmanager import api as task_api
 from trove.openstack.common import log as logging
-from trove.common import i18n as i18n
+from trove.quota.quota import run_with_quotas
+from trove.taskmanager import api as task_api
 
 (_, _LE, _LI, _LW) = (i18n._, i18n._LE, i18n._LI, i18n._LW)
 
@@ -170,7 +172,7 @@ class SimpleInstance(object):
 
     @property
     def addresses(self):
-        #TODO(tim.simpson): This code attaches two parts of the Nova server to
+        # TODO(tim.simpson): This code attaches two parts of the Nova server to
         #                   db_info: "status" and "addresses". The idea
         #                   originally was to listen to events to update this
         #                   data and store it in the Trove database.
@@ -206,11 +208,10 @@ class SimpleInstance(object):
     def remote_agent_host(self):
         try:
             config_id = self.db_info.configuration_id
-            config_item = DBConfigurationParameter.find_by(configuration_id=
-                                                           config_id,
-                                                           configuration_key=
-                                                           'oracle_host',
-                                                           deleted=False)
+            config_item = DBConfigurationParameter.find_by(
+                configuration_id=config_id,
+                configuration_key='oracle_host',
+                deleted=False)
             return config_item.configuration_value
         except exception.ModelNotFoundError:
             return None
@@ -288,11 +289,11 @@ class SimpleInstance(object):
 
     @property
     def status(self):
-        ### Check for taskmanager errors.
+        # Check for taskmanager errors.
         if self.db_info.task_status.is_error:
             return InstanceStatus.ERROR
 
-        ### Check for taskmanager status.
+        # Check for taskmanager status.
         action = self.db_info.task_status.action
         if 'BUILDING' == action:
             if 'ERROR' == self.db_info.server_status:
@@ -309,7 +310,7 @@ class SimpleInstance(object):
         if InstanceTasks.EJECTING.action == action:
             return InstanceStatus.EJECT
 
-        ### Check for server status.
+        # Check for server status.
         if self.db_info.server_status in ["BUILD", "ERROR", "REBOOT",
                                           "RESIZE"]:
             return self.db_info.server_status
@@ -319,11 +320,11 @@ class SimpleInstance(object):
         if self.db_info.server_status in ["VERIFY_RESIZE"]:
             return InstanceStatus.RESIZE
 
-        ### Check if there is a backup running for this instance
+        # Check if there is a backup running for this instance
         if Backup.running(self.id):
             return InstanceStatus.BACKUP
 
-        ### Report as Shutdown while deleting, unless there's an error.
+        # Report as Shutdown while deleting, unless there's an error.
         if 'DELETING' == action:
             if self.db_info.server_status in ["ACTIVE", "SHUTDOWN", "DELETED"]:
                 return InstanceStatus.SHUTDOWN
@@ -334,7 +335,7 @@ class SimpleInstance(object):
                            'status': self.db_info.server_status})
                 return InstanceStatus.ERROR
 
-        ### Check against the service status.
+        # Check against the service status.
         # The service is only paused during a reboot.
         if tr_instance.ServiceStatuses.PAUSED == self.datastore_status.status:
             return InstanceStatus.REBOOT
@@ -484,7 +485,7 @@ def load_instance(cls, context, id, needs_server=False,
         try:
             server = load_server(context, db_info.id,
                                  db_info.compute_instance_id)
-            #TODO(tim.simpson): Remove this hack when we have notifications!
+            # TODO(tim.simpson): Remove this hack when we have notifications!
             db_info.server_status = server.status
             db_info.addresses = server.addresses
         except exception.ComputeInstanceNotFound:
@@ -788,17 +789,14 @@ class Instance(BuiltInstance):
             root_passwords = []
             root_password = None
             for instance_index in range(0, instance_count):
-                db_info = DBInstance.create(name=name, flavor_id=flavor_id,
-                                            tenant_id=context.tenant,
-                                            volume_size=volume_size,
-                                            datastore_version_id=
-                                            datastore_version.id,
-                                            task_status=InstanceTasks.BUILDING,
-                                            configuration_id=configuration_id,
-                                            slave_of_id=slave_of_id,
-                                            cluster_id=cluster_id,
-                                            shard_id=shard_id,
-                                            type=instance_type)
+                db_info = DBInstance.create(
+                    name=name, flavor_id=flavor_id, tenant_id=context.tenant,
+                    volume_size=volume_size,
+                    datastore_version_id=datastore_version.id,
+                    task_status=InstanceTasks.BUILDING,
+                    configuration_id=configuration_id,
+                    slave_of_id=slave_of_id, cluster_id=cluster_id,
+                    shard_id=shard_id, type=instance_type)
                 LOG.debug("Tenant %(tenant)s created new Trove instance "
                           "%(db)s.",
                           {'tenant': context.tenant, 'db': db_info.id})
@@ -940,7 +938,7 @@ class Instance(BuiltInstance):
         if self.db_info.cluster_id is not None and not self.context.is_admin:
             raise exception.ClusterInstanceOperationNotSupported()
         # Set our local status since Nova might not change it quick enough.
-        #TODO(tim.simpson): Possible bad stuff can happen if this service
+        # TODO(tim.simpson): Possible bad stuff can happen if this service
         #                   shuts down before it can set status to NONE.
         #                   We need a last updated time to mitigate this;
         #                   after some period of tolerance, we'll assume the
@@ -1175,7 +1173,7 @@ class Instances(object):
         for db in db_items:
             server = None
             try:
-                #TODO(tim.simpson): Delete when we get notifications working!
+                # TODO(tim.simpson): Delete when we get notifications working!
                 if InstanceTasks.BUILDING == db.task_status:
                     db.server_status = "BUILD"
                     db.addresses = {}
@@ -1187,9 +1185,9 @@ class Instances(object):
                     except exception.ComputeInstanceNotFound:
                         db.server_status = "SHUTDOWN"  # Fake it...
                         db.addresses = {}
-                #TODO(tim.simpson): End of hack.
+                # TODO(tim.simpson): End of hack.
 
-                #volumes = find_volumes(server.id)
+                # volumes = find_volumes(server.id)
                 datastore_status = InstanceServiceStatus.find_by(
                     instance_id=db.id)
                 if not datastore_status.status:  # This should never happen.
