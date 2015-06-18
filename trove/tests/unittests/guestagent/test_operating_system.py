@@ -15,22 +15,24 @@
 
 import itertools
 import os
-from oslo_concurrency.processutils import UnknownArgumentError
 import stat
-import tempfile
-import testtools
-from testtools import ExpectedException
+
 from ConfigParser import ParsingError
 from mock import DEFAULT, call, MagicMock, patch
+from oslo_concurrency.processutils import UnknownArgumentError
+import tempfile
+from testtools import ExpectedException
+
 from trove.common import exception
 from trove.common import utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.common.operating_system import (IdentityCodec,
                                                       IniCodec, YamlCodec)
 from trove.guestagent.common.operating_system import FileMode
+from trove.tests.unittests import trove_testtools
 
 
-class TestOperatingSystem(testtools.TestCase):
+class TestOperatingSystem(trove_testtools.TestCase):
 
     def test_identity_file_codec(self):
         data = ("Lorem Ipsum, Lorem Ipsum\n"

@@ -1,15 +1,15 @@
-#Copyright [2015] Hewlett-Packard Development Company, L.P.
-#Licensed under the Apache License, Version 2.0 (the "License");
-#you may not use this file except in compliance with the License.
-#You may obtain a copy of the License at
+# Copyright [2015] Hewlett-Packard Development Company, L.P.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#http://www.apache.org/licenses/LICENSE-2.0
+# http://www.apache.org/licenses/LICENSE-2.0
 #
-#Unless required by applicable law or agreed to in writing, software
-#distributed under the License is distributed on an "AS IS" BASIS,
-#WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#See the License for the specific language governing permissions and
-#limitations under the License.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import ConfigParser
 import os
@@ -17,16 +17,17 @@ import subprocess
 import tempfile
 
 from oslo_utils import netutils
+
 from trove.common import cfg
 from trove.common import exception
-from trove.common import utils as utils
+from trove.common.i18n import _
 from trove.common import instance as rd_instance
+from trove.common import utils as utils
+from trove.guestagent.datastore.experimental.vertica import system
 from trove.guestagent.datastore import service
 from trove.guestagent import pkg
 from trove.guestagent import volume
-from trove.guestagent.datastore.experimental.vertica import system
 from trove.openstack.common import log as logging
-from trove.common.i18n import _
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
@@ -43,7 +44,7 @@ class VerticaAppStatus(service.BaseDbStatus):
             out, err = system.shell_execute(system.STATUS_ACTIVE_DB,
                                             "dbadmin")
             if out.strip() == DB_NAME:
-                #UP status is confirmed
+                # UP status is confirmed
                 LOG.info(_("Service Status is RUNNING."))
                 return rd_instance.ServiceStatuses.RUNNING
             else:
@@ -162,6 +163,7 @@ class VerticaApp(object):
             system.shell_execute(create_db_command, "dbadmin")
         except Exception:
             LOG.exception(_("Vertica database create failed."))
+            raise RuntimeError(_("Vertica database create failed."))
         LOG.info(_("Vertica database create completed."))
 
     def install_vertica(self, members=netutils.get_my_ipv4()):
@@ -174,6 +176,7 @@ class VerticaApp(object):
             system.shell_execute(install_vertica_cmd)
         except exception.ProcessExecutionError:
             LOG.exception(_("install_vertica failed."))
+            raise RuntimeError(_("install_vertica failed."))
         self._generate_database_password()
         LOG.info(_("install_vertica completed."))
 

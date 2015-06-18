@@ -1,34 +1,35 @@
-#Copyright 2013 Hewlett-Packard Development Company, L.P.
+# Copyright 2013 Hewlett-Packard Development Company, L.P.
 
-#Licensed under the Apache License, Version 2.0 (the "License");
-#you may not use this file except in compliance with the License.
-#You may obtain a copy of the License at
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#http://www.apache.org/licenses/LICENSE-2.0
+# http://www.apache.org/licenses/LICENSE-2.0
 #
-#Unless required by applicable law or agreed to in writing, software
-#distributed under the License is distributed on an "AS IS" BASIS,
-#WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#See the License for the specific language governing permissions and
-#limitations under the License.
-
-from mock import Mock, MagicMock, patch, ANY
-from webob.exc import HTTPNotFound
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import hashlib
 import os
 
+from mock import Mock, MagicMock, patch, ANY
 from oslo_utils import netutils
-from trove.common import utils
-from trove.common.context import TroveContext
-from trove.conductor import api as conductor_api
-from trove.guestagent.strategies.backup import mysql_impl
-from trove.guestagent.strategies.backup.experimental import couchbase_impl
-from trove.guestagent.strategies.restore.base import RestoreRunner
+from webob.exc import HTTPNotFound
+
 from trove.backup.state import BackupState
+from trove.common.context import TroveContext
+from trove.common import utils
+from trove.conductor import api as conductor_api
 from trove.guestagent.backup import backupagent
 from trove.guestagent.strategies.backup.base import BackupRunner
 from trove.guestagent.strategies.backup.base import UnknownBackupType
+from trove.guestagent.strategies.backup.experimental import couchbase_impl
+from trove.guestagent.strategies.backup.experimental import mongo_impl
+from trove.guestagent.strategies.backup import mysql_impl
+from trove.guestagent.strategies.restore.base import RestoreRunner
 from trove.guestagent.strategies.storage.base import Storage
 from trove.tests.unittests import trove_testtools
 
@@ -231,6 +232,18 @@ class BackupAgentTest(trove_testtools.TestCase):
         self.assertEqual(str_cbbackup_cmd, cbbackup.cmd)
         self.assertIsNotNone(cbbackup.manifest)
         self.assertIn('gz.enc', cbbackup.manifest)
+
+    def test_backup_impl_MongoDump(self):
+        netutils.get_my_ipv4 = Mock(return_value="1.1.1.1")
+        utils.execute_with_timeout = Mock(return_value=None)
+        mongodump = mongo_impl.MongoDump('mongodump', extra_opts='')
+        self.assertIsNotNone(mongodump)
+        str_mongodump_cmd = ("sudo tar cPf - /var/lib/mongodb/dump | "
+                             "gzip | openssl enc -aes-256-cbc -salt -pass "
+                             "pass:default_aes_cbc_key")
+        self.assertEqual(str_mongodump_cmd, mongodump.cmd)
+        self.assertIsNotNone(mongodump.manifest)
+        self.assertIn('gz.enc', mongodump.manifest)
 
     def test_backup_base(self):
         """This test is for

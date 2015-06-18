@@ -17,19 +17,20 @@
 #
 
 import os
+
 from trove.common import cfg
 from trove.common import exception
+from trove.common.i18n import _
 from trove.common import instance as rd_instance
-from trove.guestagent import dbaas
 from trove.guestagent import backup
-from trove.guestagent import volume
 from trove.guestagent.common import operating_system
-from trove.guestagent.datastore.mysql.service import MySqlAppStatus
 from trove.guestagent.datastore.mysql.service import MySqlAdmin
 from trove.guestagent.datastore.mysql.service import MySqlApp
+from trove.guestagent.datastore.mysql.service import MySqlAppStatus
+from trove.guestagent import dbaas
 from trove.guestagent.strategies.replication import get_replication_strategy
+from trove.guestagent import volume
 from trove.openstack.common import log as logging
-from trove.common.i18n import _
 from trove.openstack.common import periodic_task
 
 
@@ -123,7 +124,7 @@ class Manager(periodic_task.PeriodicTasks):
         app = MySqlApp(MySqlAppStatus.get())
         app.install_if_needed(packages)
         if device_path:
-            #stop and do not update database
+            # stop and do not update database
             app.stop_db()
             device = volume.VolumeDevice(device_path)
             # unmount if device is already mounted
@@ -133,7 +134,7 @@ class Manager(periodic_task.PeriodicTasks):
                 # rsync existing data to a "data" sub-directory
                 # on the new volume
                 device.migrate_data(mount_point, target_subdir="data")
-            #mount the volume
+            # mount the volume
             device.mount(mount_point)
             operating_system.chown(mount_point, 'mysql', 'mysql', as_root=True)
 
@@ -155,7 +156,7 @@ class Manager(periodic_task.PeriodicTasks):
             MySqlAdmin().enable_root(root_password)
         elif enable_root_on_restore:
             app.secure_root(secure_remote_root=False)
-            MySqlAppStatus.get().report_root('root')
+            MySqlAppStatus.get().report_root(context, 'root')
         else:
             app.secure_root(secure_remote_root=True)
 

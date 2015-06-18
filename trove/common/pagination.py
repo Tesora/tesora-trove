@@ -14,8 +14,8 @@
 #    under the License.
 
 import bisect
-import urllib
 import six.moves.urllib.parse as urlparse
+import urllib
 
 try:
     from collections import OrderedDict

@@ -16,65 +16,67 @@ import ConfigParser
 import os
 import subprocess
 import tempfile
-import yaml
-from uuid import uuid4
 import time
+from uuid import uuid4
+import yaml
+
 from mock import ANY
 from mock import DEFAULT
-from mock import Mock
 from mock import MagicMock
-from mock import PropertyMock
+from mock import Mock
 from mock import patch
+from mock import PropertyMock
 from oslo_utils import netutils
 import sqlalchemy
 import testtools
-from testtools.matchers import Is
 from testtools.matchers import Equals
+from testtools.matchers import Is
 from testtools.matchers import Not
+
 from trove.common import cfg
-from trove.common.exception import ProcessExecutionError
+from trove.common.exception import BadRequest
 from trove.common.exception import GuestError
 from trove.common.exception import PollTimeOut
-from trove.common.exception import BadRequest
-from trove.common import utils
+from trove.common.exception import ProcessExecutionError
 from trove.common import instance as rd_instance
+from trove.common import utils
 from trove.conductor import api as conductor_api
-import trove.guestagent.datastore.mysql.service as dbaas
-from trove.guestagent import dbaas as dbaas_sr
-from trove.guestagent import pkg
 from trove.guestagent.common import operating_system
 from trove.guestagent.common.operating_system import FileMode
-from trove.guestagent.dbaas import to_gb
-from trove.guestagent.dbaas import get_filesystem_volume_stats
-from trove.guestagent.datastore.service import BaseDbStatus
-from trove.guestagent.datastore.experimental.redis import service as rservice
-from trove.guestagent.datastore.experimental.redis.service import RedisApp
-from trove.guestagent.datastore.experimental.redis import system as RedisSystem
 from trove.guestagent.datastore.experimental.cassandra import (
     service as cass_service)
 from trove.guestagent.datastore.experimental.cassandra import (
     system as cass_system)
-from trove.guestagent.datastore.mysql.service import MySqlAdmin
-from trove.guestagent.datastore.mysql.service import MySqlRootAccess
-from trove.guestagent.datastore.mysql.service import MySqlApp
-from trove.guestagent.datastore.mysql.service import MySqlAppStatus
-from trove.guestagent.datastore.mysql.service import KeepAliveConnection
 from trove.guestagent.datastore.experimental.couchbase import (
     service as couchservice)
 from trove.guestagent.datastore.experimental.couchdb import (
     service as couchdb_service)
+from trove.guestagent.datastore.experimental.db2 import (
+    service as db2service)
 from trove.guestagent.datastore.experimental.mongodb import (
     service as mongo_service)
 from trove.guestagent.datastore.experimental.mongodb import (
     system as mongo_system)
-from trove.guestagent.datastore.experimental.vertica.service import VerticaApp
-from trove.guestagent.datastore.experimental.vertica.service import (
-    VerticaAppStatus)
+from trove.guestagent.datastore.experimental.redis import service as rservice
+from trove.guestagent.datastore.experimental.redis.service import RedisApp
+from trove.guestagent.datastore.experimental.redis import system as RedisSystem
 from trove.guestagent.datastore.experimental.vertica import (
     system as vertica_system)
-from trove.guestagent.datastore.experimental.db2 import (
-    service as db2service)
+from trove.guestagent.datastore.experimental.vertica.service import (
+    VerticaAppStatus)
+from trove.guestagent.datastore.experimental.vertica.service import VerticaApp
+import trove.guestagent.datastore.mysql.service as dbaas
+from trove.guestagent.datastore.mysql.service import KeepAliveConnection
+from trove.guestagent.datastore.mysql.service import MySqlAdmin
+from trove.guestagent.datastore.mysql.service import MySqlApp
+from trove.guestagent.datastore.mysql.service import MySqlAppStatus
+from trove.guestagent.datastore.mysql.service import MySqlRootAccess
+from trove.guestagent.datastore.service import BaseDbStatus
 from trove.guestagent.db import models
+from trove.guestagent import dbaas as dbaas_sr
+from trove.guestagent.dbaas import get_filesystem_volume_stats
+from trove.guestagent.dbaas import to_gb
+from trove.guestagent import pkg
 from trove.guestagent.volume import VolumeDevice
 from trove.instance.models import InstanceServiceStatus
 from trove.tests.unittests.util import util
@@ -687,8 +689,8 @@ class MySqlAdminTest(testtools.TestCase):
         databases = ['mysql']
         with patch.object(self.mySqlAdmin, '_get_user', return_value=user):
             self.mySqlAdmin.grant_access('test_usr', '%', databases)
-        #since mysql is not a database to be provided access to,
-        #testing that executed was not called in grant access.
+        # since mysql is not a database to be provided access to,
+        # testing that executed was not called in grant access.
         dbaas.LocalSqlClient.execute.assert_not_called()
 
     def test_is_root_enabled(self):
@@ -747,8 +749,8 @@ class MySqlAppTest(testtools.TestCase):
                          'cmd_enable': Mock(),
                          'cmd_disable': Mock(),
                          'bin': Mock()}
-        operating_system.service_discovery = Mock(return_value=
-                                                  mysql_service)
+        operating_system.service_discovery = Mock(
+            return_value=mysql_service)
         time.sleep = Mock()
         os.unlink = Mock()
         dbaas.get_auth_password = Mock()
@@ -1591,8 +1593,8 @@ class ServiceRegistryTest(testtools.TestCase):
         datastore_registry_ext_test = {
             'test': 'trove.guestagent.datastore.test.manager.Manager',
         }
-        dbaas_sr.get_custom_managers = Mock(return_value=
-                                            datastore_registry_ext_test)
+        dbaas_sr.get_custom_managers = Mock(
+            return_value=datastore_registry_ext_test)
         test_dict = dbaas_sr.datastore_registry()
         self.assertEqual(datastore_registry_ext_test.get('test', None),
                          test_dict.get('test'))
@@ -1626,8 +1628,8 @@ class ServiceRegistryTest(testtools.TestCase):
             'mysql': 'trove.guestagent.datastore.mysql.'
                      'manager.Manager123',
         }
-        dbaas_sr.get_custom_managers = Mock(return_value=
-                                            datastore_registry_ext_test)
+        dbaas_sr.get_custom_managers = Mock(
+            return_value=datastore_registry_ext_test)
         test_dict = dbaas_sr.datastore_registry()
         self.assertEqual('trove.guestagent.datastore.mysql.'
                          'manager.Manager123',
@@ -1659,8 +1661,8 @@ class ServiceRegistryTest(testtools.TestCase):
 
     def test_datastore_registry_with_blank_dict(self):
         datastore_registry_ext_test = dict()
-        dbaas_sr.get_custom_managers = Mock(return_value=
-                                            datastore_registry_ext_test)
+        dbaas_sr.get_custom_managers = Mock(
+            return_value=datastore_registry_ext_test)
         test_dict = dbaas_sr.datastore_registry()
         self.assertEqual('trove.guestagent.datastore.mysql.'
                          'manager.Manager',
@@ -2723,6 +2725,13 @@ class VerticaAppTest(testtools.TestCase):
             vertica_system.INSTALL_VERTICA % ('10.0.0.2', '/var/lib/vertica'))
         arguments.assert_called_with(expected_command)
 
+    def test_failure_install_vertica(self):
+        with patch.object(vertica_system, 'shell_execute',
+                          side_effect=ProcessExecutionError('some exception')):
+            self.assertRaisesRegexp(RuntimeError, 'install_vertica failed.',
+                                    self.app.install_vertica,
+                                    members='10.0.0.2')
+
     def test_create_db(self):
         with patch.object(self.app, 'read_config',
                           return_value=self.test_config):
@@ -2737,7 +2746,9 @@ class VerticaAppTest(testtools.TestCase):
     def test_failure_create_db(self):
         with patch.object(self.app, 'read_config',
                           side_effect=RuntimeError('Error')):
-            self.app.create_db('10.0.0.2')
+            self.assertRaisesRegexp(RuntimeError,
+                                    'Vertica database create failed.',
+                                    self.app.create_db)
         # Because of an exception in read_config there was no shell execution.
         self.assertEqual(0, vertica_system.shell_execute.call_count)
 

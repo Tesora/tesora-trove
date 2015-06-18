@@ -13,25 +13,24 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from oslo_utils import strutils
 import webob.exc
 
-from oslo_utils import strutils
-
+from trove.backup.models import Backup as backup_model
+from trove.backup import views as backup_views
+import trove.common.apischema as apischema
 from trove.common import cfg
 from trove.common import exception
+from trove.common.i18n import _
+from trove.common.i18n import _LI
 from trove.common import pagination
 from trove.common import utils
 from trove.common import wsgi
-from trove.extensions.mysql.common import populate_validated_databases
-from trove.extensions.mysql.common import populate_users
-from trove.instance import models, views
 from trove.datastore import models as datastore_models
-from trove.backup.models import Backup as backup_model
-from trove.backup import views as backup_views
+from trove.extensions.mysql.common import populate_users
+from trove.extensions.mysql.common import populate_validated_databases
+from trove.instance import models, views
 from trove.openstack.common import log as logging
-from trove.common.i18n import _
-from trove.common.i18n import _LI
-import trove.common.apischema as apischema
 
 
 CONF = cfg.CONF
@@ -68,7 +67,7 @@ class InstanceController(wsgi.Controller):
         :param req: http request object
         :param body: deserialized body of the request as a dict
         :param tenant_id: the tenant id for whom owns the instance
-        :param id: ???
+        :param id: instance id
         """
         LOG.debug("instance action req : '%s'\n\n", req)
         if not body:
@@ -305,7 +304,9 @@ class InstanceController(wsgi.Controller):
         instance = models.Instance.load(context, id)
 
         args = {}
-        args['detach_replica'] = 'slave_of' in body['instance']
+        args['detach_replica'] = ('replica_of' in body['instance'] or
+                                  'slave_of' in body['instance'])
+
         if 'name' in body['instance']:
             args['name'] = body['instance']['name']
         if 'configuration' in body['instance']:

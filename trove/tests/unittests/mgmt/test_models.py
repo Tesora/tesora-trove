@@ -14,27 +14,28 @@
 #    under the License.
 #
 import uuid
-from mock import MagicMock, patch, ANY
-from testtools.matchers import Equals, Is, Not
 
+from mock import MagicMock, patch, ANY
 from novaclient.v2 import Client
 from novaclient.v2.flavors import FlavorManager, Flavor
 from novaclient.v2.servers import Server, ServerManager
 from oslo_config import cfg
+from testtools.matchers import Equals, Is, Not
+
 from trove.backup.models import Backup
 from trove.common.context import TroveContext
 from trove.common import exception
 from trove.common import instance as rd_instance
 from trove.common import remote
 from trove.datastore import models as datastore_models
+import trove.extensions.mgmt.instances.models as mgmtmodels
 from trove.guestagent.api import API
 from trove.instance.models import DBInstance
 from trove.instance.models import InstanceServiceStatus
 from trove.instance.tasks import InstanceTasks
-import trove.extensions.mgmt.instances.models as mgmtmodels
+from trove import rpc
 from trove.tests.unittests import trove_testtools
 from trove.tests.unittests.util import util
-from trove import rpc
 
 CONF = cfg.CONF
 
@@ -61,6 +62,12 @@ class MockMgmtInstanceTest(trove_testtools.TestCase):
         )
         super(MockMgmtInstanceTest, cls).setUpClass()
 
+    @classmethod
+    def tearDownClass(cls):
+        cls.version.delete()
+        cls.datastore.delete()
+        super(MockMgmtInstanceTest, cls).tearDownClass()
+
     def setUp(self):
         self.context = TroveContext()
         self.context.auth_token = 'some_secret_password'
@@ -69,7 +76,10 @@ class MockMgmtInstanceTest(trove_testtools.TestCase):
         self.client.servers = self.server_mgr
         self.flavor_mgr = MagicMock(spec=FlavorManager)
         self.client.flavors = self.flavor_mgr
-        remote.create_admin_nova_client = MagicMock(return_value=self.client)
+        self.admin_client_patch = patch.object(
+            remote, 'create_admin_nova_client', return_value=self.client)
+        self.addCleanup(self.admin_client_patch.stop)
+        self.admin_client_patch.start()
         CONF.set_override('host', 'test_host')
         CONF.set_override('exists_notification_ticks', 1)
         CONF.set_override('report_interval', 20)
@@ -87,13 +97,11 @@ class MockMgmtInstanceTest(trove_testtools.TestCase):
                               name='test_name',
                               id=str(uuid.uuid4()),
                               flavor_id='flavor_1',
-                              datastore_version_id=
-                              version.id,
+                              datastore_version_id=version.id,
                               compute_instance_id='compute_id_1',
                               server_id='server_id_1',
                               tenant_id='tenant_id_1',
-                              server_status=
-                              rd_instance.ServiceStatuses.
+                              server_status=rd_instance.ServiceStatuses.
                               BUILDING.api_status,
                               deleted=False)
         instance.save()
@@ -247,7 +255,7 @@ class TestNovaNotificationTransformer(MockMgmtInstanceTest):
                                 Not(Is(None)))
                 self.assertIn(status.lower(),
                               [db['state']
-                              for db in payloads])
+                               for db in payloads])
                 self.assertThat(payload['instance_type'],
                                 Equals('db.small'))
                 self.assertThat(payload['instance_type_id'],
@@ -341,7 +349,7 @@ class TestNovaNotificationTransformer(MockMgmtInstanceTest):
                 self.assertThat(payload['audit_period_ending'], Not(Is(None)))
                 self.assertIn(status.lower(),
                               [db['state']
-                              for db in payloads])
+                               for db in payloads])
                 self.assertThat(payload['instance_type'], Equals('db.small'))
                 self.assertThat(payload['instance_type_id'],
                                 Equals('flavor_1'))

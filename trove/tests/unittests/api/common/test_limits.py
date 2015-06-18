@@ -18,17 +18,18 @@ Tests dealing with HTTP rate-limiting.
 """
 
 import httplib
-from trove.quota.models import Quota
-import webob
 
-from mock import Mock, MagicMock
+
+from mock import Mock, MagicMock, patch
+from oslo_serialization import jsonutils
 import six
+import webob
 
 from trove.common import limits
 from trove.common.limits import Limit
-from trove.limits import views
 from trove.limits.service import LimitsController
-from oslo_serialization import jsonutils
+from trove.limits import views
+from trove.quota.models import Quota
 from trove.quota.quota import QUOTAS
 from trove.tests.unittests import trove_testtools
 
@@ -51,16 +52,16 @@ class BaseLimitTestSuite(trove_testtools.TestCase):
 
 
 class LimitsControllerTest(BaseLimitTestSuite):
+
     def setUp(self):
         super(LimitsControllerTest, self).setUp()
 
-    def test_limit_index_empty(self):
+    @patch.object(QUOTAS, 'get_all_quotas_by_tenant', return_value={})
+    def test_limit_index_empty(self, quotas_mock):
         limit_controller = LimitsController()
 
         req = MagicMock()
         req.environ = {}
-
-        QUOTAS.get_all_quotas_by_tenant = MagicMock(return_value={})
 
         view = limit_controller.index(req, "test_tenant_id")
         expected = {'limits': [{'verb': 'ABSOLUTE'}]}
@@ -124,58 +125,59 @@ class LimitsControllerTest(BaseLimitTestSuite):
         req = MagicMock()
         req.environ = {"trove.limits": limits}
 
-        QUOTAS.get_all_quotas_by_tenant = MagicMock(return_value=abs_limits)
+        with patch.object(QUOTAS, 'get_all_quotas_by_tenant',
+                          return_value=abs_limits):
 
-        view = limit_controller.index(req, tenant_id)
+            view = limit_controller.index(req, tenant_id)
 
-        expected = {
-            'limits': [
-                {
-                    'max_instances': 100,
-                    'max_backups': 40,
-                    'verb': 'ABSOLUTE',
-                    'max_volumes': 55
-                },
-                {
-                    'regex': '.*',
-                    'nextAvailable': '2011-07-21T18:17:06Z',
-                    'uri': '*',
-                    'value': 10,
-                    'verb': 'POST',
-                    'remaining': 2,
-                    'unit': 'MINUTE'
-                },
-                {
-                    'regex': '.*',
-                    'nextAvailable': '2011-07-21T18:17:06Z',
-                    'uri': '*',
-                    'value': 10,
-                    'verb': 'PUT',
-                    'remaining': 2,
-                    'unit': 'MINUTE'
-                },
-                {
-                    'regex': '.*',
-                    'nextAvailable': '2011-07-21T18:17:06Z',
-                    'uri': '*',
-                    'value': 10,
-                    'verb': 'DELETE',
-                    'remaining': 2,
-                    'unit': 'MINUTE'
-                },
-                {
-                    'regex': '.*',
-                    'nextAvailable': '2011-07-21T18:17:06Z',
-                    'uri': '*',
-                    'value': 10,
-                    'verb': 'GET',
-                    'remaining': 2,
-                    'unit': 'MINUTE'
-                }
-            ]
-        }
+            expected = {
+                'limits': [
+                    {
+                        'max_instances': 100,
+                        'max_backups': 40,
+                        'verb': 'ABSOLUTE',
+                        'max_volumes': 55
+                    },
+                    {
+                        'regex': '.*',
+                        'nextAvailable': '2011-07-21T18:17:06Z',
+                        'uri': '*',
+                        'value': 10,
+                        'verb': 'POST',
+                        'remaining': 2,
+                        'unit': 'MINUTE'
+                    },
+                    {
+                        'regex': '.*',
+                        'nextAvailable': '2011-07-21T18:17:06Z',
+                        'uri': '*',
+                        'value': 10,
+                        'verb': 'PUT',
+                        'remaining': 2,
+                        'unit': 'MINUTE'
+                    },
+                    {
+                        'regex': '.*',
+                        'nextAvailable': '2011-07-21T18:17:06Z',
+                        'uri': '*',
+                        'value': 10,
+                        'verb': 'DELETE',
+                        'remaining': 2,
+                        'unit': 'MINUTE'
+                    },
+                    {
+                        'regex': '.*',
+                        'nextAvailable': '2011-07-21T18:17:06Z',
+                        'uri': '*',
+                        'value': 10,
+                        'verb': 'GET',
+                        'remaining': 2,
+                        'unit': 'MINUTE'
+                    }
+                ]
+            }
 
-        self.assertEqual(expected, view._data)
+            self.assertEqual(expected, view._data)
 
 
 class TestLimiter(limits.Limiter):
@@ -684,6 +686,7 @@ class WsgiLimiterProxyTest(BaseLimitTestSuite):
 
 
 class LimitsViewTest(trove_testtools.TestCase):
+
     def setUp(self):
         super(LimitsViewTest, self).setUp()
 
@@ -736,6 +739,7 @@ class LimitsViewTest(trove_testtools.TestCase):
 
 
 class LimitsViewsTest(trove_testtools.TestCase):
+
     def setUp(self):
         super(LimitsViewsTest, self).setUp()
 
