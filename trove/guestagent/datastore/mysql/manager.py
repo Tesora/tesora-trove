@@ -24,9 +24,10 @@ from trove.guestagent import dbaas
 from trove.guestagent import backup
 from trove.guestagent import volume
 from trove.guestagent.common import operating_system
-from trove.guestagent.datastore.mysql.service import MySqlAppStatus
+from trove.guestagent.datastore.mysql.mysql_guest_log import MySQLGuestLog
 from trove.guestagent.datastore.mysql.service import MySqlAdmin
 from trove.guestagent.datastore.mysql.service import MySqlApp
+from trove.guestagent.datastore.mysql.service import MySqlAppStatus
 from trove.guestagent.strategies.replication import get_replication_strategy
 from trove.openstack.common import log as logging
 from trove.common.i18n import _
@@ -304,6 +305,18 @@ class Manager(periodic_task.PeriodicTasks):
         replication = REPLICATION_STRATEGY_CLASS(context)
         replica_info = replication.get_replica_context(app)
         return replica_info
+
+    def guest_log_list(self, context):
+        LOG.debug("Getting guest log.")
+        app = MySqlApp(MySqlAppStatus.get())
+        result = MySQLGuestLog.list(context, app)
+        LOG.debug("guest_log_list 2 returns %s", result)
+        return result
+
+    def publish_guest_log(self, context, log, disable):
+        LOG.debug("publishing guest log %s (disable=%s)." % (log, disable))
+        app = MySqlApp(MySqlAppStatus.get())
+        return MySQLGuestLog.publish(context, app, log, disable)
 
     def _validate_slave_for_replication(self, context, replica_info):
         if (replica_info['replication_strategy'] != REPLICATION_STRATEGY):

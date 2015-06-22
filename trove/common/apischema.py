@@ -464,6 +464,18 @@ backup = {
     }
 }
 
+guest_log = {
+    "publish": {
+        "name": "guest_log:publish",
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+            "name": non_empty_string,
+            "disable": boolean_string
+        }
+    }
+}
+
 configuration = {
     "create": {
         "name": "configuration:create",

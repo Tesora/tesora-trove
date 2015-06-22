@@ -388,6 +388,16 @@ common_opts = [
     cfg.IntOpt('cluster_usage_timeout', default=675,
                help='Maximum time (in seconds) to wait for a cluster to '
                     'become active.'),
+    cfg.StrOpt('guest_log_container_name',
+               default='log-%(datastore)s-%(log)s-%(instance_id)s',
+               help="Name of container which stores guest log components."),
+    cfg.StrOpt('guest_log_object_name',
+               default='log-%(timestamp)s',
+               help="Name of guest log component in container."),
+    cfg.IntOpt('guest_log_limit', default=1000000,
+               help='Maximum size of a chunk saved in guest log container'),
+    cfg.IntOpt('guest_log_expiry', default=2592000,
+               help='Expiry (in seconds) of objects in guest log container'),
 ]
 
 # Profiling specific option groups
@@ -478,6 +488,9 @@ mysql_opts = [
                 'backup.',
                 deprecated_name='backup_incremental_strategy',
                 deprecated_group='DEFAULT'),
+    cfg.StrOpt('guest_log_expose',
+               default='ALL',
+               help="List of the logs available"),
 ]
 
 # Oracle remote agent
