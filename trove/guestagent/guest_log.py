@@ -12,8 +12,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import abc
 from datetime import datetime
+from enum import Enum
 import hashlib
 import os
 
@@ -31,97 +31,203 @@ LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 
 
+class LogType(Enum):
+    """Represent the type of the log object."""
+
+    # System logs.  These are always enabled.
+    SYS = 1
+
+    # User logs.  These can be enabled or disabled.
+    USER = 2
+
+
+class LogStatus(Enum):
+    """Represent the status of the log object."""
+
+    # The log is disabled and potentially no data is being written to
+    # the corresponding log file
+    Disabled = 1
+
+    # Logging is on, but no determination has been made about data availability
+    Enabled = 2
+
+    # Logging is on, but no log data is available to publish
+    Unavailable = 2
+
+    # Logging is on and data is available to be published
+    Ready = 3
+
+    # Logging is on and all data has been published
+    Published = 4
+
+    # Logging is on and some data has been published
+    Partial = 5
+
+
 class GuestLog(object):
 
-    instance_cache = {}
+    XCM_LOG_NAME = 'X-Container-Meta-Log-Name'
+    XCM_LOG_TYPE = 'X-Container-Meta-Log-Type'
+    XCM_LOG_FILE = 'X-Container-Meta-Log-File'
+    XCM_LOG_SIZE = 'X-Container-Meta-Log-Size'
+    XCM_LOG_HEAD = 'X-Container-Meta-Log-Header-Digest'
 
-    @classmethod
-    def instance(cls, context, log_name):
-        if log_name not in cls.instance_cache:
-            cls.instance_cache[log_name] = cls(context, log_name)
-        return cls.instance_cache[log_name]
+    def __init__(self, log_context, log_name, log_type, log_user, log_file,
+                 log_exposed):
+        self._context = log_context
+        self._name = log_name
+        self._type = log_type
+        self._user = log_user
+        self._file = log_file
+        self._exposed = log_exposed
+        self._size = None
+        self._published_size = None
+        self._header_digest = 'abc'
+        self._published_header_digest = None
+        self._status = None
+        self._cached_context = None
+        self._cached_swift_client = None
 
-    @classmethod
-    def list(cls, context, app, datastore_logs):
-        return [cls.instance(context, log_name).show(app)
-                for log_name in datastore_logs.keys()]
+        self._set_status(self._type == LogType.USER,
+                         LogStatus.Disabled, LogStatus.Enabled)
 
-    @abc.abstractmethod
-    def _datastore_logs(self):
-        """Returns tuple with datastore info."""
+    @property
+    def context(self):
+        return self._context
 
-    @abc.abstractmethod
-    def _enable_log(self, app, log_name, log_filename, disable):
-        """Enable log on system."""
+    @context.setter
+    def context(self, context):
+        self._context = context
 
-    def __init__(self, context, log_name):
-        self.log_name = log_name
-        self.log_size = None
-        self.logging_enabled = True
-        self.log_header_digest = 'abc'
-        self.context = context
+    @property
+    def type(self):
+        return self._type
 
     @property
     def swift_client(self):
-        return create_swift_client(self.context)
+        if not self._cached_swift_client or (
+                self._cached_context != self.context):
+            self._cached_swift_client = create_swift_client(self.context)
+            self._cached_context = self.context
+        return self._cached_swift_client
 
-    def show(self, app):
-        dsl_info = self._datastore_logs()[self.log_name]
-        log_type, log_user, log_filename = dsl_info
-        self._get_container_details()
-        return {
-            'name': self.log_name,
-            'type': log_type,
-            'status': self.logging_enabled,
-            'publishable': True,
-            'container': self._container_name(),
+    @property
+    def exposed(self):
+        return self._exposed or self.context.is_admin
+
+    def _set_status(self, use_first, first_status, second_status):
+        if use_first:
+            self._status = first_status
+        else:
+            self._status = second_status
+
+    def show(self):
+        show_details = None
+        if self.exposed:
+            self._refresh_details()
+            container_name = 'None'
+            if self._published_size:
+                container_name = self._container_name()
+            show_details = {
+                'name': self._name,
+                'type': self._type.name,
+                'status': self._status.name,
+                'published': self._published_size,
+                'pending': self._size - self._published_size,
+                'container': container_name,
+            }
+        return show_details
+
+    def _refresh_details(self):
+
+        headers = None
+        if self._published_size is None:
+            # Initializing, so get all the values
+            try:
+                headers = self.swift_client.head_container(
+                    self._container_name())
+                self._published_size = int(headers[self.XCM_LOG_SIZE])
+                self._published_header_digest = (headers[self.XCM_LOG_HEAD])
+            except ClientException:
+                self._published_size = 0
+
+        self._update_details()
+        LOG.debug("Log size for '%s' set to %d (published %d)" % (
+            self._name, self._size, self._published_size))
+
+    def _update_details(self):
+        if os.path.isfile(self._file):
+            logstat = os.stat(self._file)
+            self._size = logstat.st_size
+            self._update_log_header_digest(self._file)
+
+            # Check for potential log rotation
+            if self._published_size > 0 and self._log_rotated():
+                LOG.debug("Log file rotation detected for '%s'" % self._name)
+                self._delete_container()
+
+            # We have stuff to publish
+            if logstat.st_size > self._published_size:
+                self._set_status(self._published_size,
+                                 LogStatus.Partial, LogStatus.Ready)
+            # We've published everything so far
+            elif logstat.st_size == self._published_size:
+                self._set_status(self._published_size,
+                                 LogStatus.Published, LogStatus.Enabled)
+            # We've already handled this case (log rotated) so what gives?
+            else:
+                raise ("Bug in _log_rotated ?")
+        else:
+            self._published_size = 0
+            self._size = 0
+            self._set_status(self._type == LogType.USER,
+                             LogStatus.Disabled, LogStatus.Unavailable)
+
+    def _log_rotated(self):
+        """If the file is smaller than the last reported size
+        or the first line hash is different, we can probably assume
+        the file changed under our nose.
+        """
+        if (self._size < self._published_size or
+                self._published_header_digest != self._header_digest):
+            return True
+
+    def _update_log_header_digest(self, log_file):
+        with open(log_file, 'r') as log:
+            self._header_digest = hashlib.md5(log.readline()).hexdigest()
+
+    def _container_name(self):
+        return CONF.guest_log_container_name % {
+            'datastore': CONF.datastore_manager,
+            'log': self._name,
+            'instance_id': CONF.guest_id
         }
 
-    def publish_log(self, app, disable):
-        dsl_info = self._datastore_logs()[self.log_name]
-        log_type, log_user, log_filename = dsl_info
-        self._enable_log(app, self.log_name, log_filename, disable)
-        if self.logging_enabled:
-            if os.path.isfile(log_filename):
-                log_dir = os.path.dirname(log_filename)
+    def publish_log(self, disable):
+        if disable:
+            self._delete_container()
+        else:
+            if os.path.isfile(self._file):
+                log_dir = os.path.dirname(self._file)
                 operating_system.chmod(
                     log_dir, FileMode.ADD_GRP_RX, as_root=True)
                 operating_system.chmod(
-                    log_filename, FileMode.ADD_ALL_R, as_root=True)
-                self._publish_to_container(log_filename)
+                    self._file, FileMode.ADD_ALL_R, as_root=True)
+                self._publish_to_container(self._file)
             else:
                 raise RuntimeError(_(
                     "Cannot publish log file '%s' as it does not exist.") %
-                    log_filename)
-        return self.show(app)
+                    self._file)
+        return self.show()
 
-    def _disable_container(self):
+    def _delete_container(self):
         c = self._container_name()
         files = [f['name'] for f in self.swift_client.get_container(c)[1]]
         for f in files:
             self.swift_client.delete_object(c, f)
         self.swift_client.delete_container(c)
-        self.logging_enabled = False
-
-    def _container_name(self):
-        return CONF.guest_log_container_name % {
-            'datastore': CONF.datastore_manager,
-            'log': self.log_name,
-            'instance_id': CONF.guest_id
-        }
-
-    def _object_name(self):
-        return CONF.guest_log_object_name % {
-            'timestamp': str(datetime.utcnow()).replace(' ', 'T'),
-            'datastore': CONF.datastore_manager,
-            'log': self.log_name,
-            'instance_id': CONF.guest_id
-        }
-
-    def _set_enable_state(self, log_type, disable):
-        self.logging_enabled = True
-        if log_type == "USER" and disable:
-            self.logging = False
+        self._status = LogStatus.Disabled
+        self._published_size = 0
 
     def _publish_to_container(self, log_filename):
         log_component, log_lines = '', 0
@@ -139,14 +245,16 @@ class GuestLog(object):
             self.swift_client.put_object(self._container_name(),
                                          self._object_name(), log_component,
                                          headers=object_header)
-            self.log_size = self.log_size + len(log_component) + 1
+            self._published_size = (
+                self._published_size + len(log_component))
+            self._published_header_digest = self._header_digest
 
-        self._get_container_details()
+        self._update_details()
         self._set_container_details()
         object_header = {'X-Delete-After': CONF.guest_log_expiry}
         with open(log_filename, 'r') as log:
-            LOG.debug("seeking to %s", self.log_size)
-            log.seek(self.log_size)
+            LOG.debug("seeking to %s", self._published_size)
+            log.seek(self._published_size)
             for chunk in _read_chunk(log):
                 for log_line in chunk.splitlines():
                     if len(log_component) + len(log_line) > chunk_size:
@@ -158,52 +266,23 @@ class GuestLog(object):
             _write_log_component()
         self._set_container_details()
 
-    def _get_container_details(self):
-        if not self.log_size:
-            try:
-                headers = self.swift_client.head_container(
-                    self._container_name())
-                self.log_size = int(headers['x-container-meta-log-size'])
-                self._check_for_log_rotation(headers)
-            except ClientException:
-                self.log_size = 0
-        else:
-            self.log_size = 0
-        LOG.debug("_get_container_details sets log size to %s", self.log_size)
+    def _object_name(self):
+        return CONF.guest_log_object_name % {
+            'timestamp': str(datetime.utcnow()).replace(' ', 'T'),
+            'datastore': CONF.datastore_manager,
+            'log': self._name,
+            'instance_id': CONF.guest_id
+        }
 
     def _set_container_details(self):
-        dsl_info = self._datastore_logs()[self.log_name]
-        log_type, log_user, log_filename = dsl_info
         container_header = {
-            'X-Container-Meta-Log-Name': self.log_name,
-            'X-Container-Meta-Log-Type': log_type,
-            'X-Container-Meta-Last-Log': log_filename,
-            'X-Container-Meta-Log-Size': self.log_size,
-            'X-Container-Meta-Log-Header-Digest': self.log_header_digest,
+            self.XCM_LOG_NAME: self._name,
+            self.XCM_LOG_TYPE: self._type,
+            self.XCM_LOG_FILE: self._file,
+            self.XCM_LOG_SIZE: self._size,
+            self.XCM_LOG_HEAD: self._header_digest,
         }
         self.swift_client.put_container(self._container_name(),
                                         headers=container_header)
         LOG.debug("_set_container_details has saved log size as %s",
-                  self.log_size)
-
-    def _check_for_log_rotation(self, headers):
-        """
-        If the file is smaller than the last reported size
-        or the first line hash is different, we can probably assume
-        the file changed under our nose, in which case start from 0
-        """
-        dsl_info = self._datastore_logs()[self.log_name]
-        log_type, log_user, log_filename = dsl_info
-        logstat = os.stat(log_filename)
-
-        if logstat.st_size < self.log_size:
-            self.log_size = 0
-
-        container_digest = headers['x-container-meta-log-header-digest']
-        self._get_log_header_digest(log_filename)
-        if container_digest != self.log_header_digest:
-            self.log_size = 0
-
-    def _get_log_header_digest(self, log_filename):
-        with open(log_filename, 'r') as log:
-            self.log_header_digest = hashlib.md5(log.readline()).hexdigest()
+                  self._published_size)

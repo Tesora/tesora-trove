@@ -1283,10 +1283,10 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         finally:
             self.reset_task_status()
 
-    def publish_guest_log(self, log, disable):
+    def guest_log_publish(self, log_name, disable):
         LOG.info(_("Publishing guest log for instance %s.") % self.id)
         try:
-            return self.guest.publish_guest_log(log, disable)
+            return self.guest.guest_log_publish(log_name, disable)
         except GuestError:
             LOG.error(_("Failed to publish guest log for instance %s.")
                       % self.id)

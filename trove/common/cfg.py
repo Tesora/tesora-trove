@@ -396,14 +396,14 @@ common_opts = [
                     'become alive.'),
     cfg.StrOpt('guest_log_container_name',
                default='log-%(datastore)s-%(log)s-%(instance_id)s',
-               help="Name of container which stores guest log components."),
+               help='Name of container which stores guest log components.'),
     cfg.StrOpt('guest_log_object_name',
                default='log-%(timestamp)s',
-               help="Name of guest log component in container."),
+               help='Name of guest log component in container.'),
     cfg.IntOpt('guest_log_limit', default=1000000,
-               help='Maximum size of a chunk saved in guest log container'),
+               help='Maximum size of a chunk saved in guest log container.'),
     cfg.IntOpt('guest_log_expiry', default=2592000,
-               help='Expiry (in seconds) of objects in guest log container'),
+               help='Expiry (in seconds) of objects in guest log container.'),
 ]
 
 # Profiling specific option groups
@@ -497,9 +497,8 @@ mysql_opts = [
     cfg.StrOpt('root_controller',
                default='trove.extensions.mysql.service.MySQLRootController',
                help='Root controller implementation for mysql.'),
-    cfg.StrOpt('guest_log_expose',
-               default='ALL',
-               help="List of the logs available"),
+    cfg.StrOpt('guest_log_exposed_logs', default='general,slow_query',
+               help='List of Guest Logs to expose for publishing.'),
 ]
 
 # Oracle remote agent
@@ -565,6 +564,8 @@ oracle_ra_opts = [
                help='oracle_cdb_name'),
     cfg.StrOpt('oracle_ra_status_file', default='/etc/trove/oracle-ra-status',
                help='oracle_ra_status_file'),
+    cfg.StrOpt('guest_log_exposed_logs', default='',
+               help='List of Guest Logs to expose for publishing.'),
 ]
 
 # Oracle
@@ -623,7 +624,9 @@ oracle_opts = [
                help='Default role name of all regular cloud db users'),
     cfg.IntOpt('db_ram_size', default=500,
                help='Default memory size (MB) of each Oracle database '
-                    'instance.')
+                    'instance.'),
+    cfg.StrOpt('guest_log_exposed_logs', default='',
+               help='List of Guest Logs to expose for publishing.'),
 ]
 
 # Percona
@@ -688,6 +691,8 @@ percona_opts = [
     cfg.StrOpt('root_controller',
                default='trove.extensions.common.service.DefaultRootController',
                help='Root controller implementation for percona.'),
+    cfg.StrOpt('guest_log_exposed_logs', default='general,slow_query',
+               help='List of Guest Logs to expose for publishing.'),
 ]
 
 # Percona XtraDB Cluster
@@ -762,6 +767,8 @@ pxc_opts = [
     cfg.StrOpt('root_controller',
                default='trove.extensions.common.service.DefaultRootController',
                help='Root controller implementation for pxc.'),
+    cfg.StrOpt('guest_log_exposed_logs', default='general,slow_query',
+               help='List of Guest Logs to expose for publishing.'),
 ]
 
 # Redis
@@ -831,6 +838,8 @@ redis_opts = [
     cfg.StrOpt('root_controller',
                default='trove.extensions.common.service.DefaultRootController',
                help='Root controller implementation for redis.'),
+    cfg.StrOpt('guest_log_exposed_logs', default='',
+               help='List of Guest Logs to expose for publishing.'),
 ]
 
 # Cassandra
@@ -885,6 +894,8 @@ cassandra_opts = [
     cfg.StrOpt('root_controller',
                default='trove.extensions.common.service.DefaultRootController',
                help='Root controller implementation for cassandra.'),
+    cfg.StrOpt('guest_log_exposed_logs', default='',
+               help='List of Guest Logs to expose for publishing.'),
 ]
 
 # Couchbase
@@ -941,6 +952,8 @@ couchbase_opts = [
     cfg.StrOpt('root_controller',
                default='trove.extensions.common.service.DefaultRootController',
                help='Root controller implementation for couchbase.'),
+    cfg.StrOpt('guest_log_exposed_logs', default='',
+               help='List of Guest Logs to expose for publishing.'),
 ]
 
 # MongoDB
@@ -1022,6 +1035,8 @@ mongodb_opts = [
     cfg.StrOpt('root_controller',
                default='trove.extensions.common.service.DefaultRootController',
                help='Root controller implementation for mongodb.'),
+    cfg.StrOpt('guest_log_exposed_logs', default='',
+               help='List of Guest Logs to expose for publishing.'),
 ]
 
 # PostgreSQL
@@ -1069,6 +1084,8 @@ postgresql_opts = [
     cfg.StrOpt('root_controller',
                default='trove.extensions.common.service.DefaultRootController',
                help='Root controller implementation for postgresql.'),
+    cfg.StrOpt('guest_log_exposed_logs', default='general',
+               help='List of Guest Logs to expose for publishing.'),
 ]
 
 # Apache CouchDB
@@ -1112,6 +1129,8 @@ couchdb_opts = [
     cfg.StrOpt('root_controller',
                default='trove.extensions.common.service.DefaultRootController',
                help='Root controller implementation for couchdb.'),
+    cfg.StrOpt('guest_log_exposed_logs', default='',
+               help='List of Guest Logs to expose for publishing.'),
 ]
 
 # Vertica
@@ -1172,6 +1191,8 @@ vertica_opts = [
                default='trove.extensions.vertica.service.'
                        'VerticaRootController',
                help='Root controller implementation for Vertica.'),
+    cfg.StrOpt('guest_log_exposed_logs', default='',
+               help='List of Guest Logs to expose for publishing.'),
 ]
 
 # DB2
@@ -1216,6 +1237,8 @@ db2_opts = [
     cfg.StrOpt('root_controller',
                default='trove.extensions.common.service.DefaultRootController',
                help='Root controller implementation for db2.'),
+    cfg.StrOpt('guest_log_exposed_logs', default='',
+               help='List of Guest Logs to expose for publishing.'),
 ]
 
 # MariaDB
@@ -1276,6 +1299,8 @@ mariadb_opts = [
     cfg.StrOpt('root_controller',
                default='trove.extensions.common.service.DefaultRootController',
                help='Root controller implementation for mysql.'),
+    cfg.StrOpt('guest_log_exposed_logs', default='general,slow_query',
+               help='List of Guest Logs to expose for publishing.'),
 ]
 
 # RPC version groups

@@ -438,7 +438,7 @@ class API(object):
         LOG.debug("guest_log_list 1 returns %s", result)
         return result
 
-    def publish_guest_log(self, log, disable):
-        LOG.debug("Publishing guest log %s for %s.", log, self.id)
-        return self._call("publish_guest_log", AGENT_HIGH_TIMEOUT,
-                          self.version_cap, log=log, disable=disable)
+    def guest_log_publish(self, log_name, disable):
+        LOG.debug("Publishing guest log %s for %s.", log_name, self.id)
+        return self._call("guest_log_publish", AGENT_HIGH_TIMEOUT,
+                          self.version_cap, log_name=log_name, disable=disable)

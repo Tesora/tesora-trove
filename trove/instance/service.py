@@ -344,7 +344,7 @@ class InstanceController(wsgi.Controller):
         log_name = body['name']
         disable = body['disable'] if 'disable' in body else None
         client = create_guest_client(context, id)
-        guest_log = client.publish_guest_log(log_name, disable)
+        guest_log = client.guest_log_publish(log_name, disable)
         return wsgi.Result({'log': guest_log}, 200)
 
     def guest_log_name(self, req, tenant_id, id, log):
