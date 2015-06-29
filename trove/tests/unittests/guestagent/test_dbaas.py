@@ -2154,7 +2154,7 @@ class VerticaAppTest(testtools.TestCase):
              ) % {'source': temp_file_handle.name,
                   'target': vertica_system.VERTICA_CONF})
         arguments.assert_called_with(expected_command)
-        mock_mkstemp.assert_called_once()
+        self.assertEqual(1, mock_mkstemp.call_count)
 
         configuration_data = ConfigParser.ConfigParser()
         configuration_data.read(temp_file_handle.name)
