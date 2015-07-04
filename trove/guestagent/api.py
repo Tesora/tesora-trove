@@ -351,6 +351,12 @@ class API(object):
                   "%(id)s.", {'overrides': overrides, 'id': self.id})
         self._cast("apply_overrides", self.version_cap, overrides=overrides)
 
+    def backup_required_for_replication(self):
+        LOG.debug("Checking backup requirement for replication")
+        return self._call("backup_required_for_replication",
+                          AGENT_LOW_TIMEOUT,
+                          self.version_cap)
+
     def get_replication_snapshot(self, snapshot_info=None,
                                  replica_source_config=None):
         LOG.debug("Retrieving replication snapshot from instance %s.", self.id)

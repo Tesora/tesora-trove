@@ -20,64 +20,170 @@ from trove.tests.unittests import trove_testtools
 class TestGuestagentUtils(trove_testtools.TestCase):
 
     def test_update_dict(self):
-        self.assertEqual({}, guestagent_utils.update_dict({}, {}))
-        self.assertEqual({'key': 'value'},
-                         guestagent_utils.update_dict({}, {'key': 'value'}))
-        self.assertEqual({'key': 'value'},
-                         guestagent_utils.update_dict({'key': 'value'}, {}))
-
-        data = {'rpc_address': "0.0.0.0",
-                'broadcast_rpc_address': '0.0.0.0',
-                'listen_address': '0.0.0.0',
-                'seed_provider': [{
-                    'class_name':
-                    'org.apache.cassandra.locator.SimpleSeedProvider',
-                    'parameters': [{'seeds': '0.0.0.0'}]}]
-                }
-
-        updates = {'rpc_address': "127.0.0.1",
-                   'seed_provider': {'parameters':
-                                     {'seeds': '127.0.0.1'}
-                                     }
-                   }
-
-        updated = guestagent_utils.update_dict(updates, data)
-
-        expected = {'rpc_address': "127.0.0.1",
-                    'broadcast_rpc_address': '0.0.0.0',
-                    'listen_address': '0.0.0.0',
-                    'seed_provider': [{
-                        'class_name':
-                        'org.apache.cassandra.locator.SimpleSeedProvider',
-                        'parameters': [{'seeds': '127.0.0.1'}]}]
-                    }
-
-        self.assertEqual(expected, updated)
-
-        updates = {'seed_provider':
-                   [{'class_name':
-                     'org.apache.cassandra.locator.SimpleSeedProvider'
-                     }]
-                   }
-
-        updated = guestagent_utils.update_dict(updates, data)
-
-        expected = {'rpc_address': "127.0.0.1",
-                    'broadcast_rpc_address': '0.0.0.0',
-                    'listen_address': '0.0.0.0',
-                    'seed_provider': [{
-                        'class_name':
-                        'org.apache.cassandra.locator.SimpleSeedProvider'}]
-                    }
-
-        self.assertEqual(expected, updated)
-
-        data = {'timeout': 0, 'save': [[900, 1], [300, 10]]}
-        updates = {'save': [[900, 1], [300, 10], [60, 10000]]}
-        updated = guestagent_utils.update_dict(updates, data)
-        expected = {'timeout': 0, 'save': [[900, 1], [300, 10], [60, 10000]]}
-
-        self.assertEqual(expected, updated)
+        data = [{
+            'dict': {}, 'update': {}, 'expected': {}, 'remove': False,
+        }, {
+            'dict': {}, 'update': {}, 'expected': {}, 'remove': True,
+        }, {
+            'dict': None, 'update': {}, 'expected': {}, 'remove': False,
+        }, {
+            'dict': None, 'update': {}, 'expected': {}, 'remove': True,
+        }, {
+            'dict': {}, 'update': None, 'expected': {}, 'remove': False,
+        }, {
+            'dict': {}, 'update': None, 'expected': {}, 'remove': True,
+        }, {
+            'dict': {}, 'update': None, 'expected': {}, 'remove': False,
+        }, {
+            'dict': {}, 'update': None, 'expected': {}, 'remove': True,
+        }, {
+            'dict': None, 'update': {'name': 'Tom'},
+            'expected': {'name': 'Tom'}, 'remove': False,
+        }, {
+            'dict': None, 'update': {'name': None},
+            'expected': {}, 'remove': True,
+        }, {
+            'dict': {}, 'update': {'name': 'Tom'},
+            'expected': {'name': 'Tom'}, 'remove': False,
+        }, {
+            'dict': {}, 'update': {'name': None},
+            'expected': {}, 'remove': True,
+        }, {
+            'dict': {'name': 'Tom'}, 'update': {},
+            'expected': {'name': 'Tom'}, 'remove': False,
+        }, {
+            'dict': {'name': 'Tom'}, 'update': {'name': None},
+            'expected': {}, 'remove': True,
+        }, {
+            'dict': {'key1': 'value1',
+                     'dict1': {'key1': 'value1', 'key2': 'value2'}},
+            'update': {'key1': 'value1+',
+                       'key2': 'value2',
+                       'dict1': {'key3': 'value3'}},
+            'expected': {'key1': 'value1+',
+                         'key2': 'value2',
+                         'dict1': {'key1': 'value1', 'key2': 'value2',
+                                   'key3': 'value3'}},
+            'remove': False,
+        }, {
+            'dict': {'key1': 'value1',
+                     'key2': 'value2',
+                     'dict1': {'key1': 'value1', 'key2': 'value2'}},
+            'update': {'key1': 'garbage',
+                       'dict1': {'key1': 'not relevant', 'key2': None}},
+            'expected': {'key2': 'value2',
+                         'dict1': {}},
+            'remove': True,
+        }, {
+            'dict': {'d1': {'d2': {'d3': {'k1': 'v1'}}}},
+            'update': {'d1': {'d2': {'d3': {'k2': 'v2'}}}},
+            'expected': {'d1': {'d2': {'d3': {'k1': 'v1', 'k2': 'v2'}}}},
+            'remove': False,
+        }, {
+            'dict': {'d1': {'d2': {'d3': {'k1': 'v1'}}}},
+            'update': {'d1': {'d2': {'d3': None}}},
+            'expected': {'d1': {'d2': {}}},
+            'remove': True,
+        }, {
+            'dict': {'timeout': 0, 'save': [[900, 1], [300, 10]]},
+            'update': {'save': [[300, 20], [60, 10000]]},
+            'expected': {'timeout': 0,
+                         'save': [[300, 20], [60, 10000]]},
+            'remove': False,
+        }, {
+            'dict': {'timeout': 0, 'save': [[900, 1], [300, 10]]},
+            'update': {'save': None},
+            'expected': {'timeout': 0},
+            'remove': True,
+        }, {
+            'dict': {'rpc_address': '0.0.0.0',
+                     'broadcast_rpc_address': '0.0.0.0',
+                     'listen_address': '0.0.0.0',
+                     'seed_provider': [{
+                         'class_name':
+                         'org.apache.cassandra.locator.SimpleSeedProvider',
+                         'parameters': [{'seeds': '0.0.0.0'}]}]
+                     },
+            'update': {'rpc_address': '127.0.0.1',
+                       'seed_provider': {'parameters': {
+                           'seeds': '127.0.0.1'}}
+                       },
+            'expected': {'rpc_address': '127.0.0.1',
+                         'broadcast_rpc_address': '0.0.0.0',
+                         'listen_address': '0.0.0.0',
+                         'seed_provider': [{
+                             'class_name':
+                             'org.apache.cassandra.locator.SimpleSeedProvider',
+                             'parameters': [{'seeds': '127.0.0.1'}]}]
+                         },
+            'remove': False,
+        }, {
+            'dict': {'rpc_address': '0.0.0.0',
+                     'broadcast_rpc_address': '0.0.0.0',
+                     'listen_address': '0.0.0.0',
+                     'seed_provider': [{
+                         'class_name':
+                         'org.apache.cassandra.locator.SimpleSeedProvider',
+                         'parameters': [{'seeds': '0.0.0.0'}]}]
+                     },
+            'update': {'broadcast_rpc_address': None,
+                       'seed_provider': {'class_name': None}
+                       },
+            'expected': {'rpc_address': '0.0.0.0',
+                         'listen_address': '0.0.0.0',
+                         'seed_provider': [{
+                             'parameters': [{'seeds': '0.0.0.0'}]}]
+                         },
+            'remove': True,
+        }, {
+            'dict': {'rpc_address': '127.0.0.1',
+                     'broadcast_rpc_address': '0.0.0.0',
+                     'listen_address': '0.0.0.0',
+                     'seed_provider': [{
+                         'class_name':
+                         'org.apache.cassandra.locator.SimpleSeedProvider',
+                         'parameters': [{'seeds': '0.0.0.0'}]}]
+                     },
+            'update': {'seed_provider':
+                       [{'class_name':
+                         'org.apache.cassandra.locator.SimpleSeedProvider'}]
+                       },
+            'expected': {'rpc_address': '127.0.0.1',
+                         'broadcast_rpc_address': '0.0.0.0',
+                         'listen_address': '0.0.0.0',
+                         'seed_provider': [{
+                             'class_name':
+                             'org.apache.cassandra.locator.SimpleSeedProvider'
+                         }]},
+            'remove': False,
+        }, {
+            'dict': {'rpc_address': '0.0.0.0',
+                     'broadcast_rpc_address': '0.0.0.0',
+                     'listen_address': '0.0.0.0',
+                     'seed_provider': [{
+                         'class_name':
+                         'org.apache.cassandra.locator.SimpleSeedProvider',
+                         'parameters': [{'seeds': '0.0.0.0'}]}]
+                     },
+            'update': {'listen_address': None,
+                       'seed_provider': None
+                       },
+            'expected': {'rpc_address': '0.0.0.0',
+                         'broadcast_rpc_address': '0.0.0.0',
+                         },
+            'remove': True,
+        }]
+        count = 0
+        for record in data:
+            count += 1
+            target = record['dict']
+            update = record['update']
+            expected = record['expected']
+            remove = record['remove']
+            result = guestagent_utils.update_dict(update, target,
+                                                  remove=remove)
+            msg = 'Unexpected result for test %s' % str(count)
+            self.assertEqual(expected, result, msg)
 
     def test_build_file_path(self):
         self.assertEqual(

@@ -17,7 +17,7 @@ import collections
 import os
 
 
-def update_dict(updates, target):
+def update_dict(updates, target, remove=False):
     """Recursively update a target dictionary with given updates.
 
     Updates are provided as a dictionary of key-value pairs
@@ -25,17 +25,28 @@ def update_dict(updates, target):
     its key is treated as a sub-section of the outer key.
     If a list value is encountered the update is applied
     iteratively on all its items.
-    """
+    Will remove the key-value pair if remove=True
+
+    :returns:    Will always return a dictionary of results (may be empty).
+     """
+    if target is None:
+        target = {}
+
     if isinstance(target, list):
         for index, item in enumerate(target):
-            target[index] = update_dict(updates, item)
+            target[index] = update_dict(updates, item, remove=remove)
         return target
 
-    for k, v in updates.iteritems():
-        if isinstance(v, collections.Mapping):
-            target[k] = update_dict(v, target.get(k, {}))
-        else:
-            target[k] = updates[k]
+    if updates is not None:
+        for k, v in updates.iteritems():
+            if isinstance(v, collections.Mapping):
+                target[k] = update_dict(v, target.get(k, {}), remove=remove)
+            else:
+                if remove:
+                    if k in target:
+                        del target[k]
+                else:
+                    target[k] = updates[k]
 
     return target
 

@@ -239,6 +239,10 @@ class Manager(periodic_task.PeriodicTasks):
         app = MySqlApp(MySqlAppStatus.get())
         app.apply_overrides(overrides)
 
+    def backup_required_for_replication(self, context):
+        replication = REPLICATION_STRATEGY_CLASS(context)
+        return replication.backup_required_for_replication()
+
     def get_replication_snapshot(self, context, snapshot_info,
                                  replica_source_config=None):
         LOG.debug("Getting replication snapshot.")

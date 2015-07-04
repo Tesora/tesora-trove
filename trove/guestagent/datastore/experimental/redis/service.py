@@ -230,6 +230,13 @@ class RedisApp(object):
     def remove_overrides(self):
         self.configuration_manager.remove_user_override()
 
+    def remove_replica_configuration(self, options):
+        self.configuration_manager.apply_configuration(options, remove=True)
+
+    def make_read_only(self, read_only):
+        # Redis has no mechanism to make an instance read-only at present
+        pass
+
     def start_db_with_conf_changes(self, config_contents):
         LOG.info(_('Starting redis with conf changes.'))
         if self.status.is_running:
@@ -331,6 +338,10 @@ class RedisApp(object):
         """Returns the full path to the persistence file."""
         return guestagent_utils.build_file_path(
             self.get_working_dir(), self.get_db_filename())
+
+    def get_port(self):
+        """Port for this instance or default if not set."""
+        return self.get_configuration_property('port', system.REDIS_PORT)
 
     def get_auth_password(self):
         """Client authentication password for this instance or None if not set.
@@ -475,11 +486,14 @@ class RedisAdmin(object):
         """
         return self.__client.ping()
 
-    def get_info(self, section=None):
-        return self.__client.info(section=section)
-
     def persist_data(self):
         return self.__client.save()
+
+    def set_master(self, host=None, port=None):
+        self.__client.slaveof(host, port)
+
+    def get_info(self, section=None):
+        return self.__client.info(section=section)
 
     def config_set(self, name, value):
         response = self.execute(
