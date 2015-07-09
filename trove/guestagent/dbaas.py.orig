@@ -54,12 +54,15 @@ defaults = {
     'trove.guestagent.datastore.experimental.vertica.manager.Manager',
     'db2':
     'trove.guestagent.datastore.experimental.db2.manager.Manager',
+<<<<<<< HEAD
     'oracle':
     'trove.guestagent.datastore.oracle.manager.Manager',
     'oracle_ra':
     'trove.guestagent.datastore.oracle_ra.manager.Manager',
+=======
     'mariadb':
     'trove.guestagent.datastore.experimental.mariadb.manager.Manager'
+>>>>>>> ca9cc2c... MySQL Manager Refactor
 }
 CONF = cfg.CONF
 
