@@ -36,6 +36,7 @@ class DatabaseModelBase(models.ModelBase):
         if hasattr(cls, 'deleted'):
             init_vals['deleted'] = False
         init_vals.update(values)
+
         instance = cls(**init_vals)
         if not instance.is_valid():
             raise exception.InvalidModelError(errors=instance.errors)

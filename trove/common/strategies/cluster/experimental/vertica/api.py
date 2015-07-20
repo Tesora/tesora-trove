@@ -55,6 +55,7 @@ class VerticaCluster(models.Cluster):
     @classmethod
     def create(cls, context, name, datastore, datastore_version, instances):
         LOG.debug("Initiating cluster creation.")
+
         vertica_conf = CONF.get(datastore_version.manager)
         num_instances = len(instances)
 

@@ -101,6 +101,10 @@ class Manager(periodic_task.PeriodicTasks):
                 LOG.debug('Mounted the volume.')
             self._app.install_if_needed(packages)
             LOG.info(_('Writing redis configuration.'))
+            if cluster_config:
+                config_contents = (config_contents + "\n"
+                                   + "cluster-enabled yes\n"
+                                   + "cluster-config-file cluster.conf\n")
             self._app.configuration_manager.save_configuration(config_contents)
             self._app.apply_initial_guestagent_configuration()
             self._app.restart()
@@ -300,3 +304,28 @@ class Manager(periodic_task.PeriodicTasks):
         LOG.debug("Demoting replica source.")
         raise exception.DatastoreOperationNotSupported(
             operation='demote_replication_master', datastore=MANAGER)
+
+    def cluster_meet(self, context, ip, port):
+        LOG.debug("Executing cluster_meet to join node to cluster.")
+        self._app.cluster_meet(ip, port)
+
+    def get_node_ip(self, context):
+        LOG.debug("Retrieving cluster node ip address.")
+        return self._app.get_node_ip()
+
+    def get_node_id_for_removal(self, context):
+        LOG.debug("Validating removal of node from cluster.")
+        return self._app.get_node_id_for_removal()
+
+    def remove_nodes(self, context, node_ids):
+        LOG.debug("Removing nodes from cluster.")
+        self._app.remove_nodes(node_ids)
+
+    def cluster_addslots(self, context, first_slot, last_slot):
+        LOG.debug("Executing cluster_addslots to assign hash slots %s-%s.",
+                  first_slot, last_slot)
+        self._app.cluster_addslots(first_slot, last_slot)
+
+    def cluster_complete(self, context):
+        LOG.debug("Cluster creation complete, starting status checks.")
+        self._app.complete_install_or_restart()

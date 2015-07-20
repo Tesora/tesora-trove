@@ -26,6 +26,7 @@ from trove.tests.api.mgmt import admin_required
 from trove.tests.api.mgmt import hosts
 from trove.tests.api.mgmt import instances as mgmt_instances
 from trove.tests.api.mgmt import storage
+from trove.tests.api import redis
 from trove.tests.api import replication
 from trove.tests.api import root
 from trove.tests.api import user_access
@@ -94,3 +95,15 @@ datastore_group = [
 proboscis.register(groups=["cassandra", "couchbase", "mongodb", "postgresql",
                            "redis"],
                    depends_on_groups=datastore_group)
+
+# Redis int-tests
+redis_group = [
+    GROUP_SERVICES_INITIALIZE,
+    flavors.GROUP,
+    versions.GROUP,
+    instances.GROUP_START_SIMPLE,
+    instances.GROUP_QUOTAS,
+    redis.REDIS_GROUP,
+]
+proboscis.register(groups=["redis"],
+                   depends_on_groups=redis_group)
