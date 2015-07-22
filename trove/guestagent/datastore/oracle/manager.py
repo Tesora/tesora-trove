@@ -48,10 +48,10 @@
 # Tesora or display the words "Initial Development by Tesora" if the display of
 # the logo is not reasonably feasible for technical reasons.
 
+from oslo_service import periodic_task
 from trove.common import cfg
 from trove.common import exception
 from trove.openstack.common import log as logging
-from trove.openstack.common import periodic_task
 from trove.guestagent import dbaas
 from trove.guestagent import volume
 from trove.guestagent.datastore.oracle import service
@@ -71,7 +71,7 @@ class Manager(periodic_task.PeriodicTasks):
         self.app = service.OracleApp(self.appStatus)
         self.admin = service.OracleAdmin()
 
-    @periodic_task.periodic_task(ticks_between_runs=3)
+    @periodic_task.periodic_task
     def update_status(self, context):
         """
         Updates the status of Oracle Trove instance. It is decorated

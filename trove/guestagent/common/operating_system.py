@@ -18,11 +18,13 @@ from ConfigParser import SafeConfigParser
 import inspect
 import operator
 import os
+import re
 import stat
 import StringIO
 import tempfile
 import yaml
 
+from functools import reduce
 from oslo_concurrency.processutils import UnknownArgumentError
 
 from trove.common import exception
@@ -265,8 +267,7 @@ def _write_file_as_root(path, data, codec=IdentityCodec):
     with tempfile.NamedTemporaryFile('w', 0, delete=False) as fp:
         fp.write(codec.serialize(data))
         fp.close()  # Release the resource before proceeding.
-        utils.execute_with_timeout("cp", "-f", fp.name, path,
-                                   run_as_root=True, root_helper="sudo")
+        copy(fp.name, path, force=True, as_root=True)
 
 
 class FileMode(object):
@@ -305,6 +306,14 @@ class FileMode(object):
     @classmethod
     def SET_GRP_RW_OTH_R(cls):
         return cls(reset=[stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH])  # =0064
+
+    @classmethod
+    def SET_USR_RO(cls):
+        return cls(reset=[stat.S_IRUSR])  # =0400
+
+    @classmethod
+    def SET_USR_RW(cls):
+        return cls(reset=[stat.S_IRUSR | stat.S_IWUSR])  # =0600
 
     @classmethod
     def ADD_READ_ALL(cls):
@@ -427,8 +436,8 @@ def _execute_service_command(service_candidates, command_key):
 
 def service_discovery(service_candidates):
     """
-    This function discovering how to start, stop, enable, disable service
-    in current environment. "service_candidates" is array with possible
+    This function discovers how to start, stop, enable and disable services
+    in the current environment. "service_candidates" is an array with possible
     system service names. Works for upstart, systemd, sysvinit.
     """
     result = {}
@@ -768,3 +777,23 @@ def _build_command_options(options):
     """
 
     return ['-' + item[0] for item in options if item[1]]
+
+
+def list_files_in_directory(root_dir, recursive=False, pattern=None):
+    """
+    Return absolute paths to all files in a given root directory.
+
+    :param root_dir            Path to the root directory.
+    :type root_dir             string
+
+    :param recursive           Also probe subdirectories if True.
+    :type recursive            boolean
+
+    :param pattern             Return only files matching the pattern.
+    :type pattern              string
+    """
+    return {os.path.abspath(os.path.join(root, name))
+            for (root, _, files) in os.walk(root_dir, topdown=True)
+            if recursive or (root == root_dir)
+            for name in files
+            if not pattern or re.match(pattern, name)}

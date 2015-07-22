@@ -137,7 +137,7 @@ class Configuration(object):
                 return DBConfiguration.find_by(id=id,
                                                tenant_id=context.tenant,
                                                deleted=False)
-        except exception.ModelNotFoundError:
+        except ModelNotFoundError:
             msg = _("Configuration group with ID %s could not be found.") % id
             raise ModelNotFoundError(msg)
 

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import hashlib
+import mock
 import os
 
 from mock import Mock, MagicMock, patch, ANY
@@ -203,10 +204,12 @@ class BackupAgentTest(trove_testtools.TestCase):
         self.assertIsNotNone(mysql_dump.manifest)
         self.assertEqual('abc.gz.enc', mysql_dump.manifest)
 
-    def test_backup_impl_InnoBackupEx(self):
+    @mock.patch('trove.guestagent.strategies.backup.mysql_impl.get_datadir')
+    def test_backup_impl_InnoBackupEx(self, mock_datadir):
         """This test is for
            guestagent/strategies/backup/mysql_impl
         """
+        mock_datadir.return_value = '/var/lib/mysql/data'
         inno_backup_ex = mysql_impl.InnoBackupEx('innobackupex', extra_opts='')
         self.assertIsNotNone(inno_backup_ex.cmd)
         str_innobackup_cmd = ('sudo innobackupex'

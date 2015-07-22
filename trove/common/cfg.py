@@ -76,7 +76,7 @@ common_opts = [
                help='Trove authentication URL.'),
     cfg.StrOpt('host', default='0.0.0.0',
                help='Host to listen for RPC messages.'),
-    cfg.IntOpt('report_interval', default=10,
+    cfg.IntOpt('report_interval', default=30,
                help='The interval (in seconds) which periodic tasks are run.'),
     cfg.BoolOpt('trove_dns_support', default=False,
                 help='Whether Trove should add DNS entries on create '
@@ -310,11 +310,11 @@ common_opts = [
                help='Client to send Swift calls to.'),
     cfg.StrOpt('exists_notification_transformer',
                help='Transformer for exists notifications.'),
-    cfg.IntOpt('exists_notification_ticks', default=360,
-               help='Number of report_intervals to wait between pushing '
-                    'events (see report_interval).'),
+    cfg.IntOpt('exists_notification_interval', default=3600,
+               help='Seconds to wait between pushing events.'),
     cfg.DictOpt('notification_service_id',
                 default={'mysql': '2f3ff068-2bfb-4f70-9a9d-a6bb65bc084b',
+                         'percona': 'fd1723f5-68d2-409c-994f-a4a197892a17',
                          'redis': 'b216ffc5-1947-456c-a4cf-70f94c05f7d0',
                          'cassandra': '459a230d-4e97-4344-9067-2a54a310b0ed',
                          'couchbase': 'fa62fe68-74d9-4779-a24e-36f19602c415',
@@ -870,6 +870,10 @@ mongodb_opts = [
                help='Namespace to load restore strategies from.',
                deprecated_name='restore_namespace',
                deprecated_group='DEFAULT'),
+    cfg.IntOpt('mongodb_port', default=27017,
+               help='Port for mongod and mongos instances.'),
+    cfg.IntOpt('configsvr_port', default=27019,
+               help='Port for instances running as config servers.'),
 ]
 
 # PostgreSQL
