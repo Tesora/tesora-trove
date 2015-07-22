@@ -81,8 +81,7 @@ class MockMgmtInstanceTest(trove_testtools.TestCase):
         self.addCleanup(self.admin_client_patch.stop)
         self.admin_client_patch.start()
         CONF.set_override('host', 'test_host')
-        CONF.set_override('exists_notification_ticks', 1)
-        CONF.set_override('report_interval', 20)
+        CONF.set_override('exists_notification_interval', 1)
         CONF.set_override('notification_service_id', {'mysql': '123'})
 
         super(MockMgmtInstanceTest, self).setUp()
@@ -92,12 +91,11 @@ class MockMgmtInstanceTest(trove_testtools.TestCase):
         status.delete()
 
     def build_db_instance(self, status, task_status=InstanceTasks.NONE):
-        version = datastore_models.DBDatastoreVersion.get_by(name='5.5')
         instance = DBInstance(InstanceTasks.NONE,
                               name='test_name',
                               id=str(uuid.uuid4()),
                               flavor_id='flavor_1',
-                              datastore_version_id=version.id,
+                              datastore_version_id=self.version.id,
                               compute_instance_id='compute_id_1',
                               server_id='server_id_1',
                               tenant_id='tenant_id_1',
@@ -416,24 +414,28 @@ class TestMgmtInstanceDeleted(MockMgmtInstanceTest):
         #                 db_infos_deleted.count())
 
         with patch.object(self.context, 'is_admin', return_value=True):
-            deleted_instance = db_infos_deleted.all()[0]
-            active_instance = db_infos_active.all()[0]
+            deleted_instance = db_infos_deleted.all()[0] if len(
+                db_infos_deleted.all()) > 0 else None
+            active_instance = db_infos_active.all()[0] if len(
+                db_infos_active.all()) > 0 else None
 
-            instance = DBInstance.find_by(context=self.context,
-                                          id=active_instance.id)
-            self.assertEqual(active_instance.id, instance.id)
+            if active_instance:
+                instance = DBInstance.find_by(context=self.context,
+                                              id=active_instance.id)
+                self.assertEqual(active_instance.id, instance.id)
 
-            self.assertRaises(
-                exception.ModelNotFoundError,
-                DBInstance.find_by,
-                context=self.context,
-                id=deleted_instance.id,
-                deleted=False)
+            if deleted_instance:
+                self.assertRaises(
+                    exception.ModelNotFoundError,
+                    DBInstance.find_by,
+                    context=self.context,
+                    id=deleted_instance.id,
+                    deleted=False)
 
-            instance = DBInstance.find_by(context=self.context,
-                                          id=deleted_instance.id,
-                                          deleted=True)
-            self.assertEqual(deleted_instance.id, instance.id)
+                instance = DBInstance.find_by(context=self.context,
+                                              id=deleted_instance.id,
+                                              deleted=True)
+                self.assertEqual(deleted_instance.id, instance.id)
 
 
 class TestMgmtInstancePing(MockMgmtInstanceTest):

@@ -14,13 +14,12 @@
 #    under the License.
 
 import bisect
-import six.moves.urllib.parse as urlparse
-import urllib
-
 try:
     from collections import OrderedDict
 except ImportError:
     from ordereddict import OrderedDict
+import six.moves.urllib.parse as urlparse
+import urllib
 
 
 def url_quote(s):
@@ -30,13 +29,13 @@ def url_quote(s):
 
 
 def paginate_list(li, limit=None, marker=None, include_marker=False):
-    """Sort the given list and return a sublist containing a page of items
+    """Sort the given list and return a sublist containing a page of items.
 
-    Keyword arguments:
-    li -- The list to be paginated
-    limit -- Maximum number of items to be returned
-    marker -- Key of the first item to appear on the sublist
-    include_marker -- Include the marker value itself in the returned sublist
+    :param list li:             The list to be paginated.
+    :param int limit:           Maximum number of iterms to be returned.
+    :param marker:              Key of the first item to appear on the sublist.
+    :param bool include_marker: Include the marker value itself in the sublist.
+    :return:
     """
     li.sort()
     if include_marker:

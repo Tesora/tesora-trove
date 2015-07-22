@@ -50,6 +50,7 @@
 
 import ConfigParser
 import os
+from oslo_service import periodic_task
 
 import cx_Oracle
 
@@ -61,7 +62,6 @@ from trove.guestagent.datastore.oracle_ra.service import OracleAdmin
 from trove.guestagent.datastore.oracle_ra.service import OracleApp
 from trove.openstack.common import log as logging
 from trove.openstack.common.gettextutils import _
-from trove.openstack.common import periodic_task
 
 
 LOG = logging.getLogger(__name__)
@@ -71,7 +71,10 @@ MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'oracle_ra'
 
 class Manager(periodic_task.PeriodicTasks):
 
-    @periodic_task.periodic_task(ticks_between_runs=1)
+    def __init__(self):
+        super(Manager, self).__init__(CONF)
+
+    @periodic_task.periodic_task
     def update_status(self, context):
         """Update the status of the Oracle service."""
         OracleAppStatus.get().update()

@@ -18,6 +18,8 @@
 
 import os
 
+from oslo_service import periodic_task
+
 from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
@@ -31,7 +33,6 @@ from trove.guestagent import dbaas
 from trove.guestagent.strategies.replication import get_replication_strategy
 from trove.guestagent import volume
 from trove.openstack.common import log as logging
-from trove.openstack.common import periodic_task
 
 
 LOG = logging.getLogger(__name__)
@@ -44,7 +45,11 @@ REPLICATION_STRATEGY_CLASS = get_replication_strategy(REPLICATION_STRATEGY,
 
 
 class Manager(periodic_task.PeriodicTasks):
-    @periodic_task.periodic_task(ticks_between_runs=3)
+
+    def __init__(self):
+        super(Manager, self).__init__(CONF)
+
+    @periodic_task.periodic_task
     def update_status(self, context):
         """Update the status of the MySQL service."""
         MySqlAppStatus.get().update()
@@ -136,13 +141,15 @@ class Manager(periodic_task.PeriodicTasks):
                 device.migrate_data(mount_point, target_subdir="data")
             # mount the volume
             device.mount(mount_point)
-            operating_system.chown(mount_point, 'mysql', 'mysql', as_root=True)
+            operating_system.chown(mount_point, 'mysql', 'mysql',
+                                   recursive=False, as_root=True)
 
-            LOG.debug("Mounted the volume at %s" % mount_point)
+            LOG.debug("Mounted the volume at %s." % mount_point)
             # We need to temporarily update the default my.cnf so that
             # mysql will start after the volume is mounted. Later on it
             # will be changed based on the config template and restart.
-            app.update_overrides("[mysqld]\ndatadir=/var/lib/mysql/data\n")
+            app.update_overrides("[mysqld]\ndatadir=%s/data\n"
+                                 % mount_point)
             app.start_mysql()
         if backup_info:
             self._perform_restore(backup_info, context,

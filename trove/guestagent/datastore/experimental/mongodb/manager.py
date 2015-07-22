@@ -15,6 +15,7 @@
 
 import os
 
+from oslo_service import periodic_task
 from oslo_utils import netutils
 
 from trove.common import cfg
@@ -23,13 +24,11 @@ from trove.common.i18n import _
 from trove.common import instance as ds_instance
 from trove.guestagent import backup
 from trove.guestagent.common import operating_system
-from trove.guestagent.datastore.experimental.mongodb import (
-    service as mongo_service)
+from trove.guestagent.datastore.experimental.mongodb import service
 from trove.guestagent.datastore.experimental.mongodb import system
 from trove.guestagent import dbaas
 from trove.guestagent import volume
 from trove.openstack.common import log as logging
-from trove.openstack.common import periodic_task
 
 
 LOG = logging.getLogger(__name__)
@@ -40,10 +39,11 @@ MANAGER = CONF.datastore_manager
 class Manager(periodic_task.PeriodicTasks):
 
     def __init__(self):
-        self.status = mongo_service.MongoDbAppStatus()
-        self.app = mongo_service.MongoDBApp(self.status)
+        self.status = service.MongoDBAppStatus()
+        self.app = service.MongoDBApp(self.status)
+        super(Manager, self).__init__(CONF)
 
-    @periodic_task.periodic_task(ticks_between_runs=3)
+    @periodic_task.periodic_task
     def update_status(self, context):
         """Update the status of the MongoDB service."""
         self.status.update()
@@ -80,6 +80,7 @@ class Manager(periodic_task.PeriodicTasks):
             LOG.debug("Mounted the volume %(path)s as %(mount)s." %
                       {'path': device_path, "mount": mount_point})
 
+        self.app.secure(cluster_config)
         conf_changes = self.get_config_changes(cluster_config, mount_point)
         config_contents = self.app.update_config_contents(
             config_contents, conf_changes)
@@ -115,8 +116,13 @@ class Manager(periodic_task.PeriodicTasks):
     def get_config_changes(self, cluster_config, mount_point=None):
         LOG.debug("Getting configuration changes.")
         config_changes = {}
+        # todo mvandijk: uncomment the following when auth is being enabled
+        # config_changes['auth'] = 'true'
+        config_changes['bind_ip'] = ','.join([netutils.get_my_ipv4(),
+                                              '127.0.0.1'])
         if cluster_config is not None:
-            config_changes['bind_ip'] = netutils.get_my_ipv4()
+            # todo mvandijk: uncomment the following when auth is being enabled
+            # config_changes['keyFile'] = self.app.get_key_file()
             if cluster_config["instance_type"] == "config_server":
                 config_changes["configsvr"] = "true"
             elif cluster_config["instance_type"] == "member":
@@ -165,9 +171,8 @@ class Manager(periodic_task.PeriodicTasks):
             operation='create_database', datastore=MANAGER)
 
     def create_user(self, context, users):
-        LOG.debug("Creating user.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='create_user', datastore=MANAGER)
+        LOG.debug("Creating user(s).")
+        return service.MongoDBAdmin().create_users(users)
 
     def delete_database(self, context, database):
         LOG.debug("Deleting database.")
@@ -176,13 +181,11 @@ class Manager(periodic_task.PeriodicTasks):
 
     def delete_user(self, context, user):
         LOG.debug("Deleting user.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='delete_user', datastore=MANAGER)
+        return service.MongoDBAdmin().delete_user(user)
 
     def get_user(self, context, username, hostname):
         LOG.debug("Getting user.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='get_user', datastore=MANAGER)
+        return service.MongoDBAdmin().get_user(username)
 
     def grant_access(self, context, username, hostname, databases):
         LOG.debug("Granting acccess.")
@@ -208,8 +211,7 @@ class Manager(periodic_task.PeriodicTasks):
     def list_users(self, context, limit=None, marker=None,
                    include_marker=False):
         LOG.debug("Listing users.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='list_users', datastore=MANAGER)
+        return service.MongoDBAdmin().list_users(limit, marker, include_marker)
 
     def enable_root(self, context):
         LOG.debug("Enabling root.")
@@ -344,3 +346,14 @@ class Manager(periodic_task.PeriodicTasks):
         LOG.debug("Cluster creation complete, starting status checks.")
         status = self.status._get_actual_db_status()
         self.status.set_status(status)
+
+    def get_key(self, context):
+        # Return the cluster key
+        LOG.debug("Getting the cluster key.")
+        return self.app.get_key()
+
+    def create_admin_user(self, context, password):
+        self.app.create_admin_user(password)
+
+    def store_admin_password(self, context, password):
+        self.app.store_admin_password(password)

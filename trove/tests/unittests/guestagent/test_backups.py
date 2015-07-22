@@ -103,11 +103,16 @@ class GuestAgentBackupTest(trove_testtools.TestCase):
         mysql_impl.get_auth_password = mock.Mock(
             return_value='password')
         self.orig_exec_with_to = utils.execute_with_timeout
+        self.patcher_get_datadir = patch(
+            'trove.guestagent.strategies.backup.mysql_impl.get_datadir')
+        self.mock_get_datadir = self.patcher_get_datadir.start()
+        self.mock_get_datadir.return_value = '/var/lib/mysql/data'
 
     def tearDown(self):
         super(GuestAgentBackupTest, self).tearDown()
         mysql_impl.get_auth_password = self.orig
         utils.execute_with_timeout = self.orig_exec_with_to
+        self.patcher_get_datadir.stop()
 
     def test_backup_decrypted_xtrabackup_command(self):
         backupBase.BackupRunner.is_zipped = True

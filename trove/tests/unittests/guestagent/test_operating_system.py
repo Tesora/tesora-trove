@@ -15,19 +15,20 @@
 
 import itertools
 import os
+import re
 import stat
-
-from ConfigParser import ParsingError
-from mock import DEFAULT, call, MagicMock, patch
-from oslo_concurrency.processutils import UnknownArgumentError
 import tempfile
+
+from mock import call, patch
+from oslo_concurrency.processutils import UnknownArgumentError
 from testtools import ExpectedException
 
 from trove.common import exception
+from trove.common.stream_codecs import (
+    IdentityCodec, IniCodec, PropertiesCodec, YamlCodec)
 from trove.common import utils
+from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
-from trove.guestagent.common.operating_system import (IdentityCodec,
-                                                      IniCodec, YamlCodec)
 from trove.guestagent.common.operating_system import FileMode
 from trove.tests.unittests import trove_testtools
 
@@ -55,20 +56,16 @@ class TestOperatingSystem(trove_testtools.TestCase):
                                        "s2k2": 'True',
                                        "s2k3": None}}
 
-        self._test_file_codec(data_no_none, IniCodec(allow_no_value=True))
-        self._test_file_codec(data_with_none, IniCodec(allow_no_value=True))
+        # Keys with None values will be written without value.
+        self._test_file_codec(data_with_none, IniCodec())
 
-        self._test_file_codec(
-            data_with_none,
-            read_codec=IniCodec(allow_no_value=True),
-            write_codec=IniCodec(allow_no_value=False),
-            expected_exception=ExpectedException(TypeError))
-
-        self._test_file_codec(
-            data_with_none,
-            read_codec=IniCodec(allow_no_value=False),
-            write_codec=IniCodec(allow_no_value=True),
-            expected_exception=ExpectedException(ParsingError))
+        # None will be replaced with 'default_value'.
+        default_value = '1'
+        expected_data = guestagent_utils.update_dict(
+            {"Section2": {"s2k3": default_value}}, dict(data_with_none))
+        self._test_file_codec(data_with_none,
+                              IniCodec(default_value=default_value),
+                              expected_data=expected_data)
 
     def test_yaml_file_codec(self):
         data = {"Section1": 's1v1',
@@ -81,7 +78,25 @@ class TestOperatingSystem(trove_testtools.TestCase):
         self._test_file_codec(data, YamlCodec())
         self._test_file_codec(data, YamlCodec(default_flow_style=True))
 
+    def test_properties_file_codec(self):
+        data = {'key1': [1, "str1", '127.0.0.1', 3.1415926535, True, None],
+                'key2': [2.0, 3, 0, "str1 str2"],
+                'key3': ['str1', 'str2'],
+                'key4': [],
+                'key5': 5000,
+                'key6': 'str1',
+                'key7': 0,
+                'key8': None,
+                'key9': [['str1', 'str2'], ['str3', 'str4']],
+                'key10': [['str1', 'str2', 'str3'], ['str3', 'str4'], 'str5']
+                }
+
+        self._test_file_codec(data, PropertiesCodec())
+        self._test_file_codec(data, PropertiesCodec(
+            string_mappings={'yes': True, 'no': False, "''": None}))
+
     def _test_file_codec(self, data, read_codec, write_codec=None,
+                         expected_data=None,
                          expected_exception=None):
         write_codec = write_codec or read_codec
 
@@ -97,7 +112,10 @@ class TestOperatingSystem(trove_testtools.TestCase):
                                             codec=write_codec)
                 read = operating_system.read_file(test_file.name,
                                                   codec=read_codec)
-                self.assertEqual(data, read)
+                if expected_data is not None:
+                    self.assertEqual(expected_data, read)
+                else:
+                    self.assertEqual(data, read)
 
     def test_read_write_file_input_validation(self):
         with ExpectedException(exception.UnprocessableEntity,
@@ -112,105 +130,28 @@ class TestOperatingSystem(trove_testtools.TestCase):
                                "Invalid path: None"):
             operating_system.write_file(None, {})
 
-    def test_write_file_as_root(self):
+    @patch.object(operating_system, 'copy')
+    def test_write_file_as_root(self, copy_mock):
         target_file = tempfile.NamedTemporaryFile()
         temp_file = tempfile.NamedTemporaryFile()
 
         with patch('tempfile.NamedTemporaryFile', return_value=temp_file):
-            self._assert_execute_call(
-                [['cp', '-f', temp_file.name, target_file.name]],
-                [{'run_as_root': True, 'root_helper': 'sudo'}],
-                operating_system.write_file, None,
-                target_file.name, "Lorem Ipsum", as_root=True
-            )
+            operating_system.write_file(
+                target_file.name, "Lorem Ipsum", as_root=True)
+            copy_mock.assert_called_once_with(
+                temp_file.name, target_file.name, force=True, as_root=True)
         self.assertFalse(os.path.exists(temp_file.name))
 
-    @patch('trove.common.utils.execute_with_timeout',
-           side_effect=Exception("Error while executing 'cp'."))
-    def test_write_file_as_root_with_error(self, execute):
+    @patch.object(operating_system, 'copy',
+                  side_effect=Exception("Error while executing 'copy'."))
+    def test_write_file_as_root_with_error(self, copy_mock):
         target_file = tempfile.NamedTemporaryFile()
         temp_file = tempfile.NamedTemporaryFile()
         with patch('tempfile.NamedTemporaryFile', return_value=temp_file):
-            with ExpectedException(Exception, "Error while executing 'cp'."):
+            with ExpectedException(Exception, "Error while executing 'copy'."):
                 operating_system.write_file(target_file.name,
                                             "Lorem Ipsum", as_root=True)
         self.assertFalse(os.path.exists(temp_file.name))
-
-    def test_read_write_ini_file(self):
-        self._test_read_write_file(
-            operating_system.read_config_file,
-            operating_system.write_config_file,
-            'trove.guestagent.common.operating_system.IniCodec')
-
-    def test_read_write_yaml_file(self):
-        self._test_read_write_file(
-            operating_system.read_yaml_file,
-            operating_system.write_yaml_file,
-            'trove.guestagent.common.operating_system.SafeYamlCodec')
-
-    def _test_read_write_file(self, read_func, write_func, expected_codec_cls):
-        with tempfile.NamedTemporaryFile() as test_file:
-            with patch.multiple(
-                    'trove.guestagent.common.operating_system',
-                    write_file=DEFAULT, read_file=DEFAULT) as exp_calls:
-                with patch(expected_codec_cls) as codec_cls:
-                    sample_data = MagicMock()
-                    write_func(test_file.name, sample_data)
-                    read_func(test_file.name)
-                    exp_calls['write_file'].assert_called_once_with(
-                        test_file.name, sample_data,
-                        codec=codec_cls.return_value, as_root=False)
-                    exp_calls['read_file'].assert_called_once_with(
-                        test_file.name, codec=codec_cls.return_value)
-
-    def test_start_service(self):
-        self._assert_service_call(operating_system.start_service,
-                                  'cmd_start')
-
-    def test_stop_service(self):
-        self._assert_service_call(operating_system.stop_service,
-                                  'cmd_stop')
-
-    def test_enable_service_on_boot(self):
-        self._assert_service_call(operating_system.enable_service_on_boot,
-                                  'cmd_enable')
-
-    def test_disable_service_on_boot(self):
-        self._assert_service_call(operating_system.disable_service_on_boot,
-                                  'cmd_disable')
-
-    @patch.object(operating_system, '_execute_service_command')
-    def _assert_service_call(self, fun, expected_cmd_key,
-                             exec_service_cmd_mock):
-        test_candidate_names = ['test_service_1', 'test_service_2']
-        fun(test_candidate_names)
-        exec_service_cmd_mock.assert_called_once_with(test_candidate_names,
-                                                      expected_cmd_key)
-
-    @patch.object(operating_system, 'service_discovery',
-                  return_value={'cmd_start': 'start',
-                                'cmd_stop': 'stop',
-                                'cmd_enable': 'enable',
-                                'cmd_disable': 'disable'})
-    def test_execute_service_command(self, discovery_mock):
-        test_service_candidates = ['service_name']
-        self._assert_execute_call([['start']], [{'shell': True}],
-                                  operating_system._execute_service_command,
-                                  None, test_service_candidates, 'cmd_start')
-        discovery_mock.assert_called_once_with(test_service_candidates)
-
-        with ExpectedException(exception.UnprocessableEntity,
-                               "Candidate service names not specified."):
-            operating_system._execute_service_command([], 'cmd_disable')
-
-        with ExpectedException(exception.UnprocessableEntity,
-                               "Candidate service names not specified."):
-            operating_system._execute_service_command(None, 'cmd_start')
-
-        with ExpectedException(RuntimeError, "Service control command not "
-                               "available: unknown"):
-            operating_system._execute_service_command(test_service_candidates,
-                                                      'unknown')
 
     def test_modes(self):
         self._assert_modes(None, None, None, operating_system.FileMode())
@@ -807,6 +748,86 @@ class TestOperatingSystem(trove_testtools.TestCase):
 
     def test_file_discovery(self):
         with patch.object(os.path, 'isfile', side_effect=[False, True]):
-                config_file = operating_system.file_discovery(
-                    ["/etc/mongodb.conf", "/etc/mongod.conf"])
+            config_file = operating_system.file_discovery(
+                ["/etc/mongodb.conf", "/etc/mongod.conf"])
         self.assertEqual('/etc/mongod.conf', config_file)
+
+    def test_list_files_in_directory(self):
+        root_path = tempfile.mkdtemp()
+        try:
+            all_paths = set()
+            self._create_temp_fs_structure(
+                root_path, 3, 3, ['txt', 'py', ''], 1, all_paths)
+
+            # All files in the top directory.
+            self._assert_list_files(root_path, False, None, all_paths, 9)
+
+            # All files recursive.
+            self._assert_list_files(root_path, True, None, all_paths, 27)
+
+            # Only '*.txt' in the top directory.
+            self._assert_list_files(root_path, False, '.*\.txt$', all_paths, 3)
+
+            # Only '*.txt' recursive.
+            self._assert_list_files(root_path, True, '.*\.txt$', all_paths, 9)
+
+            # Only extension-less files in the top directory.
+            self._assert_list_files(root_path, False, '[^\.]*$', all_paths, 3)
+
+            # Only extension-less files recursive.
+            self._assert_list_files(root_path, True, '[^\.]*$', all_paths, 9)
+
+            # Non-existing extension in the top directory.
+            self._assert_list_files(root_path, False, '.*\.bak$', all_paths, 0)
+
+            # Non-existing extension recursive.
+            self._assert_list_files(root_path, True, '.*\.bak$', all_paths, 0)
+        finally:
+            try:
+                os.remove(root_path)
+            except Exception:
+                pass  # Do not fail in the cleanup.
+
+    def _assert_list_files(self, root, recursive, pattern, all_paths, count):
+        found = operating_system.list_files_in_directory(
+            root, recursive=recursive, pattern=pattern)
+        expected = {
+            path for path in all_paths if (
+                (recursive or os.path.dirname(path) == root) and (
+                    not pattern or re.match(
+                        pattern, os.path.basename(path))))}
+        self.assertEqual(expected, found)
+        self.assertEqual(count, len(found),
+                         "Incorrect number of listed files.")
+
+    def _create_temp_fs_structure(self, root_path,
+                                  num_levels, num_files_per_extension,
+                                  file_extensions, level, created_paths):
+        """Create a structure of temporary directories 'num_levels' deep with
+        temporary files on each level.
+        """
+        file_paths = self._create_temp_files(
+            root_path, num_files_per_extension, file_extensions)
+        created_paths.update(file_paths)
+
+        if level < num_levels:
+            path = tempfile.mkdtemp(dir=root_path)
+            self._create_temp_fs_structure(
+                path, num_levels, num_files_per_extension,
+                file_extensions, level + 1, created_paths)
+
+    def _create_temp_files(self, root_path, num_files_per_extension,
+                           file_extensions):
+        """Create 'num_files_per_extension' temporary files
+        per each of the given extensions.
+        """
+        files = set()
+        for ext in file_extensions:
+            for fileno in range(1, num_files_per_extension + 1):
+                prefix = str(fileno)
+                suffix = os.extsep + ext if ext else ''
+                _, path = tempfile.mkstemp(prefix=prefix, suffix=suffix,
+                                           dir=root_path)
+                files.add(path)
+
+        return files

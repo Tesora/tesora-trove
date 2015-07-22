@@ -18,7 +18,6 @@ import subprocess
 import tempfile
 import time
 from uuid import uuid4
-import yaml
 
 from mock import ANY
 from mock import DEFAULT
@@ -80,6 +79,7 @@ from trove.guestagent import pkg
 from trove.guestagent.volume import VolumeDevice
 from trove.instance.models import InstanceServiceStatus
 from trove.tests.unittests.util import util
+import yaml
 
 CONF = cfg.CONF
 
@@ -224,7 +224,14 @@ class DbaasTest(testtools.TestCase):
     def test_load_mysqld_options_error(self, mock_exists):
 
         dbaas.utils.execute = Mock(side_effect=ProcessExecutionError())
+
         self.assertFalse(dbaas.load_mysqld_options())
+
+    def test_get_datadir(self):
+        cnf_value = '[mysqld]\ndatadir=/var/lib/mysql/data'
+        with patch.object(dbaas, 'read_mycnf', Mock(return_value=cnf_value)):
+            self.assertEqual('/var/lib/mysql/data',
+                             dbaas.get_datadir(reset_cache=True))
 
 
 class ResultSetStub(object):
@@ -343,9 +350,10 @@ class MySqlAdminTest(testtools.TestCase):
                           Mock(return_value=db_result)):
             with patch.object(self.mySqlAdmin, '_get_user', return_value=user):
                 with patch.object(self.mySqlAdmin, 'grant_access'):
-                    self.mySqlAdmin.update_attributes('test_usr', '%',
+                    self.mySqlAdmin.update_attributes('test_user', '%',
                                                       user_attrs)
-                    self.mySqlAdmin.grant_access.assert_not_called()
+                    self.assertEqual(0,
+                                     self.mySqlAdmin.grant_access.call_count)
             args, _ = dbaas.LocalSqlClient.execute.call_args_list[1]
             expected = ("UPDATE mysql.user SET Password="
                         "PASSWORD('password') WHERE User = 'test_user' "
@@ -363,8 +371,9 @@ class MySqlAdminTest(testtools.TestCase):
         user_attrs = {"name": "new_name"}
         with patch.object(self.mySqlAdmin, '_get_user', return_value=user):
             with patch.object(self.mySqlAdmin, 'grant_access'):
-                self.mySqlAdmin.update_attributes('test_usr', '%', user_attrs)
-                self.mySqlAdmin.grant_access.assert_called()
+                self.mySqlAdmin.update_attributes('test_user', '%', user_attrs)
+                self.mySqlAdmin.grant_access.assert_called_with(
+                    'new_name', '%', set([]))
         args, _ = dbaas.LocalSqlClient.execute.call_args_list[1]
         expected = ("UPDATE mysql.user SET User='new_name' "
                     "WHERE User = 'test_user' AND Host = '%';")
@@ -381,8 +390,9 @@ class MySqlAdminTest(testtools.TestCase):
         user_attrs = {"host": "new_host"}
         with patch.object(self.mySqlAdmin, '_get_user', return_value=user):
             with patch.object(self.mySqlAdmin, 'grant_access'):
-                self.mySqlAdmin.update_attributes('test_usr', '%', user_attrs)
-                self.mySqlAdmin.grant_access.assert_called()
+                self.mySqlAdmin.update_attributes('test_user', '%', user_attrs)
+                self.mySqlAdmin.grant_access.assert_called_with(
+                    'test_user', 'new_host', set([]))
         args, _ = dbaas.LocalSqlClient.execute.call_args_list[1]
         expected = ("UPDATE mysql.user SET Host='new_host' "
                     "WHERE User = 'test_user' AND Host = '%';")
@@ -671,7 +681,7 @@ class MySqlAdminTest(testtools.TestCase):
         user.password = 'some_password'
         databases = ['db1']
         with patch.object(self.mySqlAdmin, '_get_user', return_value=user):
-            self.mySqlAdmin.grant_access('test_usr', '%', databases)
+            self.mySqlAdmin.grant_access('test_user', '%', databases)
         args, _ = dbaas.LocalSqlClient.execute.call_args_list[0]
         expected = ("GRANT ALL PRIVILEGES ON `db1`.* TO `test_user`@`%` "
                     "IDENTIFIED BY PASSWORD 'some_password';")
@@ -688,7 +698,7 @@ class MySqlAdminTest(testtools.TestCase):
         user.password = 'some_password'
         databases = ['mysql']
         with patch.object(self.mySqlAdmin, '_get_user', return_value=user):
-            self.mySqlAdmin.grant_access('test_usr', '%', databases)
+            self.mySqlAdmin.grant_access('test_user', '%', databases)
         # since mysql is not a database to be provided access to,
         # testing that executed was not called in grant access.
         dbaas.LocalSqlClient.execute.assert_not_called()
@@ -2766,7 +2776,7 @@ class VerticaAppTest(testtools.TestCase):
              ) % {'source': temp_file_handle.name,
                   'target': vertica_system.VERTICA_CONF})
         arguments.assert_called_with(expected_command)
-        mock_mkstemp.assert_called_once()
+        self.assertEqual(1, mock_mkstemp.call_count)
 
         configuration_data = ConfigParser.ConfigParser()
         configuration_data.read(temp_file_handle.name)

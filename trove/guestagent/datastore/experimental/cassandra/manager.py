@@ -16,6 +16,8 @@
 
 import os
 
+from oslo_service import periodic_task
+
 from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
@@ -28,7 +30,6 @@ from trove.guestagent.datastore.experimental.cassandra.service import (
 from trove.guestagent import dbaas
 from trove.guestagent import volume
 from trove.openstack.common import log as logging
-from trove.openstack.common import periodic_task
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
@@ -42,8 +43,9 @@ class Manager(periodic_task.PeriodicTasks):
             service.CassandraApp.get_current_superuser())
         self.app = service.CassandraApp(self.appStatus)
         self.__admin = CassandraAdmin(self.app.get_current_superuser())
+        super(Manager, self).__init__(CONF)
 
-    @periodic_task.periodic_task(ticks_between_runs=3)
+    @periodic_task.periodic_task
     def update_status(self, context):
         """Update the status of the Cassandra service."""
         self.appStatus.update()

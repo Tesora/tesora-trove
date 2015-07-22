@@ -16,24 +16,31 @@
 import json
 import os
 import re
+import tempfile
 
 from oslo_utils import netutils
+import pymongo
 
 from trove.common import cfg
 from trove.common import exception
 from trove.common.exception import ProcessExecutionError
 from trove.common.i18n import _
 from trove.common import instance as ds_instance
+from trove.common import pagination
 from trove.common import utils as utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.experimental.mongodb import system
 from trove.guestagent.datastore import service
+from trove.guestagent.db import models
 from trove.openstack.common import log as logging
+
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 CONFIG_FILE = (operating_system.
                file_discovery(system.CONFIG_CANDIDATES))
+MONGODB_PORT = CONF.mongodb.mongodb_port
+CONFIGSVR_PORT = CONF.mongodb.configsvr_port
 
 
 class MongoDBApp(object):
@@ -221,7 +228,8 @@ class MongoDBApp(object):
         This method is used by query router (mongos) instances.
         """
         config_contents = self._read_config()
-        configdb_contents = ','.join(['%s:27019' % host
+        configdb_contents = ','.join(['%(host)s:%(port)s'
+                                      % {'host': host, 'port': CONFIGSVR_PORT}
                                       for host in config_server_hosts])
         LOG.debug("Config server list %s." % configdb_contents)
         # remove db path from config and update configdb
@@ -251,44 +259,29 @@ class MongoDBApp(object):
         operating_system.remove('/etc/init/mongodb.conf', force=True,
                                 as_root=True)
 
-    def do_mongo(self, db_cmd):
-        cmd = ('mongo --host ' + netutils.get_my_ipv4() +
-               ' --quiet --eval \'printjson(%s)\'' % db_cmd)
-        # TODO(ramashri) see if hardcoded values can be removed
-        out, err = utils.execute_with_timeout(cmd, shell=True, timeout=100)
-        LOG.debug(out.strip())
-        return (out, err)
-
     def add_shard(self, replica_set_name, replica_set_member):
         """
         This method is used by query router (mongos) instances.
         """
-        cmd = 'db.adminCommand({addShard: "%s/%s:27017"})' % (
-            replica_set_name, replica_set_member)
-        self.do_mongo(cmd)
+        url = "%(rs)s/%(host)s:%(port)s"\
+              % {'rs': replica_set_name,
+                 'host': replica_set_member,
+                 'port': MONGODB_PORT}
+        MongoDBAdmin().add_shard(url)
 
     def add_members(self, members):
         """
         This method is used by a replica-set member instance.
         """
-        def clean_json(val):
-            """
-            This method removes from json, values that are functions like
-            ISODate(), TimeStamp().
-            """
-            return re.sub(':\s*\w+\(\"?(.*?)\"?\)', r': "\1"', val)
-
         def check_initiate_status():
             """
             This method is used to verify replica-set status.
             """
-            out, err = self.do_mongo("rs.status()")
-            response = clean_json(out.strip())
-            json_data = json.loads(response)
+            status = MongoDBAdmin().get_repl_status()
 
-            if((json_data["ok"] == 1) and
-               (json_data["members"][0]["stateStr"] == "PRIMARY") and
-               (json_data["myState"] == 1)):
+            if((status["ok"] == 1) and
+               (status["members"][0]["stateStr"] == "PRIMARY") and
+               (status["myState"] == 1)):
                     return True
             else:
                 return False
@@ -297,16 +290,14 @@ class MongoDBApp(object):
             """
             This method is used to verify replica-set status.
             """
-            out, err = self.do_mongo("rs.status()")
-            response = clean_json(out.strip())
-            json_data = json.loads(response)
+            status = MongoDBAdmin().get_repl_status()
             primary_count = 0
 
-            if json_data["ok"] != 1:
+            if status["ok"] != 1:
                 return False
-            if len(json_data["members"]) != (len(members) + 1):
+            if len(status["members"]) != (len(members) + 1):
                 return False
-            for rs_member in json_data["members"]:
+            for rs_member in status["members"]:
                 if rs_member["state"] not in [1, 2, 7]:
                     return False
                 if rs_member["health"] != 1:
@@ -316,26 +307,89 @@ class MongoDBApp(object):
 
             return primary_count == 1
 
+        # Create the admin user on this member.
+        # This is only necessary for setting up the replica set.
+        # The query router will handle requests once this set
+        # is added as a shard.
+        password = utils.generate_random_password()
+        self.create_admin_user(password)
+
         # initiate replica-set
-        self.do_mongo("rs.initiate()")
+        MongoDBAdmin().rs_initiate()
         # TODO(ramashri) see if hardcoded values can be removed
         utils.poll_until(check_initiate_status, sleep_time=60, time_out=100)
 
         # add replica-set members
-        for member in members:
-            self.do_mongo('rs.add("' + member + '")')
+        MongoDBAdmin().rs_add_members(members)
         # TODO(ramashri) see if hardcoded values can be removed
         utils.poll_until(check_rs_status, sleep_time=60, time_out=100)
 
-    def list_databases(self):
-        cmd = 'db.adminCommand("listDatabases").databases'
-        out, err = self.do_mongo(cmd)
-        out.strip()
-        dbs = json.loads(out)
-        return [d['name'] for d in dbs]
+    def list_all_dbs(self):
+        return MongoDBAdmin().list_database_names()
+
+    def db_data_size(self, db_name):
+        schema = models.MongoDBSchema(db_name)
+        return MongoDBAdmin().db_stats(schema.serialize())['dataSize']
+
+    def admin_cmd_auth_params(self):
+        return MongoDBAdmin().cmd_admin_auth_params
+
+    def get_key_file(self):
+        return system.MONGO_KEY_FILE
+
+    def get_key(self):
+        return open(system.MONGO_KEY_FILE).read().rstrip()
+
+    def store_key(self, key):
+        """Store the cluster key."""
+        LOG.debug('Storing key for MongoDB cluster.')
+        with tempfile.NamedTemporaryFile() as f:
+            f.write(key)
+            f.flush()
+            operating_system.copy(f.name, system.MONGO_KEY_FILE,
+                                  force=True, as_root=True)
+        operating_system.chmod(system.MONGO_KEY_FILE,
+                               operating_system.FileMode.SET_USR_RO,
+                               as_root=True)
+        operating_system.chown(system.MONGO_KEY_FILE,
+                               system.MONGO_USER, system.MONGO_USER,
+                               as_root=True)
+
+    def store_admin_password(self, password):
+        LOG.debug('Storing admin password.')
+        creds = MongoDBCredentials(username=system.MONGO_ADMIN_NAME,
+                                   password=password)
+        creds.write(system.MONGO_ADMIN_CREDS_FILE)
+        return creds
+
+    def create_admin_user(self, password):
+        """Create the admin user while the localhost exception is active."""
+        LOG.debug('Creating the admin user.')
+        creds = self.store_admin_password(password)
+        user = models.MongoDBUser(name='admin.%s' % creds.username,
+                                  password=creds.password)
+        user.roles = system.MONGO_ADMIN_ROLES
+        user.databases = 'admin'
+        with MongoDBClient(user, auth=False) as client:
+            MongoDBAdmin().create_user(user, client=client)
+        LOG.debug('Created admin user.')
+
+    def secure(self, cluster_config=None):
+        # Secure the server by storing the cluster key  if this is a cluster
+        # or creating the admin user if this is a single instance.
+        LOG.debug('Securing MongoDB instance.')
+        if cluster_config:
+            self.store_key(cluster_config['key'])
+        else:
+            LOG.debug('Generating admin password.')
+            password = utils.generate_random_password()
+            self.start_db()
+            self.create_admin_user(password)
+            self.stop_db()
+        LOG.debug('MongoDB secure complete.')
 
 
-class MongoDbAppStatus(service.BaseDbStatus):
+class MongoDBAppStatus(service.BaseDbStatus):
 
     is_config_server = None
     is_query_router = None
@@ -367,12 +421,13 @@ class MongoDbAppStatus(service.BaseDbStatus):
             if self._is_config_server() is True:
                 status_check = (system.CMD_STATUS %
                                 (netutils.get_my_ipv4() +
-                                 ' --port 27019'))
+                                 ' --port %s' % CONFIGSVR_PORT))
             else:
                 status_check = (system.CMD_STATUS %
                                 netutils.get_my_ipv4())
 
-            out, err = utils.execute_with_timeout(status_check, shell=True)
+            out, err = utils.execute_with_timeout(status_check, shell=True,
+                                                  check_exit_code=[0, 1])
             if not err:
                 return ds_instance.ServiceStatuses.RUNNING
             else:
@@ -383,3 +438,223 @@ class MongoDbAppStatus(service.BaseDbStatus):
         except OSError as e:
             LOG.exception(_("OS Error %s.") % e)
             return ds_instance.ServiceStatuses.SHUTDOWN
+
+
+class MongoDBAdmin(object):
+    """Handles administrative tasks on MongoDB."""
+
+    # user is cached by making it a class attribute
+    admin_user = None
+
+    def _admin_user(self):
+        if not type(self).admin_user:
+            creds = MongoDBCredentials()
+            creds.read(system.MONGO_ADMIN_CREDS_FILE)
+            user = models.MongoDBUser(
+                'admin.%s' % creds.username,
+                creds.password
+            )
+            user.databases = 'admin'
+            type(self).admin_user = user
+        return type(self).admin_user
+
+    @property
+    def cmd_admin_auth_params(self):
+        """Returns a list of strings that constitute MongoDB command line
+        authentication parameters.
+        """
+        user = self._admin_user()
+        return ['--username', user.username,
+                '--password', user.password,
+                '--authenticationDatabase', user.database.name]
+
+    def _create_user_with_client(self, user, client):
+        """Run the add user command."""
+        client[user.database.name].add_user(
+            user.username, password=user.password, roles=user.roles
+        )
+
+    def create_user(self, user, client=None):
+        """Creates a user on their database."""
+        LOG.debug('Creating user %s on database %s with roles %s.'
+                  % (user.username, user.database.name, str(user.roles)))
+
+        if not user.password:
+            raise exception.BadRequest(_("User's password is empty."))
+
+        if client:
+            self._create_user_with_client(user, client)
+        else:
+            with MongoDBClient(self._admin_user()) as admin_client:
+                self._create_user_with_client(user, admin_client)
+
+    def create_users(self, users):
+        """Create the given user(s)."""
+        with MongoDBClient(self._admin_user()) as client:
+            for user in users:
+                self.create_user(models.MongoDBUser.deserialize_user(user),
+                                 client)
+
+    def delete_user(self, user):
+        """Delete the given user."""
+        user = models.MongoDBUser.deserialize_user(user)
+        username = user.username
+        db_name = user.database.name
+        LOG.debug('Deleting user %s from database %s.' % (username, db_name))
+        with MongoDBClient(self._admin_user()) as admin_client:
+            admin_client[db_name].remove_user(username)
+
+    def _get_user_record(self, client, user):
+        """Get the user's record."""
+        return client.admin.system.users.find_one(
+            {'user': user.username, 'db': user.database.name}
+        )
+
+    def get_user(self, name):
+        """Get information for the given user."""
+        LOG.debug('Getting user %s.' % name)
+        user = models.MongoDBUser(name)
+        with MongoDBClient(self._admin_user()) as admin_client:
+            user_info = self._get_user_record(admin_client, user)
+            if not user_info:
+                return None
+            user.roles = user_info['roles']
+        return user.serialize()
+
+    def list_users(self, limit=None, marker=None, include_marker=False):
+        """Get a list of all users."""
+        users = []
+        with MongoDBClient(self._admin_user()) as admin_client:
+            for user_info in admin_client.admin.system.users.find():
+                user = models.MongoDBUser(name=user_info['_id'])
+                if user.name == 'admin.os_admin':
+                    continue
+                users.append(user.serialize())
+        LOG.debug('users = ' + str(users))
+        return pagination.paginate_list(users, limit, marker,
+                                        include_marker)
+
+    def list_database_names(self):
+        """Get the list of database names."""
+        with MongoDBClient(self._admin_user()) as admin_client:
+            return admin_client.database_names()
+
+    def add_shard(self, url):
+        """Runs the addShard command."""
+        with MongoDBClient(self._admin_user()) as admin_client:
+            admin_client.admin.command({'addShard': url})
+
+    def get_repl_status(self):
+        """Runs the replSetGetStatus command."""
+        with MongoDBClient(self._admin_user()) as admin_client:
+            return admin_client.admin.command('replSetGetStatus')
+
+    def rs_initiate(self):
+        """Runs the replSetInitiate command."""
+        with MongoDBClient(self._admin_user()) as admin_client:
+            return admin_client.admin.command('replSetInitiate')
+
+    def rs_add_members(self, members):
+        """Adds the given members to the replication set."""
+        with MongoDBClient(self._admin_user()) as admin_client:
+            # get the current config, add the new members, then save it
+            config = admin_client.admin.command('replSetGetConfig')['config']
+            config['version'] += 1
+            next_id = max([m['_id'] for m in config['members']]) + 1
+            for member in members:
+                config['members'].append({'_id': next_id, 'host': member})
+                next_id += 1
+            admin_client.admin.command('replSetReconfig', config)
+
+    def db_stats(self, database, scale=1):
+        """Gets the stats for the given database."""
+        with MongoDBClient(self._admin_user()) as admin_client:
+            db_name = models.MongoDBSchema.deserialize_schema(database).name
+            return admin_client[db_name].command('dbStats', scale=scale)
+
+
+class MongoDBClient(object):
+    """A wrapper to manage a MongoDB connection."""
+
+    # engine information is cached by making it a class attribute
+    engine = {}
+
+    def __init__(self, user, host=None, port=None,
+                 auth=True):
+        """Get the client. Specifying host and/or port updates cached values.
+        :param user: (required) MongoDBUser instance
+        :param host: server address, defaults to localhost
+        :param port: server port, defaults to 27017
+        :param auth: set to False to disable authentication, default True
+        :return:
+        """
+        new_client = False
+        self._logged_in = False
+        if not type(self).engine:
+            # no engine cached
+            type(self).engine['host'] = (host if host else 'localhost')
+            type(self).engine['port'] = (port if port else MONGODB_PORT)
+            new_client = True
+        elif host or port:
+            LOG.debug("Updating MongoDB client.")
+            if host:
+                type(self).engine['host'] = host
+            if port:
+                type(self).engine['host'] = port
+            new_client = True
+        if new_client:
+            host = type(self).engine['host']
+            port = type(self).engine['port']
+            LOG.debug("Creating MongoDB client to %(host)s:%(port)s."
+                      % {'host': host, 'port': port})
+            type(self).engine['client'] = pymongo.MongoClient(host=host,
+                                                              port=port,
+                                                              connect=False)
+        self.session = type(self).engine['client']
+        if auth:
+            db_name = user.database.name
+            LOG.debug("Authentication MongoDB client on %s." % db_name)
+            self._db = self.session[db_name]
+            self._db.authenticate(user.username, password=user.password)
+            self._logged_in = True
+
+    def __enter__(self):
+        return self.session
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        LOG.debug("Disconnecting from MongoDB.")
+        if self._logged_in:
+            self._db.logout()
+        self.session.close()
+
+
+class MongoDBCredentials(object):
+    """Handles storing/retrieving credentials. Stored as json in files."""
+
+    def __init__(self, username=None, password=None):
+        self.username = username
+        self.password = password
+
+    def read(self, filename):
+        with open(filename) as f:
+            credentials = json.load(f)
+            self.username = credentials['username']
+            self.password = credentials['password']
+
+    def write(self, filename):
+        self.clear_file(filename)
+        with open(filename, 'w') as f:
+            credentials = {'username': self.username,
+                           'password': self.password}
+            json.dump(credentials, f)
+
+    @staticmethod
+    def clear_file(filename):
+        LOG.debug("Creating clean file %s" % filename)
+        if operating_system.file_discovery([filename]):
+            operating_system.remove(filename)
+        # force file creation by just opening it
+        open(filename, 'wb')
+        operating_system.chmod(filename,
+                               operating_system.FileMode.SET_USR_RW,
+                               as_root=True)
