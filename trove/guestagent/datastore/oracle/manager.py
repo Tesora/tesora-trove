@@ -206,6 +206,16 @@ class Manager(periodic_task.PeriodicTasks):
         LOG.debug("Enabling root.")
         return self.admin.enable_root()
 
+    def disable_root(self, context):
+        LOG.debug("Disabling root.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='disable_root', datastore=MANAGER)
+
+    def get_root_user(self, context):
+        LOG.debug("Get root user.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='get_root_user', datastore=MANAGER)
+
     def is_root_enabled(self, context):
         LOG.debug("Checking if root is enabled.")
         return self.admin.is_root_enabled()

@@ -99,6 +99,14 @@ class Manager(periodic_task.PeriodicTasks):
     def enable_root(self, context):
         return MySqlAdmin().enable_root()
 
+    def disable_root(self, context):
+        LOG.debug("Disabling root.")
+        return MySqlAdmin().disable_root()
+
+    def get_root_user(self, context):
+        LOG.debug("Get root user.")
+        return MySqlAdmin().get_root_user()
+
     def is_root_enabled(self, context):
         return MySqlAdmin().is_root_enabled()
 

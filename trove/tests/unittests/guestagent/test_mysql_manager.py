@@ -143,6 +143,11 @@ class GuestAgentManagerTest(testtools.TestCase):
         self.assertThat(user_id, Is('user_id_stuff'))
         dbaas.MySqlAdmin.enable_root.assert_any_call()
 
+    def test_disable_root(self):
+        dbaas.MySqlAdmin.disable_root = MagicMock(return_value=None)
+        self.manager.disable_root(self.context)
+        dbaas.MySqlAdmin.disable_root.assert_any_call()
+
     def test_is_root_enabled(self):
         dbaas.MySqlAdmin.is_root_enabled = MagicMock(return_value=True)
         is_enabled = self.manager.is_root_enabled(self.context)

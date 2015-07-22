@@ -20,6 +20,7 @@ import re
 import eventlet
 from trove.common import exception as rd_exception
 from trove.common import instance as rd_instance
+from trove.guestagent.db import models as guest_models
 from trove.tests.util import unquote_user_host
 
 DB = {}
@@ -146,6 +147,17 @@ class FakeGuest(object):
             "_password": "12345",
             "_databases": [],
         })
+
+    def disable_root(self):
+        self.delete_user({
+            "_name": "root",
+            "_host": "%"})
+
+    def get_root_user(self):
+        user = guest_models.RootUser()
+        user.name = "root"
+        user.host = "%"
+        return user.serialize()
 
     def delete_user(self, user):
         username = user['_name']
