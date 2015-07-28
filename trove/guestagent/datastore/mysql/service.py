@@ -28,6 +28,7 @@ from sqlalchemy.sql.expression import text
 
 from trove.common import cfg
 from trove.common import utils as utils
+from trove.common import configurations
 from trove.common import exception
 from trove.common import instance as rd_instance
 from trove.common.exception import PollTimeOut
@@ -44,11 +45,11 @@ ADMIN_USER_NAME = "os_admin"
 LOG = logging.getLogger(__name__)
 FLUSH = text(sql_query.FLUSH)
 ENGINE = None
+DATADIR = None
 PREPARING = False
 UUID = False
 
 TMP_MYCNF = "/tmp/my.cnf.tmp"
-MYSQL_BASE_DIR = "/var/lib/mysql"
 
 CONF = cfg.CONF
 MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'mysql'
@@ -154,6 +155,28 @@ def load_mysqld_options():
         return args
     except exception.ProcessExecutionError:
         return {}
+
+
+def read_mycnf():
+    with open(MYSQL_CONFIG, 'r') as file:
+        config_contents = file.read()
+
+    return config_contents
+
+
+def get_datadir(reset_cache=False):
+    """Return the data directory currently used by Mysql."""
+    global DATADIR
+    if not reset_cache and DATADIR:
+        return DATADIR
+
+    mycnf_contents = read_mycnf()
+
+    # look for datadir parameter in my.cnf
+    mycnf = dict(configurations.MySQLConfParser(mycnf_contents).parse())
+    DATADIR = mycnf['datadir']
+
+    return DATADIR
 
 
 class MySqlAppStatus(service.BaseDbStatus):
@@ -651,10 +674,9 @@ class MySqlApp(object):
         random_uuid = str(uuid.uuid4())
         configs = ["/etc/my.cnf", "/etc/mysql/conf.d", "/etc/mysql/my.cnf"]
         for config in configs:
-            command = "mv %s %s_%s" % (config, config, random_uuid)
             try:
-                utils.execute_with_timeout(command, shell=True,
-                                           root_helper="sudo")
+                old_conf_backup = "%s_%s" % (config, random_uuid)
+                operating_system.move(config, old_conf_backup, as_root=True)
                 LOG.debug("%s saved to %s_%s." %
                           (config, config, random_uuid))
             except exception.ProcessExecutionError:
@@ -663,8 +685,7 @@ class MySqlApp(object):
     def _create_mysql_confd_dir(self):
         conf_dir = "/etc/mysql/conf.d"
         LOG.debug("Creating %s." % conf_dir)
-        command = "sudo mkdir -p %s" % conf_dir
-        utils.execute_with_timeout(command, shell=True)
+        operating_system.create_directory(conf_dir, as_root=True)
 
     def _enable_mysql_on_boot(self):
         LOG.debug("Enabling MySQL on boot.")
@@ -779,7 +800,7 @@ class MySqlApp(object):
                 # to be deleted. That's why its ok if they aren't found and
                 # that is why we use the "force" option to "remove".
                 operating_system.remove("%s/ib_logfile%d"
-                                        % (MYSQL_BASE_DIR, index), force=True,
+                                        % (get_datadir(), index), force=True,
                                         as_root=True)
             except exception.ProcessExecutionError:
                 LOG.exception("Could not delete logfile.")
@@ -799,15 +820,11 @@ class MySqlApp(object):
             with open(TMP_MYCNF, 'w') as t:
                 t.write(config_contents)
 
-            utils.execute_with_timeout("sudo", "mv", TMP_MYCNF,
-                                       MYSQL_CONFIG)
-
+            operating_system.move(TMP_MYCNF, MYSQL_CONFIG, as_root=True)
             self._write_temp_mycnf_with_admin_account(MYSQL_CONFIG,
                                                       TMP_MYCNF,
                                                       admin_password)
-
-            utils.execute_with_timeout("sudo", "mv", TMP_MYCNF,
-                                       MYSQL_CONFIG)
+            operating_system.move(TMP_MYCNF, MYSQL_CONFIG, as_root=True)
         except Exception:
             os.unlink(TMP_MYCNF)
             raise
@@ -824,9 +841,8 @@ class MySqlApp(object):
         with open(MYCNF_OVERRIDES_TMP, 'w') as overrides:
             overrides.write(overrideValues)
         LOG.info(_("Moving overrides.cnf into correct location."))
-        utils.execute_with_timeout("sudo", "mv", MYCNF_OVERRIDES_TMP,
-                                   MYCNF_OVERRIDES)
-
+        operating_system.move(MYCNF_OVERRIDES_TMP, MYCNF_OVERRIDES,
+                              as_root=True)
         LOG.info(_("Setting permissions on overrides.cnf."))
         operating_system.chmod(MYCNF_OVERRIDES, FileMode.SET_GRP_RW_OTH_R,
                                as_root=True)
@@ -842,9 +858,7 @@ class MySqlApp(object):
         with open(MYCNF_REPLCONFIG_TMP, 'w') as overrides:
             overrides.write(overrideValues)
         LOG.debug("Moving temp replication.cnf into correct location.")
-        utils.execute_with_timeout("sudo", "mv", MYCNF_REPLCONFIG_TMP,
-                                   cnf_file)
-
+        operating_system.move(MYCNF_REPLCONFIG_TMP, cnf_file, as_root=True)
         LOG.debug("Setting permissions on replication.cnf.")
         operating_system.chmod(cnf_file, FileMode.SET_GRP_RW_OTH_R,
                                as_root=True)

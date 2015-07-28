@@ -23,8 +23,8 @@ from trove.common import instance as rd_instance
 from trove.guestagent import dbaas
 from trove.guestagent import backup
 from trove.guestagent import volume
-from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.mysql.service import MySqlAppStatus
+from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.mysql.service import MySqlAdmin
 from trove.guestagent.datastore.mysql.service import MySqlApp
 from trove.guestagent.strategies.replication import get_replication_strategy
@@ -141,17 +141,17 @@ class Manager(periodic_task.PeriodicTasks):
                 # rsync existing data to a "data" sub-directory
                 # on the new volume
                 device.migrate_data(mount_point, target_subdir="data")
-            #mount the volume
+            # mount the volume
             device.mount(mount_point)
-            operating_system.update_owner('mysql',
-                                          'mysql',
-                                          mount_point)
+            operating_system.chown(mount_point, 'mysql', 'mysql',
+                                   recursive=False, as_root=True)
 
-            LOG.debug("Mounted the volume at %s" % mount_point)
+            LOG.debug("Mounted the volume at %s." % mount_point)
             # We need to temporarily update the default my.cnf so that
             # mysql will start after the volume is mounted. Later on it
             # will be changed based on the config template and restart.
-            app.update_overrides("[mysqld]\ndatadir=/var/lib/mysql/data\n")
+            app.update_overrides("[mysqld]\ndatadir=%s/data\n"
+                                 % mount_point)
             app.start_mysql()
         if backup_info:
             self._perform_restore(backup_info, context,

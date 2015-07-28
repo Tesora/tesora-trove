@@ -35,8 +35,6 @@ CASSANDRA_CONF_BACKUP = {key: value + '.old'
 CASSANDRA_TEMP_CONF = "/tmp/cassandra.yaml"
 CASSANDRA_TEMP_DIR = "/tmp/cassandra"
 
-INIT_FS = "sudo mkdir -p %s"
-
 CASSANDRA_KILL = "sudo killall java  || true"
 SERVICE_STOP_TIMEOUT = 60
 INSTALL_TIMEOUT = 10000

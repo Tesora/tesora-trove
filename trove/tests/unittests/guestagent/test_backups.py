@@ -11,24 +11,23 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-
-import testtools
 import mock
 from oslo_utils import netutils
 from trove.guestagent.common import operating_system
 from mock import ANY, DEFAULT, patch
-
+from testtools.testcase import ExpectedException
+from trove.common import exception
+from trove.common import utils
 from trove.guestagent.common.operating_system import FileMode
-import trove.guestagent.strategies.backup.base as backupBase
-import trove.guestagent.strategies.restore.base as restoreBase
-from trove.guestagent.strategies.restore.mysql_impl import MySQLRestoreMixin
 from trove.guestagent.datastore.experimental.cassandra import (
     service as cass_service
 )
 
+from trove.guestagent.strategies.backup import base as backupBase
 from trove.guestagent.strategies.backup import mysql_impl
-from trove.common import utils
-from trove.common import exception
+from trove.guestagent.strategies.restore import base as restoreBase
+from trove.guestagent.strategies.restore.mysql_impl import MySQLRestoreMixin
+from trove.tests.unittests import trove_testtools
 
 BACKUP_XTRA_CLS = ("trove.guestagent.strategies.backup."
                    "mysql_impl.InnoBackupEx")
@@ -87,7 +86,7 @@ CBBACKUP_CMD = "tar cpPf - /tmp/backups"
 CBBACKUP_RESTORE = "sudo tar xpPf -"
 
 
-class GuestAgentBackupTest(testtools.TestCase):
+class GuestAgentBackupTest(trove_testtools.TestCase):
 
     def setUp(self):
         super(GuestAgentBackupTest, self).setUp()
@@ -95,11 +94,16 @@ class GuestAgentBackupTest(testtools.TestCase):
         mysql_impl.get_auth_password = mock.Mock(
             return_value='password')
         self.orig_exec_with_to = utils.execute_with_timeout
+        self.patcher_get_datadir = patch(
+            'trove.guestagent.strategies.backup.mysql_impl.get_datadir')
+        self.mock_get_datadir = self.patcher_get_datadir.start()
+        self.mock_get_datadir.return_value = '/var/lib/mysql/data'
 
     def tearDown(self):
         super(GuestAgentBackupTest, self).tearDown()
         mysql_impl.get_auth_password = self.orig
         utils.execute_with_timeout = self.orig_exec_with_to
+        self.patcher_get_datadir.stop()
 
     def test_backup_decrypted_xtrabackup_command(self):
         backupBase.BackupRunner.is_zipped = True
@@ -325,7 +329,7 @@ class GuestAgentBackupTest(testtools.TestCase):
             remove.assert_called_once_with(ANY, force=True, as_root=True)
 
 
-class CassandraBackupTest(testtools.TestCase):
+class CassandraBackupTest(trove_testtools.TestCase):
 
     _BASE_BACKUP_CMD = ('tar --transform="s#snapshots/%s/##" -cpPf - -C "%s" '
                         '"%s"')
@@ -425,40 +429,46 @@ class CassandraBackupTest(testtools.TestCase):
         return runner
 
 
-class CouchbaseBackupTests(testtools.TestCase):
+class CouchbaseBackupTests(trove_testtools.TestCase):
 
     def setUp(self):
         super(CouchbaseBackupTests, self).setUp()
-
-        self.backup_runner = utils.import_class(
-            BACKUP_CBBACKUP_CLS)
+        self.exec_timeout_patch = patch.object(utils, 'execute_with_timeout')
+        self.exec_timeout_patch.start()
+        self.backup_runner = utils.import_class(BACKUP_CBBACKUP_CLS)
+        self.backup_runner_patch = patch.multiple(
+            self.backup_runner, _run=DEFAULT,
+            _run_pre_backup=DEFAULT, _run_post_backup=DEFAULT)
 
     def tearDown(self):
         super(CouchbaseBackupTests, self).tearDown()
+        self.backup_runner_patch.stop()
+        self.exec_timeout_patch.stop()
 
     def test_backup_success(self):
-        self.backup_runner.__exit__ = mock.Mock()
-        self.backup_runner.run = mock.Mock()
-        self.backup_runner._run_pre_backup = mock.Mock()
-        self.backup_runner._run_post_backup = mock.Mock()
-        utils.execute_with_timeout = mock.Mock(return_value=None)
+        backup_runner_mocks = self.backup_runner_patch.start()
         with self.backup_runner(12345):
             pass
-        self.assertTrue(self.backup_runner.run)
-        self.assertTrue(self.backup_runner._run_pre_backup)
-        self.assertTrue(self.backup_runner._run_post_backup)
+
+        backup_runner_mocks['_run_pre_backup'].assert_called_once_with()
+        backup_runner_mocks['_run'].assert_called_once_with()
+        backup_runner_mocks['_run_post_backup'].assert_called_once_with()
 
     def test_backup_failed_due_to_run_backup(self):
-        self.backup_runner.run = mock.Mock(
-            side_effect=exception.ProcessExecutionError('test'))
-        self.backup_runner._run_pre_backup = mock.Mock()
-        self.backup_runner._run_post_backup = mock.Mock()
-        utils.execute_with_timeout = mock.Mock(return_value=None)
-        self.assertRaises(exception.ProcessExecutionError,
-                          self.backup_runner(12345).__enter__)
+        backup_runner_mocks = self.backup_runner_patch.start()
+        backup_runner_mocks['_run'].configure_mock(
+            side_effect=exception.TroveError('test')
+        )
+        with ExpectedException(exception.TroveError, 'test'):
+            with self.backup_runner(12345):
+                pass
+
+        backup_runner_mocks['_run_pre_backup'].assert_called_once_with()
+        backup_runner_mocks['_run'].assert_called_once_with()
+        self.assertEqual(0, backup_runner_mocks['_run_post_backup'].call_count)
 
 
-class CouchbaseRestoreTests(testtools.TestCase):
+class CouchbaseRestoreTests(trove_testtools.TestCase):
 
     def setUp(self):
         super(CouchbaseRestoreTests, self).setUp()

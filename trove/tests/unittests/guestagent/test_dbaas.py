@@ -16,7 +16,6 @@ import ConfigParser
 import os
 import subprocess
 import tempfile
-import yaml
 from uuid import uuid4
 import time
 from mock import ANY
@@ -49,8 +48,6 @@ from trove.guestagent.datastore.experimental.redis.service import RedisApp
 from trove.guestagent.datastore.experimental.redis import system as RedisSystem
 from trove.guestagent.datastore.experimental.cassandra import (
     service as cass_service)
-from trove.guestagent.datastore.experimental.cassandra import (
-    system as cass_system)
 from trove.guestagent.datastore.mysql.service import MySqlAdmin
 from trove.guestagent.datastore.mysql.service import MySqlRootAccess
 from trove.guestagent.datastore.mysql.service import MySqlApp
@@ -180,6 +177,12 @@ class DbaasTest(testtools.TestCase):
         dbaas.utils.execute = Mock(side_effect=ProcessExecutionError())
 
         self.assertFalse(dbaas.load_mysqld_options())
+
+    def test_get_datadir(self):
+        cnf_value = '[mysqld]\ndatadir=/var/lib/mysql/data'
+        with patch.object(dbaas, 'read_mycnf', Mock(return_value=cnf_value)):
+            self.assertEqual('/var/lib/mysql/data',
+                             dbaas.get_datadir(reset_cache=True))
 
 
 class ResultSetStub(object):
@@ -1636,26 +1639,6 @@ class CassandraDBAppTest(testtools.TestCase):
 
         self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
 
-    def test_cassandra_write_config(self):
-        conf_dict = {'key': 'some arbitrary configuration text'}
-        self._test_cassandra_write_config(conf_dict, False)
-        self._test_cassandra_write_config(yaml.dump(conf_dict), True)
-
-    @patch('trove.guestagent.common.operating_system.update_owner')
-    @patch('trove.common.utils.execute_with_timeout')
-    def _test_cassandra_write_config(self, data, is_raw,
-                                     execute, update_owner):
-        cassandra_conf = cass_system.CASSANDRA_CONF[operating_system.get_os()]
-        with patch('trove.guestagent.common.operating_system.%s'
-                   % ('write_file' if is_raw else 'write_yaml_file')) as write:
-            self.cassandra.write_config(data, is_raw=is_raw)
-            write.assert_called_once_with(cassandra_conf, data, as_root=True)
-            update_owner.assert_called_once_with(
-                'cassandra', 'cassandra', cassandra_conf)
-            execute.assert_called_with(
-                "chmod", "a+r", cassandra_conf,
-                run_as_root=True, root_helper='sudo')
-
 
 class CouchbaseAppTest(testtools.TestCase):
 
@@ -1984,27 +1967,15 @@ class MongoDBAppTest(testtools.TestCase):
     def test_mongodb_error_in_write_config_verify_unlink(self):
         configuration = {'config_contents': 'some junk'}
         from trove.common.exception import ProcessExecutionError
-        mongo_service.utils.execute_with_timeout = (
-            Mock(side_effect=ProcessExecutionError('some exception')))
 
-        self.assertRaises(ProcessExecutionError,
-                          self.mongoDbApp.reset_configuration,
-                          configuration=configuration)
-        self.assertEqual(
-            mongo_service.utils.execute_with_timeout.call_count, 1)
-        self.assertEqual(os.unlink.call_count, 1)
-
-    def test_mongodb_error_in_write_config(self):
-        configuration = {'config_contents': 'some junk'}
-        from trove.common.exception import ProcessExecutionError
-        mongo_service.utils.execute_with_timeout = (
-            Mock(side_effect=ProcessExecutionError('some exception')))
-
-        self.assertRaises(ProcessExecutionError,
-                          self.mongoDbApp.reset_configuration,
-                          configuration=configuration)
-        self.assertEqual(
-            mongo_service.utils.execute_with_timeout.call_count, 1)
+        with patch.object(os.path, 'isfile', return_value=True):
+            with patch.object(operating_system, 'move',
+                              side_effect=ProcessExecutionError):
+                self.assertRaises(ProcessExecutionError,
+                                  self.mongoDbApp.reset_configuration,
+                                  configuration=configuration)
+                self.assertEqual(1, operating_system.move.call_count)
+                self.assertEqual(1, os.unlink.call_count)
 
     def test_start_db_with_conf_changes_db_is_running(self):
 

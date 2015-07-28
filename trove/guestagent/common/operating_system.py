@@ -481,12 +481,90 @@ def service_discovery(service_candidates):
     return result
 
 
-def update_owner(user, group, path):
+def create_directory(dir_path, user=None, group=None, force=True, **kwargs):
+    """Create a given directory and update its ownership
+    (recursively) to the given user and group if any.
+
+    seealso:: _execute_shell_cmd for valid optional keyword arguments.
+
+    :param dir_path:        Path to the created directory.
+    :type dir_path:         string
+
+    :param user:            Owner.
+    :type user:             string
+
+    :param group:           Group.
+    :type group:            string
+
+    :param force:           No error if existing, make parent directories
+                            as needed.
+    :type force:            boolean
+
+    :raises:                :class:`UnprocessableEntity` if dir_path not given.
     """
-       Changes the owner and group for the path (recursively)
+
+    if dir_path:
+        _create_directory(dir_path, force, **kwargs)
+        if user or group:
+            chown(dir_path, user, group, **kwargs)
+    else:
+        raise exception.UnprocessableEntity(
+            _("Cannot create a blank directory."))
+
+
+def chown(path, user, group, recursive=True, force=False, **kwargs):
+    """Changes the owner and group of a given file.
+
+    seealso:: _execute_shell_cmd for valid optional keyword arguments.
+
+    :param path:         Path to the modified file.
+    :type path:          string
+
+    :param user:         Owner.
+    :type user:          string
+
+    :param group:        Group.
+    :type group:         string
+
+    :param recursive:    Operate on files and directories recursively.
+    :type recursive:     boolean
+
+    :param force:        Suppress most error messages.
+    :type force:         boolean
+
+    :raises:             :class:`UnprocessableEntity` if path not given.
+    :raises:             :class:`UnprocessableEntity` if owner/group not given.
     """
-    utils.execute_with_timeout("chown", "-R", "%s:%s" % (user, group), path,
-                               run_as_root=True, root_helper="sudo")
+
+    if not path:
+        raise exception.UnprocessableEntity(
+            _("Cannot change ownership of a blank file or directory."))
+    if not user and not group:
+        raise exception.UnprocessableEntity(
+            _("Please specify owner or group, or both."))
+
+    owner_group_modifier = _build_user_group_pair(user, group)
+    options = (('f', force), ('R', recursive))
+    _execute_shell_cmd('chown', options, owner_group_modifier, path, **kwargs)
+
+
+def _build_user_group_pair(user, group):
+    return "%s:%s" % tuple((v if v else '') for v in (user, group))
+
+
+def _create_directory(dir_path, force=True, **kwargs):
+    """Create a given directory.
+
+    :param dir_path:        Path to the created directory.
+    :type dir_path:         string
+
+    :param force:           No error if existing, make parent directories
+                            as needed.
+    :type force:            boolean
+    """
+
+    options = (('p', force),)
+    _execute_shell_cmd('mkdir', options, dir_path, **kwargs)
 
 
 def chmod(path, mode, recursive=True, force=False, **kwargs):
@@ -574,6 +652,72 @@ def remove(path, force=False, recursive=True, **kwargs):
         _execute_shell_cmd('rm', options, path, **kwargs)
     else:
         raise exception.UnprocessableEntity(_("Cannot remove a blank file."))
+
+
+def move(source, destination, force=False, **kwargs):
+    """Move a given file or directory to a new location.
+    Move attempts to preserve the original ownership, permissions and
+    timestamps.
+
+    :seealso: _execute_shell_cmd for valid optional keyword arguments.
+
+    :param source:          Path to the source location.
+    :type source:           string
+
+    :param destination:     Path to the destination location.
+    :type destination:      string
+
+    :param force:           Do not prompt before overwriting.
+    :type force:            boolean
+
+    :raises:                :class:`UnprocessableEntity` if source or
+                            destination not given.
+    """
+
+    if not source:
+        raise exception.UnprocessableEntity(_("Missing source path."))
+    elif not destination:
+        raise exception.UnprocessableEntity(_("Missing destination path."))
+
+    options = (('f', force),)
+    _execute_shell_cmd('mv', options, source, destination, **kwargs)
+
+
+def copy(source, destination, force=False, preserve=False, recursive=True,
+         **kwargs):
+    """Copy a given file or directory to another location.
+    Copy does NOT attempt to preserve ownership, permissions and timestamps
+    unless the 'preserve' option is enabled.
+
+    :seealso: _execute_shell_cmd for valid optional keyword arguments.
+
+    :param source:          Path to the source location.
+    :type source:           string
+
+    :param destination:     Path to the destination location.
+    :type destination:      string
+
+    :param force:           If an existing destination file cannot be
+                            opened, remove it and try again.
+    :type force:            boolean
+
+    :param preserve:        Preserve mode, ownership and timestamps.
+    :type preserve:         boolean
+
+    :param recursive:       Copy directories recursively.
+    :type recursive:        boolean
+
+    :raises:                :class:`UnprocessableEntity` if source or
+                            destination not given.
+    """
+
+    if not source:
+        raise exception.UnprocessableEntity(_("Missing source path."))
+    elif not destination:
+        raise exception.UnprocessableEntity(_("Missing destination path."))
+
+    options = (('f', force), ('p', preserve), ('R', recursive))
+    _execute_shell_cmd('cp', options, source, destination, **kwargs)
 
 
 def _execute_shell_cmd(cmd, options, *args, **kwargs):
