@@ -19,11 +19,11 @@ import tempfile
 import yaml
 from uuid import uuid4
 import time
+from mock import ANY
 from mock import Mock
 from mock import MagicMock
 from mock import PropertyMock
 from mock import patch
-from mock import ANY
 from oslo_utils import netutils
 import sqlalchemy
 import testtools
