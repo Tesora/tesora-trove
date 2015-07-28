@@ -1000,6 +1000,7 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         old_server = self.nova_client.servers.get(server_id)
         LOG.debug("Stopping datastore on instance %s before deleting any "
                   "resources." % self.id)
+        result = None
         try:
             result = self.guest.stop_db()
         except Exception:

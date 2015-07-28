@@ -105,6 +105,7 @@ class OracleApp(object):
 
     def start_db(self, update_db=False):
         LOG.debug("Start the Oracle databases.")
+        os.environ["ORACLE_HOME"] = CONF.get(MANAGER).oracle_home
         ora_admin = OracleAdmin()
         databases, marker = ora_admin.list_databases(online_only=False)
         for database in databases:
@@ -129,6 +130,7 @@ class OracleApp(object):
 
     def stop_db(self, update_db=False, do_not_start_on_reboot=False):
         LOG.debug("Stop the Oracle databases.")
+        os.environ["ORACLE_HOME"] = CONF.get(MANAGER).oracle_home
         ora_admin = OracleAdmin()
         databases, marker = ora_admin.list_databases()
         for database in databases:
@@ -191,7 +193,7 @@ def run_command(command, superuser=system.ORACLE_INSTANCE_OWNER,
 
 class OracleConfig(object):
 
-    _CONF_FILE = "/etc/oracle/oracle.cnf"
+    _CONF_FILE = CONF.get(MANAGER).conf_file
     _CONF_FILE_TMP = "/tmp/oracle.cnf"
     _CONF_ORA_SEC = 'ORACLE'
     _CONF_ADMIN_KEY = 'os_admin_pwd'

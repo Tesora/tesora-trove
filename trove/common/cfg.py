@@ -593,13 +593,17 @@ oracle_opts = [
     cfg.StrOpt('restore_namespace',
                default='trove.guestagent.strategies.restore.oracle_impl',
                help='Namespace to load restore strategies from.'),
-    cfg.DictOpt('backup_incremental_strategy', default={},
+    cfg.DictOpt('backup_incremental_strategy',
+                default={'RmanBackup': 'RmanBackupIncremental'},
                 help='Incremental Backup Runner based on the default '
                 'strategy. For strategies that do not implement an '
                 'incremental, the runner will use the default full backup.'),
     cfg.StrOpt('oracle_home',
                default='/u01/app/oracle/product/11.2.0/dbhome_1',
                help='Default $ORACLE_HOME directory'),
+    cfg.StrOpt('conf_file',
+               default='/etc/oracle/oracle.cnf',
+               help='Default config file path'),
     cfg.IntOpt('listener_port', default=1521,
                help='Default Oracle listener port'),
     cfg.StrOpt('cloud_user_role', default='CLOUD_USER_ROLE',

@@ -86,4 +86,5 @@ class TestBackupController(trove_testtools.TestCase):
         errors = sorted(validator.iter_errors(body), key=lambda e: e.path)
         self.assertThat(errors[0].message,
                         Equals("'%s' does not match '%s'" %
-                               (self.invalid_uuid, apischema.uuid['pattern'])))
+                               (self.invalid_uuid,
+                                apischema.backup_id['pattern'])))

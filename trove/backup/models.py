@@ -76,11 +76,26 @@ class Backup(object):
             ds = instance_model.datastore
             ds_version = instance_model.datastore_version
             parent = None
+            parent_backup = None
+            parent_backup_id = None
             if parent_id:
                 # Look up the parent info or fail early if not found or if
                 # the user does not have access to the parent.
-                _parent = cls.get_by_id(context, parent_id)
+                if parent_id == 'last':
+                    # Need to assign parent_id to a new variable
+                    # parent_backup_id, otherwise an unbound variable error
+                    # will be thrown
+                    parent_backup = Backup.get_last_completed(context,
+                                                              instance_id,
+                                                              True)
+                    if parent_backup is None:
+                        raise exception.NotFound()
+                    parent_backup_id = parent_backup.id
+                else:
+                    parent_backup_id = parent_id
+                _parent = cls.get_by_id(context, parent_backup_id)
                 parent = {
+                    'id': parent_backup_id,
                     'location': _parent.location,
                     'checksum': _parent.checksum,
                 }
@@ -90,7 +105,7 @@ class Backup(object):
                                           tenant_id=context.tenant,
                                           state=BackupState.NEW,
                                           instance_id=instance_id,
-                                          parent_id=parent_id,
+                                          parent_id=parent_backup_id,
                                           datastore_version_id=ds_version.id,
                                           deleted=False)
             except exception.InvalidModelError as ex:

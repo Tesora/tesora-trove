@@ -148,6 +148,11 @@ class BackupAgent(object):
                 'parent_location': parent['location'],
                 'parent_checksum': parent['checksum']
             })
+            # The backup code path for replication does not include the id key
+            if 'id' in parent:
+                parent_metadata.update({
+                    'parent_id': parent['id']
+                })
 
         self.stream_backup_to_storage(context, backup_info, runner, storage,
                                       parent_metadata, extra_opts)
@@ -165,7 +170,8 @@ class BackupAgent(object):
 
             runner = restore_runner(storage, location=backup_info['location'],
                                     checksum=backup_info['checksum'],
-                                    restore_location=restore_location)
+                                    restore_location=restore_location,
+                                    backup_id=backup_info['id'])
             backup_info['restore_location'] = restore_location
             LOG.debug("Restoring instance from backup %(id)s to "
                       "%(restore_location)s.", backup_info)
