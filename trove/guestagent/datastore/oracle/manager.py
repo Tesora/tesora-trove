@@ -48,17 +48,19 @@
 # Tesora or display the words "Initial Development by Tesora" if the display of
 # the logo is not reasonably feasible for technical reasons.
 
+from oslo_service import periodic_task
 from trove.common import cfg
 from trove.common import exception
+from trove.common import instance as ds_instance
 from trove.openstack.common import log as logging
-from trove.openstack.common import periodic_task
+from trove.guestagent import backup
 from trove.guestagent import dbaas
 from trove.guestagent import volume
 from trove.guestagent.datastore.oracle import service
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
-MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'oracle'
+MANAGER = 'oracle'
 
 
 class Manager(periodic_task.PeriodicTasks):
@@ -67,11 +69,12 @@ class Manager(periodic_task.PeriodicTasks):
     based off of the datastore of the Trove instance.
     """
     def __init__(self):
+        super(Manager, self).__init__(CONF)
         self.appStatus = service.OracleAppStatus()
         self.app = service.OracleApp(self.appStatus)
         self.admin = service.OracleAdmin()
 
-    @periodic_task.periodic_task(ticks_between_runs=3)
+    @periodic_task.periodic_task
     def update_status(self, context):
         """
         Updates the status of Oracle Trove instance. It is decorated
@@ -99,11 +102,18 @@ class Manager(periodic_task.PeriodicTasks):
 
         self.app.change_ownership(mount_point)
 
+        if backup_info:
+            self._perform_restore(backup_info, context,
+                                  mount_point, self.app)
+
         if databases:
-            self.create_database(context, databases)
+            self.admin.create_database(databases)
 
         if users:
             self.create_user(context, users)
+
+        if root_password:
+            self.admin.enable_root(root_password)
 
         self.app.complete_install_or_restart()
 
@@ -123,11 +133,13 @@ class Manager(periodic_task.PeriodicTasks):
 
     def create_database(self, context, databases):
         LOG.debug("Creating database(s)." % databases)
-        self.admin.create_database(databases)
+        raise exception.DatastoreOperationNotSupported(
+            operation='create_database', datastore=MANAGER)
 
     def delete_database(self, context, database):
         LOG.debug("Deleting database %s." % database)
-        return self.admin.delete_database(database)
+        raise exception.DatastoreOperationNotSupported(
+            operation='delete_database', datastore=MANAGER)
 
     def list_databases(self, context, limit=None, marker=None,
                        include_marker=False):
@@ -221,13 +233,19 @@ class Manager(periodic_task.PeriodicTasks):
         return self.admin.is_root_enabled()
 
     def _perform_restore(self, backup_info, context, restore_location, app):
-        raise exception.DatastoreOperationNotSupported(
-            operation='_perform_restore', datastore=MANAGER)
+        LOG.info(_("Restoring database from backup %s.") % backup_info['id'])
+        try:
+            backup.restore(context, backup_info, restore_location)
+        except Exception:
+            LOG.exception(_("Error performing restore from backup %s.") %
+                          backup_info['id'])
+            app.status.set_status(ds_instance.ServiceStatuses.FAILED)
+            raise
+        LOG.info(_("Restored database successfully."))
 
     def create_backup(self, context, backup_info):
         LOG.debug("Creating backup.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='create_backup', datastore=MANAGER)
+        backup.backup(context, backup_info)
 
     def get_config_changes(self, cluster_config, mount_point=None):
         LOG.debug("Get configuration changes")

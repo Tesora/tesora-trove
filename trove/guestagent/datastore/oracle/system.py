@@ -61,7 +61,7 @@ CHANGE_DB_DIR_GROUP_OWNER = (
 
 # TO-DO: totalMemory values will be provided through configuration group.
 CREATE_DB_COMMAND = ("dbca -silent -createDatabase "
-                     "-templateName General_Purpose.dbc "
+                     "-templateName General_Purpose_ArchiveLog.dbc "
                      "-gdbName %(gdbname)s "
                      "-sid %(sid)s "
                      "-sysPassword %(pswd)s "
