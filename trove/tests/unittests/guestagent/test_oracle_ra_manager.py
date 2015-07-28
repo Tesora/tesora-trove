@@ -155,7 +155,7 @@ class GuestAgentManagerTest(testtools.TestCase):
             delete_user_by_name.assert_any_call(user.name)
 
     def test_root_enable(self):
-        with mock.patch.object(models.OracleUser, '_is_valid_user_name', return_value=True):
+        with mock.patch.object(models.OracleUser, '_is_valid_name', return_value=True):
             root_user = models.OracleUser(None)
             root_user.deserialize(self.manager.enable_root(self.context))
             self.assertEqual(self.dbaas.ROOT_USERNAME, root_user.name,
