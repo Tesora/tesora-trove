@@ -148,6 +148,7 @@ class BackupAgent(object):
             # The parent could be another incremental backup so we need to
             # reset the location and checksum to *this* parents info
             parent_metadata.update({
+                'parent_id': parent['id'],
                 'parent_location': parent['location'],
                 'parent_checksum': parent['checksum']
             })
@@ -168,7 +169,8 @@ class BackupAgent(object):
 
             runner = restore_runner(storage, location=backup_info['location'],
                                     checksum=backup_info['checksum'],
-                                    restore_location=restore_location)
+                                    restore_location=restore_location,
+                                    backup_id=backup_info['id'])
             backup_info['restore_location'] = restore_location
             LOG.debug("Restoring instance from backup %(id)s to "
                       "%(restore_location)s.", backup_info)

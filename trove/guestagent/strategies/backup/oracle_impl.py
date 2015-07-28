@@ -56,6 +56,7 @@ from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.oracle import (
     service as oracle_service)
 from trove.guestagent.datastore.oracle import sql_query
+from trove.guestagent.datastore.oracle.service import LocalOracleClient
 from trove.guestagent.db import models
 from trove.guestagent.strategies.backup import base
 from trove.openstack.common import log as logging
@@ -66,6 +67,7 @@ LOG = logging.getLogger(__name__)
 LARGE_TIMEOUT = 1200
 BACKUP_DIR = CONF.get('oracle').mount_point + '/backupset_files'
 ORACLE_HOME = CONF.get('oracle').oracle_home
+CONF_FILE = CONF.get('oracle').conf_file
 ADMIN_USER = 'os_admin'
 
 class RmanBackup(base.BackupRunner):
@@ -77,6 +79,8 @@ class RmanBackup(base.BackupRunner):
         self.ora_admin = oracle_service.OracleAdmin()
         self.oracnf = oracle_service.OracleConfig()
         self.db_name = self._get_db_name()
+        self.backup_id = kwargs.get('filename')
+        self.backup_level = 0
         super(RmanBackup, self).__init__(*args, **kwargs)
 
     def _get_db_name(self):
@@ -113,13 +117,14 @@ class RmanBackup(base.BackupRunner):
             backup_cmd = ("""\"\
 rman target %(admin_user)s/%(admin_pswd)s@localhost/%(db_name)s <<EOF
 run {
-backup incremental level=0 as compressed backupset database format '%(backup_dir)s/%(db_name)s_%%I_%%u_%%s_%%T.dat';
-backup current controlfile format '%(backup_dir)s/%(db_name)s_%%I_%%u_%%s_%%T.ctl';
+backup incremental level=%(backup_level)s as compressed backupset database format '%(backup_dir)s/%%I_%%u_%%s_%(backup_id)s.dat';
+backup current controlfile format '%(backup_dir)s/%%I_%%u_%%s_%(backup_id)s.ctl';
 }
 EXIT;
 EOF\"
 """ % {'admin_user': ADMIN_USER, 'admin_pswd': self.oracnf.admin_password,
-       'db_name': self.db_name, 'backup_dir': backup_dir})
+       'db_name': self.db_name, 'backup_dir': backup_dir,
+       'backup_id': self.backup_id, 'backup_level': self.backup_level})
             utils.execute_with_timeout("su - oracle -c " + backup_cmd,
                                        run_as_root=True,
                                        root_helper='sudo',
@@ -143,9 +148,10 @@ EOF\"
     @property
     def cmd(self):
         """Tars and streams the backup data to the stdout"""
-        cmd = ('sudo tar cPf - %(backup_dir)s %(sp_pw_files)s' %
+        cmd = ('sudo tar cPf - %(backup_dir)s %(sp_pw_files)s %(conf_file)s' %
                {'backup_dir': BACKUP_DIR,
-                'sp_pw_files': ' '.join(self._get_sp_pw_files())})
+                'sp_pw_files': ' '.join(self._get_sp_pw_files()),
+                'conf_file': CONF_FILE})
 
         return cmd + self.zip_cmd + self.encrypt_cmd
 
@@ -174,3 +180,62 @@ EOF\"
             client.execute(str(q))
             result = client.fetchall()
             return result[0][0] / 3
+
+
+class RmanBackupIncremental(RmanBackup):
+    """RMAN incremental backup."""
+
+    def __init__(self, *args, **kwargs):
+        super(RmanBackupIncremental, self).__init__(*args, **kwargs)
+        self.parent_id = kwargs.get('parent_id')
+        self.parent_location = kwargs.get('parent_location')
+        self.parent_checksum = kwargs.get('parent_checksum')
+        self.backup_level = 1
+
+    def _truncate_backup_chain(self):
+        """Truncate all backups in the backup chain after the
+        specified parent backup."""
+
+        with LocalOracleClient(self.db_name, service=True) as client:
+            max_recid = sql_query.Query()
+            max_recid.columns = ["max(recid)"]
+            max_recid.tables = ["v$backup_piece"]
+            max_recid.where = ["handle like '%%%s%%'" % self.parent_id]
+
+            q = sql_query.Query()
+            q.columns = ["recid"]
+            q.tables = ["v$backup_piece"]
+            q.where = ["recid > (%s)" % str(max_recid)]
+            client.execute(str(q))
+            delete_list = [ str(row[0]) for row in client ]
+
+        if delete_list:
+            cmd = ("""\"\
+rman target %(admin_user)s/%(admin_pswd)s@localhost/%(db_name)s <<EOF
+run {
+delete force noprompt backupset %(delete_list)s;
+}
+EXIT;
+EOF\"
+""" % {'admin_user': ADMIN_USER, 'admin_pswd': self.oracnf.admin_password,
+       'db_name': self.db_name, 'delete_list': ",".join(delete_list)})
+            utils.execute_with_timeout("su - oracle -c " + cmd,
+                                       run_as_root=True,
+                                       root_helper='sudo',
+                                       timeout=LARGE_TIMEOUT,
+                                       shell=True,
+                                       log_output_on_error=True)
+
+    def _run_pre_backup(self):
+        # Delete from the control file backups that are no longer valid in Trove
+        self._truncate_backup_chain()
+        # Perform incremental backup
+        super(RmanBackupIncremental, self)._run_pre_backup()
+
+    def metadata(self):
+        _meta = super(RmanBackupIncremental, self).metadata()
+        _meta.update({
+            'parent_location': self.parent_location,
+            'parent_checksum': self.parent_checksum,
+        })
+        return _meta
