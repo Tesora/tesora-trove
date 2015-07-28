@@ -60,7 +60,7 @@ CHANGE_DB_DIR_GROUP_OWNER = (
     "sudo chgrp " + ORACLE_GROUP_OWNER + " %(datadir)s")
 
 CREATE_DB_COMMAND = ("dbca -silent -createDatabase "
-                     "-templateName General_Purpose.dbc "
+                     "-templateName General_Purpose_ArchiveLog.dbc "
                      "-gdbName %(gdbname)s "
                      "-sid %(sid)s "
                      "-sysPassword %(pswd)s "
