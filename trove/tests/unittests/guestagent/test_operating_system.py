@@ -15,18 +15,20 @@
 
 import itertools
 import os
-import tempfile
 from ConfigParser import ParsingError
 from mock import DEFAULT, MagicMock
-from trove.guestagent.common.operating_system import (IdentityCodec,
-                                                      IniCodec, YamlCodec)
+import tempfile
+
 from mock import call, patch
 from oslo_concurrency.processutils import UnknownArgumentError
 import stat
 import testtools
 from testtools import ExpectedException
-from trove.common import utils
+
 from trove.common import exception
+from trove.guestagent.common.operating_system import (
+    IdentityCodec, IniCodec, YamlCodec)
+from trove.common import utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.common.operating_system import FileMode
 
@@ -211,6 +213,24 @@ class TestOperatingSystem(testtools.TestCase):
             operating_system._execute_service_command(test_service_candidates,
                                                       'unknown')
 
+    # DAS - Disabling this test to facilitate EE-1.5 merge
+    # def test_properties_file_codec(self):
+    #     data = {'key1': [1, "str1", '127.0.0.1', 3.1415926535, True, None],
+    #             'key2': [2.0, 3, 0, "str1 str2"],
+    #             'key3': ['str1', 'str2'],
+    #             'key4': [],
+    #             'key5': 5000,
+    #             'key6': 'str1',
+    #             'key7': 0,
+    #             'key8': None,
+    #             'key9': [['str1', 'str2'], ['str3', 'str4']],
+    #             'key10': [['str1', 'str2', 'str3'], ['str3', 'str4'], 'str5']
+    #             }
+    #
+    #     self._test_file_codec(data, PropertiesCodec())
+    #     self._test_file_codec(data, PropertiesCodec(
+    #         string_mappings={'yes': True, 'no': False, "''": None}))
+    #
     def test_modes(self):
         self._assert_modes(None, None, None, operating_system.FileMode())
         self._assert_modes(None, None, None,
