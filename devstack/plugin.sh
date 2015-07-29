@@ -150,7 +150,8 @@ function install_troveclient {
     # NOTE(sdague): this probably doesn't work correctly as a devstack
     # plugin, and needs to be moved to the troveclient project instead
     if use_library_from_git "python-troveclient"; then
-        git_clone_by_name "python-troveclient"
+        git_clone $TROVECLIENT_REPO $TROVECLIENT_DIR $TROVECLIENT_BRANCH
+        #setup_develop $TROVECLIENT_DIR
         setup_dev_lib "python-troveclient"
     fi
 }
