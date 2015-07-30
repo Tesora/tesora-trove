@@ -160,8 +160,8 @@ class CassandraApp(object):
         cassandra = models.CassandraUser(system.DEFAULT_SUPERUSER_NAME,
                                          utils.generate_random_password())
         self.__create_cqlsh_config({self._CONF_AUTH_SEC:
-                                   {self._CONF_USR_KEY: cassandra.name,
-                                    self._CONF_PWD_KEY: cassandra.password}})
+                                    {self._CONF_USR_KEY: cassandra.name,
+                                     self._CONF_PWD_KEY: cassandra.password}})
         CassandraAdmin(current_superuser).alter_user_password(cassandra)
         self.status.set_superuser(cassandra)
 
@@ -390,7 +390,7 @@ class CassandraApp(object):
 
         for k, v in updates.iteritems():
             if isinstance(v, collections.Mapping):
-                    target[k] = CassandraApp._update_dict(v, target.get(k, {}))
+                target[k] = CassandraApp._update_dict(v, target.get(k, {}))
             else:
                 target[k] = updates[k]
         return target
@@ -736,6 +736,9 @@ class CassandraAdmin(object):
 class CassandraConnection(object):
     """A wrapper to manage a Cassandra connection."""
 
+    # Cassandra 2.1 only supports protocol versions 3 and lower.
+    NATIVE_PROTOCOL_VERSION = 3
+
     def __init__(self, contact_points, user):
         self.__user = user
         # A Cluster is initialized with a set of initial contact points.
@@ -744,7 +747,8 @@ class CassandraConnection(object):
         # Will connect to '127.0.0.1' if None contact points are given.
         self._cluster = Cluster(
             contact_points=contact_points,
-            auth_provider=PlainTextAuthProvider(user.name, user.password))
+            auth_provider=PlainTextAuthProvider(user.name, user.password),
+            protocol_version=self.NATIVE_PROTOCOL_VERSION)
         self.__session = None
 
     def __enter__(self):
