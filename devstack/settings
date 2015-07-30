@@ -9,6 +9,10 @@ fi
 # Set up default configuration
 GITDIR["python-troveclient"]=$DEST/python-troveclient
 
+TROVECLIENT_DIR=$DEST/python-troveclient
+TROVECLIENT_REPO=${TROVECLIENT_REPO:-https://github.com/tesora/tesora-python-troveclient.git}
+TROVECLIENT_BRANCH=${TROVECLIENT_BRANCH:-master}
+
 TROVE_DIR=$DEST/trove
 TROVE_CONF_DIR=${TROVE_CONF_DIR:-/etc/trove}
 TROVE_CONF=${TROVE_CONF:-$TROVE_CONF_DIR/trove.conf}
