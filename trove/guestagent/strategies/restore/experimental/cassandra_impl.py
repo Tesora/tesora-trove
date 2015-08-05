@@ -15,7 +15,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from trove.common import utils
 from trove.guestagent.common import operating_system as os_utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.experimental.cassandra import system
@@ -47,53 +46,19 @@ class NodetoolSnapshot(base.RestoreRunner):
         """
 
         LOG.debug('Initializing a data directory.')
-        NodetoolSnapshot._create_directory_as_user(self.restore_location,
-                                                   system.CASSANDRA_OWNER,
-                                                   system.CASSANDRA_OWNER)
+        operating_system.create_directory(
+            self.restore_location,
+            user=system.CASSANDRA_OWNER, group=system.CASSANDRA_OWNER,
+            as_root=True)
 
     def post_restore(self):
         """Updated ownership on the restored files.
         """
 
         LOG.debug('Updating ownership of the restored files.')
-        os_utils.update_owner(system.CASSANDRA_OWNER, system.CASSANDRA_OWNER,
-                              self.restore_location)
-
-    @classmethod
-    def _create_directory_as_user(self, dir_path, user, group, force=True):
-        """Create a given directory as root and update its ownership.
-
-        :param dir_path:        Path to the created directory.
-        :type dir_path:         string
-
-        :param user:            Owner.
-        :type user:             string
-
-        :param group:           Group.
-        :type group:            string
-
-        :param force:           No error if existing, make parent directories
-                                as needed.
-        :type force:            boolean
-        """
-
-        NodetoolSnapshot._create_directory_as_root(dir_path, force)
-        os_utils.update_owner(user, group, dir_path)
-
-    @classmethod
-    def _create_directory_as_root(self, dir_path, force=True):
-        """Create a given directory as the root user.
-
-        :param dir_path:        Path to the created directory.
-        :type dir_path:         string
-
-        :param force:           No error if existing, make parent directories
-                                as needed.
-        :type force:            boolean
-        """
-
-        utils.execute_with_timeout('mkdir', '-p' if force else '', dir_path,
-                                   root_helper='sudo', run_as_root=True)
+        os_utils.chown(self.restore_location,
+                       system.CASSANDRA_OWNER, system.CASSANDRA_OWNER,
+                       as_root=True)
 
     @property
     def base_restore_cmd(self):

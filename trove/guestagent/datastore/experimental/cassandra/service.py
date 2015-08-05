@@ -401,12 +401,11 @@ class CassandraApp(object):
             operating_system.write_yaml_file(self._CASSANDRA_CONF, config,
                                              as_root=True)
 
-        operating_system.update_owner(system.CASSANDRA_OWNER,
-                                      system.CASSANDRA_OWNER,
-                                      self._CASSANDRA_CONF)
-        utils.execute_with_timeout("chmod", "a+r", self._CASSANDRA_CONF,
-                                   run_as_root=True,
-                                   root_helper="sudo")
+        operating_system.chown(self._CASSANDRA_CONF,
+                               system.CASSANDRA_OWNER, system.CASSANDRA_OWNER,
+                               as_root=True)
+        operating_system.chmod(self._CASSANDRA_CONF, FileMode.ADD_READ_ALL,
+                               as_root=True)
 
     def start_db_with_conf_changes(self, config_contents):
         LOG.debug("Starting database with configuration changes.")
