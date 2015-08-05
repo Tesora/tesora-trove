@@ -16,21 +16,26 @@
 import collections
 import os
 import stat
-from cassandra import OperationTimedOut
+
 from cassandra.auth import PlainTextAuthProvider
 from cassandra.cluster import Cluster
 from cassandra.cluster import NoHostAvailable
+from cassandra import OperationTimedOut
+
 from oslo_utils import netutils
+
 from trove.common import cfg
-from trove.common import utils
 from trove.common import exception
-from trove.common import instance as rd_instance
 from trove.common.i18n import _
-from trove.guestagent import pkg
+from trove.common import instance as rd_instance
+from trove.common import pagination
+from trove.common import utils
 from trove.guestagent.common import operating_system
+from trove.guestagent.common.operating_system import FileMode
 from trove.guestagent.datastore.experimental.cassandra import system
 from trove.guestagent.datastore import service
 from trove.guestagent.db import models
+from trove.guestagent import pkg
 from trove.openstack.common import log as logging
 
 
@@ -530,8 +535,10 @@ class CassandraAdmin(object):
         Return an empty set if None.
         """
         with CassandraLocalhostConnection(self.__admin_user) as client:
-            return ([user.serialize() for user in
-                     self._get_non_system_users(client)], None)
+            users = [user.serialize() for user in
+                     self._get_non_system_users(client)]
+            return pagination.paginate_list(users, limit, marker,
+                                            include_marker)
 
     def _get_non_system_users(self, client):
         """
@@ -700,8 +707,10 @@ class CassandraAdmin(object):
     def list_databases(self, context, limit=None, marker=None,
                        include_marker=False):
         with CassandraLocalhostConnection(self.__admin_user) as client:
-            return ([keyspace.serialize() for keyspace
-                     in self._get_available_keyspaces(client)], None)
+            databases = [keyspace.serialize() for keyspace
+                         in self._get_available_keyspaces(client)]
+            return pagination.paginate_list(databases, limit, marker,
+                                            include_marker)
 
     def _get_available_keyspaces(self, client):
         """
