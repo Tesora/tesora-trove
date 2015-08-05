@@ -13,79 +13,53 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import re
 from trove.common import cfg
+from trove.common.i18n import _
 from trove.common import utils
+from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.experimental.postgresql import pgutil
-from trove.guestagent.datastore.experimental.postgresql.service.process import(
-    PgSqlProcess)
 from trove.guestagent.datastore.experimental.postgresql.service.status import(
     PgSqlAppStatus)
 from trove.openstack.common import log as logging
-from trove.common.i18n import _
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 
-PGSQL_CONFIG = "/etc/postgresql/{version}/main/postgresql.conf"
-PGSQL_HBA_CONFIG = "/etc/postgresql/{version}/main/pg_hba.conf"
 
-
-class PgSqlConfig(PgSqlProcess):
+class PgSqlConfig(object):
     """Mixin that implements the config API.
-
-    This mixin has a dependency on the PgSqlProcess mixin.
     """
-
-    def _get_psql_version(self):
-        """Poll PgSql for the version number.
-
-        Return value is a string representing the version number.
-        """
-        LOG.debug(
-            "{guest_id}: Polling for postgresql version.".format(
-                guest_id=CONF.guest_id,
-            )
-        )
-        out, err = pgutil.execute('psql', '--version', timeout=30)
-        pattern = re.compile('\d\.\d')
-        return pattern.search(out).group(0)
-
     def reset_configuration(self, context, configuration):
         """Reset the PgSql configuration file to the one given.
 
         The configuration parameter is a string containing the full
-        configuration file that should be used.
+        configuration file that should be used. It is rendered for
+        a second time on the guest for the OS-specific elements
         """
-        config_location = PGSQL_CONFIG.format(
-            version=self._get_psql_version(),
-        )
+        config_location = pgutil.get_pgsql_conf_location()
+
         LOG.debug(
             "{guest_id}: Writing configuration file to /tmp/pgsql_config."
             .format(
                 guest_id=CONF.guest_id,
             )
         )
+
+        config_second_pass = pgutil.render_config(configuration)
+
         with open('/tmp/pgsql_config', 'w+') as config_file:
-            config_file.write(configuration)
-        utils.execute_with_timeout(
-            'sudo', 'chown', 'postgres', '/tmp/pgsql_config',
-            timeout=30,
-        )
-        utils.execute_with_timeout(
-            'sudo', 'mv', '/tmp/pgsql_config', config_location,
-            timeout=30,
-        )
+            config_file.write(config_second_pass)
+        operating_system.chown('/tmp/pgsql_config', 'postgres', None,
+                               recursive=False, as_root=True)
+        operating_system.move('/tmp/pgsql_config', config_location, timeout=30,
+                              as_root=True)
 
     def set_db_to_listen(self, context):
         """Allow remote connections with encrypted passwords."""
         # Using cat to read file due to read permissions issues.
+        hba_location = pgutil.get_pgsql_hba_location()
         out, err = utils.execute_with_timeout(
-            'sudo', 'cat',
-            PGSQL_HBA_CONFIG.format(
-                version=self._get_psql_version(),
-            ),
-            timeout=30,
+            'sudo', 'cat', hba_location, timeout=30,
         )
         LOG.debug(
             "{guest_id}: Writing hba file to /tmp/pgsql_hba_config.".format(
@@ -96,17 +70,10 @@ class PgSqlConfig(PgSqlProcess):
             config_file.write(out)
             config_file.write("host    all     all     0.0.0.0/0   md5\n")
 
-        utils.execute_with_timeout(
-            'sudo', 'chown', 'postgres', '/tmp/pgsql_hba_config',
-            timeout=30,
-        )
-        utils.execute_with_timeout(
-            'sudo', 'mv', '/tmp/pgsql_hba_config',
-            PGSQL_HBA_CONFIG.format(
-                version=self._get_psql_version(),
-            ),
-            timeout=30,
-        )
+        operating_system.chown('/tmp/pgsql_hba_config',
+                               'postgres', None, recursive=False, as_root=True)
+        operating_system.move('/tmp/pgsql_hba_config', hba_location,
+                              timeout=30, as_root=True)
 
     def start_db_with_conf_changes(self, context, config_contents):
         """Restarts the PgSql instance with a new configuration."""
@@ -116,9 +83,10 @@ class PgSqlConfig(PgSqlProcess):
                 guest_id=CONF.guest_id,
             )
         )
+        config_second_pass = pgutil.render_config(config_contents)
         PgSqlAppStatus.get().begin_restart()
         self.stop_db(context)
-        self.reset_configuration(context, config_contents)
+        self.reset_configuration(context, config_second_pass)
         self.start_db(context)
         LOG.info(
             _("{guest_id}: Ending restart mode for config file changes.")

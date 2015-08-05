@@ -75,6 +75,7 @@ class SingleInstanceConfigTemplate(object):
         context = self.datastore_dict.copy()
         context['template_name'] = self.template_name
         names = [name.format(**context) for name in patterns]
+        ENV.undefined = jinja2.runtime.DebugUndefined
         return ENV.select_template(names)
 
     def render(self, **kwargs):
