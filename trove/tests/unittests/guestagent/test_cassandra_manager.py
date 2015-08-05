@@ -394,8 +394,8 @@ class GuestAgentCassandraDBManagerTest(testtools.TestCase):
         usr = models.CassandraUser(self._get_random_name(1025), 'password')
         db1 = models.CassandraSchema('db1')
         db2 = models.CassandraSchema('db2')
-        usr.databases.append(db1)
-        usr.databases.append(db2)
+        usr.databases.append(db1.serialize())
+        usr.databases.append(db2.serialize())
 
         rv_1 = NonCallableMagicMock()
         rv_1.configure_mock(name=usr.name, super=False)
@@ -419,8 +419,8 @@ class GuestAgentCassandraDBManagerTest(testtools.TestCase):
         usr1 = models.CassandraUser('usr1')
         usr2 = models.CassandraUser('usr2')
         usr3 = models.CassandraUser(self._get_random_name(1025), 'password')
-        db1 = models.CassandraSchema('db1')
-        db2 = models.CassandraSchema('db2')
+        db1 = models.CassandraSchema('db1').serialize()
+        db2 = models.CassandraSchema('db2').serialize()
         usr2.databases.append(db1)
         usr3.databases.append(db1)
         usr3.databases.append(db2)
@@ -472,11 +472,13 @@ class GuestAgentCassandraDBManagerTest(testtools.TestCase):
             with ExpectedException(exception.UserNotFound):
                 self.manager.get_user(self.context, usr2.name, None)
 
+    @patch.object(cass_service.CassandraAdmin, '_deserialize_keyspace',
+                  side_effect=lambda p1: p1)
     @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
-    def test_rename_user(self, conn):
+    def test_rename_user(self, conn, ks_deserializer):
         usr = models.CassandraUser('usr')
-        db1 = models.CassandraSchema('db1')
-        db2 = models.CassandraSchema('db2')
+        db1 = models.CassandraSchema('db1').serialize()
+        db2 = models.CassandraSchema('db2').serialize()
         usr.databases.append(db1)
         usr.databases.append(db2)
 

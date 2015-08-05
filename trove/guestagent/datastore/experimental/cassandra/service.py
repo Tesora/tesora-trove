@@ -490,7 +490,8 @@ class CassandraAdmin(object):
         """
         self._create_user(client, user)
         for db in user.databases:
-            self._grant_full_access_on_keyspace(client, db, user)
+            self._grant_full_access_on_keyspace(
+                client, self._deserialize_keyspace(db), user)
 
     def _create_user(self, client, user):
         # Create only NOSUPERUSER accounts here.
