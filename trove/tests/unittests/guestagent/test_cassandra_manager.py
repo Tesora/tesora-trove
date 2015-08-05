@@ -162,29 +162,29 @@ class GuestAgentCassandraDBManagerTest(testtools.TestCase):
                 _CassandraApp__reset_superuser_password=DEFAULT,
                 configure_superuser_access=DEFAULT) as calls:
 
-                test_app._reset_superuser_password()
+            test_app._reset_superuser_password()
 
-                calls['_disable_db_on_boot'].assert_called_once_with()
-                calls[
-                    '_CassandraApp__disable_remote_access'
-                ].assert_called_once_with()
-                calls[
-                    '_CassandraApp__disable_authentication'
-                ].assert_called_once_with()
-                calls['start_db'].assert_called_once_with(update_db=False),
-                calls[
-                    '_CassandraApp__enable_authentication'
-                ].assert_called_once_with()
-                calls[
-                    '_CassandraApp__reset_superuser_password'
-                ].assert_called_once_with()
-                calls['configure_superuser_access'].assert_called_once_with()
-                self.assertEqual(2, calls['restart'].call_count)
-                calls['stop_db'].assert_called_once_with()
-                calls[
-                    '_CassandraApp__enable_remote_access'
-                ].assert_called_once_with()
-                calls['_enable_db_on_boot'].assert_called_once_with()
+            calls['_disable_db_on_boot'].assert_called_once_with()
+            calls[
+                '_CassandraApp__disable_remote_access'
+            ].assert_called_once_with()
+            calls[
+                '_CassandraApp__disable_authentication'
+            ].assert_called_once_with()
+            calls['start_db'].assert_called_once_with(update_db=False),
+            calls[
+                '_CassandraApp__enable_authentication'
+            ].assert_called_once_with()
+            calls[
+                '_CassandraApp__reset_superuser_password'
+            ].assert_called_once_with()
+            calls['configure_superuser_access'].assert_called_once_with()
+            self.assertEqual(2, calls['restart'].call_count)
+            calls['stop_db'].assert_called_once_with()
+            calls[
+                '_CassandraApp__enable_remote_access'
+            ].assert_called_once_with()
+            calls['_enable_db_on_boot'].assert_called_once_with()
 
     def _prepare_dynamic(self, packages,
                          config_content='MockContent', device_path='/dev/vdb',
@@ -492,7 +492,7 @@ class GuestAgentCassandraDBManagerTest(testtools.TestCase):
                                                            usr_attrs)
                             create.assert_called_once_with(ANY, new_user)
                             grant.assert_has_calls([call(ANY, db1, ANY),
-                                                   call(ANY, db2, ANY)])
+                                                    call(ANY, db2, ANY)])
                             drop.assert_called_once_with(ANY, usr)
 
     @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
@@ -529,11 +529,13 @@ class GuestAgentCassandraDBManagerTest(testtools.TestCase):
             usr_attrs = {'name': 'user'}
             with patch.object(self.admin, self.__N_RU) as rename:
                 with patch.object(self.admin, self.__N_AUP) as alter:
-                    self.manager.update_attributes(self.context, usr.name,
-                                                   None, usr_attrs)
-                    rename.assert_called_once_with(ANY, usr, usr_attrs['name'],
-                                                   None)
-                    self.assertEqual(0, alter.call_count)
+                    with ExpectedException(
+                            exception.UnprocessableEntity, "Updating username "
+                            "requires specifying a password as well."):
+                        self.manager.update_attributes(self.context, usr.name,
+                                                       None, usr_attrs)
+                        self.assertEqual(0, rename.call_count)
+                        self.assertEqual(0, alter.call_count)
 
             usr_attrs = {'name': usr.name, 'password': 'password'}
             with patch.object(self.admin, self.__N_RU) as rename:
