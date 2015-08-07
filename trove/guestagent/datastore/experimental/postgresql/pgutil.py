@@ -52,7 +52,7 @@ PGSQL_OS_CONFIG = {
         'conf_dir_postfix': 'data',
         'pid': '/var/run/postgresql.pid',
         'client_bindir': '/usr/pgsql-{version}/bin',
-        'unix_socket_directory': '/var/run/postgresql'
+        'unix_socket_directory': '/tmp'
     }
 }
 

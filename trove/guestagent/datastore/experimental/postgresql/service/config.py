@@ -78,10 +78,7 @@ class PgSqlConfig(object):
             timeout=30,
         )
         utils.execute_with_timeout(
-            'sudo', 'mv', '/tmp/pgsql_hba_config',
-            PGSQL_HBA_CONFIG.format(
-                version=self._get_psql_version(),
-            ),
+            'sudo', 'mv', '/tmp/pgsql_hba_config', hba_location,
             timeout=30,
         )
 

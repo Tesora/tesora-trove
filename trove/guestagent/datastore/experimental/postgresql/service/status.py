@@ -58,7 +58,7 @@ class PgSqlAppStatus(service.BaseDbStatus):
             pg_isready = pgutil.get_pgsql_bin_dir() + '/pg_isready'
             cmdopt = '--host=' + pgutil.get_pgsql_socket_dir()
             utils.execute_with_timeout(pg_isready, cmdopt,
-                                       elog_output_on_error=True)
+                                       log_output_on_error=True)
         except utils.Timeout:
             return instance.ServiceStatuses.BLOCKED
         except exception.ProcessExecutionError:
