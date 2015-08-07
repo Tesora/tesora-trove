@@ -20,6 +20,7 @@ from oslo.utils import strutils
 from trove.common import cfg
 from trove.common import exception
 from trove.common import pagination
+from trove.common.remote import create_guest_client
 from trove.common import utils
 from trove.common import wsgi
 from trove.extensions.mysql.common import populate_validated_databases
@@ -326,3 +327,34 @@ class InstanceController(wsgi.Controller):
                   {'instance_id': id, 'config': config})
         return wsgi.Result(views.DefaultConfigurationView(
                            config).data(), 200)
+
+    def guest_log_list(self, req, tenant_id, id):
+        """Return all information about all logs for an instance."""
+        LOG.debug("Listing logs for tenant %s" % tenant_id)
+        context = req.environ[wsgi.CONTEXT_KEY]
+        client = create_guest_client(context, id)
+        guest_log_list = client.guest_log_list()
+        return wsgi.Result({'logs': guest_log_list}, 200)
+
+    def guest_log_publish(self, req, body, tenant_id, id):
+        """Publish updates to a log to the swift container."""
+        LOG.info(_("Publishing logs for tenant %s"), tenant_id)
+        context = req.environ[wsgi.CONTEXT_KEY]
+        log_name = body['name']
+        disable = body['disable'] if 'disable' in body else None
+        client = create_guest_client(context, id)
+        guest_log = client.publish_guest_log(log_name, disable)
+        return wsgi.Result({'log': guest_log}, 200)
+
+    def guest_log_name(self, req, tenant_id, id, log):
+        """Return the container of a log for an instance."""
+        LOG.debug("Returning container name for log %s of %s", log, id)
+        context = req.environ[wsgi.CONTEXT_KEY]
+        instance = models.Instance.load(context, id)
+        container = CONF.guest_log_container_name % {
+            'datastore': instance.datastore.name,
+            'log': log,
+            'instance_id': id
+        }
+        LOG.debug("guest_log_name %s: %s", log, container)
+        return wsgi.Result({'log-name': container}, 200)

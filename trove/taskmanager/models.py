@@ -1202,6 +1202,26 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         finally:
             self.reset_task_status()
 
+    def guest_log_list(self):
+        LOG.info(_("Retrieving guest log list for instance %s.") % self.id)
+        try:
+            return self.guest.guest_log_list()
+        except GuestError:
+            LOG.error(_("Failed to retrieve guest log list for instance "
+                        "%s.") % self.id)
+        finally:
+            self.reset_task_status()
+
+    def publish_guest_log(self, log, disable):
+        LOG.info(_("Publishing guest log for instance %s.") % self.id)
+        try:
+            return self.guest.publish_guest_log(log, disable)
+        except GuestError:
+            LOG.error(_("Failed to publish guest log for instance %s.")
+                      % self.id)
+        finally:
+            self.reset_task_status()
+
     def update_overrides(self, overrides, remove=False):
         LOG.info(_("Initiating datastore configurations update on instance "
                    "%s.") % self.id)
