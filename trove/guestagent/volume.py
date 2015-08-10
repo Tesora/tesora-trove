@@ -21,6 +21,7 @@ from trove.common import cfg
 from trove.common import utils
 from trove.common.exception import GuestError
 from trove.common.exception import ProcessExecutionError
+from trove.guestagent.common import operating_system
 from trove.openstack.common import log as logging
 from trove.common.i18n import _
 
@@ -121,9 +122,11 @@ class VolumeDevice(object):
         """Resize the filesystem on the specified device."""
         self._check_device_exists()
         try:
-            # check if the device is mounted at mount_point before e2fsck
+            fsck_flag = "-p"
+            if operating_system.get_os() == operating_system.REDHAT:
+                fsck_flag = "-n"
             if not os.path.ismount(mount_point):
-                utils.execute("e2fsck", "-f", "-p", self.device_path,
+                utils.execute("e2fsck", "-f", fsck_flag, self.device_path,
                               run_as_root=True, root_helper="sudo")
             utils.execute("resize2fs", self.device_path,
                           run_as_root=True, root_helper="sudo")
