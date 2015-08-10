@@ -13,7 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import yaml
 from trove.common import stream_codecs
 
 
@@ -25,7 +24,6 @@ class CassandraConfParser(object):
         self.config = config
 
     def parse(self):
-        return yaml.safe_load(self.config).items()
         return self.CODEC.deserialize(self.config).items()
 
 
@@ -37,7 +35,6 @@ class RedisConfParser(object):
         self.config = config
 
     def parse(self):
-        return yaml.safe_load(self.config).items()
         return self.CODEC.deserialize(self.config).items()
 
 
