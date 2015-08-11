@@ -18,7 +18,7 @@ from trove.common import stream_codecs
 
 class CassandraConfParser(object):
 
-    CODEC = stream_codecs.PropertiesCodec()
+    CODEC = stream_codecs.SafeYamlCodec(default_flow_style=False)
 
     def __init__(self, config):
         self.config = config
