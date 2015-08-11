@@ -14,6 +14,7 @@
 #    under the License.
 
 from novaclient import exceptions as nova_exceptions
+from oslo_log import log as logging
 
 from trove.cluster import models
 from trove.cluster.tasks import ClusterTasks
@@ -28,7 +29,6 @@ from trove.common import wsgi
 from trove.datastore import models as datastore_models
 from trove.extensions.mgmt.clusters.views import MgmtClusterView
 from trove.instance import models as inst_models
-from trove.openstack.common import log as logging
 from trove.quota.quota import check_quotas
 from trove.taskmanager import api as task_api
 
@@ -121,11 +121,13 @@ class MongoDbCluster(models.Cluster):
             task_status=ClusterTasks.BUILDING_INITIAL)
 
         replica_set_name = "rs1"
+        key = utils.generate_random_password()
 
         member_config = {"id": db_info.id,
                          "shard_id": utils.generate_uuid(),
                          "instance_type": "member",
-                         "replica_set_name": replica_set_name}
+                         "replica_set_name": replica_set_name,
+                         "key": key}
         for i in range(0, num_instances):
             instance_name = "%s-%s-%s" % (name, replica_set_name, str(i + 1))
             inst_models.Instance.create(context, instance_name,
@@ -140,7 +142,8 @@ class MongoDbCluster(models.Cluster):
                                         cluster_config=member_config)
 
         configsvr_config = {"id": db_info.id,
-                            "instance_type": "config_server"}
+                            "instance_type": "config_server",
+                            "key": key}
         for i in range(1, num_configsvr + 1):
             instance_name = "%s-%s-%s" % (name, "configsvr", str(i))
             inst_models.Instance.create(context, instance_name,
@@ -155,7 +158,8 @@ class MongoDbCluster(models.Cluster):
                                         cluster_config=configsvr_config)
 
         mongos_config = {"id": db_info.id,
-                         "instance_type": "query_router"}
+                         "instance_type": "query_router",
+                         "key": key}
         for i in range(1, num_mongos + 1):
             instance_name = "%s-%s-%s" % (name, "mongos", str(i))
             inst_models.Instance.create(context, instance_name,
@@ -200,10 +204,15 @@ class MongoDbCluster(models.Cluster):
         check_quotas(self.context.tenant, deltas)
         new_replica_set_name = "rs" + str(num_unique_shards + 1)
         new_shard_id = utils.generate_uuid()
+        dsv_manager = (datastore_models.DatastoreVersion.
+                       load_by_uuid(db_insts[0].datastore_version_id).manager)
+        manager = task_api.load(self.context, dsv_manager)
+        key = manager.get_key(a_member)
         member_config = {"id": self.id,
                          "shard_id": new_shard_id,
                          "instance_type": "member",
-                         "replica_set_name": new_replica_set_name}
+                         "replica_set_name": new_replica_set_name,
+                         "key": key}
         for i in range(1, num_members_per_shard + 1):
             instance_name = "%s-%s-%s" % (self.name, new_replica_set_name,
                                           str(i))
@@ -219,9 +228,7 @@ class MongoDbCluster(models.Cluster):
                                         cluster_config=member_config)
 
         self.update_db(task_status=ClusterTasks.ADDING_SHARD)
-        manager = (datastore_models.DatastoreVersion.
-                   load_by_uuid(db_insts[0].datastore_version_id).manager)
-        task_api.load(self.context, manager).mongodb_add_shard_cluster(
+        manager.mongodb_add_shard_cluster(
             self.id,
             new_shard_id,
             new_replica_set_name)

@@ -18,6 +18,8 @@
 import os.path
 
 from oslo_config import cfg
+from oslo_log import log as logging
+
 import trove
 
 
@@ -874,6 +876,10 @@ mongodb_opts = [
                help='Port for mongod and mongos instances.'),
     cfg.IntOpt('configsvr_port', default=27019,
                help='Port for instances running as config servers.'),
+    cfg.ListOpt('ignore_dbs', default=['admin', 'local', 'config'],
+                help='Databases to exclude when listing databases.'),
+    cfg.ListOpt('ignore_users', default=['admin.os_admin', 'admin.root'],
+                help='Users to exclude when listing users.'),
 ]
 
 # PostgreSQL
@@ -1110,6 +1116,8 @@ CONF.register_opts(vertica_opts, vertica_group)
 CONF.register_opts(db2_opts, db2_group)
 
 CONF.register_opts(rpcapi_cap_opts, upgrade_levels)
+
+logging.register_options(CONF)
 
 
 def custom_parser(parsername, parser):

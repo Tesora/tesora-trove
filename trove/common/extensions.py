@@ -16,6 +16,7 @@
 import abc
 
 from lxml import etree
+from oslo_log import log as logging
 import routes
 import six
 import stevedore
@@ -27,7 +28,6 @@ from trove.common import base_wsgi
 from trove.common import cfg
 from trove.common.i18n import _
 from trove.common import wsgi
-from trove.openstack.common import log as logging
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
@@ -544,6 +544,11 @@ class TroveExtensionMiddleware(ExtensionMiddleware):
                 kargs['parent_resource'] = resource_ext.parent
             mapper.resource(resource_ext.collection,
                             resource_ext.collection, **kargs)
+
+            mapper.connect(("/%s/{id}" % resource_ext.collection),
+                           controller=controller_resource,
+                           action='edit',
+                           conditions={'method': ['PATCH']})
 
         # extended actions
         action_resources = self._action_ext_resources(application, ext_mgr,

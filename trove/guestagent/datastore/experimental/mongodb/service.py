@@ -18,6 +18,7 @@ import os
 import re
 import tempfile
 
+from oslo_log import log as logging
 from oslo_utils import netutils
 import pymongo
 
@@ -32,7 +33,6 @@ from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.experimental.mongodb import system
 from trove.guestagent.datastore import service
 from trove.guestagent.db import models
-from trove.openstack.common import log as logging
 
 
 LOG = logging.getLogger(__name__)
@@ -41,6 +41,8 @@ CONFIG_FILE = (operating_system.
                file_discovery(system.CONFIG_CANDIDATES))
 MONGODB_PORT = CONF.mongodb.mongodb_port
 CONFIGSVR_PORT = CONF.mongodb.configsvr_port
+IGNORED_DBS = CONF.mongodb.ignore_dbs
+IGNORED_USERS = CONF.mongodb.ignore_users
 
 
 class MongoDBApp(object):
@@ -373,7 +375,6 @@ class MongoDBApp(object):
         user = models.MongoDBUser(name='admin.%s' % creds.username,
                                   password=creds.password)
         user.roles = system.MONGO_ADMIN_ROLES
-        user.databases = 'admin'
         with MongoDBClient(user, auth=False) as client:
             MongoDBAdmin().create_user(user, client=client)
         LOG.debug('Created admin user.')
@@ -453,7 +454,6 @@ class MongoDBAdmin(object):
                 'admin.%s' % creds.username,
                 creds.password
             )
-            user.databases = 'admin'
             type(self).admin_user = user
         return type(self).admin_user
 
@@ -503,22 +503,21 @@ class MongoDBAdmin(object):
         with MongoDBClient(self._admin_user()) as admin_client:
             admin_client[db_name].remove_user(username)
 
-    def _get_user_record(self, client, user):
+    def _get_user_record(self, name):
         """Get the user's record."""
-        return client.admin.system.users.find_one(
-            {'user': user.username, 'db': user.database.name}
-        )
+        user = models.MongoDBUser(name)
+        with MongoDBClient(self._admin_user()) as admin_client:
+            user_info = admin_client.admin.system.users.find_one(
+                {'user': user.username, 'db': user.database.name})
+            if not user_info:
+                return None
+            user.roles = user_info['roles']
+        return user
 
     def get_user(self, name):
         """Get information for the given user."""
         LOG.debug('Getting user %s.' % name)
-        user = models.MongoDBUser(name)
-        with MongoDBClient(self._admin_user()) as admin_client:
-            user_info = self._get_user_record(admin_client, user)
-            if not user_info:
-                return None
-            user.roles = user_info['roles']
-        return user.serialize()
+        return self._get_user_record(name).serialize()
 
     def list_users(self, limit=None, marker=None, include_marker=False):
         """Get a list of all users."""
@@ -526,17 +525,107 @@ class MongoDBAdmin(object):
         with MongoDBClient(self._admin_user()) as admin_client:
             for user_info in admin_client.admin.system.users.find():
                 user = models.MongoDBUser(name=user_info['_id'])
-                if user.name == 'admin.os_admin':
-                    continue
-                users.append(user.serialize())
+                user.roles = user_info['roles']
+                if user.name not in IGNORED_USERS:
+                    users.append(user.serialize())
         LOG.debug('users = ' + str(users))
         return pagination.paginate_list(users, limit, marker,
                                         include_marker)
+
+    def enable_root(self, password=None):
+        """Create a user 'root' with role 'root'."""
+        if not password:
+            LOG.debug('Generating root user password.')
+            password = utils.generate_random_password()
+        root_user = models.MongoDBUser(name='admin.root', password=password)
+        root_user.roles = {'db': 'admin', 'role': 'root'}
+        self.create_user(root_user)
+        return root_user.serialize()
+
+    def is_root_enabled(self):
+        """Check if user 'admin.root' exists."""
+        with MongoDBClient(self._admin_user()) as admin_client:
+            return bool(admin_client.admin.system.users.find_one(
+                {'roles.role': 'root'}
+            ))
+
+    def _update_user_roles(self, user):
+        with MongoDBClient(self._admin_user()) as admin_client:
+            admin_client[user.database.name].add_user(
+                user.username, roles=user.roles
+            )
+
+    def grant_access(self, username, databases):
+        """Adds the RW role to the user for each specified database."""
+        user = self._get_user_record(username)
+        for db_name in databases:
+            # verify the database name
+            models.MongoDBSchema(db_name)
+            role = {'db': db_name, 'role': 'readWrite'}
+            if role not in user.roles:
+                LOG.debug('Adding role %s to user %s.'
+                          % (str(role), username))
+                user.roles = role
+            else:
+                LOG.debug('User %s already has role %s.'
+                          % (username, str(role)))
+        LOG.debug('Updating user %s.' % username)
+        self._update_user_roles(user)
+
+    def revoke_access(self, username, database):
+        """Removes the RW role from the user for the specified database."""
+        user = self._get_user_record(username)
+        # verify the database name
+        models.MongoDBSchema(database)
+        role = {'db': database, 'role': 'readWrite'}
+        LOG.debug('Removing role %s from user %s.'
+                  % (str(role), username))
+        user.revoke_role(role)
+        LOG.debug('Updating user %s.' % username)
+        self._update_user_roles(user)
+
+    def list_access(self, username):
+        """Returns a list of all databases for which the user has the RW role.
+        """
+        user = self._get_user_record(username)
+        return user.databases
+
+    def create_database(self, databases):
+        """Forces creation of databases.
+        For each new database creates a dummy document in a dummy collection,
+        then drops the collection.
+        """
+        tmp = 'dummy'
+        with MongoDBClient(self._admin_user()) as admin_client:
+            for item in databases:
+                db_name = models.MongoDBSchema.deserialize_schema(item).name
+                LOG.debug('Creating MongoDB database %s' % db_name)
+                db = admin_client[db_name]
+                db[tmp].insert({'dummy': True})
+                db.drop_collection(tmp)
+
+    def delete_database(self, database):
+        """Deletes the database."""
+        with MongoDBClient(self._admin_user()) as admin_client:
+            db_name = models.MongoDBSchema.deserialize_schema(database).name
+            admin_client.drop_database(db_name)
 
     def list_database_names(self):
         """Get the list of database names."""
         with MongoDBClient(self._admin_user()) as admin_client:
             return admin_client.database_names()
+
+    def list_databases(self, limit=None, marker=None, include_marker=False):
+        """Lists the databases."""
+        db_names = self.list_database_names()
+        for hidden in IGNORED_DBS:
+            if hidden in db_names:
+                db_names.remove(hidden)
+        databases = [models.MongoDBSchema(db_name).serialize()
+                     for db_name in db_names]
+        LOG.debug('databases = ' + str(databases))
+        return pagination.paginate_list(databases, limit, marker,
+                                        include_marker)
 
     def add_shard(self, url):
         """Runs the addShard command."""
