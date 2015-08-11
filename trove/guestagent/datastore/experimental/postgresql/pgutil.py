@@ -186,7 +186,7 @@ class UserQuery(object):
     def update_name(cls, old, new):
         """Query to update the name of a user."""
 
-        return "ALTER USER \"{old}\" RENAME TO '{new}'".format(
+        return "ALTER USER \"{old}\" RENAME TO \"{new}\"".format(
             old=old,
             new=new,
         )
