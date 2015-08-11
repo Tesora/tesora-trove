@@ -232,7 +232,7 @@ class PgSqlUsers(PgSqlAccess):
                 )
             )
             pgutil.psql(
-                pgutil.psql.UserQuery.update_name(
+                pgutil.UserQuery.update_name(
                     old=username,
                     new=user_attrs['name'],
                 ),
