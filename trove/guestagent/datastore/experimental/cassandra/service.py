@@ -22,6 +22,7 @@ from cassandra.cluster import Cluster
 from cassandra.cluster import NoHostAvailable
 from cassandra import OperationTimedOut
 
+from oslo_log import log as logging
 from oslo_utils import netutils
 
 from trove.common import cfg
@@ -35,7 +36,6 @@ from trove.guestagent.datastore.experimental.cassandra import system
 from trove.guestagent.datastore import service
 from trove.guestagent.db import models
 from trove.guestagent import pkg
-from trove.openstack.common import log as logging
 
 
 LOG = logging.getLogger(__name__)

@@ -53,14 +53,15 @@ import re
 
 import cx_Oracle
 
+from oslo_log import log as logging
+
 from trove.common import cfg
 from trove.common import exception
 from trove.common import instance as rd_instance
 from trove.common import utils
+from trove.common.i18n import _
 from trove.guestagent.db import models
 from trove.guestagent.datastore import service
-from trove.openstack.common import log as logging
-from trove.openstack.common.gettextutils import _
 
 LOG = logging.getLogger(__name__)
 

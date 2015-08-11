@@ -17,11 +17,13 @@
 
 import re
 
+from oslo_log import log as logging
+
+from trove.common.i18n import _
 from trove.guestagent.datastore.mysql.service import ADMIN_USER_NAME
 from trove.guestagent.datastore.mysql.service import get_auth_password
 from trove.guestagent.datastore.mysql.service import get_datadir
 from trove.guestagent.strategies.backup import base
-from trove.openstack.common import log as logging
 
 LOG = logging.getLogger(__name__)
 

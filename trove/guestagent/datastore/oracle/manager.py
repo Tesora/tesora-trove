@@ -48,10 +48,10 @@
 # Tesora or display the words "Initial Development by Tesora" if the display of
 # the logo is not reasonably feasible for technical reasons.
 
+from oslo_log import log as logging
 from oslo_service import periodic_task
 from trove.common import cfg
 from trove.common import exception
-from trove.openstack.common import log as logging
 from trove.guestagent import dbaas
 from trove.guestagent import volume
 from trove.guestagent.datastore.oracle import service

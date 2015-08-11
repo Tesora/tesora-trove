@@ -24,6 +24,7 @@ import traceback
 import urllib
 
 import eventlet
+from oslo_log import log as logging
 import proboscis
 import wsgi_intercept
 from wsgi_intercept.httplib2_intercept import install as wsgi_install
@@ -32,7 +33,6 @@ from trove.common import cfg
 from trove.common.rpc import service as rpc_service
 from trove.common.rpc import version as rpc_version
 from trove.common import utils
-from trove.openstack.common import log as logging
 from trove import rpc
 from trove.tests.config import CONFIG
 
@@ -59,12 +59,12 @@ def add_support_for_localization():
 
 
 def initialize_trove(config_file):
-    from trove.openstack.common import pastedeploy
+    from trove.common import pastedeploy
 
     cfg.CONF(args=[],
              project='trove',
              default_config_files=[config_file])
-    logging.setup(None)
+    logging.setup(CONF, None)
     topic = CONF.taskmanager_queue
     rpc.init(CONF)
 

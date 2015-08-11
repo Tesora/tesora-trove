@@ -15,11 +15,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from oslo_log import log as logging
+
 from trove.guestagent.common import operating_system as os_utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.experimental.cassandra import system
 from trove.guestagent.strategies.restore import base
-from trove.openstack.common import log as logging
 
 LOG = logging.getLogger(__name__)
 

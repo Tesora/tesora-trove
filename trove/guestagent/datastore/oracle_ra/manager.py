@@ -54,14 +54,15 @@ from oslo_service import periodic_task
 
 import cx_Oracle
 
+from oslo_log import log as logging
+
 from trove.common import cfg
 from trove.common import exception
 from trove.common import utils as utils
+from trove.common.i18n import _
 from trove.guestagent.datastore.oracle_ra.service import OracleAppStatus
 from trove.guestagent.datastore.oracle_ra.service import OracleAdmin
 from trove.guestagent.datastore.oracle_ra.service import OracleApp
-from trove.openstack.common import log as logging
-from trove.openstack.common.gettextutils import _
 
 
 LOG = logging.getLogger(__name__)

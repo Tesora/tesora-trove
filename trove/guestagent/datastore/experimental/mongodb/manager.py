@@ -15,6 +15,7 @@
 
 import os
 
+from oslo_log import log as logging
 from oslo_service import periodic_task
 from oslo_utils import netutils
 
@@ -28,7 +29,6 @@ from trove.guestagent.datastore.experimental.mongodb import service
 from trove.guestagent.datastore.experimental.mongodb import system
 from trove.guestagent import dbaas
 from trove.guestagent import volume
-from trove.openstack.common import log as logging
 
 
 LOG = logging.getLogger(__name__)
@@ -90,6 +90,15 @@ class Manager(periodic_task.PeriodicTasks):
             if backup_info:
                 self._perform_restore(backup_info, context,
                                       mount_point, self.app)
+                if service.MongoDBAdmin().is_root_enabled():
+                    self.status.report_root('root')
+            elif root_password:
+                LOG.debug('Root password provided. Enabling root.')
+                service.MongoDBAdmin().enable_root(root_password)
+            if databases:
+                self.create_database(context, databases)
+            if users:
+                self.create_user(context, users)
         else:
             if cluster_config['instance_type'] == "query_router":
                 self.app.reset_configuration({'config_contents':
@@ -167,9 +176,8 @@ class Manager(periodic_task.PeriodicTasks):
             operation='update_attributes', datastore=MANAGER)
 
     def create_database(self, context, databases):
-        LOG.debug("Creating database.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='create_database', datastore=MANAGER)
+        LOG.debug("Creating database(s).")
+        return service.MongoDBAdmin().create_database(databases)
 
     def create_user(self, context, users):
         LOG.debug("Creating user(s).")
@@ -177,8 +185,7 @@ class Manager(periodic_task.PeriodicTasks):
 
     def delete_database(self, context, database):
         LOG.debug("Deleting database.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='delete_database', datastore=MANAGER)
+        return service.MongoDBAdmin().delete_database(database)
 
     def delete_user(self, context, user):
         LOG.debug("Deleting user.")
@@ -190,24 +197,21 @@ class Manager(periodic_task.PeriodicTasks):
 
     def grant_access(self, context, username, hostname, databases):
         LOG.debug("Granting acccess.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='grant_access', datastore=MANAGER)
+        return service.MongoDBAdmin().grant_access(username, databases)
 
     def revoke_access(self, context, username, hostname, database):
         LOG.debug("Revoking access.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='revoke_access', datastore=MANAGER)
+        return service.MongoDBAdmin().revoke_access(username, database)
 
     def list_access(self, context, username, hostname):
         LOG.debug("Listing access.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='list_access', datastore=MANAGER)
+        return service.MongoDBAdmin().list_access(username)
 
     def list_databases(self, context, limit=None, marker=None,
                        include_marker=False):
         LOG.debug("Listing databases.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='list_databases', datastore=MANAGER)
+        return service.MongoDBAdmin().list_databases(limit, marker,
+                                                     include_marker)
 
     def list_users(self, context, limit=None, marker=None,
                    include_marker=False):
@@ -216,13 +220,11 @@ class Manager(periodic_task.PeriodicTasks):
 
     def enable_root(self, context):
         LOG.debug("Enabling root.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='enable_root', datastore=MANAGER)
+        return service.MongoDBAdmin().enable_root()
 
     def is_root_enabled(self, context):
         LOG.debug("Checking if root is enabled.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='is_root_enabled', datastore=MANAGER)
+        return service.MongoDBAdmin().is_root_enabled()
 
     def _perform_restore(self, backup_info, context, restore_location, app):
         LOG.info(_("Restoring database from backup %s.") % backup_info['id'])

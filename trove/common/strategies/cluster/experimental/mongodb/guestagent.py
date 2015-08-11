@@ -13,10 +13,11 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from oslo_log import log as logging
+
 from trove.common import cfg
 from trove.common.strategies.cluster import base
 from trove.guestagent import api as guest_api
-from trove.openstack.common import log as logging
 
 
 LOG = logging.getLogger(__name__)
@@ -65,3 +66,8 @@ class MongoDbGuestAgentAPI(guest_api.API):
         LOG.debug("Requesting cluster key from guest")
         return self._call("get_key", guest_api.AGENT_LOW_TIMEOUT,
                           self.version_cap)
+
+    def create_admin_user(self, password):
+        LOG.debug("Creating admin user")
+        return self._call("create_admin_user", guest_api.AGENT_HIGH_TIMEOUT,
+                          self.version_cap, password=password)
