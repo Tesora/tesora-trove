@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from trove.guestagent.datastore.experimental.postgresql import pgutil
 from trove.guestagent.strategies.backup import base
 from trove.openstack.common import log as logging
 
@@ -25,5 +26,6 @@ class PgDump(base.BackupRunner):
 
     @property
     def cmd(self):
-        cmd = 'sudo -u postgres pg_dumpall '
+        hostopt = '--host=%s ' % pgutil.get_pgsql_socket_dir()
+        cmd = 'sudo -u postgres pg_dumpall ' + hostopt
         return cmd + self.zip_cmd + self.encrypt_cmd

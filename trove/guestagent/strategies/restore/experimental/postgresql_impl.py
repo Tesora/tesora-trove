@@ -14,6 +14,7 @@
 #    under the License.
 
 import re
+from trove.guestagent.datastore.experimental.postgresql import pgutil
 from trove.guestagent.strategies.restore import base
 from trove.openstack.common import log as logging
 from trove.common import exception
@@ -25,7 +26,8 @@ LOG = logging.getLogger(__name__)
 class PgDump(base.RestoreRunner):
     """Implementation of Restore Strategy for pg_dump."""
     __strategy_name__ = 'pg_dump'
-    base_restore_cmd = 'sudo -u postgres psql '
+    hostopt = '--host=%s ' % pgutil.get_pgsql_socket_dir()
+    base_restore_cmd = 'sudo -u postgres psql ' + hostopt
 
     IGNORED_ERROR_PATTERNS = [
         re.compile("ERROR:\s*role \"postgres\" already exists"),
