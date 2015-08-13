@@ -964,6 +964,8 @@ class MongoDBUser(DatastoreUser):
     def _init_roles(self):
         if '_roles' not in self.__dict__:
             self._roles = []
+            for db in self._databases:
+                self._roles.append({'db': db['_name'], 'role': 'readWrite'})
 
     @classmethod
     def deserialize_user(cls, value):
