@@ -133,6 +133,12 @@ def get_engine():
     return ENGINE
 
 
+def clear_engine_cache():
+    """Clear the cache used by get_engine()."""
+    global ENGINE
+    ENGINE = None
+
+
 def load_mysqld_options():
     # find mysqld bin
     for bin in MYSQL_BIN_CANDIDATES:
@@ -644,6 +650,8 @@ class MySqlApp(object):
         with LocalSqlClient(engine) as client:
             self._remove_anonymous_user(client)
             self._create_admin_user(client, admin_password)
+
+        clear_engine_cache()
 
         self.stop_db()
         self._write_mycnf(admin_password, config_contents, overrides)
