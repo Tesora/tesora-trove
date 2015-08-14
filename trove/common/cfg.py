@@ -554,6 +554,8 @@ mysql_group = cfg.OptGroup(
     'mysql', title='MySQL options',
     help="Oslo option group designed for MySQL datastore")
 mysql_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports', default=["3306"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
@@ -844,6 +846,8 @@ percona_group = cfg.OptGroup(
     'percona', title='Percona options',
     help="Oslo option group designed for Percona datastore")
 percona_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports', default=["3306"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
@@ -1011,6 +1015,8 @@ redis_group = cfg.OptGroup(
     'redis', title='Redis options',
     help="Oslo option group designed for Redis datastore")
 redis_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports', default=["6379", "16379"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
@@ -1084,6 +1090,8 @@ cassandra_group = cfg.OptGroup(
     'cassandra', title='Cassandra options',
     help="Oslo option group designed for Cassandra datastore")
 cassandra_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports', default=["7000", "7001", "7199", "9042", "9160"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
@@ -1185,6 +1193,8 @@ couchbase_group = cfg.OptGroup(
     'couchbase', title='Couchbase options',
     help="Oslo option group designed for Couchbase datastore")
 couchbase_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports',
                 default=["8091", "8092", "4369", "11209-11211", "21100-21299"],
                 help='List of TCP ports and/or port ranges to open '
@@ -1290,6 +1300,8 @@ mongodb_group = cfg.OptGroup(
     'mongodb', title='MongoDB options',
     help="Oslo option group designed for MongoDB datastore")
 mongodb_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports', default=["2500", "27017", "27019"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
@@ -1378,6 +1390,8 @@ postgresql_group = cfg.OptGroup(
     'postgresql', title='PostgreSQL options',
     help="Oslo option group for the PostgreSQL datastore.")
 postgresql_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports', default=["5432"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
@@ -1491,6 +1505,8 @@ couchdb_group = cfg.OptGroup(
     'couchdb', title='CouchDB options',
     help="Oslo option group designed for CouchDB datastore")
 couchdb_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports',
                 default=["5984"],
                 help='List of TCP ports and/or port ranges to open '
@@ -1549,6 +1565,8 @@ vertica_group = cfg.OptGroup(
     'vertica', title='Vertica options',
     help="Oslo option group designed for Vertica datastore")
 vertica_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports',
                 default=["5433", "5434", "22", "5444", "5450", "4803"],
                 help='List of TCP ports and/or port ranges to open '
@@ -1615,6 +1633,8 @@ db2_group = cfg.OptGroup(
     'db2', title='DB2 options',
     help="Oslo option group designed for DB2 datastore")
 db2_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports',
                 default=["50000"],
                 help='List of TCP ports and/or port ranges to open '
