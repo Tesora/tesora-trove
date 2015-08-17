@@ -2493,7 +2493,8 @@ class MongoDBAppTest(testtools.TestCase):
             'cmd_disable': 'disable'
         }
 
-    def setUp(self):
+    @patch.object(mongo_service.MongoDBApp, '_init_overrides_dir')
+    def setUp(self, _):
         super(MongoDBAppTest, self).setUp()
         self.orig_utils_execute_with_timeout = (mongo_service.
                                                 utils.execute_with_timeout)
@@ -2508,9 +2509,10 @@ class MongoDBAppTest(testtools.TestCase):
         self.FAKE_ID = str(uuid4())
         InstanceServiceStatus.create(instance_id=self.FAKE_ID,
                                      status=rd_instance.ServiceStatuses.NEW)
-        self.appStatus = FakeAppStatus(self.FAKE_ID,
-                                       rd_instance.ServiceStatuses.NEW)
-        self.mongoDbApp = mongo_service.MongoDBApp(self.appStatus)
+
+        self.mongoDbApp = mongo_service.MongoDBApp()
+        self.mongoDbApp.status = FakeAppStatus(self.FAKE_ID,
+                                               rd_instance.ServiceStatuses.NEW)
         time.sleep = Mock()
         os.unlink = Mock()
 
@@ -2531,7 +2533,7 @@ class MongoDBAppTest(testtools.TestCase):
 
     def test_stopdb(self):
         mongo_service.utils.execute_with_timeout = Mock()
-        self.appStatus.set_next_status(
+        self.mongoDbApp.status.set_next_status(
             rd_instance.ServiceStatuses.SHUTDOWN)
 
         self.mongoDbApp.stop_db()
@@ -2540,7 +2542,7 @@ class MongoDBAppTest(testtools.TestCase):
     def test_stop_db_with_db_update(self):
 
         mongo_service.utils.execute_with_timeout = Mock()
-        self.appStatus.set_next_status(
+        self.mongoDbApp.status.set_next_status(
             rd_instance.ServiceStatuses.SHUTDOWN)
 
         self.mongoDbApp.stop_db(True)
@@ -2550,13 +2552,15 @@ class MongoDBAppTest(testtools.TestCase):
     def test_stop_db_error(self):
 
         mongo_service.utils.execute_with_timeout = Mock()
-        self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
+        self.mongoDbApp.status.set_next_status(
+            rd_instance.ServiceStatuses.RUNNING)
         self.mongoDbApp.state_change_wait_time = 1
         self.assertRaises(RuntimeError, self.mongoDbApp.stop_db)
 
     def test_restart(self):
 
-        self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
+        self.mongoDbApp.status.set_next_status(
+            rd_instance.ServiceStatuses.RUNNING)
         self.mongoDbApp.stop_db = Mock()
         self.mongoDbApp.start_db = Mock()
 
@@ -2574,7 +2578,8 @@ class MongoDBAppTest(testtools.TestCase):
     def test_start_db(self):
 
         mongo_service.utils.execute_with_timeout = Mock()
-        self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
+        self.mongoDbApp.status.set_next_status(
+            rd_instance.ServiceStatuses.RUNNING)
 
         self.mongoDbApp.start_db()
         self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
@@ -2582,7 +2587,8 @@ class MongoDBAppTest(testtools.TestCase):
     def test_start_db_with_update(self):
 
         mongo_service.utils.execute_with_timeout = Mock()
-        self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
+        self.mongoDbApp.status.set_next_status(
+            rd_instance.ServiceStatuses.RUNNING)
 
         self.mongoDbApp.start_db(True)
         self.assertTrue(conductor_api.API.heartbeat.called_once_with(
@@ -2594,7 +2600,8 @@ class MongoDBAppTest(testtools.TestCase):
             return_value=["ubuntu 17036  0.0  0.1 618960 "
                           "29232 pts/8    Sl+  Jan29   0:07 mongod", ""])
         self.mongoDbApp.state_change_wait_time = 1
-        self.appStatus.set_next_status(rd_instance.ServiceStatuses.SHUTDOWN)
+        self.mongoDbApp.status.set_next_status(
+            rd_instance.ServiceStatuses.SHUTDOWN)
 
         self.assertRaises(RuntimeError, self.mongoDbApp.start_db)
         self.assertTrue(conductor_api.API.heartbeat.called_once_with(
@@ -2608,23 +2615,11 @@ class MongoDBAppTest(testtools.TestCase):
 
         self.assertRaises(RuntimeError, self.mongoDbApp.start_db)
 
-    def test_mongodb_error_in_write_config_verify_unlink(self):
-        configuration = {'config_contents': 'some junk'}
-
-        with patch.object(os.path, 'isfile', return_value=True):
-            with patch.object(operating_system, 'move',
-                              side_effect=ProcessExecutionError):
-                self.assertRaises(ProcessExecutionError,
-                                  self.mongoDbApp.reset_configuration,
-                                  configuration=configuration)
-                self.assertEqual(1, operating_system.move.call_count)
-                self.assertEqual(1, os.unlink.call_count)
-
     def test_start_db_with_conf_changes_db_is_running(self):
 
         self.mongoDbApp.start_db = Mock()
 
-        self.appStatus.status = rd_instance.ServiceStatuses.RUNNING
+        self.mongoDbApp.status.status = rd_instance.ServiceStatuses.RUNNING
         self.assertRaises(RuntimeError,
                           self.mongoDbApp.start_db_with_conf_changes,
                           Mock())
