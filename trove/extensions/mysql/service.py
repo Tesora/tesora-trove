@@ -27,6 +27,7 @@ from trove.extensions.mysql.common import unquote_user_host
 from trove.extensions.mysql import models
 from trove.extensions.mysql import views
 from trove.guestagent.db import models as guest_models
+from trove.instance import models as base_models
 from trove.openstack.common import log as logging
 from trove.common.i18n import _
 import trove.common.apischema as apischema
@@ -110,7 +111,9 @@ class UserController(wsgi.Controller):
         context = req.environ[wsgi.CONTEXT_KEY]
         users = body['users']
         try:
-            model_users = populate_users(users)
+            datastore = base_models.Instance.load(
+                context, instance_id).datastore
+            model_users = populate_users(users, datastore=datastore)
             models.User.create(context, instance_id, model_users)
         except (ValueError, AttributeError) as e:
             raise exception.BadRequest(msg=str(e))
@@ -297,7 +300,10 @@ class SchemaController(wsgi.Controller):
         LOG.info(_("body : '%s'\n\n") % body)
         context = req.environ[wsgi.CONTEXT_KEY]
         schemas = body['databases']
-        model_schemas = populate_validated_databases(schemas)
+        datastore = base_models.Instance.load(
+            context, instance_id).datastore
+        model_schemas = populate_validated_databases(schemas,
+                                                     datastore=datastore)
         models.Schema.create(context, instance_id, model_schemas)
         return wsgi.Result(None, 202)
 

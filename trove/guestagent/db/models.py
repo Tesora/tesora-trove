@@ -80,9 +80,17 @@ class DatastoreSchema(Base):
     def collate(self):
         return self._collate
 
+    @collate.setter
+    def collate(self, value):
+        self._collate = value
+
     @property
     def character_set(self):
         return self._character_set
+
+    @character_set.setter
+    def character_set(self, value):
+        self._character_set = value
 
     def _validate_schema_name(self, value):
         """Perform validations on a given schema name.
@@ -1141,3 +1149,35 @@ class RootUser(MySQLUser):
     """Overrides _ignore_users from the MySQLUser class."""
 
     _ignore_users = []
+
+
+def create_ds_schema_model(ds_name, schema_name):
+    print('%s %s' % (ds_name, schema_name))
+    if ds_name == 'mongodb':
+        return MongoDBSchema(name=schema_name)
+    elif ds_name == 'cassandra':
+        return CassandraSchema(schema_name)
+    elif ds_name == 'oracle':
+        return OracleSchema(schema_name)
+    elif ds_name == 'oracle_ra':
+        return OracleSchema(schema_name)
+    else:
+        schema = ValidatedMySQLDatabase()
+        schema.name = schema_name
+        return schema
+
+
+def create_ds_user_model(ds_name, user_name):
+    print('%s %s' % (ds_name, user_name))
+    if ds_name == 'mongodb':
+        return MongoDBUser(name=user_name)
+    elif ds_name == 'cassandra':
+        return CassandraUser(user_name)
+    elif ds_name == 'oracle':
+        return OracleUser(user_name)
+    elif ds_name == 'oracle_ra':
+        return OracleUser(user_name)
+    else:
+        user = MySQLUser()
+        user.name = user_name
+        return user

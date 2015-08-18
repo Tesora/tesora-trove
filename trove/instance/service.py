@@ -210,14 +210,14 @@ class InstanceController(wsgi.Controller):
 
         configuration = self._configuration_parse(context, body)
         databases = populate_validated_databases(
-            body['instance'].get('databases', []))
+            body['instance'].get('databases', []), datastore=datastore)
         database_names = [database.get('_name', '') for database in databases]
         users = None
         try:
             users = populate_users(body['instance'].get('users', []),
-                                   database_names)
+                                   database_names, datastore=datastore)
         except ValueError as ve:
-            raise exception.BadRequest(msg=ve)
+            raise exception.BadRequest(str(ve))
 
         if 'volume' in body['instance']:
             volume_size = int(body['instance']['volume']['size'])

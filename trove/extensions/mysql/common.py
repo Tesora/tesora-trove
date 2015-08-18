@@ -17,7 +17,7 @@ from trove.guestagent.db import models as guest_models
 from urllib import unquote
 
 
-def populate_validated_databases(dbs):
+def populate_validated_databases(dbs, datastore=None):
     """
     Create a serializable request with user provided data
     for creating new databases.
@@ -25,9 +25,10 @@ def populate_validated_databases(dbs):
     try:
         databases = []
         unique_identities = set()
+        ds_name = datastore.name if datastore else None
         for database in dbs:
-            mydb = guest_models.ValidatedMySQLDatabase()
-            mydb.name = database.get('name', '')
+            mydb = guest_models.create_ds_schema_model(
+                ds_name, database.get('name', ''))
             if mydb.name in unique_identities:
                 raise exception.DatabaseInitialDatabaseDuplicateError()
             unique_identities.add(mydb.name)
@@ -43,13 +44,14 @@ def populate_validated_databases(dbs):
         raise exception.BadRequest(safe_string)
 
 
-def populate_users(users, initial_databases=None):
+def populate_users(users, initial_databases=None, datastore=None):
     """Create a serializable request containing users."""
     users_data = []
     unique_identities = set()
+    ds_name = datastore.name if datastore else None
     for user in users:
-        u = guest_models.MySQLUser()
-        u.name = user.get('name', '')
+        u = guest_models.create_ds_user_model(
+            ds_name, user.get('name', ''))
         u.host = user.get('host', '%')
         user_identity = (u.name, u.host)
         if user_identity in unique_identities:
