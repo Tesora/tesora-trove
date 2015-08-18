@@ -75,16 +75,19 @@ ADMIN_PSWD = oracle_service.OracleConfig().admin_password
 class RmanBackup(base.RestoreRunner):
     __strategy_name__ = 'rmanbackup'
     base_restore_cmd = 'sudo tar xPf -'
-    db_name = ''
 
     def __init__(self, *args, **kwargs):
         super(RmanBackup, self).__init__(*args, **kwargs)
         self.status = oracle_service.OracleAppStatus()
         self.app = oracle_service.OracleApp(self.status)
         self.content_length = 0
+        self.backup_id = kwargs.get('backup_id')
+        self.db_name = ''
 
     def _perform_restore(self):
-        control_file = glob.glob(ORA_BACKUP_PATH  + '/' +self.db_name + '/*.ctl')[0]
+        control_file = glob.glob(ORA_BACKUP_PATH  + '/' +
+                                 self.db_name +
+                                 '/*' + self.backup_id + '.ctl')[0]
         restore_cmd = ("""\"export ORACLE_SID=%(db_name)s
 rman target %(admin_user)s/%(admin_pswd)s <<EOF
 run {
@@ -92,6 +95,7 @@ startup nomount;
 restore controlfile from '%(ctl_file)s';
 startup mount;
 crosscheck backup;
+delete noprompt expired backup;
 restore database;
 }
 EXIT;
@@ -147,6 +151,10 @@ EOF\"
                                    timeout=LARGE_TIMEOUT,
                                    shell=True, log_output_on_error=True)
 
+    def _unpack_backup_files(self, location, checksum):
+        LOG.debug("Restoring full backup files")
+        self.content_length = self._unpack(location, checksum, self.restore_cmd)
+
     def _run_restore(self):
         metadata = self.storage.load_metadata(self.location, self.checksum)
         self.db_name = metadata['db_name']
@@ -163,7 +171,7 @@ EOF\"
                                           user='oracle', group='oinstall',
                                           force=True, as_root=True)
         # the backup set will restore directly to ORADATA/backupset_files
-        self._unpack(self.location, self.checksum, self.restore_cmd)
+        self._unpack_backup_files(self.location, self.checksum)
 
         operating_system.chown(ORA_BACKUP_PATH, 'oracle', 'oinstall',
                                recursive=True, force=True, as_root=True)
@@ -186,3 +194,18 @@ EOF\"
         self._create_oratab_entry();
         operating_system.remove(ORA_BACKUP_PATH, force=True, as_root=True,
                                 recursive=True)
+
+
+class RmanBackupIncremental(RmanBackup):
+
+    def _unpack_backup_files(self, location, checksum):
+        LOG.debug("Restoring incremental backup files")
+        metadata = self.storage.load_metadata(location, checksum)
+        if 'parent_location' in metadata:
+            LOG.info(_("Restoring parent: %(parent_location)s"
+                       " checksum: %(parent_checksum)s.") % metadata)
+            parent_location = metadata['parent_location']
+            parent_checksum = metadata['parent_checksum']
+            self._unpack_backup_files(parent_location, parent_checksum)
+
+        self.content_length += self._unpack(location, checksum, self.restore_cmd)

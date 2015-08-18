@@ -100,6 +100,14 @@ uuid = {
                "-([0-9a-fA-F]){4}-([0-9a-fA-F]){12}$"
 }
 
+backup_id = {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 64,
+    "pattern": "^(([0-9a-fA-F]){8}-([0-9a-fA-F]){4}-([0-9a-fA-F]){4}"
+               "-([0-9a-fA-F]){4}-([0-9a-fA-F]){12}|last)$"
+}
+
 volume = {
     "type": "object",
     "required": ["size"],
@@ -506,7 +514,7 @@ backup = {
                     "description": non_empty_string,
                     "instance": uuid,
                     "name": non_empty_string,
-                    "parent_id": uuid
+                    "parent_id": backup_id
                 }
             }
         }

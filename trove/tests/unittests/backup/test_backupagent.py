@@ -441,7 +441,8 @@ class BackupAgentTest(testtools.TestCase):
                              'location': 'fake-location',
                              'type': 'InnoBackupEx',
                              'checksum': 'fake-checksum',
-                             'parent': {'location': 'fake', 'checksum': 'md5'}
+                             'parent': {'id': '246', 'location': 'fake',
+                                        'checksum': 'md5'}
                              }
 
                 agent.execute_backup(TroveContext(),
@@ -462,7 +463,8 @@ class BackupAgentTest(testtools.TestCase):
                          'location': 'fake-location',
                          'type': 'InnoBackupEx',
                          'checksum': 'fake-checksum',
-                         'parent': {'location': 'fake', 'checksum': 'md5'}
+                         'parent': {'id': '246',
+                                    'location': 'fake', 'checksum': 'md5'}
                          }
 
             self.assertRaises(
