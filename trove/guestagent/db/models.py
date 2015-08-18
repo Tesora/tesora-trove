@@ -164,61 +164,6 @@ class MongoDBSchema(DatastoreSchema):
         return ['_name']
 
 
-class DatastoreSchema(Base):
-    """Represents a database schema."""
-
-    def __init__(self):
-        self._name = None
-        self._collate = None
-        self._character_set = None
-
-    @property
-    def name(self):
-        return self._name
-
-    @name.setter
-    def name(self, value):
-        self._validate_schema_name(value)
-        self._name = value
-
-    @property
-    def collate(self):
-        return self._collate
-
-    @property
-    def character_set(self):
-        return self._character_set
-
-    def _validate_schema_name(self, value):
-        """Perform validations on a given schema name.
-        :param value:        Validated schema name.
-        :type value:         string
-        :raises:             ValueError On validation errors.
-        """
-        if self._max_schema_name_length and (len(value) >
-                                             self._max_schema_name_length):
-            raise ValueError(_("Schema name '%(name)s' is too long. "
-                               "Max length = %(max_length)d.")
-                             % {'name': value,
-                                'max_length': self._max_schema_name_length})
-        elif not self._is_valid_schema_name(value):
-            raise ValueError(_("'%s' is not a valid schema name.") % value)
-
-    @abc.abstractproperty
-    def _max_schema_name_length(self):
-        """Return the maximum valid schema name length if any.
-        :returns:            Maximum schema name length or None if unlimited.
-        """
-
-    @abc.abstractmethod
-    def _is_valid_schema_name(self, value):
-        """Validate a given schema name.
-        :param value:        Validated schema name.
-        :type value:         string
-        :returns:            TRUE if valid, FALSE otherwise.
-        """
-
-
 class OracleSchema(DatastoreSchema):
     """Represents a Oracle schema and its associated properties.
 
