@@ -148,10 +148,14 @@ class BackupAgent(object):
             # The parent could be another incremental backup so we need to
             # reset the location and checksum to *this* parents info
             parent_metadata.update({
-                'parent_id': parent['id'],
                 'parent_location': parent['location'],
                 'parent_checksum': parent['checksum']
             })
+            # The backup code path for replication does not include the id key
+            if 'id' in parent:
+                parent_metadata.update({
+                    'parent_id': parent['id']
+                })
 
         self.stream_backup_to_storage(backup_info, runner, storage,
                                       parent_metadata, extra_opts)
