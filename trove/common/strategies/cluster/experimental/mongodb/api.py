@@ -403,7 +403,7 @@ class MongoDbCluster(models.Cluster):
     def _create_instances(self, instances, cluster_config,
                           default_name_tag, key=None):
         """Loop through the instances and create them in this cluster."""
-        cluster_config['id'] = self.id,
+        cluster_config['id'] = self.id
         if not key:
             key = self.get_guest(self.arbitrary_query_router).get_key()
         cluster_config['key'] = key

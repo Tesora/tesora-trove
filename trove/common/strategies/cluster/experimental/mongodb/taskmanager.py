@@ -236,7 +236,7 @@ class MongoDbClusterTasks(task_models.ClusterTasks):
                           'with config servers %s'
                           % (query_router_ids, config_servers_ids))
                 if not self._all_instances_ready(
-                    query_router_ids + config_servers_ids, cluster_id
+                    query_router_ids, cluster_id
                 ):
                     return
                 query_routers = [Instance.load(context, instance_id)
@@ -300,7 +300,7 @@ class MongoDbClusterTasks(task_models.ClusterTasks):
         finally:
             timeout.cancel()
 
-        LOG.debug("end grow_cluster for MongoDB cluster %s" % self.id)
+        LOG.debug("end shrink_cluster for MongoDB cluster %s" % self.id)
 
     def get_cluster_admin_password(self):
         """The cluster admin's user credentials are stored on all query

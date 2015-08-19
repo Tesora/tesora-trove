@@ -182,7 +182,7 @@ class Cluster(object):
         """DBInstance objects are persistant, therefore cacheable."""
         if not self._db_instances:
             self._db_instances = inst_models.DBInstance.find_all(
-                cluster_id=self.id).all()
+                cluster_id=self.id, deleted=False).all()
         return self._db_instances
 
     @property
