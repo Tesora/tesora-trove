@@ -92,7 +92,7 @@ class Manager(periodic_task.PeriodicTasks):
         # Don't start mongos until add_config_servers is invoked,
         # don't start members as they should already be running.
         if not (self.app.is_query_router or self.app.is_cluster_member):
-            self.app.start_db(update_db=True)
+            self.app.start_db(update_db=False)
 
         if not cluster_config and backup_info:
             self._perform_restore(backup_info, context, mount_point, self.app)
