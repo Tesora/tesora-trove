@@ -146,13 +146,13 @@ class RedisGuestAgentManagerTest(trove_testtools.TestCase):
         apply_initial_guestagent_configuration.assert_called_once_with()
         operating_system.chown.assert_any_call(
             mount_point, 'redis', 'redis', as_root=True)
-        redis_service.RedisApp.restart.assert_any_call()
         if backup_info:
             backup.restore.assert_called_once_with(self.context,
                                                    backup_info,
                                                    '/var/lib/redis')
+        else:
+            restart.assert_any_call()
         chown_mock.assert_any_call(mount_point, 'redis', 'redis', as_root=True)
-        restart.assert_any_call()
 
         if snapshot:
             self.assertEqual(1, mock_replication.enable_as_slave.call_count)
