@@ -22,8 +22,8 @@ OS_NAME = operating_system.get_os()
 
 MONGODB_MOUNT_POINT = "/var/lib/mongodb"
 MONGO_LOG_FILE = '/var/log/mongodb/mongod.log'
+MONGO_PID_FILE = '/var/run/mongodb/mongodb.pid'
 
-PID_FILE_CANDIDATES = ["/var/run/mongodb/mongodb.pid", "/var/run/mongodb.pid"]
 CONFIG_CANDIDATES = ["/etc/mongodb.conf", "/etc/mongod.conf"]
 MONGOS_UPSTART = "/etc/init/mongos.conf"
 MONGO_ADMIN_NAME = 'os_admin'
