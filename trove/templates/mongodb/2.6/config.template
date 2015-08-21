@@ -1,0 +1,4 @@
+# mongodb.conf
+
+storage.smallFiles: false
+storage.journal.enabled: true
