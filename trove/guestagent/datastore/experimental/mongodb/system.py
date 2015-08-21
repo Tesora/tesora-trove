@@ -21,9 +21,9 @@ from trove.guestagent import pkg
 OS_NAME = operating_system.get_os()
 
 MONGODB_MOUNT_POINT = "/var/lib/mongodb"
-MONGO_PID_FILE = '/var/run/mongodb.pid'
 MONGO_LOG_FILE = '/var/log/mongodb/mongod.log'
 
+PID_FILE_CANDIDATES = ["/var/run/mongodb/mongodb.pid", "/var/run/mongodb.pid"]
 CONFIG_CANDIDATES = ["/etc/mongodb.conf", "/etc/mongod.conf"]
 MONGOS_UPSTART = "/etc/init/mongos.conf"
 MONGO_ADMIN_NAME = 'os_admin'
