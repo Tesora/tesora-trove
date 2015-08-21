@@ -38,8 +38,8 @@ from trove.guestagent.db import models
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
-CONFIG_FILE = (operating_system.
-               file_discovery(system.CONFIG_CANDIDATES))
+CONFIG_FILE = operating_system.file_discovery(system.CONFIG_CANDIDATES)
+PID_FILE = operating_system.file_discovery(system.PID_FILE_CANDIDATES)
 
 # Configuration group for clustering-related settings.
 CNF_CLUSTER = 'clustering'
@@ -216,7 +216,7 @@ class MongoDBApp(object):
         # 'security.authorization': True
         self.configuration_manager.apply_system_override(
             {'processManagement.fork': False,
-             'processManagement.pidFilePath': system.MONGO_PID_FILE,
+             'processManagement.pidFilePath': PID_FILE,
              'systemLog.destination': 'file',
              'systemLog.path': system.MONGO_LOG_FILE,
              'systemLog.logAppend': True
