@@ -116,16 +116,23 @@ class Manager(periodic_task.PeriodicTasks):
                                    + "cluster-config-file cluster.conf\n")
             self._app.configuration_manager.save_configuration(config_contents)
             self._app.apply_initial_guestagent_configuration()
-            self._app.restart()
 
-            if snapshot:
-                self.attach_replica(context, snapshot, snapshot['config'])
-
-            LOG.info(_('Redis instance has been setup and configured.'))
+            restart_required = True
             if backup_info:
                 persistence_dir = self._app.get_working_dir()
                 self._perform_restore(backup_info, context, persistence_dir,
                                       self._app)
+                restart_required = False
+
+            if snapshot:
+                self.attach_replica(context, snapshot, snapshot['config'])
+                restart_required = True
+
+            if restart_required:
+                self._app.restart()
+            else:
+                self._app.status.end_install_or_restart()
+            LOG.info(_('Redis instance has been setup and configured.'))
         except Exception:
             LOG.exception(_("Error setting up Redis instance."))
             self._app.status.set_status(rd_instance.ServiceStatuses.FAILED)
