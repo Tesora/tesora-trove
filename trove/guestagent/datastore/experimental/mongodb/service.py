@@ -273,10 +273,12 @@ class MongoDBApp(object):
         # elements.
         # The guestagent will choose the right daemon ('mongod' or 'mongos')
         # based on the 'cluster_config' values.
-        upstart_contents = (system.MONGOS_UPSTART_CONTENTS.
-                            format(config_file_placeholder=CONFIG_FILE))
-        operating_system.write_file(system.MONGOS_UPSTART, upstart_contents,
-                                    as_root=True)
+        if operating_system.get_os() == operating_system.DEBIAN:
+            upstart_contents = (system.MONGOS_UPSTART_CONTENTS.
+                                format(config_file_placeholder=CONFIG_FILE))
+            operating_system.write_file(system.MONGOS_UPSTART,
+                                        upstart_contents,
+                                        as_root=True)
 
         # FIXME(pmalik): We should really have a separate configuration
         # template for the 'mongos' process.
