@@ -195,7 +195,7 @@ class PgSqlUsers(PgSqlAccess):
             )
             pgutil.psql(
                 pgutil.UserQuery.update_password(
-                    user=user['name'],
+                    name=user['name'],
                     password=user['password'],
                 ),
                 timeout=30,
