@@ -17,6 +17,7 @@ import abc
 import ast
 import csv
 import json
+import re
 import six
 import StringIO
 import yaml
@@ -65,8 +66,12 @@ class StringConverter(object):
         return str(value)
 
     def _to_object(self, value):
+        # Return known mappings and quoted strings right away.
         if value in self._object_mappings:
             return self._object_mappings[value]
+        elif (isinstance(value, basestring) and
+              re.match("^'(.*)'|\"(.*)\"$", value)):
+            return value
 
         try:
             return ast.literal_eval(value)
@@ -301,9 +306,10 @@ class PropertiesCodec(StreamCodec):
         data_dict = {}
         for row in reader:
             # Ignore comment lines.
-            if row and not row[0].startswith(self._comment_markers):
+            if row and not row[0].strip().startswith(self._comment_markers):
                 items = self._string_converter.to_objects(
-                    [v if v else None for v in row[1:]])
+                    [v if v else None for v in
+                     map(self._strip_comments, row[1:])])
                 current = data_dict.get(row[0])
                 if current is not None:
                     current.append(trove_utils.unpack_singleton(items)
@@ -317,6 +323,12 @@ class PropertiesCodec(StreamCodec):
                 data_dict.update({k: trove_utils.unpack_singleton(v)})
 
         return data_dict
+
+    def _strip_comments(self, value):
+        # Strip in-line comments.
+        for marker in self._comment_markers:
+            value = value.split(marker)[0]
+        return value.strip()
 
     def _to_rows(self, header, items):
         rows = []

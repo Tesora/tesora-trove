@@ -16,18 +16,21 @@
 from collections import OrderedDict
 import os
 
-from distutils.version import LooseVersion
 from oslo_log import log as logging
 
 from trove.common import cfg
 from trove.common.i18n import _
 from trove.common.stream_codecs import PropertiesCodec
+from trove.guestagent.common.configuration import ConfigurationManager
+from trove.guestagent.common.configuration import OneFileOverrideStrategy
+from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.common.operating_system import FileMode
 from trove.guestagent.datastore.experimental.postgresql.service.process import(
     PgSqlProcess)
 from trove.guestagent.datastore.experimental.postgresql.service.status import(
     PgSqlAppStatus)
+from trove.guestagent.datastore.experimental.postgresql import pgutil
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
@@ -39,55 +42,123 @@ class PgSqlConfig(PgSqlProcess):
     This mixin has a dependency on the PgSqlProcess mixin.
     """
 
-    @property
-    def PGSQL_OWNER(self):
-        return 'postgres'
+    OS = operating_system.get_os()
+    CONFIG_BASE = {
+        operating_system.DEBIAN: '/etc/postgresql/',
+        operating_system.REDHAT: '/var/lib/postgresql/',
+        operating_system.SUSE: '/var/lib/pgsql/'}[OS]
+    LISTEN_ADDRESSES = ['*']  # Listen on all available IP (v4/v6) interfaces.
+
+    def __init__(self):
+        self.configuration_manager = ConfigurationManager(
+            self.PGSQL_CONFIG, self.PGSQL_OWNER, self.PGSQL_OWNER,
+            PropertiesCodec(
+                delimiter='=',
+                string_mappings={'on': True, 'off': False, "''": None}),
+            requires_root=True,
+            override_strategy=OneFileOverrideStrategy(
+                self._init_overrides_dir()))
+
+    # TODO(pmalik): To be removed when
+    # 'https://review.openstack.org/#/c/218382/' merges.
+    def _init_overrides_dir(self):
+        """Initialize a directory for configuration overrides.
+        """
+        revision_dir = guestagent_utils.build_file_path(
+            os.path.dirname(self.PGSQL_CONFIG),
+            ConfigurationManager.DEFAULT_STRATEGY_OVERRIDES_SUB_DIR)
+
+        if not os.path.exists(revision_dir):
+            operating_system.create_directory(
+                revision_dir,
+                user=self.PGSQL_OWNER, group=self.PGSQL_OWNER,
+                force=True, as_root=True)
+
+        return revision_dir
 
     @property
     def PGSQL_CONFIG(self):
-        return guestagent_utils.build_file_path(
-            self.current_config_dir, 'main/postgresql.conf')
+        return self._find_config_file('postgresql.conf')
 
     @property
     def PGSQL_HBA_CONFIG(self):
-        return guestagent_utils.build_file_path(
-            self.current_config_dir, 'main/pg_hba.conf')
+        return self._find_config_file('pg_hba.conf')
 
     @property
-    def current_config_dir(self):
-        """Get the most current of the existing Postgres installation
-        configuration directories.
-        """
-        installations = operating_system.list_files_in_directory(
-            '/etc/postgresql/', recursive=False, include_dirs=True)
-        return sorted(
-            installations,
-            key=lambda item: LooseVersion(os.path.basename(item)))[-1]
+    def PGSQL_IDENT_CONFIG(self):
+        return self._find_config_file('pg_ident.conf')
+
+    def _find_config_file(self, name_pattern):
+        version_base = guestagent_utils.build_file_path(self.CONFIG_BASE,
+                                                        self.pg_version[1])
+        return sorted(operating_system.list_files_in_directory(
+            version_base, recursive=True, pattern=name_pattern,
+            as_root=True), key=len)[0]
+
+    def update_overrides(self, context, overrides, remove=False):
+        if remove:
+            self.configuration_manager.remove_user_override()
+        elif overrides:
+            self.configuration_manager.apply_user_override(overrides)
+
+    def apply_overrides(self, context, overrides):
+        # Send a signal to the server, causing configuration files to be
+        # reloaded by all server processes.
+        # Active queries or connections to the database will not be
+        # interrupted.
+        #
+        # NOTE: Do not use the 'SET' command as it only affects the current
+        # session.
+        pgutil.psql("SELECT pg_reload_conf()")
 
     def reset_configuration(self, context, configuration):
-        """Reset the PgSql configuration file to the one given.
-
-        The configuration parameter is a string containing the full
-        configuration file that should be used.
+        """Reset the PgSql configuration to the one given.
         """
-        operating_system.write_file(self.PGSQL_CONFIG, configuration,
-                                    as_root=True)
-        operating_system.chown(self.PGSQL_CONFIG,
-                               self.PGSQL_OWNER, self.PGSQL_OWNER,
-                               recursive=False, as_root=True)
+        config_contents = configuration['config_contents']
+        self.configuration_manager.save_configuration(config_contents)
 
-    def set_db_to_listen(self, context):
+    def start_db_with_conf_changes(self, context, config_contents):
+        """Starts the PgSql instance with a new configuration."""
+        if PgSqlAppStatus.get().is_running:
+            raise RuntimeError(_("The service is still running."))
+
+        self.configuration_manager.save_configuration(config_contents)
+        # The configuration template has to be updated with
+        # guestagent-controlled settings.
+        self.apply_initial_guestagent_configuration()
+        self.start_db(context)
+
+    def apply_initial_guestagent_configuration(self):
         """Update guestagent-controlled configuration properties.
         """
-
         LOG.debug("Applying initial guestagent configuration.")
+        file_locations = {
+            'data_directory': self._quote(self.PGSQL_DATA_DIR),
+            'hba_file': self._quote(self.PGSQL_HBA_CONFIG),
+            'ident_file': self._quote(self.PGSQL_IDENT_CONFIG),
+            'external_pid_file': self._quote(self.PID_FILE),
+            'unix_socket_directories': self._quote(self.UNIX_SOCKET_DIR),
+            'listen_addresses': self._quote(','.join(self.LISTEN_ADDRESSES)),
+            'port': CONF.postgresql.postgresql_port}
+        self.configuration_manager.apply_system_override(file_locations)
+        self._apply_access_rules()
+
+    @staticmethod
+    def _quote(value):
+        return "'%s'" % value
+
+    def _apply_access_rules(self):
+        LOG.debug("Applying database access rules.")
+
+        # Connections to all resources are granted.
+        #
         # Local access from administrative users is implicitly trusted.
         #
         # Remote access from the Trove's account is always rejected as
         # it is not needed and could be used by malicious users to hijack the
         # instance.
         #
-        # Remote connections require the client to supply a double-MD5-hashed
+        # Connections from other accounts always require a double-MD5-hashed
         # password.
         #
         # Make the rules readable only by the Postgres service.
@@ -116,23 +187,3 @@ class PgSqlConfig(PgSqlProcess):
                                as_root=True)
         operating_system.chmod(self.PGSQL_HBA_CONFIG, FileMode.SET_USR_RO,
                                as_root=True)
-
-    def start_db_with_conf_changes(self, context, config_contents):
-        """Restarts the PgSql instance with a new configuration."""
-        LOG.info(
-            _("{guest_id}: Going into restart mode for config file changes.")
-            .format(
-                guest_id=CONF.guest_id,
-            )
-        )
-        PgSqlAppStatus.get().begin_restart()
-        self.stop_db(context)
-        self.reset_configuration(context, config_contents)
-        self.start_db(context)
-        LOG.info(
-            _("{guest_id}: Ending restart mode for config file changes.")
-            .format(
-                guest_id=CONF.guest_id,
-            )
-        )
-        PgSqlAppStatus.get().end_restart()

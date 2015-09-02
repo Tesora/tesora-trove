@@ -82,8 +82,8 @@ class Manager(
             if os.path.exists(mount_point):
                 device.migrate_data(mount_point)
             device.mount(mount_point)
-        self.reset_configuration(context, config_contents)
-        self.set_db_to_listen(context)
+        self.configuration_manager.save_configuration(config_contents)
+        self.apply_initial_guestagent_configuration()
         self.start_db(context)
 
         if backup_info:

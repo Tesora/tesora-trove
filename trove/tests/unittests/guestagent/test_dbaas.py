@@ -860,7 +860,7 @@ class MySqlAppTest(testtools.TestCase):
             {'service_status':
              rd_instance.ServiceStatuses.SHUTDOWN.description}))
 
-    @patch.object(utils, 'execute_with_timeout')
+    @patch.object(utils, 'execute_with_timeout', return_value=('0', ''))
     def test_stop_mysql_do_not_start_on_reboot(self, mock_execute):
 
         self.appStatus.set_next_status(
@@ -881,7 +881,7 @@ class MySqlAppTest(testtools.TestCase):
 
     @patch.object(operating_system, 'service_discovery',
                   side_effect=KeyError('error'))
-    @patch.object(utils, 'execute_with_timeout')
+    @patch.object(utils, 'execute_with_timeout', return_value=('0', ''))
     def test_stop_mysql_key_error(self, mock_execute, mock_service):
         self.assertRaisesRegexp(RuntimeError, 'Service is not discovered.',
                                 self.mySqlApp.stop_db)
@@ -1014,7 +1014,7 @@ class MySqlAppTest(testtools.TestCase):
                         'password': auth_pwd_mock.return_value}})
         wipe_ib_mock.assert_called_once_with()
 
-    @patch.object(utils, 'execute_with_timeout')
+    @patch.object(utils, 'execute_with_timeout', return_value=('0', ''))
     def test__enable_mysql_on_boot(self, mock_execute):
         mysql_service = \
             dbaas_base.operating_system.service_discovery(["mysql"])
@@ -1025,13 +1025,13 @@ class MySqlAppTest(testtools.TestCase):
 
     @patch.object(operating_system, 'service_discovery',
                   side_effect=KeyError('error'))
-    @patch.object(utils, 'execute_with_timeout')
+    @patch.object(utils, 'execute_with_timeout', return_value=('0', ''))
     def test_fail__enable_mysql_on_boot(self, mock_execute, mock_service):
         self.assertRaisesRegexp(RuntimeError, 'Service is not discovered.',
                                 self.mySqlApp._enable_mysql_on_boot)
         self.assertEqual(0, mock_execute.call_count)
 
-    @patch.object(utils, 'execute_with_timeout')
+    @patch.object(utils, 'execute_with_timeout', return_value=('0', ''))
     def test__disable_mysql_on_boot(self, mock_execute):
         mysql_service = \
             dbaas_base.operating_system.service_discovery(["mysql"])
@@ -1042,7 +1042,7 @@ class MySqlAppTest(testtools.TestCase):
 
     @patch.object(operating_system, 'service_discovery',
                   side_effect=KeyError('error'))
-    @patch.object(utils, 'execute_with_timeout')
+    @patch.object(utils, 'execute_with_timeout', return_value=('0', ''))
     def test_fail__disable_mysql_on_boot(self, mock_execute, mock_service):
         self.assertRaisesRegexp(RuntimeError, 'Service is not discovered.',
                                 self.mySqlApp._disable_mysql_on_boot)
@@ -2221,7 +2221,8 @@ class TestRedisApp(testtools.TestCase):
                 RedisApp._install_redis.assert_any_call('asdf')
 
     def test_install_redis(self):
-        with patch.object(utils, 'execute_with_timeout'):
+        with patch.object(utils, 'execute_with_timeout',
+                          return_value=('0', '')):
             with patch.object(pkg.Package, 'pkg_install', return_value=None):
                 with patch.object(RedisApp, 'start_redis', return_value=None):
                     self.app._install_redis('redis')
@@ -2234,7 +2235,7 @@ class TestRedisApp(testtools.TestCase):
         with patch.object(operating_system, 'service_discovery',
                           return_value={'cmd_enable': cmd}):
             with patch.object(utils, 'execute_with_timeout',
-                              return_value=None):
+                              return_value=('0', '')):
                 self.app._enable_redis_on_boot()
                 operating_system.service_discovery.assert_any_call(
                     RedisSystem.SERVICE_CANDIDATES)
@@ -2246,7 +2247,7 @@ class TestRedisApp(testtools.TestCase):
         with patch.object(operating_system, 'service_discovery',
                           return_value={'cmd_enable': cmd}):
             with patch.object(utils, 'execute_with_timeout',
-                              return_value=None):
+                              return_value=('0', '')):
                 self.app._enable_redis_on_boot()
                 operating_system.service_discovery.assert_any_call(
                     RedisSystem.SERVICE_CANDIDATES)
@@ -2258,7 +2259,7 @@ class TestRedisApp(testtools.TestCase):
         with patch.object(operating_system, 'service_discovery',
                           return_value={'cmd_disable': cmd}):
             with patch.object(utils, 'execute_with_timeout',
-                              return_value=None):
+                              return_value=('0', '')):
                 self.app._disable_redis_on_boot()
                 operating_system.service_discovery.assert_any_call(
                     RedisSystem.SERVICE_CANDIDATES)
@@ -2270,7 +2271,7 @@ class TestRedisApp(testtools.TestCase):
         with patch.object(operating_system, 'service_discovery',
                           return_value={'cmd_disable': cmd}):
             with patch.object(utils, 'execute_with_timeout',
-                              return_value=None):
+                              return_value=('0', '')):
                 self.app._disable_redis_on_boot()
                 operating_system.service_discovery.assert_any_call(
                     RedisSystem.SERVICE_CANDIDATES)
@@ -2337,7 +2338,7 @@ class TestRedisApp(testtools.TestCase):
 
         self._assert_start_redis(mock_status)
 
-    @patch.object(utils, 'execute_with_timeout')
+    @patch.object(utils, 'execute_with_timeout', return_value=('0', ''))
     def test_start_redis_with_failure(self, exec_mock):
         mock_status = MagicMock()
         mock_status.wait_for_real_status_to_change_to = MagicMock(
@@ -2962,35 +2963,35 @@ class VerticaAppTest(testtools.TestCase):
         app = VerticaApp(MagicMock())
         with patch.object(app, 'read_config', return_value=self.test_config):
             with patch.object(app, 'is_root_enabled', return_value=False):
-                    with patch.object(vertica_system, 'exec_vsql_command',
-                                      MagicMock(side_effect=[['', ''],
-                                                             ['', ''],
-                                                             ['', '']])):
-                        app.enable_root('root_password')
-                        create_user_arguments = (
-                            vertica_system.exec_vsql_command.call_args_list[0])
-                        expected_create_user_cmd = (
-                            vertica_system.CREATE_USER % ('root',
-                                                          'root_password'))
-                        create_user_arguments.assert_called_with(
-                            'some_password', expected_create_user_cmd)
+                with patch.object(vertica_system, 'exec_vsql_command',
+                                  MagicMock(side_effect=[['', ''],
+                                                         ['', ''],
+                                                         ['', '']])):
+                    app.enable_root('root_password')
+                    create_user_arguments = (
+                        vertica_system.exec_vsql_command.call_args_list[0])
+                    expected_create_user_cmd = (
+                        vertica_system.CREATE_USER % ('root',
+                                                      'root_password'))
+                    create_user_arguments.assert_called_with(
+                        'some_password', expected_create_user_cmd)
 
-                        grant_role_arguments = (
-                            vertica_system.exec_vsql_command.call_args_list[1])
-                        expected_grant_role_cmd = (
-                            vertica_system.GRANT_TO_USER % ('pseudosuperuser',
-                                                            'root'))
-                        grant_role_arguments.assert_called_with(
-                            'some_password', expected_grant_role_cmd)
+                    grant_role_arguments = (
+                        vertica_system.exec_vsql_command.call_args_list[1])
+                    expected_grant_role_cmd = (
+                        vertica_system.GRANT_TO_USER % ('pseudosuperuser',
+                                                        'root'))
+                    grant_role_arguments.assert_called_with(
+                        'some_password', expected_grant_role_cmd)
 
-                        enable_user_arguments = (
-                            vertica_system.exec_vsql_command.call_args_list[2])
-                        expected_enable_user_cmd = (
-                            vertica_system.ENABLE_FOR_USER % ('root',
-                                                              'pseudosuperuser'
-                                                              ))
-                        enable_user_arguments.assert_called_with(
-                            'some_password', expected_enable_user_cmd)
+                    enable_user_arguments = (
+                        vertica_system.exec_vsql_command.call_args_list[2])
+                    expected_enable_user_cmd = (
+                        vertica_system.ENABLE_FOR_USER % ('root',
+                                                          'pseudosuperuser'
+                                                          ))
+                    enable_user_arguments.assert_called_with(
+                        'some_password', expected_enable_user_cmd)
 
     def test_enable_root_is_root_not_enabled_failed(self):
         app = VerticaApp(MagicMock())
@@ -3694,7 +3695,7 @@ class PXCAppTest(testtools.TestCase):
         self.assertEqual(expected, args[0].text,
                          "Sql statements are not the same")
 
-    @patch.object(utils, 'execute_with_timeout')
+    @patch.object(utils, 'execute_with_timeout', return_value=('0', ''))
     def test__bootstrap_cluster(self, mock_execute):
         pxc_service_cmds = pxc_system.service_discovery(['mysql'])
         self.PXCApp._bootstrap_cluster(timeout=20)

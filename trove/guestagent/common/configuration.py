@@ -111,7 +111,8 @@ class ConfigurationManager(object):
         """
 
         base_options = operating_system.read_file(
-            self._base_config_path, codec=self._codec)
+            self._base_config_path, codec=self._codec,
+            as_root=self._requires_root)
 
         updates = self._override_strategy.parse_updates()
         guestagent_utils.update_dict(updates, base_options)
@@ -325,7 +326,7 @@ class ImportOverrideStrategy(ConfigurationOverrideStrategy):
         else:
             # Update the existing file.
             current = operating_system.read_file(
-                revision_file, codec=self._codec)
+                revision_file, codec=self._codec, as_root=self._requires_root)
             options = guestagent_utils.update_dict(options, current)
 
         operating_system.write_file(
@@ -355,7 +356,8 @@ class ImportOverrideStrategy(ConfigurationOverrideStrategy):
     def parse_updates(self):
         parsed_options = {}
         for path in self._collect_revision_files():
-            options = operating_system.read_file(path, codec=self._codec)
+            options = operating_system.read_file(path, codec=self._codec,
+                                                 as_root=self._requires_root)
             guestagent_utils.update_dict(options, parsed_options)
 
         return parsed_options
@@ -482,7 +484,8 @@ class OneFileOverrideStrategy(ConfigurationOverrideStrategy):
                 force=True, preserve=True, as_root=self._requires_root)
 
         base_revision = operating_system.read_file(
-            self._base_revision_file, codec=self._codec)
+            self._base_revision_file, codec=self._codec,
+            as_root=self._requires_root)
         changes = self._import_strategy.parse_updates()
         updated_revision = guestagent_utils.update_dict(changes, base_revision)
         operating_system.write_file(
