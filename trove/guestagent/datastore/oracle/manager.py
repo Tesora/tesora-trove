@@ -184,9 +184,7 @@ class Manager(periodic_task.PeriodicTasks):
         LOG.debug("Resized the filesystem %s." % mount_point)
 
     def start_db_with_conf_changes(self, context, config_contents):
-        LOG.debug("Starting Oracle with configuration changes.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='start_db_with_conf_changes', datastore=MANAGER)
+        self.app.start_db()
 
     def grant_access(self, context, username, hostname, databases):
         LOG.debug("Granting acccess.")
@@ -199,9 +197,8 @@ class Manager(periodic_task.PeriodicTasks):
             operation='revoke_access', datastore=MANAGER)
 
     def reset_configuration(self, context, configuration):
-        LOG.debug("Resetting Oracle configuration.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='change_passwords', datastore=MANAGER)
+        # No config files would need to be reset for the Oracle guest
+        pass
 
     def change_passwords(self, context, users):
         LOG.debug("Changing password.")
