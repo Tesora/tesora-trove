@@ -62,9 +62,9 @@ class RedisSyncReplication(base.Replication):
         master_host = master_info['host']
         master_port = master_info['port']
         connect_options = {'slaveof': [master_host, master_port]}
-        if master_info['requirepass']:
-            connect_options['masterauth'] = master_info['requirepass']
-            master_passwd = master_info['requirepass']
+        master_passwd = master_info.get('requirepass')
+        if master_passwd:
+            connect_options['masterauth'] = master_passwd
             service.admin.config_set('masterauth', master_passwd)
         service.configuration_manager.apply_system_override(
             connect_options, change_id=self.CONF_LABEL_REPLICATION_SLAVE)
