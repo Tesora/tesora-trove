@@ -200,12 +200,6 @@ class ClusterTasks(Cluster):
     def get_ip(cls, instance):
         return instance.get_visible_ip_addresses()[0]
 
-    @classmethod
-    def get_guest(cls, instance):
-        return remote.create_guest_client(instance.context,
-                                          instance.db_info.id,
-                                          instance.datastore_version.manager)
-
     def _all_instances_ready(self, instance_ids, cluster_id,
                              shard_id=None):
 
@@ -445,13 +439,19 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
 
     def get_replication_master_snapshot(self, context, slave_of_id, flavor,
                                         backup_id=None, replica_number=1):
-        # if we aren't passed in a backup id, look it up to possibly do
-        # an incremental backup, thus saving time
-        if not backup_id:
-            backup = Backup.get_last_completed(
-                context, slave_of_id, include_incremental=True)
-            if backup:
-                backup_id = backup.id
+        # First check to see if we need to take a backup
+        master = BuiltInstanceTasks.load(context, slave_of_id)
+        backup_required = master.backup_required_for_replication()
+        if backup_required:
+            # if we aren't passed in a backup id, look it up to possibly do
+            # an incremental backup, thus saving time
+            if not backup_id:
+                backup = Backup.get_last_completed(
+                    context, slave_of_id, include_incremental=True)
+                if backup:
+                    backup_id = backup.id
+        else:
+            LOG.debug('Skipping replication backup, as none is required.')
         snapshot_info = {
             'name': "Replication snapshot for %s" % self.id,
             'description': "Backup image used to initialize "
@@ -465,33 +465,35 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             'replica_number': replica_number,
         }
 
-        # Only do a backup if it's the first replica
-        if replica_number == 1:
-            try:
-                db_info = DBBackup.create(**snapshot_info)
-                replica_backup_id = db_info.id
-            except InvalidModelError:
-                msg = (_("Unable to create replication snapshot record for "
-                         "instance: %s") % self.id)
-                LOG.exception(msg)
-                raise BackupCreationError(msg)
-            if backup_id:
-                # Look up the parent backup  info or fail early if not found or
-                # if the user does not have access to the parent.
-                _parent = Backup.get_by_id(context, backup_id)
-                parent = {
-                    'location': _parent.location,
-                    'checksum': _parent.checksum,
-                }
-                snapshot_info.update({
-                    'parent': parent,
-                })
-        else:
-            # we've been passed in the actual replica backup id, so just use it
-            replica_backup_id = backup_id
+        replica_backup_id = None
+        if backup_required:
+            # Only do a backup if it's the first replica
+            if replica_number == 1:
+                try:
+                    db_info = DBBackup.create(**snapshot_info)
+                    replica_backup_id = db_info.id
+                except InvalidModelError:
+                    msg = (_("Unable to create replication snapshot record "
+                             "for instance: %s") % self.id)
+                    LOG.exception(msg)
+                    raise BackupCreationError(msg)
+                if backup_id:
+                    # Look up the parent backup  info or fail early if not
+                    #  found or if the user does not have access to the parent.
+                    _parent = Backup.get_by_id(context, backup_id)
+                    parent = {
+                        'location': _parent.location,
+                        'checksum': _parent.checksum,
+                    }
+                    snapshot_info.update({
+                        'parent': parent,
+                    })
+            else:
+                # we've been passed in the actual replica backup id,
+                # so just use it
+                replica_backup_id = backup_id
 
         try:
-            master = BuiltInstanceTasks.load(context, slave_of_id)
             snapshot_info.update({
                 'id': replica_backup_id,
                 'datastore': master.datastore.name,
@@ -513,7 +515,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             # create exception, so we trap it here
             try:
                 # Only try to delete the backup if it's the first replica
-                if replica_number == 1:
+                if replica_number == 1 and backup_required:
                     Backup.delete(context, replica_backup_id)
             except Exception as e_delete:
                 LOG.error(msg_create)
@@ -1107,6 +1109,11 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         LOG.info(_("Initiating backup for instance %s.") % self.id)
         self.guest.create_backup(backup_info)
 
+    def backup_required_for_replication(self):
+        LOG.debug("Seeing if replication backup is required for instance %s." %
+                  self.id)
+        return self.guest.backup_required_for_replication()
+
     def get_replication_snapshot(self, snapshot_info, flavor):
 
         def _get_replication_snapshot():
@@ -1198,13 +1205,6 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         LOG.debug("Calling wait_for_txn on %s" % self.id)
         if txn:
             self.guest.wait_for_txn(txn)
-
-    def switch_master(self, new_master):
-        LOG.debug("calling switch_master on %s" % self.id)
-
-        self.guest.switch_master(new_master)
-        self.update_db(slave_of_id=new_master.id)
-        self.slave_list = None
 
     def cleanup_source_on_replica_detach(self, replica_info):
         LOG.debug("Calling cleanup_source_on_replica_detach on %s" % self.id)
