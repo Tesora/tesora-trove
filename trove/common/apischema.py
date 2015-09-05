@@ -255,6 +255,46 @@ cluster = {
                 "type": "object"
             }
         }
+    },
+    "grow": {
+        "type": "object",
+        "required": ["grow"],
+        "additionalProperties": True,
+        "properties": {
+            "grow": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["flavorRef"],
+                    "additionalProperties": True,
+                    "properties": {
+                        "name": non_empty_string,
+                        "flavorRef": flavorref,
+                        "volume": volume,
+                        "nics": nics,
+                        "availability_zone": non_empty_string
+                    }
+                }
+            }
+        }
+    },
+    "shrink": {
+        "type": "object",
+        "required": ["shrink"],
+        "additionalProperties": True,
+        "properties": {
+            "shrink": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["id"],
+                    "additionalProperties": True,
+                    "properties": {
+                        "id": uuid
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -602,6 +642,56 @@ upgrade = {
                     "metadata": {}
                 }
             }
+        }
+    }
+}
+
+
+package_list = {
+    "type": "array",
+    "minItems": 0,
+    "uniqueItems": True,
+    "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 255,
+        "pattern": "^.*[0-9a-zA-Z]+.*$"
+    }
+}
+
+mgmt_datastore_version = {
+    "create": {
+        "name": "mgmt_datastore_version:create",
+        "type": "object",
+        "required": ["version"],
+        "properties": {
+            "version": {
+                "type": "object",
+                "required": ["name", "datastore_name", "image", "active"],
+                "additionalProperties": True,
+                "properties": {
+                    "name": non_empty_string,
+                    "datastore_name": non_empty_string,
+                    "datastore_manager": non_empty_string,
+                    "packages": package_list,
+                    "image": uuid,
+                    "active": {"enum": [True, False]},
+                    "default": {"enum": [True, False]}
+                }
+            }
+        }
+    },
+    "edit": {
+        "name": "mgmt_datastore_version:edit",
+        "type": "object",
+        "required": [],
+        "additionalProperties": True,
+        "properties": {
+            "datastore_manager": non_empty_string,
+            "packages": package_list,
+            "image": uuid,
+            "active": {"enum": [True, False]},
+            "default": {"enum": [True, False]},
         }
     }
 }

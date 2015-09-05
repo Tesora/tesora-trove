@@ -231,6 +231,10 @@ class RedisApp(object):
     def remove_overrides(self):
         self.configuration_manager.remove_user_override()
 
+    def make_read_only(self, read_only):
+        # Redis has no mechanism to make an instance read-only at present
+        pass
+
     def start_db_with_conf_changes(self, config_contents):
         LOG.info(_('Starting redis with conf changes.'))
         if self.status.is_running:
@@ -328,6 +332,15 @@ class RedisApp(object):
         """
         return self.get_configuration_property('dir')
 
+    def get_persistence_filepath(self):
+        """Returns the full path to the persistence file."""
+        return guestagent_utils.build_file_path(
+            self.get_working_dir(), self.get_db_filename())
+
+    def get_port(self):
+        """Port for this instance or default if not set."""
+        return self.get_configuration_property('port', system.REDIS_PORT)
+
     def get_auth_password(self):
         """Client authentication password for this instance or None if not set.
         """
@@ -382,6 +395,73 @@ class RedisApp(object):
         return utils.unpack_singleton(
             self.configuration_manager.get_value(name, default))
 
+    def cluster_meet(self, ip, port):
+        try:
+            utils.execute_with_timeout('redis-cli', 'cluster', 'meet',
+                                       ip, port)
+        except exception.ProcessExecutionError:
+            LOG.exception(_('Error joining node to cluster at %s.'), ip)
+            raise
+
+    def cluster_addslots(self, first_slot, last_slot):
+        try:
+            slots = map(str, range(first_slot, last_slot + 1))
+            group_size = 200
+            while slots:
+                cmd = ([system.REDIS_CLI, 'cluster', 'addslots']
+                       + slots[0:group_size])
+                out, err = utils.execute_with_timeout(*cmd, run_as_root=True,
+                                                      root_helper='sudo')
+                if 'OK' not in out:
+                    raise RuntimeError(_('Error executing addslots: %s')
+                                       % out)
+                del slots[0:group_size]
+        except exception.ProcessExecutionError:
+            LOG.exception(_('Error adding slots %(first_slot)s-%(last_slot)s'
+                            ' to cluster.'),
+                          {'first_slot': first_slot, 'last_slot': last_slot})
+            raise
+
+    def _get_node_info(self):
+        try:
+            out, _ = utils.execute_with_timeout('redis-cli', '--csv',
+                                                'cluster', 'nodes')
+            return [line.split(' ') for line in out.splitlines()]
+        except exception.ProcessExecutionError:
+            LOG.exception(_('Error getting node info.'))
+            raise
+
+    def _get_node_details(self):
+        for node_details in self._get_node_info():
+            if 'myself' in node_details[2]:
+                return node_details
+        raise exception.TroveError(_("Unable to determine node details"))
+
+    def get_node_ip(self):
+        """Returns [ip, port] where both values are strings"""
+        return self._get_node_details()[1].split(':')
+
+    def get_node_id_for_removal(self):
+        node_details = self._get_node_details()
+        node_id = node_details[0]
+        my_ip = node_details[1].split(':')[0]
+        try:
+            slots, _ = utils.execute_with_timeout('redis-cli', '--csv',
+                                                  'cluster', 'slots')
+            return node_id if my_ip not in slots else None
+        except exception.ProcessExecutionError:
+            LOG.exception(_('Error validating node to for removal.'))
+            raise
+
+    def remove_nodes(self, node_ids):
+        try:
+            for node_id in node_ids:
+                utils.execute_with_timeout('redis-cli', 'cluster',
+                                           'forget', node_id)
+        except exception.ProcessExecutionError:
+            LOG.exception(_('Error removing node from cluster.'))
+            raise
+
 
 class RedisAdmin(object):
     """Handles administrative tasks on the Redis database.
@@ -404,6 +484,15 @@ class RedisAdmin(object):
         """
         return self.__client.ping()
 
+    def get_info(self, section=None):
+        return self.__client.info(section=section)
+
+    def persist_data(self):
+        return self.__client.save()
+
+    def set_master(self, host=None, port=None):
+        self.__client.slaveof(host, port)
+
     def config_set(self, name, value):
         response = self.execute(
             '%s %s' % (self.__config_cmd_name, 'SET'), name, value)
@@ -417,18 +506,38 @@ class RedisAdmin(object):
         """
         return response and redis.client.bool_ok(response)
 
-    def execute(self, cmd_name, *cmd_args):
+    def execute(self, cmd_name, *cmd_args, **options):
         """Execute a command and return a parsed response.
         """
         try:
-            return self._execute_command(cmd_name, *cmd_args)
+            return self.__client.execute_command(cmd_name, *cmd_args,
+                                                 **options)
         except Exception as e:
             LOG.exception(e)
             raise exception.TroveError(
                 _("Redis command '%(cmd_name)s %(cmd_args)s' failed.")
                 % {'cmd_name': cmd_name, 'cmd_args': ' '.join(cmd_args)})
 
-    def _execute_command(self, *args, **options):
-        """Execute a command and return a parsed response.
-        """
-        return self.__client.execute_command(*args, **options)
+    def wait_until(self, key, wait_value, section=None,
+                   timeout=CONF.usage_timeout):
+        """Polls redis until the specified 'key' changes to 'wait_value'."""
+        LOG.debug("Waiting for Redis '%s' to be: %s." % (key, wait_value))
+
+        def _check_info():
+            redis_info = self.get_info(section)
+            if key in redis_info:
+                current_value = redis_info[key]
+                LOG.debug("Found '%s' for field %s." % (current_value, key))
+            else:
+                LOG.error(_('Output from Redis command: %s') % redis_info)
+                raise RuntimeError(_("Field %(field)s not found "
+                                     "(Section: '%(sec)s').") %
+                                   ({'field': key, 'sec': section}))
+            return current_value == wait_value
+
+        try:
+            utils.poll_until(_check_info, time_out=timeout)
+        except exception.PollTimeOut:
+            raise RuntimeError(_("Timeout occurred waiting for Redis field "
+                                 "'%(field)s' to change to '%(val)s'.") %
+                               {'field': key, 'val': wait_value})
