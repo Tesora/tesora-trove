@@ -38,8 +38,7 @@ from trove.guestagent.db import models
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
-CONFIG_FILE = (operating_system.
-               file_discovery(system.CONFIG_CANDIDATES))
+CONFIG_FILE = operating_system.file_discovery(system.CONFIG_CANDIDATES)
 
 # Configuration group for clustering-related settings.
 CNF_CLUSTER = 'clustering'
@@ -58,7 +57,7 @@ class MongoDBApp(object):
         """Initialize a directory for configuration overrides.
         """
         revision_dir = guestagent_utils.build_file_path(
-            os.path.dirname(system.MONGO_USER),
+            os.path.dirname(CONFIG_FILE),
             ConfigurationManager.DEFAULT_STRATEGY_OVERRIDES_SUB_DIR)
 
         if not os.path.exists(revision_dir):
@@ -80,6 +79,7 @@ class MongoDBApp(object):
             override_strategy=OneFileOverrideStrategy(revision_dir))
 
         self.is_query_router = False
+        self.is_cluster_member = False
         self.status = MongoDBAppStatus()
 
     def install_if_needed(self, packages):
@@ -214,6 +214,11 @@ class MongoDBApp(object):
             self, cluster_config, mount_point=None):
         LOG.debug("Applying initial configuration.")
 
+        # Mongodb init scripts assume the PID-file path is writable by the
+        # database service.
+        # See: https://jira.mongodb.org/browse/SERVER-20075
+        self._initialize_writable_run_dir()
+
         # todo mvandijk: enable authorization.
         # 'security.authorization': True
         self.configuration_manager.apply_system_override(
@@ -232,6 +237,16 @@ class MongoDBApp(object):
             self._configure_as_cluster_instance(cluster_config)
         else:
             self._configure_network(MONGODB_PORT)
+
+    def _initialize_writable_run_dir(self):
+        """Create a writable directory for Mongodb's runtime data
+        (e.g. PID-file).
+        """
+        mongodb_run_dir = os.path.dirname(system.MONGO_PID_FILE)
+        LOG.debug("Initializing a runtime directory: %s" % mongodb_run_dir)
+        operating_system.create_directory(
+            mongodb_run_dir, user=system.MONGO_USER, group=system.MONGO_USER,
+            force=True, as_root=True)
 
     def _configure_as_cluster_instance(self, cluster_config):
         """Configure this guest as a cluster instance and return its
@@ -294,7 +309,13 @@ class MongoDBApp(object):
 
     def _configure_as_cluster_member(self, replica_set_name):
         LOG.info(_("Configuring instance as a cluster member."))
+        self.is_cluster_member = True
         self._configure_network(MONGODB_PORT)
+        # we don't want these thinking they are in a replica set yet
+        # as that would prevent us from creating the admin user,
+        # so start mongo before updating the config.
+        # mongo will be started by the cluster taskmanager
+        self.start_db()
         self.configuration_manager.apply_system_override(
             {'replication.replSetName': replica_set_name}, CNF_CLUSTER)
 
@@ -395,22 +416,14 @@ class MongoDBApp(object):
 
             return primary_count == 1
 
-        # Create the admin user on this member.
-        # This is only necessary for setting up the replica set.
-        # The query router will handle requests once this set
-        # is added as a shard.
-        password = utils.generate_random_password()
-        self.create_admin_user(password)
-
-        # initiate replica-set
         MongoDBAdmin().rs_initiate()
         # TODO(ramashri) see if hardcoded values can be removed
-        utils.poll_until(check_initiate_status, sleep_time=60, time_out=100)
+        utils.poll_until(check_initiate_status, sleep_time=30, time_out=100)
 
         # add replica-set members
         MongoDBAdmin().rs_add_members(members)
         # TODO(ramashri) see if hardcoded values can be removed
-        utils.poll_until(check_rs_status, sleep_time=60, time_out=100)
+        utils.poll_until(check_rs_status, sleep_time=10, time_out=100)
 
     def _set_localhost_auth_bypass(self, enabled):
         """When active, the localhost exception allows connections from the
@@ -435,7 +448,8 @@ class MongoDBApp(object):
         return system.MONGO_KEY_FILE
 
     def get_key(self):
-        return open(system.MONGO_KEY_FILE).read().rstrip()
+        return operating_system.read_file(
+            system.MONGO_KEY_FILE, as_root=True).rstrip()
 
     def store_key(self, key):
         """Store the cluster key."""
@@ -494,6 +508,31 @@ class MongoDBApp(object):
         """Return the value of a MongoDB configuration property.
         """
         return self.configuration_manager.get_value(name, default)
+
+    def prep_primary(self):
+        # Prepare the primary member of a replica set.
+        password = utils.generate_random_password()
+        self.create_admin_user(password)
+        self.restart()
+
+    @property
+    def replica_set_name(self):
+        return MongoDBAdmin().get_repl_status()['set']
+
+    @property
+    def admin_password(self):
+        creds = MongoDBCredentials()
+        creds.read(system.MONGO_ADMIN_CREDS_FILE)
+        return creds.password
+
+    def is_shard_active(self, replica_set_name):
+        shards = MongoDBAdmin().list_active_shards()
+        if replica_set_name in [shard['_id'] for shard in shards]:
+            LOG.debug('Replica set %s is active.' % replica_set_name)
+            return True
+        else:
+            LOG.debug('Replica set %s is not active.' % replica_set_name)
+            return False
 
 
 class MongoDBAppStatus(service.BaseDbStatus):
@@ -717,7 +756,9 @@ class MongoDBAdmin(object):
     def get_repl_status(self):
         """Runs the replSetGetStatus command."""
         with MongoDBClient(self._admin_user()) as admin_client:
-            return admin_client.admin.command('replSetGetStatus')
+            status = admin_client.admin.command('replSetGetStatus')
+            LOG.debug('Replica set status: %s' % status)
+            return status
 
     def rs_initiate(self):
         """Runs the replSetInitiate command."""
@@ -741,6 +782,11 @@ class MongoDBAdmin(object):
         with MongoDBClient(self._admin_user()) as admin_client:
             db_name = models.MongoDBSchema.deserialize_schema(database).name
             return admin_client[db_name].command('dbStats', scale=scale)
+
+    def list_active_shards(self):
+        """Get a list of shards active in this cluster."""
+        with MongoDBClient(self._admin_user()) as admin_client:
+            return [shard for shard in admin_client.config.shards.find()]
 
 
 class MongoDBClient(object):
@@ -781,7 +827,7 @@ class MongoDBClient(object):
         self.session = type(self).engine['client']
         if user:
             db_name = user.database.name
-            LOG.debug("Authentication MongoDB client on %s." % db_name)
+            LOG.debug("Authenticating MongoDB client on %s." % db_name)
             self._db = self.session[db_name]
             self._db.authenticate(user.username, password=user.password)
             self._logged_in = True
