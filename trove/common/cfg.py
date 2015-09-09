@@ -130,8 +130,7 @@ common_opts = [
     cfg.ListOpt('ignore_users', default=['os_admin', 'root'],
                 help='Users to exclude when listing users.'),
     cfg.ListOpt('ignore_dbs',
-                default=['lost+found', '#mysql50#lost+found', 'mysql',
-                         'information_schema'],
+                default=['mysql', 'information_schema', 'performance_schema'],
                 help='Databases to exclude when listing databases.'),
     cfg.IntOpt('agent_call_low_timeout', default=5,
                help="Maximum time (in seconds) to wait for Guest Agent 'quick'"
@@ -485,6 +484,9 @@ mysql_opts = [
                 'backup.',
                 deprecated_name='backup_incremental_strategy',
                 deprecated_group='DEFAULT'),
+    cfg.StrOpt('root_controller',
+               default='trove.extensions.common.service.DefaultRootController',
+               help='Root controller implementation for mysql.'),
 ]
 
 # Oracle remote agent
@@ -664,6 +666,9 @@ percona_opts = [
                 'backup.',
                 deprecated_name='backup_incremental_strategy',
                 deprecated_group='DEFAULT'),
+    cfg.StrOpt('root_controller',
+               default='trove.extensions.common.service.DefaultRootController',
+               help='Root controller implementation for percona.'),
 ]
 
 # Percona XtraDB Cluster
@@ -735,6 +740,9 @@ pxc_opts = [
                'pxc.guestagent.PXCGuestAgentStrategy',
                help='Class that implements datastore-specific Guest Agent API '
                     'logic.'),
+    cfg.StrOpt('root_controller',
+               default='trove.extensions.common.service.DefaultRootController',
+               help='Root controller implementation for pxc.'),
 ]
 
 # Redis
@@ -801,6 +809,9 @@ redis_opts = [
                'redis.guestagent.RedisGuestAgentStrategy',
                help='Class that implements datastore-specific Guest Agent API '
                     'logic.'),
+    cfg.StrOpt('root_controller',
+               default='trove.extensions.common.service.DefaultRootController',
+               help='Root controller implementation for redis.'),
 ]
 
 # Cassandra
@@ -852,6 +863,9 @@ cassandra_opts = [
     cfg.ListOpt('ignore_dbs', default=['system', 'system_auth',
                                        'system_traces'],
                 help='Databases to exclude when listing databases.'),
+    cfg.StrOpt('root_controller',
+               default='trove.extensions.common.service.DefaultRootController',
+               help='Root controller implementation for cassandra.'),
 ]
 
 # Couchbase
@@ -905,6 +919,9 @@ couchbase_opts = [
                 help='Whether to provision a Cinder volume for datadir.'),
     cfg.StrOpt('device_path', default='/dev/vdb',
                help='Device path for volume if volume support is enabled.'),
+    cfg.StrOpt('root_controller',
+               default='trove.extensions.common.service.DefaultRootController',
+               help='Root controller implementation for couchbase.'),
 ]
 
 # MongoDB
@@ -917,7 +934,7 @@ mongodb_opts = [
                      'in the security group (only applicable '
                      'if trove_security_groups_support is True).'),
     cfg.ListOpt('udp_ports', default=[],
-                help='List of UPD ports and/or port ranges to open '
+                help='List of UDP ports and/or port ranges to open '
                      'in the security group (only applicable '
                      'if trove_security_groups_support is True).'),
     cfg.StrOpt('backup_strategy', default='MongoDump',
@@ -980,6 +997,12 @@ mongodb_opts = [
                 help='Databases to exclude when listing databases.'),
     cfg.ListOpt('ignore_users', default=['admin.os_admin', 'admin.root'],
                 help='Users to exclude when listing users.'),
+    cfg.IntOpt('add_members_timeout', default=300,
+               help='Maximum time to wait (in seconds) for a replica set '
+                    'initialization process to complete.'),
+    cfg.StrOpt('root_controller',
+               default='trove.extensions.common.service.DefaultRootController',
+               help='Root controller implementation for mongodb.'),
 ]
 
 # PostgreSQL
@@ -992,7 +1015,7 @@ postgresql_opts = [
                      'in the security group (only applicable '
                      'if trove_security_groups_support is True).'),
     cfg.ListOpt('udp_ports', default=[],
-                help='List of UPD ports and/or port ranges to open '
+                help='List of UDP ports and/or port ranges to open '
                      'in the security group (only applicable '
                      'if trove_security_groups_support is True).'),
     cfg.StrOpt('backup_strategy', default='PgDump',
@@ -1022,6 +1045,9 @@ postgresql_opts = [
     cfg.StrOpt('device_path', default='/dev/vdb'),
     cfg.ListOpt('ignore_users', default=['os_admin', 'postgres', 'root']),
     cfg.ListOpt('ignore_dbs', default=['postgres']),
+    cfg.StrOpt('root_controller',
+               default='trove.extensions.common.service.DefaultRootController',
+               help='Root controller implementation for postgresql.'),
 ]
 
 # Apache CouchDB
@@ -1062,6 +1088,9 @@ couchdb_opts = [
                 'service during instance-create. The generated password for '
                 'the root user is immediately returned in the response of '
                 'instance-create as the "password" field.'),
+    cfg.StrOpt('root_controller',
+               default='trove.extensions.common.service.DefaultRootController',
+               help='Root controller implementation for couchdb.'),
 ]
 
 # Vertica
@@ -1118,6 +1147,10 @@ vertica_opts = [
                        'guestagent.VerticaGuestAgentStrategy',
                help='Class that implements datastore-specific Guest Agent API '
                     'logic.'),
+    cfg.StrOpt('root_controller',
+               default='trove.extensions.vertica.service.'
+                       'VerticaRootController',
+               help='Root controller implementation for Vertica.'),
 ]
 
 # DB2
@@ -1159,6 +1192,9 @@ db2_opts = [
                 'strategy. For strategies that do not implement an '
                 'incremental, the runner will use the default full backup.'),
     cfg.ListOpt('ignore_users', default=['PUBLIC', 'DB2INST1']),
+    cfg.StrOpt('root_controller',
+               default='trove.extensions.common.service.DefaultRootController',
+               help='Root controller implementation for db2.'),
 ]
 
 # MariaDB
@@ -1216,6 +1252,9 @@ mariadb_opts = [
                 'backup.',
                 deprecated_name='backup_incremental_strategy',
                 deprecated_group='DEFAULT'),
+    cfg.StrOpt('root_controller',
+               default='trove.extensions.common.service.DefaultRootController',
+               help='Root controller implementation for mysql.'),
 ]
 
 # RPC version groups

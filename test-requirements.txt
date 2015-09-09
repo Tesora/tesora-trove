@@ -21,7 +21,6 @@ http://tarballs.elasticdb.org/tesora-python-troveclient/tesora-python-troveclien
 mock>=1.2
 mox3>=0.7.0
 testtools>=1.4.0
-discover
 testrepository>=0.0.18
 cassandra-driver>=2.1.4 # Apache-2.0
 pymongo>=3.0.2
