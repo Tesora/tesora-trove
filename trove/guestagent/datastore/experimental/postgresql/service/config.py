@@ -35,6 +35,8 @@ from trove.guestagent.datastore.experimental.postgresql import pgutil
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 
+BACKUP_CFG_OVERRIDE = 'PgBaseBackupConfig'
+
 
 class PgSqlConfig(PgSqlProcess):
     """Mixin that implements the config API.
@@ -169,7 +171,8 @@ class PgSqlConfig(PgSqlProcess):
         # The OrderedDict is necessary to guarantee the iteration order.
         access_rules = OrderedDict(
             [('local', [['all', 'postgres,os_admin', None, 'trust'],
-                        ['all', 'all', None, 'md5']]),
+                        ['all', 'all', None, 'md5'],
+                        ['replication', 'postgres,os_admin', None, 'trust']]),
              ('host', [['all', 'postgres,os_admin', '127.0.0.1/32', 'trust'],
                        ['all', 'postgres,os_admin', '::1/128', 'trust'],
                        ['all', 'postgres,os_admin', 'localhost', 'trust'],
@@ -187,3 +190,31 @@ class PgSqlConfig(PgSqlProcess):
                                as_root=True)
         operating_system.chmod(self.PGSQL_HBA_CONFIG, FileMode.SET_USR_RO,
                                as_root=True)
+
+    def enable_backups(self):
+        """Apply necessary changes to config to enable WAL-based backups
+           if we are using the PgBaseBackup strategy
+        """
+        LOG.info("Checking if we need to apply changes to WAL config")
+        if not CONF.postgresql.backup_strategy == 'PgBaseBackup':
+            return
+        if self.configuration_manager.has_system_override(BACKUP_CFG_OVERRIDE):
+            return
+
+        LOG.info("Applying changes to WAL config for use by base backups")
+        arch_cmd = "'test ! -f {wal_arch}/%f && cp %p {wal_arch}/%f'".format(
+            wal_arch=CONF.postgresql.wal_archive_location
+        )
+        opts = {
+            # FIXME(atomic77) These spaces after the options are needed until
+            # DBAAS-949 is fixed
+            'wal_level ': 'hot_standby',
+            'archive_mode ': 'on',
+            'max_wal_senders': 3,
+            # 'checkpoint_segments ': 8,
+            'wal_keep_segments': 8,
+            'archive_command': arch_cmd
+        }
+        self.configuration_manager.apply_system_override(opts,
+                                                         BACKUP_CFG_OVERRIDE)
+        self.restart(None)

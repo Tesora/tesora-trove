@@ -260,6 +260,24 @@ class TestOperatingSystem(trove_testtools.TestCase):
             hash(operating_system.FileMode(reset=[stat.S_IRUSR, stat.S_IWUSR]))
         )
 
+    def test_octal_modes(self):
+        full = operating_system.FileMode.SET_FULL()  # 0777
+        grp_rw_oth_r = operating_system.FileMode.SET_GRP_RW_OTH_R()  # 0064
+
+        o_full = operating_system.FileMode.OCTAL_MODE("0777")
+        o_grp_rw_oth_r = operating_system.FileMode.OCTAL_MODE("0064")
+        self.assertEqual(full, o_full)
+        self.assertEqual(grp_rw_oth_r, o_grp_rw_oth_r)
+
+        self.assertRaises(ValueError, operating_system.FileMode.OCTAL_MODE,
+                          "743")
+        self.assertRaises(ValueError, operating_system.FileMode.OCTAL_MODE,
+                          "00123")
+        self.assertRaises(ValueError, operating_system.FileMode.OCTAL_MODE,
+                          "0778")
+        self.assertRaises(ValueError, operating_system.FileMode.OCTAL_MODE,
+                          "asdfasdf")
+
     def _assert_modes(self, ex_reset, ex_add, ex_remove, actual):
         self.assertEqual(bool(ex_reset or ex_add or ex_remove),
                          actual.has_any())

@@ -3,7 +3,7 @@
 #
 # The recommended amount for 'shared_buffers' on a dedicated database server is 25% of RAM.
 # Servers with less than 3GB of RAM require a more conservative value to save memory for other processes.
-{% set shared_buffers_mb = [(0.25 if flavor['ram'] >= 3072 else 0.10) * flavor['ram']] %}
+{% set shared_buffers_mb = [(0.25 if flavor['ram'] >= 3072 else 0.02) * flavor['ram']] %}
 #
 # -----------------------------
 # PostgreSQL configuration file
