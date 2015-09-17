@@ -33,6 +33,7 @@ CONF = cfg.CONF
 
 
 class TestRunner(object):
+
     """
     Base class for all 'Runner' classes.
 
@@ -165,8 +166,8 @@ class TestRunner(object):
         Use the current instance's datastore if None.
         """
         try:
-            return CONF.get(
-                datastore or self.instance_info.dbaas_datastore).get(name)
+            datastore = datastore or self.instance_info.dbaas_datastore
+            return CONF.get(datastore).get(name)
         except NoSuchOptError:
             return CONF.get(name)
 
@@ -177,7 +178,7 @@ class TestRunner(object):
     def get_existing_instance(self):
         if self.is_using_existing_instance:
             instance_id = os.environ.get(self.USE_INSTANCE_ID_FLAG)
-            return self._get_instance_info(instance_id)
+            return self.get_instance(instance_id)
 
         return None
 
@@ -294,7 +295,7 @@ class TestRunner(object):
                         % (instance_id, status, instance.status))
         if fast_fail_status and instance.status == fast_fail_status:
             raise RuntimeError("Instance '%s' acquired a fast-fail status: %s"
-                               % (instance_id, status))
+                               % (instance_id, instance.status))
         return instance.status == status
 
     def get_instance(self, instance_id):
@@ -319,3 +320,46 @@ class TestRunner(object):
         self.assert_is_not_none(flavor, "Flavor '%s' not found." % flavor_name)
 
         return flavor
+
+    def copy_dict(self, d, ignored_keys=None):
+        return {k: v for k, v in d.items()
+                if not ignored_keys or k not in ignored_keys}
+
+    def create_test_helper_on_instance(self, instance_id):
+        """Here we add a helper user/database, if any, to a given instance
+        via the Trove API.
+        These are for internal use by the test framework and should
+        not be changed by individual test-cases.
+        """
+        database_def, user_def = self.build_helper_defs()
+        if database_def:
+            self.report.log(
+                "Creating a helper database '%s' on instance: %s"
+                % (database_def['name'], instance_id))
+            self.auth_client.databases.create(instance_id, [database_def])
+
+        if user_def:
+            self.report.log(
+                "Creating a helper user '%s:%s' on instance: %s"
+                % (user_def['name'], user_def['password'], instance_id))
+            self.auth_client.users.create(instance_id, [user_def])
+
+    def build_helper_defs(self):
+        """Build helper database and user JSON definitions if credentials
+        are defined by the helper.
+        """
+        database_def = None
+        user_def = None
+        credentials = self.test_helper.get_helper_credentials()
+        if credentials:
+            database = credentials.get('database')
+            if database:
+                database_def = {'name': database}
+
+            username = credentials.get('name')
+            if username:
+                password = credentials.get('password', '')
+                user_def = {'name': username, 'password': password,
+                            'databases': [{'name': database}]}
+
+        return database_def, user_def
