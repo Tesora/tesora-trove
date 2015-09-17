@@ -26,10 +26,8 @@ from trove.common.i18n import _
 from trove.guestagent.common import operating_system
 from trove.guestagent.common.operating_system import FileMode
 from trove.guestagent.datastore.experimental.postgresql import pgutil
-from trove.guestagent.datastore.experimental.postgresql.service. \
-    config import PgSqlConfig
-from trove.guestagent.datastore.experimental.postgresql.service. \
-    config import PgSqlProcess
+from trove.guestagent.datastore.experimental.postgresql.service.config \
+    import PgSqlConfig
 from trove.guestagent.strategies.backup import base
 
 CONF = cfg.CONF
@@ -82,15 +80,6 @@ class PgBaseBackupUtil(object):
                if walre.search(f)
                and f >= last_wal]
         return wal
-
-    @staticmethod
-    def recreate_wal_archive_dir():
-        operating_system.remove(WAL_ARCHIVE_DIR, force=True, recursive=True,
-                                as_root=True)
-        operating_system.create_directory(WAL_ARCHIVE_DIR,
-                                          user=PgSqlProcess.PGSQL_OWNER,
-                                          group=PgSqlProcess.PGSQL_OWNER,
-                                          force=True, as_root=True)
 
 
 class PgBaseBackup(base.BackupRunner, PgSqlConfig, PgBaseBackupUtil):

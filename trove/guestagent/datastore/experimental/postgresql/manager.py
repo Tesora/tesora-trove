@@ -25,17 +25,27 @@ from .service.root import PgSqlRoot
 from .service.status import PgSqlAppStatus
 import pgutil
 from trove.common import cfg
+from trove.common import exception
+from trove.common.i18n import _
 from trove.common.notification import EndNotification
 from trove.common import utils
 from trove.guestagent import backup
 from trove.guestagent.datastore import manager
 from trove.guestagent import dbaas
 from trove.guestagent import guest_log
+from trove.guestagent.strategies.replication import get_replication_strategy
 from trove.guestagent import volume
 
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
+
+MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'postgresql'
+
+REPLICATION_STRATEGY = CONF.get(MANAGER).replication_strategy
+REPLICATION_NAMESPACE = CONF.get(MANAGER).replication_namespace
+REPLICATION_STRATEGY_CLASS = get_replication_strategy(REPLICATION_STRATEGY,
+                                                      REPLICATION_NAMESPACE)
 
 
 class Manager(
@@ -126,6 +136,10 @@ class Manager(
             pgutil.PG_ADMIN = self.ADMIN_USER
             backup.restore(context, backup_info, '/tmp')
 
+        if snapshot:
+            LOG.info("Found snapshot info: " + str(snapshot))
+            self.attach_replica(context, snapshot, snapshot['config'])
+
         self.start_db(context)
 
         if not backup_info:
@@ -182,3 +196,98 @@ class Manager(
         LOG.debug(
             "Resized the filesystem at {mount}.".format(
                 mount=mount_point))
+
+    def backup_required_for_replication(self, context):
+        # TODO(atomic77) Move this class into a single property
+        replication = REPLICATION_STRATEGY_CLASS(context)
+        return replication.backup_required_for_replication()
+
+    def attach_replica(self, context, replica_info, slave_config):
+        replication = REPLICATION_STRATEGY_CLASS(context)
+        replication.enable_as_slave(self, replica_info, None)
+
+    def detach_replica(self, context, for_failover=False):
+        replication = REPLICATION_STRATEGY_CLASS(context)
+        replica_info = replication.detach_slave(self, for_failover)
+        return replica_info
+
+    def enable_as_master(self, context, replica_source_config):
+        self.enable_backups()
+        replication = REPLICATION_STRATEGY_CLASS(context)
+        replication.enable_as_master(self, None)
+
+    def make_read_only(self, context, read_only):
+        """There seems to be no way to flag this at the database level in
+        PostgreSQL at the moment -- see discussion here:
+        http://www.postgresql.org/message-id/flat/CA+TgmobWQJ-GCa_tWUc4=80A
+        1RJ2_+Rq3w_MqaVguk_q018dqw@mail.gmail.com#CA+TgmobWQJ-GCa_tWUc4=80A1RJ
+        2_+Rq3w_MqaVguk_q018dqw@mail.gmail.com
+        """
+        pass
+
+    def get_replica_context(self, context):
+        LOG.debug("Getting replica context.")
+        replication = REPLICATION_STRATEGY_CLASS(context)
+        return replication.get_replica_context(None)
+
+    def get_latest_txn_id(self, context):
+        if self.pg_is_in_recovery():
+            lsn = self.pg_last_xlog_replay_location()
+        else:
+            lsn = self.pg_current_xlog_location()
+        LOG.info("Last xlog location found: %s" % lsn)
+        return lsn
+
+    def wait_for_txn(self, context, txn):
+        if not self.pg_is_in_recovery():
+            raise RuntimeError(_("Attempting to wait for a txn on a server "
+                                 "not in recovery mode!"))
+
+        def _wait_for_txn():
+            lsn = self.pg_last_xlog_replay_location()
+            LOG.info("Last xlog location found: %s" % lsn)
+            return lsn >= txn
+        try:
+            utils.poll_until(_wait_for_txn, time_out=120)
+        except exception.PollTimeOut:
+            raise RuntimeError(_("Timeout occurred waiting for Redis repl "
+                                 "offset to change to '%s'.") % txn)
+
+    def cleanup_source_on_replica_detach(self, context, replica_info):
+        LOG.debug("Calling cleanup_source_on_replica_detach")
+        replication = REPLICATION_STRATEGY_CLASS(context)
+        replication.cleanup_source_on_replica_detach()
+
+    def demote_replication_master(self, context):
+        LOG.debug("Calling demote_replication_master")
+        replication = REPLICATION_STRATEGY_CLASS(context)
+        replication.demote_master(self)
+
+    def get_replication_snapshot(self, context, snapshot_info,
+                                 replica_source_config=None):
+        LOG.debug("Getting replication snapshot.")
+
+        self.enable_backups()
+        replication = REPLICATION_STRATEGY_CLASS(context)
+        replication.enable_as_master(None, None)
+
+        snapshot_id, log_position = (
+            replication.snapshot_for_replication(context, None, None,
+                                                 snapshot_info))
+
+        mount_point = CONF.get(MANAGER).mount_point
+        volume_stats = dbaas.get_filesystem_volume_stats(mount_point)
+
+        replication_snapshot = {
+            'dataset': {
+                'datastore_manager': MANAGER,
+                'dataset_size': volume_stats.get('used', 0.0),
+                'volume_size': volume_stats.get('total', 0.0),
+                'snapshot_id': snapshot_id
+            },
+            'replication_strategy': REPLICATION_STRATEGY,
+            'master': replication.get_master_ref(None, snapshot_info),
+            'log_position': log_position
+        }
+
+        return replication_snapshot

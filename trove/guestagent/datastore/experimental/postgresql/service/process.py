@@ -19,6 +19,7 @@ from oslo_log import log as logging
 
 from trove.common import cfg
 from trove.guestagent.common import operating_system
+from trove.guestagent.datastore.experimental.postgresql import pgutil
 from trove.guestagent.datastore.experimental.postgresql.service.status import (
     PgSqlAppStatus)
 
@@ -38,6 +39,10 @@ class PgSqlProcess(object):
     @property
     def PGSQL_DATA_DIR(self):
         return os.path.dirname(self.pg_version[0])
+
+    @property
+    def PGSQL_RECOVERY_CONFIG(self):
+        return os.path.join(self.PGSQL_DATA_DIR, "recovery.conf")
 
     @property
     def pg_version(self):
@@ -65,3 +70,40 @@ class PgSqlProcess(object):
         PgSqlAppStatus.get().stop_db_service(
             self.PGSQL_SERVICE_CANDIDATES, CONF.state_change_wait_time,
             disable_on_boot=do_not_start_on_reboot, update_db=update_db)
+
+    def pg_current_xlog_location(self):
+        """Wrapper for pg_current_xlog_location()
+        Cannot be used against a running slave
+        """
+        r = pgutil.query("SELECT pg_current_xlog_location()")
+        return r[0][0]
+
+    def pg_last_xlog_replay_location(self):
+        """Wrapper for pg_last_xlog_replay_location()
+         For use on standby servers
+         """
+        r = pgutil.query("SELECT pg_last_xlog_replay_location()")
+        return r[0][0]
+
+    def pg_is_in_recovery(self):
+        """Wrapper for pg_is_in_recovery() for detecting a server in
+        standby mode
+        """
+        r = pgutil.query("SELECT pg_is_in_recovery()")
+        return r[0][0]
+
+    @classmethod
+    def recreate_wal_archive_dir(cls):
+        wal_archive_dir = CONF.postgresql.wal_archive_location
+        operating_system.remove(wal_archive_dir, force=True, recursive=True,
+                                as_root=True)
+        operating_system.create_directory(wal_archive_dir,
+                                          user=cls.PGSQL_OWNER,
+                                          group=cls.PGSQL_OWNER,
+                                          force=True, as_root=True)
+
+    @classmethod
+    def remove_wal_archive_dir(cls):
+        wal_archive_dir = CONF.postgresql.wal_archive_location
+        operating_system.remove(wal_archive_dir, force=True, recursive=True,
+                                as_root=True)

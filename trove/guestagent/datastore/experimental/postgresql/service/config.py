@@ -191,6 +191,16 @@ class PgSqlConfig(PgSqlProcess):
         operating_system.chmod(self.PGSQL_HBA_CONFIG, FileMode.SET_USR_RO,
                                as_root=True)
 
+    def disable_backups(self):
+        """Reverse overrides applied by PgBaseBackup strategy"""
+        if not self.configuration_manager.has_system_override(
+                BACKUP_CFG_OVERRIDE):
+            return
+        LOG.info("Removing configuration changes for backups")
+        self.configuration_manager.remove_system_override(BACKUP_CFG_OVERRIDE)
+        self.remove_wal_archive_dir()
+        self.restart(context=None)
+
     def enable_backups(self):
         """Apply necessary changes to config to enable WAL-based backups
            if we are using the PgBaseBackup strategy
@@ -210,7 +220,7 @@ class PgSqlConfig(PgSqlProcess):
             # DBAAS-949 is fixed
             'wal_level ': 'hot_standby',
             'archive_mode ': 'on',
-            'max_wal_senders': 3,
+            'max_wal_senders': 8,
             # 'checkpoint_segments ': 8,
             'wal_keep_segments': 8,
             'archive_command': arch_cmd
