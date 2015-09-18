@@ -209,8 +209,9 @@ class GuestAgentDB2ManagerTest(testtools.TestCase):
         try:
             configuration = {'config_contents': 'some junk'}
             self.manager.reset_configuration(self.context, configuration)
-        except Exception:
-            self.fail("reset_configuration raised exception unexpectedly.")
+        except Exception as ex:
+            self.fail("reset_configuration raised exception unexpectedly: %s"
+                      % ex.message)
 
     def test_rpc_ping(self):
         output = self.manager.rpc_ping(self.context)

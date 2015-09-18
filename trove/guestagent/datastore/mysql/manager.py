@@ -17,31 +17,19 @@
 #
 
 from oslo_utils import importutils
-from trove.common import cfg
-from trove.guestagent.datastore.mysql import manager_base
-from trove.guestagent.strategies.replication import get_replication_strategy
+from trove.guestagent.datastore.mysql_common import manager
 
-CONF = cfg.CONF
-MANAGER = CONF.datastore_manager or 'mysql'
-
-REPLICATION_STRATEGY = CONF.get(MANAGER).replication_strategy
-REPLICATION_NAMESPACE = CONF.get(MANAGER).replication_namespace
-REPLICATION_STRATEGY_CLASS = get_replication_strategy(REPLICATION_STRATEGY,
-                                                      REPLICATION_NAMESPACE)
 
 MYSQL_APP = "trove.guestagent.datastore.mysql.service.MySqlApp"
 MYSQL_APP_STATUS = "trove.guestagent.datastore.mysql.service.MySqlAppStatus"
 MYSQL_ADMIN = "trove.guestagent.datastore.mysql.service.MySqlAdmin"
 
 
-class Manager(manager_base.BaseMySqlManager):
+class Manager(manager.MySqlManager):
 
     def __init__(self):
         mysql_app = importutils.import_class(MYSQL_APP)
         mysql_app_status = importutils.import_class(MYSQL_APP_STATUS)
         mysql_admin = importutils.import_class(MYSQL_ADMIN)
 
-        super(Manager, self).__init__(mysql_app, mysql_app_status,
-                                      mysql_admin, REPLICATION_STRATEGY,
-                                      REPLICATION_NAMESPACE,
-                                      REPLICATION_STRATEGY_CLASS, MANAGER)
+        super(Manager, self).__init__(mysql_app, mysql_app_status, mysql_admin)

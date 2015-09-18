@@ -34,19 +34,11 @@ from trove.guestagent.datastore import manager
 from trove.guestagent.db import models
 from trove.guestagent import dbaas
 from trove.guestagent import guest_log
-from trove.guestagent.strategies.replication import get_replication_strategy
 from trove.guestagent import volume
 
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
-
-MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'postgresql'
-
-REPLICATION_STRATEGY = CONF.get(MANAGER).replication_strategy
-REPLICATION_NAMESPACE = CONF.get(MANAGER).replication_namespace
-REPLICATION_STRATEGY_CLASS = get_replication_strategy(REPLICATION_STRATEGY,
-                                                      REPLICATION_NAMESPACE)
 
 
 class Manager(
@@ -54,13 +46,13 @@ class Manager(
         PgSqlRoot,
         PgSqlConfig,
         PgSqlInstall,
-        manager.Manager,
+        manager.Manager
 ):
 
     PG_BUILTIN_ADMIN = 'postgres'
 
     def __init__(self):
-        super(Manager, self).__init__()
+        super(Manager, self).__init__('postgresql')
 
     @property
     def status(self):
@@ -100,26 +92,9 @@ class Manager(
             },
         }
 
-    def rpc_ping(self, context):
-        LOG.debug("Responding to RPC ping.")
-        return True
-
-    def do_prepare(
-            self,
-            context,
-            packages,
-            databases,
-            memory_mb,
-            users,
-            device_path=None,
-            mount_point=None,
-            backup_info=None,
-            config_contents=None,
-            root_password=None,
-            overrides=None,
-            cluster_config=None,
-            snapshot=None
-    ):
+    def do_prepare(self, context, packages, databases, memory_mb, users,
+                   device_path, mount_point, backup_info, config_contents,
+                   root_password, overrides, cluster_config, snapshot):
         pgutil.PG_ADMIN = self.PG_BUILTIN_ADMIN
         self.install(context, packages)
         self.stop_db(context)
@@ -148,12 +123,6 @@ class Manager(
         if root_password and not backup_info:
             self.enable_root(context, root_password)
 
-        if databases:
-            self.create_database(context, databases)
-
-        if users:
-            self.create_user(context, users)
-
     def _secure(self, context):
         # Create a new administrative user for Trove and also
         # disable the built-in superuser.
@@ -173,49 +142,20 @@ class Manager(
             self.enable_backups()
             backup.backup(context, backup_info)
 
-    def mount_volume(self, context, device_path=None, mount_point=None):
-        """Mount the volume as specified by device_path to mount_point."""
-        device = volume.VolumeDevice(device_path)
-        device.mount(mount_point, write_to_fstab=False)
-        LOG.debug(
-            "Mounted device {device} at mount point {mount}.".format(
-                device=device_path, mount=mount_point))
-
-    def unmount_volume(self, context, device_path=None, mount_point=None):
-        """Unmount the volume as specified by device_path from mount_point."""
-        device = volume.VolumeDevice(device_path)
-        device.unmount(mount_point)
-        LOG.debug(
-            "Unmounted device {device} from mount point {mount}.".format(
-                device=device_path, mount=mount_point))
-
-    def resize_fs(self, context, device_path=None, mount_point=None):
-        """Resize the filesystem as specified by device_path at mount_point."""
-        device = volume.VolumeDevice(device_path)
-        device.resize_fs(mount_point)
-        LOG.debug(
-            "Resized the filesystem at {mount}.".format(
-                mount=mount_point))
-
     def backup_required_for_replication(self, context):
-        # TODO(atomic77) Move this class into a single property
-        replication = REPLICATION_STRATEGY_CLASS(context)
-        return replication.backup_required_for_replication()
+        return self.replication.backup_required_for_replication()
 
     def attach_replica(self, context, replica_info, slave_config):
-        replication = REPLICATION_STRATEGY_CLASS(context)
-        replication.enable_as_slave(self, replica_info, None)
+        self.replication.enable_as_slave(self, replica_info, None)
 
     def detach_replica(self, context, for_failover=False):
-        replication = REPLICATION_STRATEGY_CLASS(context)
-        replica_info = replication.detach_slave(self, for_failover)
+        replica_info = self.replication.detach_slave(self, for_failover)
         return replica_info
 
     def enable_as_master_s2(self, context, replica_source_config,
                             for_failover=False):
         self.enable_backups()
-        replication = REPLICATION_STRATEGY_CLASS(context)
-        replication.enable_as_master(self, None)
+        self.replication.enable_as_master(self, None)
 
     def make_read_only(self, context, read_only):
         """There seems to be no way to flag this at the database level in
@@ -228,8 +168,7 @@ class Manager(
 
     def get_replica_context(self, context):
         LOG.debug("Getting replica context.")
-        replication = REPLICATION_STRATEGY_CLASS(context)
-        return replication.get_replica_context(None)
+        return self.replication.get_replica_context(None)
 
     def get_latest_txn_id(self, context):
         if self.pg_is_in_recovery():
@@ -261,38 +200,35 @@ class Manager(
 
     def cleanup_source_on_replica_detach(self, context, replica_info):
         LOG.debug("Calling cleanup_source_on_replica_detach")
-        replication = REPLICATION_STRATEGY_CLASS(context)
-        replication.cleanup_source_on_replica_detach()
+        self.replication.cleanup_source_on_replica_detach()
 
     def demote_replication_master(self, context):
         LOG.debug("Calling demote_replication_master")
-        replication = REPLICATION_STRATEGY_CLASS(context)
-        replication.demote_master(self)
+        self.replication.demote_master(self)
 
     def get_replication_snapshot(self, context, snapshot_info,
                                  replica_source_config=None):
         LOG.debug("Getting replication snapshot.")
 
         self.enable_backups()
-        replication = REPLICATION_STRATEGY_CLASS(context)
-        replication.enable_as_master(None, None)
+        self.replication.enable_as_master(None, None)
 
         snapshot_id, log_position = (
-            replication.snapshot_for_replication(context, None, None,
-                                                 snapshot_info))
+            self.replication.snapshot_for_replication(context, None, None,
+                                                      snapshot_info))
 
-        mount_point = CONF.get(MANAGER).mount_point
+        mount_point = CONF.get(self.manager).mount_point
         volume_stats = dbaas.get_filesystem_volume_stats(mount_point)
 
         replication_snapshot = {
             'dataset': {
-                'datastore_manager': MANAGER,
+                'datastore_manager': self.manager,
                 'dataset_size': volume_stats.get('used', 0.0),
                 'volume_size': volume_stats.get('total', 0.0),
                 'snapshot_id': snapshot_id
             },
-            'replication_strategy': REPLICATION_STRATEGY,
-            'master': replication.get_master_ref(None, snapshot_info),
+            'replication_strategy': self.replication_strategy,
+            'master': self.replication.get_master_ref(None, snapshot_info),
             'log_position': log_position
         }
 

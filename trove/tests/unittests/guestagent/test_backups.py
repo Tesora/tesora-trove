@@ -670,7 +670,8 @@ class MongodbBackupTests(trove_testtools.TestCase):
         self.exec_timeout_patch.start()
         self.mongodb_init_overrides_dir_patch = patch.object(
             MongoDBApp,
-            '_init_overrides_dir')
+            '_init_overrides_dir',
+            return_value='')
         self.mongodb_init_overrides_dir_patch.start()
         self.backup_runner = utils.import_class(
             BACKUP_MONGODUMP_CLS)

@@ -64,16 +64,11 @@ from trove.guestagent.datastore.oracle import system
 from trove.guestagent import dbaas
 from trove.guestagent.db import models
 from trove.guestagent import guest_log
-from trove.guestagent.strategies.replication import get_replication_strategy
 from trove.guestagent import volume
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
-MANAGER = 'oracle'
-REPLICATION_STRATEGY = CONF.get(MANAGER).replication_strategy
-REPLICATION_NAMESPACE = CONF.get(MANAGER).replication_namespace
-REPLICATION_STRATEGY_CLASS = get_replication_strategy(REPLICATION_STRATEGY,
-                                                      REPLICATION_NAMESPACE)
+
 
 class Manager(manager.Manager):
     """
@@ -81,7 +76,7 @@ class Manager(manager.Manager):
     based off of the datastore of the Trove instance.
     """
     def __init__(self):
-        super(Manager, self).__init__()
+        super(Manager, self).__init__('oracle')
         self.appStatus = service.OracleAppStatus()
         self.app = service.OracleApp(self.appStatus)
         self.admin = service.OracleAdmin()
@@ -144,22 +139,6 @@ class Manager(manager.Manager):
         LOG.debug("Stop a given Oracle server instance.")
         self.app.stop_db(do_not_start_on_reboot=do_not_start_on_reboot)
 
-    def get_filesystem_stats(self, context, fs_path):
-        """Gets the filesystem stats for the path given."""
-        LOG.debug("Get the filesystem stats.")
-        mount_point = CONF.get(MANAGER).mount_point
-        return dbaas.get_filesystem_volume_stats(mount_point)
-
-    def create_database(self, context, databases):
-        LOG.debug("Creating database(s)." % databases)
-        raise exception.DatastoreOperationNotSupported(
-            operation='create_database', datastore=MANAGER)
-
-    def delete_database(self, context, database):
-        LOG.debug("Deleting database %s." % database)
-        raise exception.DatastoreOperationNotSupported(
-            operation='delete_database', datastore=MANAGER)
-
     def list_databases(self, context, limit=None, marker=None,
                        include_marker=False):
         LOG.debug("Listing all databases.")
@@ -206,16 +185,6 @@ class Manager(manager.Manager):
     def start_db_with_conf_changes(self, context, config_contents):
         LOG.debug("Starting Oracle with configuration changes.")
         self.app.start_db_with_conf_changes(config_contents)
-
-    def grant_access(self, context, username, hostname, databases):
-        LOG.debug("Granting acccess.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='grant_access', datastore=MANAGER)
-
-    def revoke_access(self, context, username, hostname, database):
-        LOG.debug("Revoking access.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='revoke_access', datastore=MANAGER)
 
     def reset_configuration(self, context, configuration):
         """
@@ -303,28 +272,26 @@ class Manager(manager.Manager):
             self.app.apply_overrides(overrides)
 
     def backup_required_for_replication(self, context):
-        replication = REPLICATION_STRATEGY_CLASS(context)
-        return replication.backup_required_for_replication()
+        return self.replication.backup_required_for_replication()
 
     def get_replication_snapshot(self, context, snapshot_info,
                                  replica_source_config=None):
         LOG.debug("Getting replication snapshot.")
-        replication = REPLICATION_STRATEGY_CLASS(context)
         snapshot_id, log_position = (
-            replication.snapshot_for_replication(context, self.app, None,
-                                                 snapshot_info))
-        mount_point = CONF.get(MANAGER).mount_point
+            self.replication.snapshot_for_replication(context, self.app, None,
+                                                      snapshot_info))
+        mount_point = CONF.get(self.manager).mount_point
         volume_stats = dbaas.get_filesystem_volume_stats(mount_point)
 
         replication_snapshot = {
             'dataset': {
-                'datastore_manager': MANAGER,
+                'datastore_manager': self.manager,
                 'dataset_size': volume_stats.get('used', 0.0),
                 'volume_size': volume_stats.get('total', 0.0),
                 'snapshot_id': snapshot_id
             },
-            'replication_strategy': REPLICATION_STRATEGY,
-            'master': replication.get_master_ref(self.app, snapshot_info),
+            'replication_strategy': self.replication_strategy,
+            'master': self.replication.get_master_ref(self.app, snapshot_info),
             'log_position': log_position,
             'replica_number': snapshot_info['replica_number']
         }
@@ -334,47 +301,41 @@ class Manager(manager.Manager):
     def enable_as_master_s2(self, context, replica_source_config,
                             for_failover=False):
         LOG.debug("Calling enable_as_master.")
-        replication = REPLICATION_STRATEGY_CLASS(context)
-        replication.enable_as_master(self.app, replica_source_config,
+        self.replication.enable_as_master(self.app, replica_source_config,
                                      for_failover)
 
     def get_replication_detail(self, context):
         LOG.debug("Calling get_replication_detail.")
-        replication = REPLICATION_STRATEGY_CLASS(context)
-        return replication.get_replication_detail(self.app)
+        return self.replication.get_replication_detail(self.app)
 
     def complete_master_setup(self, context, dbs):
         LOG.debug("Calling complete_master_setup.")
-        replication = REPLICATION_STRATEGY_CLASS(context)
-        replication.complete_master_setup(self.app, dbs)
+        self.replication.complete_master_setup(self.app, dbs)
 
     def complete_slave_setup(self, context, master_detail, slave_detail):
         LOG.debug("Calling complete_slave_setup.")
-        replication = REPLICATION_STRATEGY_CLASS(context)
-        replication.complete_slave_setup(self.app, master_detail, slave_detail)
+        self.replication.complete_slave_setup(
+            self.app, master_detail, slave_detail)
 
     def sync_data_to_slaves(self, context):
         LOG.debug("Calling sync_data_to_slaves.")
-        replication = REPLICATION_STRATEGY_CLASS(context)
-        replication.sync_data_to_slaves(self.app)
+        self.replication.sync_data_to_slaves(self.app)
 
     def detach_replica(self, context, for_failover=False):
         LOG.debug("Detaching replica.")
-        replication = REPLICATION_STRATEGY_CLASS(context)
-        replica_info = replication.detach_slave(self.app, for_failover)
+        replica_info = self.replication.detach_slave(self.app, for_failover)
         return replica_info
 
     def get_replica_context(self, context):
         LOG.debug("Getting replica context.")
-        replication = REPLICATION_STRATEGY_CLASS(context)
-        replica_info = replication.get_replica_context(self.app)
+        replica_info = self.replication.get_replica_context(self.app)
         return replica_info
 
     def _validate_slave_for_replication(self, context, replica_info):
-        if (replica_info['replication_strategy'] != REPLICATION_STRATEGY):
+        if (replica_info['replication_strategy'] != self.replication_strategy):
             raise exception.IncompatibleReplicationStrategy(
                 replica_info.update({
-                    'guest_strategy': REPLICATION_STRATEGY
+                    'guest_strategy': self.replication_strategy
                 }))
 
     def attach_replica(self, context, replica_info, slave_config):
@@ -382,12 +343,11 @@ class Manager(manager.Manager):
         try:
             if 'replication_strategy' in replica_info:
                 self._validate_slave_for_replication(context, replica_info)
-            replication = REPLICATION_STRATEGY_CLASS(context)
             if 'is_master' in replica_info and replica_info['is_master']:
-                replication.enable_as_slave(self.app, replica_info,
+                self.replication.enable_as_slave(self.app, replica_info,
                                             slave_config)
             else:
-                replication.prepare_slave(replica_info)
+                self.replication.prepare_slave(replica_info)
         except Exception:
             LOG.exception("Error enabling replication.")
             self.app.status.set_status(ds_instance.ServiceStatuses.FAILED)
@@ -427,13 +387,12 @@ class Manager(manager.Manager):
 
     def cleanup_source_on_replica_detach(self, context, replica_info):
         LOG.debug("Cleaning up the source on the detach of a replica.")
-        replication = REPLICATION_STRATEGY_CLASS(context)
-        replication.cleanup_source_on_replica_detach(self.app, replica_info)
+        self.replication.cleanup_source_on_replica_detach(
+            self.app, replica_info)
 
     def demote_replication_master(self, context):
         LOG.debug("Demoting replica source.")
-        replication = REPLICATION_STRATEGY_CLASS(context)
-        replication.demote_master(self.app)
+        self.replication.demote_master(self.app)
 
     def get_node_ip(self, context):
         LOG.debug("Retrieving cluster node ip address.")

@@ -108,13 +108,7 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
 
         # verification/assertion
         mock_status.begin_install.assert_any_call()
-
-        storage_mock = kwmocks['init_storage_structure']
-        init_mock = kwmocks['apply_initial_guestagent_configuration']
-        init_mock.assert_called_once_with(None)
-        storage_mock.assert_called_once_with(mount_point)
         kwmocks['install_if_needed'].assert_any_call(self.packages)
-
         if backup_info:
             backup.restore.assert_any_call(self.context,
                                            backup_info,
