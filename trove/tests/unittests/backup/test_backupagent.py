@@ -16,7 +16,7 @@ import hashlib
 import mock
 import os
 
-from mock import Mock, MagicMock, patch, ANY
+from mock import Mock, MagicMock, patch, ANY, DEFAULT
 from oslo_utils import netutils
 from webob.exc import HTTPNotFound
 
@@ -26,6 +26,7 @@ from trove.common import utils
 from trove.conductor import api as conductor_api
 from trove.guestagent.backup import backupagent
 from trove.guestagent.common import configuration
+from trove.guestagent.datastore.experimental.mongodb.service import MongoDBApp
 from trove.guestagent.strategies.backup.base import BackupRunner
 from trove.guestagent.strategies.backup.base import UnknownBackupType
 from trove.guestagent.strategies.backup.experimental import couchbase_impl
@@ -167,6 +168,15 @@ class BackupAgentTest(trove_testtools.TestCase):
 
     def setUp(self):
         super(BackupAgentTest, self).setUp()
+        self.patch_ope = patch.multiple('os.path',
+                                        exists=DEFAULT)
+        self.mock_ope = self.patch_ope.start()
+        self.addCleanup(self.patch_ope.stop)
+        self.patch_pc = patch('trove.guestagent.datastore.service.'
+                              'BaseDbStatus.prepare_completed')
+        self.mock_pc = self.patch_pc.start()
+        self.mock_pc.__get__ = Mock(return_value=True)
+        self.addCleanup(self.patch_pc.stop)
         self.get_auth_pwd_patch = patch.object(
             MySqlApp, 'get_auth_password', MagicMock(return_value='123'))
         self.get_auth_pwd_mock = self.get_auth_pwd_patch.start()
@@ -241,7 +251,8 @@ class BackupAgentTest(trove_testtools.TestCase):
         self.assertIsNotNone(cbbackup.manifest)
         self.assertIn('gz.enc', cbbackup.manifest)
 
-    def test_backup_impl_MongoDump(self):
+    @mock.patch.object(MongoDBApp, '_init_overrides_dir', return_value='')
+    def test_backup_impl_MongoDump(self, mock_init):
         netutils.get_my_ipv4 = Mock(return_value="1.1.1.1")
         utils.execute_with_timeout = Mock(return_value=None)
         mongodump = mongo_impl.MongoDump('mongodump', extra_opts='')

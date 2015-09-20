@@ -27,6 +27,7 @@ from trove.common.i18n import _
 from trove.common import instance as rd_instance
 from trove.guestagent import backup
 from trove.guestagent.common import operating_system
+from trove.guestagent.datastore import manager
 from trove.guestagent.datastore.mysql import service_base
 from trove.guestagent import dbaas
 from trove.guestagent.strategies.replication import get_replication_strategy
@@ -37,20 +38,20 @@ LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 
 
-class BaseMySqlManager(periodic_task.PeriodicTasks):
+class BaseMySqlManager(manager.Manager):
 
     def __init__(self, mysql_app, mysql_app_status, mysql_admin,
                  replication_strategy, replication_namespace,
-                 replication_strategy_class, manager):
+                 replication_strategy_class, manager_name):
 
-        super(BaseMySqlManager, self).__init__(CONF)
+        super(BaseMySqlManager, self).__init__()
         self._mysql_app = mysql_app
         self._mysql_app_status = mysql_app_status
         self._mysql_admin = mysql_admin
         self._replication_strategy = replication_strategy
         self._replication_namespace = replication_namespace
         self._replication_strategy_class = replication_strategy_class
-        self._manager = manager
+        self._manager_name = manager_name
 
     @property
     def mysql_app(self):
@@ -79,7 +80,11 @@ class BaseMySqlManager(periodic_task.PeriodicTasks):
 
     @property
     def manager(self):
-        return self._manager
+        return self._manager_name
+
+    @property
+    def status(self):
+        return self.mysql_app_status.get()
 
     @periodic_task.periodic_task
     def update_status(self, context):
@@ -156,12 +161,11 @@ class BaseMySqlManager(periodic_task.PeriodicTasks):
             raise
         LOG.info(_("Restored database successfully."))
 
-    def prepare(self, context, packages, databases, memory_mb, users,
-                device_path=None, mount_point=None, backup_info=None,
-                config_contents=None, root_password=None, overrides=None,
-                cluster_config=None, snapshot=None):
+    def do_prepare(self, context, packages, databases, memory_mb, users,
+                   device_path=None, mount_point=None, backup_info=None,
+                   config_contents=None, root_password=None, overrides=None,
+                   cluster_config=None, snapshot=None):
         """Makes ready DBAAS on a Guest container."""
-        self.mysql_app_status.get().begin_install()
         # status end_mysql_install set with secure()
         app = self.mysql_app(self.mysql_app_status.get())
         app.install_if_needed(packages)
@@ -205,8 +209,6 @@ class BaseMySqlManager(periodic_task.PeriodicTasks):
         else:
             app.secure_root(secure_remote_root=True)
 
-        app.complete_install_or_restart()
-
         if databases:
             self.create_database(context, databases)
 
@@ -215,8 +217,6 @@ class BaseMySqlManager(periodic_task.PeriodicTasks):
 
         if snapshot:
             self.attach_replica(context, snapshot, snapshot['config'])
-
-        LOG.info(_('Completed setup of MySQL database instance.'))
 
     def restart(self, context):
         app = self.mysql_app(self.mysql_app_status.get())

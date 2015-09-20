@@ -16,7 +16,6 @@
 import os
 
 from oslo_log import log as logging
-from oslo_service import periodic_task
 
 from trove.common import cfg
 from trove.common import exception
@@ -25,6 +24,7 @@ from trove.common import instance as rd_instance
 from trove.guestagent import backup
 from trove.guestagent.datastore.experimental.couchbase import service
 from trove.guestagent.datastore.experimental.couchbase import system
+from trove.guestagent.datastore import manager
 from trove.guestagent import dbaas
 from trove.guestagent import volume
 
@@ -34,7 +34,7 @@ CONF = cfg.CONF
 MANAGER = CONF.datastore_manager
 
 
-class Manager(periodic_task.PeriodicTasks):
+class Manager(manager.Manager):
     """
     This is Couchbase Manager class. It is dynamically loaded
     based off of the datastore of the trove instance
@@ -42,15 +42,11 @@ class Manager(periodic_task.PeriodicTasks):
     def __init__(self):
         self.appStatus = service.CouchbaseAppStatus()
         self.app = service.CouchbaseApp(self.appStatus)
-        super(Manager, self).__init__(CONF)
+        super(Manager, self).__init__()
 
-    @periodic_task.periodic_task
-    def update_status(self, context):
-        """
-        Updates the couchbase trove instance. It is decorated with
-        perodic task so it is automatically called every 3 ticks.
-        """
-        self.appStatus.update()
+    @property
+    def status(self):
+        return self.appStatus
 
     def rpc_ping(self, context):
         LOG.debug("Responding to RPC ping.")
@@ -63,16 +59,11 @@ class Manager(periodic_task.PeriodicTasks):
     def reset_configuration(self, context, configuration):
         self.app.reset_configuration(configuration)
 
-    def prepare(self, context, packages, databases, memory_mb, users,
-                device_path=None, mount_point=None, backup_info=None,
-                config_contents=None, root_password=None, overrides=None,
-                cluster_config=None, snapshot=None):
-        """
-        This is called when the trove instance first comes online.
-        It is the first rpc message passed from the task manager.
-        prepare handles all the base configuration of the Couchbase instance.
-        """
-        self.appStatus.begin_install()
+    def do_prepare(self, context, packages, databases, memory_mb, users,
+                   device_path=None, mount_point=None, backup_info=None,
+                   config_contents=None, root_password=None, overrides=None,
+                   cluster_config=None, snapshot=None):
+        """This is called from prepare in the base class."""
         self.app.install_if_needed(packages)
         if device_path:
             device = volume.VolumeDevice(device_path)
@@ -91,8 +82,6 @@ class Manager(periodic_task.PeriodicTasks):
             self._perform_restore(backup_info,
                                   context,
                                   mount_point)
-        self.app.complete_install_or_restart()
-        LOG.info(_('Completed setup of Couchbase database instance.'))
 
     def restart(self, context):
         """

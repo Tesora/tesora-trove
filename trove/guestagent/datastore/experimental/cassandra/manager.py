@@ -17,7 +17,6 @@
 import os
 
 from oslo_log import log as logging
-from oslo_service import periodic_task
 
 from trove.common import cfg
 from trove.common import exception
@@ -28,6 +27,7 @@ from trove.guestagent.datastore.experimental.cassandra import service
 from trove.guestagent.datastore.experimental.cassandra.service import (
     CassandraAdmin
 )
+from trove.guestagent.datastore import manager
 from trove.guestagent import dbaas
 from trove.guestagent import volume
 
@@ -36,19 +36,18 @@ LOG = logging.getLogger(__name__)
 MANAGER = CONF.datastore_manager
 
 
-class Manager(periodic_task.PeriodicTasks):
+class Manager(manager.Manager):
 
     def __init__(self):
         self.appStatus = service.CassandraAppStatus(
             service.CassandraApp.get_current_superuser())
         self.app = service.CassandraApp(self.appStatus)
         self.__admin = CassandraAdmin(self.app.get_current_superuser())
-        super(Manager, self).__init__(CONF)
+        super(Manager, self).__init__()
 
-    @periodic_task.periodic_task
-    def update_status(self, context):
-        """Update the status of the Cassandra service."""
-        self.appStatus.update()
+    @property
+    def status(self):
+        return self.appStatus
 
     def rpc_ping(self, context):
         LOG.debug("Responding to RPC ping.")
@@ -72,13 +71,11 @@ class Manager(periodic_task.PeriodicTasks):
     def reset_configuration(self, context, configuration):
         self.app.reset_configuration(configuration)
 
-    def prepare(self, context, packages, databases, memory_mb, users,
-                device_path=None, mount_point=None, backup_info=None,
-                config_contents=None, root_password=None, overrides=None,
-                cluster_config=None, snapshot=None):
-        LOG.info(_("Preparing Cassandra guest."))
-        self.appStatus.begin_install()
-        LOG.debug("Installing Cassandra.")
+    def do_prepare(self, context, packages, databases, memory_mb, users,
+                   device_path=None, mount_point=None, backup_info=None,
+                   config_contents=None, root_password=None, overrides=None,
+                   cluster_config=None, snapshot=None):
+        """This is called from prepare in the base class."""
         self.app.install_if_needed(packages)
         self.app.init_storage_structure(mount_point)
         if config_contents or device_path or backup_info:
@@ -140,15 +137,11 @@ class Manager(periodic_task.PeriodicTasks):
 
         self.__admin = CassandraAdmin(self.app.get_current_superuser())
 
-        self.appStatus.end_install_or_restart()
-
         if databases:
             self.create_database(context, databases)
 
         if users:
             self.create_user(context, users)
-
-        LOG.info(_("Completed setup of Cassandra database instance."))
 
     def change_passwords(self, context, users):
         self.__admin.change_passwords(context, users)

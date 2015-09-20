@@ -662,9 +662,6 @@ class BaseMySqlApp(object):
             LOG.info(_("Finished installing MySQL server."))
         self.start_mysql()
 
-    def complete_install_or_restart(self):
-        self.status.end_install_or_restart()
-
     def secure(self, config_contents, overrides):
         LOG.info(_("Generating admin password."))
         admin_password = utils.generate_random_password()
@@ -760,7 +757,7 @@ class BaseMySqlApp(object):
                 rd_instance.ServiceStatuses.SHUTDOWN,
                 self.state_change_wait_time, update_db):
             LOG.error(_("Could not stop MySQL."))
-            self.status.end_install_or_restart()
+            self.status.end_restart()
             raise RuntimeError("Could not stop MySQL!")
 
     def _remove_anonymous_user(self, client):
@@ -777,7 +774,7 @@ class BaseMySqlApp(object):
             self.stop_db()
             self.start_mysql()
         finally:
-            self.status.end_install_or_restart()
+            self.status.end_restart()
 
     def update_overrides(self, overrides):
         self._apply_user_overrides(overrides)
@@ -966,7 +963,7 @@ class BaseMySqlApp(object):
             except exception.ProcessExecutionError:
                 LOG.exception(_("Error killing stalled MySQL start command."))
                 # There's nothing more we can do...
-            self.status.end_install_or_restart()
+            self.status.end_restart()
             raise RuntimeError("Could not start MySQL!")
 
     def start_db_with_conf_changes(self, config_contents):

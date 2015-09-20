@@ -16,12 +16,11 @@
 import os
 
 from oslo_log import log as logging
-from oslo_service import periodic_task
 
 from trove.common import cfg
 from trove.common import exception
-from trove.common.i18n import _
 from trove.guestagent.datastore.experimental.couchdb import service
+from trove.guestagent.datastore import manager
 from trove.guestagent import dbaas
 from trove.guestagent import volume
 
@@ -30,7 +29,7 @@ CONF = cfg.CONF
 MANAGER = CONF.datastore_manager
 
 
-class Manager(periodic_task.PeriodicTasks):
+class Manager(manager.Manager):
     """
     This is CouchDB Manager class. It is dynamically loaded
     based off of the datastore of the Trove instance.
@@ -39,22 +38,21 @@ class Manager(periodic_task.PeriodicTasks):
     def __init__(self):
         self.appStatus = service.CouchDBAppStatus()
         self.app = service.CouchDBApp(self.appStatus)
-        super(Manager, self).__init__(CONF)
+        super(Manager, self).__init__()
+
+    @property
+    def status(self):
+        return self.appStatus
 
     def rpc_ping(self, context):
         LOG.debug("Responding to RPC ping.")
         return True
 
-    def prepare(self, context, packages, databases, memory_mb, users,
-                device_path=None, mount_point=None, backup_info=None,
-                config_contents=None, root_password=None, overrides=None,
-                cluster_config=None, snapshot=None):
-        """
-        This is called when the Trove instance first comes online.
-        It is the first RPC  message passed from the task manager.
-        prepare handles all the base configuration of the CouchDB instance.
-        """
-        self.appStatus.begin_install()
+    def do_prepare(self, context, packages, databases, memory_mb, users,
+                   device_path=None, mount_point=None, backup_info=None,
+                   config_contents=None, root_password=None, overrides=None,
+                   cluster_config=None, snapshot=None):
+        """This is called from prepare in the base class."""
         self.app.install_if_needed(packages)
         if device_path:
             self.app.stop_db()
@@ -69,13 +67,6 @@ class Manager(periodic_task.PeriodicTasks):
             self.app.start_db()
         self.app.change_permissions()
         self.app.make_host_reachable()
-        self.app.complete_install_or_restart()
-        LOG.info(_('Completed setup of CouchDB database instance.'))
-
-    @periodic_task.periodic_task
-    def update_status(self, context):
-        """Update the status of the CouchDB service."""
-        self.appStatus.update()
 
     def get_filesystem_stats(self, context, fs_path):
         """Gets the filesystem stats for the path given."""

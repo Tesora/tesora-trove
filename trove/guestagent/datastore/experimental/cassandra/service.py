@@ -68,9 +68,6 @@ class CassandraApp(object):
             self._install_db(packages)
         LOG.debug("Cassandra install_if_needed complete")
 
-    def complete_install_or_restart(self):
-        self.status.end_install_or_restart()
-
     def _enable_db_on_boot(self):
         operating_system.enable_service_on_boot(system.SERVICE_CANDIDATES)
 
@@ -102,7 +99,7 @@ class CassandraApp(object):
                                            shell=True)
             except exception.ProcessExecutionError:
                 LOG.exception(_("Error killing Cassandra start command."))
-            self.status.end_install_or_restart()
+            self.status.end_restart()
             raise RuntimeError(_("Could not start Cassandra"))
 
     def stop_db(self, update_db=False, do_not_start_on_reboot=False):
@@ -114,7 +111,7 @@ class CassandraApp(object):
                 rd_instance.ServiceStatuses.SHUTDOWN,
                 self.state_change_wait_time, update_db)):
             LOG.error(_("Could not stop Cassandra."))
-            self.status.end_install_or_restart()
+            self.status.end_restart()
             raise RuntimeError(_("Could not stop Cassandra."))
 
     def restart(self):
@@ -124,7 +121,7 @@ class CassandraApp(object):
             self.stop_db()
             self.start_db()
         finally:
-            self.status.end_install_or_restart()
+            self.status.end_restart()
 
     def _install_db(self, packages):
         """Install cassandra server"""

@@ -16,9 +16,7 @@
 
 import os
 
-from oslo_config import cfg as os_cfg
 from oslo_log import log as logging
-from oslo_service import periodic_task
 
 from .service.config import PgSqlConfig
 from .service.database import PgSqlDatabase
@@ -28,6 +26,7 @@ from .service.status import PgSqlAppStatus
 from .service.users import PgSqlUsers
 from trove.common import cfg
 from trove.guestagent import backup
+from trove.guestagent.datastore import manager
 from trove.guestagent import dbaas
 from trove.guestagent import volume
 
@@ -37,7 +36,7 @@ CONF = cfg.CONF
 
 
 class Manager(
-        periodic_task.PeriodicTasks,
+        manager.Manager,
         PgSqlUsers,
         PgSqlDatabase,
         PgSqlRoot,
@@ -45,25 +44,18 @@ class Manager(
         PgSqlInstall,
 ):
 
-    def __init__(self, *args, **kwargs):
-        if len(args) and isinstance(args[0], os_cfg.ConfigOpts):
-            conf = args[0]
-        elif 'conf' in kwargs:
-            conf = kwargs['conf']
-        else:
-            conf = CONF
+    def __init__(self):
+        super(Manager, self).__init__()
 
-        super(Manager, self).__init__(conf)
-
-    @periodic_task.periodic_task
-    def update_status(self, context):
-        PgSqlAppStatus.get().update()
+    @property
+    def status(self):
+        return PgSqlAppStatus.get()
 
     def rpc_ping(self, context):
         LOG.debug("Responding to RPC ping.")
         return True
 
-    def prepare(
+    def do_prepare(
             self,
             context,
             packages,
@@ -97,8 +89,6 @@ class Manager(
 
         if root_password and not backup_info:
             self.enable_root(context, root_password)
-
-        PgSqlAppStatus.get().end_install_or_restart()
 
         if databases:
             self.create_database(context, databases)

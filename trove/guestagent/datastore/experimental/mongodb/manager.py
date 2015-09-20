@@ -16,7 +16,6 @@
 import os
 
 from oslo_log import log as logging
-from oslo_service import periodic_task
 
 from trove.common import cfg
 from trove.common import exception
@@ -26,6 +25,7 @@ from trove.guestagent import backup
 from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.experimental.mongodb import service
 from trove.guestagent.datastore.experimental.mongodb import system
+from trove.guestagent.datastore import manager
 from trove.guestagent import dbaas
 from trove.guestagent import volume
 
@@ -35,30 +35,25 @@ CONF = cfg.CONF
 MANAGER = CONF.datastore_manager
 
 
-class Manager(periodic_task.PeriodicTasks):
+class Manager(manager.Manager):
 
     def __init__(self):
         self.app = service.MongoDBApp()
-        super(Manager, self).__init__(CONF)
+        super(Manager, self).__init__()
 
-    @periodic_task.periodic_task
-    def update_status(self, context):
-        """Update the status of the MongoDB service."""
-        self.app.status.update()
+    @property
+    def status(self):
+        return self.app.status
 
     def rpc_ping(self, context):
         LOG.debug("Responding to RPC ping.")
         return True
 
-    def prepare(self, context, packages, databases, memory_mb, users,
-                device_path=None, mount_point=None, backup_info=None,
-                config_contents=None, root_password=None, overrides=None,
-                cluster_config=None, snapshot=None):
-        """Makes ready DBAAS on a Guest container."""
-
-        LOG.debug("Preparing MongoDB instance.")
-
-        self.app.status.begin_install()
+    def do_prepare(self, context, packages, databases, memory_mb, users,
+                   device_path=None, mount_point=None, backup_info=None,
+                   config_contents=None, root_password=None, overrides=None,
+                   cluster_config=None, snapshot=None):
+        """This is called from prepare in the base class."""
         self.app.install_if_needed(packages)
         self.app.wait_for_start()
         self.app.stop_db()
@@ -110,14 +105,6 @@ class Manager(periodic_task.PeriodicTasks):
                 self.create_database(context, databases)
             if users:
                 self.create_user(context, users)
-
-        if cluster_config:
-            self.app.status.set_status(
-                ds_instance.ServiceStatuses.BUILD_PENDING)
-        else:
-            self.app.complete_install_or_restart()
-
-        LOG.info(_('Completed setup of MongoDB database instance.'))
 
     def restart(self, context):
         LOG.debug("Restarting MongoDB.")
@@ -324,12 +311,6 @@ class Manager(periodic_task.PeriodicTasks):
         except Exception:
             self.app.status.set_status(ds_instance.ServiceStatuses.FAILED)
             raise
-
-    def cluster_complete(self, context):
-        # Now that cluster creation is complete, start status checks
-        LOG.debug("Cluster creation complete, starting status checks.")
-        status = self.app.status._get_actual_db_status()
-        self.app.status.set_status(status)
 
     def get_key(self, context):
         # Return the cluster key

@@ -95,4 +95,4 @@ class PgSqlProcess(object):
             self.stop_db(context)
             self.start_db(context)
         finally:
-            PgSqlAppStatus.get().end_install_or_restart()
+            PgSqlAppStatus.get().end_restart()

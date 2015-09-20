@@ -14,7 +14,6 @@
 import os
 
 from oslo_log import log as logging
-from oslo_service import periodic_task
 
 from trove.common import cfg
 from trove.common import exception
@@ -23,6 +22,7 @@ from trove.common import instance as rd_ins
 from trove.guestagent.datastore.experimental.vertica.service import (
     VerticaAppStatus)
 from trove.guestagent.datastore.experimental.vertica.service import VerticaApp
+from trove.guestagent.datastore import manager
 from trove.guestagent import dbaas
 from trove.guestagent import volume
 
@@ -31,58 +31,46 @@ CONF = cfg.CONF
 MANAGER = 'vertica' if not CONF.datastore_manager else CONF.datastore_manager
 
 
-class Manager(periodic_task.PeriodicTasks):
+class Manager(manager.Manager):
 
     def __init__(self):
         self.appStatus = VerticaAppStatus()
         self.app = VerticaApp(self.appStatus)
-        super(Manager, self).__init__(CONF)
+        super(Manager, self).__init__()
 
-    @periodic_task.periodic_task
-    def update_status(self, context):
-        """Update the status of the Vertica service."""
-        self.appStatus.update()
+    @property
+    def status(self):
+        return self.appStatus
 
     def rpc_ping(self, context):
         LOG.debug("Responding to RPC ping.")
         return True
 
-    def prepare(self, context, packages, databases, memory_mb, users,
-                device_path=None, mount_point=None, backup_info=None,
-                config_contents=None, root_password=None, overrides=None,
-                cluster_config=None,
-                snapshot=None, path_exists_function=os.path.exists):
-        """Makes ready DBAAS on a Guest container."""
-        try:
-            LOG.info(_("Setting instance status to BUILDING."))
-            self.appStatus.begin_install()
-            if device_path:
-                device = volume.VolumeDevice(device_path)
-                # unmount if device is already mounted
-                device.unmount_device(device_path)
-                device.format()
-                if path_exists_function(mount_point):
-                    # rsync any existing data
-                    device.migrate_data(mount_point)
-                    # mount the volume
-                    device.mount(mount_point)
-                    LOG.debug("Mounted the volume.")
-            self.app.install_if_needed(packages)
-            self.app.prepare_for_install_vertica()
-            if cluster_config is None:
-                self.app.install_vertica()
-                self.app.create_db()
-                self.app.complete_install_or_restart()
-            elif cluster_config['instance_type'] == "member":
-                self.appStatus.set_status(rd_ins.ServiceStatuses.BUILD_PENDING)
-            else:
-                LOG.error(_("Bad cluster configuration; instance type "
-                            "given as %s.") % cluster_config['instance_type'])
-                raise RuntimeError("Bad cluster configuration.")
-            LOG.info(_('Completed setup of Vertica database instance.'))
-        except Exception:
-            LOG.exception(_('Cannot prepare Vertica database instance.'))
-            self.appStatus.set_status(rd_ins.ServiceStatuses.FAILED)
+    def do_prepare(self, context, packages, databases, memory_mb, users,
+                   device_path=None, mount_point=None, backup_info=None,
+                   config_contents=None, root_password=None, overrides=None,
+                   cluster_config=None, snapshot=None):
+        """This is called from prepare in the base class."""
+        if device_path:
+            device = volume.VolumeDevice(device_path)
+            # unmount if device is already mounted
+            device.unmount_device(device_path)
+            device.format()
+            if os.path.exists(mount_point):
+                # rsync any existing data
+                device.migrate_data(mount_point)
+                # mount the volume
+                device.mount(mount_point)
+                LOG.debug("Mounted the volume.")
+        self.app.install_if_needed(packages)
+        self.app.prepare_for_install_vertica()
+        if cluster_config is None:
+            self.app.install_vertica()
+            self.app.create_db()
+        elif cluster_config['instance_type'] != "member":
+            raise RuntimeError(_("Bad cluster configuration: instance type "
+                               "given as %s.") %
+                               cluster_config['instance_type'])
 
     def restart(self, context):
         LOG.debug("Restarting the database.")
@@ -226,8 +214,3 @@ class Manager(periodic_task.PeriodicTasks):
             LOG.exception(_('Cluster installation failed.'))
             self.appStatus.set_status(rd_ins.ServiceStatuses.FAILED)
             raise
-
-    def cluster_complete(self, context):
-        LOG.debug("Cluster creation complete, starting status checks.")
-        status = self.appStatus._get_actual_db_status()
-        self.appStatus.set_status(status)

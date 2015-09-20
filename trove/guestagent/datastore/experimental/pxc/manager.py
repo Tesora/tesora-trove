@@ -56,12 +56,11 @@ class Manager(manager_base.BaseMySqlManager):
                                       REPLICATION_NAMESPACE,
                                       REPLICATION_STRATEGY_CLASS, MANAGER)
 
-    def prepare(self, context, packages, databases, memory_mb, users,
-                device_path=None, mount_point=None, backup_info=None,
-                config_contents=None, root_password=None, overrides=None,
-                cluster_config=None, snapshot=None):
-        """Makes ready DBAAS on a Guest container."""
-        self.mysql_app_status.get().begin_install()
+    def do_prepare(self, context, packages, databases, memory_mb, users,
+                   device_path=None, mount_point=None, backup_info=None,
+                   config_contents=None, root_password=None, overrides=None,
+                   cluster_config=None, snapshot=None):
+        """This is called from prepare in the base class."""
         # status end_mysql_install set with secure()
         app = self.mysql_app(self.mysql_app_status.get())
         app.install_if_needed(packages)
@@ -96,21 +95,15 @@ class Manager(manager_base.BaseMySqlManager):
         LOG.debug("Securing MySQL now.")
         app.secure(config_contents, overrides)
         enable_root_on_restore = (backup_info and
-                                  MySqlAdmin().is_root_enabled())
+                                  self.mysql_admin().is_root_enabled())
         if root_password and not backup_info:
             app.secure_root(secure_remote_root=True)
-            MySqlAdmin().enable_root(root_password)
+            self.mysql_admin().enable_root(root_password)
         elif enable_root_on_restore:
             app.secure_root(secure_remote_root=False)
             app.get().report_root(context, 'root')
         else:
             app.secure_root(secure_remote_root=True)
-
-        if cluster_config is None:
-            app.complete_install_or_restart()
-        else:
-            app.status.set_status(
-                rd_instance.ServiceStatuses.BUILD_PENDING)
 
         if databases:
             self.create_database(context, databases)
@@ -120,8 +113,6 @@ class Manager(manager_base.BaseMySqlManager):
 
         if snapshot:
             self.attach_replica(context, snapshot, snapshot['config'])
-
-        LOG.info(_('Completed setup of MySQL database instance.'))
 
     def install_cluster(self, context, replication_user, cluster_configuration,
                         bootstrap):
@@ -140,9 +131,3 @@ class Manager(manager_base.BaseMySqlManager):
         LOG.debug("Storing the admin password on the instance.")
         app = self.mysql_app(self.mysql_app_status.get())
         app.reset_admin_password(admin_password)
-
-    def cluster_complete(self, context):
-        LOG.debug("Cluster creation complete, starting status checks.")
-        app = self.mysql_app(self.mysql_app_status.get())
-        status = app.status._get_actual_db_status()
-        app.status.set_status(status)
