@@ -37,16 +37,15 @@ class Manager(periodic_task.PeriodicTasks):
         super(Manager, self).__init__(CONF)
 
         # Manager properties
-        self.__status = None
         self.__error_occurred = False
 
     @abc.abstractproperty
     def status(self):
-        return self.__status
-
-    @status.setter
-    def status(self, status):
-        self.__status = status
+        """This should return an instance of a status class that has been
+        inherited from datastore.service.BaseDbStatus.  Each datastore
+        must implement this property.
+        """
+        return None
 
     @property
     def error_occurred(self):
@@ -58,8 +57,8 @@ class Manager(periodic_task.PeriodicTasks):
 
     @periodic_task.periodic_task
     def update_status(self, context):
-        """Updates the redis trove instance. It is decorated with
-        perodic task so it is automatically called every 3 ticks.
+        """Update the status of the trove instance. It is decorated with
+        perodic task so it is called automatically.
         """
         LOG.debug("Update status called.")
         self.status.update()
