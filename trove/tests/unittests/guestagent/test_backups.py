@@ -636,6 +636,10 @@ class MongodbBackupTests(trove_testtools.TestCase):
         super(MongodbBackupTests, self).setUp()
         self.exec_timeout_patch = patch.object(utils, 'execute_with_timeout')
         self.exec_timeout_patch.start()
+        self.mongodb_init_overrides_dir_patch = patch.object(
+            MongoDBApp,
+            '_init_overrides_dir')
+        self.mongodb_init_overrides_dir_patch.start()
         self.backup_runner = utils.import_class(
             BACKUP_MONGODUMP_CLS)
         self.backup_runner_patch = patch.multiple(
@@ -646,6 +650,7 @@ class MongodbBackupTests(trove_testtools.TestCase):
         super(MongodbBackupTests, self).tearDown()
         self.backup_runner_patch.stop()
         self.exec_timeout_patch.stop()
+        self.mongodb_init_overrides_dir_patch.stop()
 
     @patch.object(MongoDBApp, '_init_overrides_dir',
                   return_value='')
