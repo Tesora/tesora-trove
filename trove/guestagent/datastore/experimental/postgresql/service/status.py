@@ -29,6 +29,7 @@ PGSQL_PID = "'/var/run/postgresql/postgresql.pid'"
 
 
 class PgSqlAppStatus(service.BaseDbStatus):
+
     @classmethod
     def get(cls):
         if not cls._instance:
@@ -60,7 +61,7 @@ class PgSqlAppStatus(service.BaseDbStatus):
 
         # Run a simple scalar query to make sure the process is responsive.
         try:
-            pgutil.execute('psql', '-c', 'SELECT 1')
+            pgutil.psql('SELECT 1')
         except utils.Timeout:
             return instance.ServiceStatuses.BLOCKED
         except exception.ProcessExecutionError:

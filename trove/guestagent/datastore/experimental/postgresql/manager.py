@@ -23,8 +23,9 @@ from .service.database import PgSqlDatabase
 from .service.install import PgSqlInstall
 from .service.root import PgSqlRoot
 from .service.status import PgSqlAppStatus
-from .service.users import PgSqlUsers
+import pgutil
 from trove.common import cfg
+from trove.common import utils
 from trove.guestagent import backup
 from trove.guestagent.datastore import manager
 from trove.guestagent import dbaas
@@ -37,12 +38,13 @@ CONF = cfg.CONF
 
 class Manager(
         manager.Manager,
-        PgSqlUsers,
         PgSqlDatabase,
         PgSqlRoot,
         PgSqlConfig,
         PgSqlInstall,
 ):
+
+    PG_BUILTIN_ADMIN = 'postgres'
 
     def __init__(self):
         super(Manager, self).__init__()
@@ -71,8 +73,8 @@ class Manager(
             cluster_config=None,
             snapshot=None
     ):
+        pgutil.PG_ADMIN = self.PG_BUILTIN_ADMIN
         self.install(context, packages)
-        PgSqlAppStatus.get().begin_restart()
         self.stop_db(context)
         if device_path:
             device = volume.VolumeDevice(device_path)
@@ -86,6 +88,9 @@ class Manager(
 
         if backup_info:
             backup.restore(context, backup_info, '/tmp')
+            pgutil.PG_ADMIN = self.ADMIN_USER
+        else:
+            self._secure(context)
 
         if root_password and not backup_info:
             self.enable_root(context, root_password)
@@ -95,6 +100,16 @@ class Manager(
 
         if users:
             self.create_user(context, users)
+
+    def _secure(self, context):
+        # Create a new administrative user for Trove and also
+        # disable the built-in superuser.
+        self.create_database(context, [{'_name': self.ADMIN_USER}])
+        self._create_admin_user(context)
+        pgutil.PG_ADMIN = self.ADMIN_USER
+        postgres = {'_name': self.PG_BUILTIN_ADMIN,
+                    '_password': utils.generate_random_password()}
+        self.alter_user(context, postgres, 'NOSUPERUSER', 'NOLOGIN')
 
     def get_filesystem_stats(self, context, fs_path):
         mount_point = CONF.get(CONF.datastore_manager).mount_point

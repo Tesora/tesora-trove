@@ -25,14 +25,7 @@ from trove.guestagent.common.operating_system import FileMode
 
 LOG = logging.getLogger(__name__)
 
-
-def execute(*command, **kwargs):
-    """Execute a command as the 'postgres' user."""
-
-    LOG.debug('Running as postgres: {0}'.format(command))
-    return utils.execute_with_timeout(
-        "sudo", "-u", "postgres", *command, **kwargs
-    )
+PG_ADMIN = 'os_admin'
 
 
 def result(filename):
@@ -64,7 +57,8 @@ def psql(statement, timeout=30):
     """Execute a statement using the psql client."""
 
     LOG.debug('Sending to local db: {0}'.format(statement))
-    return execute('psql', '-c', statement, timeout=timeout)
+    return utils.execute_with_timeout(
+        'psql', '-U', PG_ADMIN, '-c', statement, timeout=timeout)
 
 
 def query(statement, timeout=30):
@@ -166,22 +160,48 @@ class UserQuery(object):
         )
 
     @classmethod
-    def create(cls, name, password):
+    def create(cls, name, password, encrypt_password=None, *options):
         """Query to create a user with a password."""
 
-        return "CREATE USER \"{name}\" WITH PASSWORD '{password}'".format(
-            name=name,
-            password=password,
-        )
+        create_clause = "CREATE USER \"{name}\"".format(name=name)
+        with_clause = cls._build_with_clause(
+            password, encrypt_password, *options)
+        return ''.join([create_clause, with_clause])
 
     @classmethod
-    def update_password(cls, name, password):
+    def _build_with_clause(cls, password, encrypt_password=None, *options):
+        tokens = ['WITH']
+        if password:
+            # Do not specify the encryption option if 'encrypt_password'
+            # is None. PostgreSQL will use the configuration default.
+            if encrypt_password is True:
+                tokens.append('ENCRYPTED')
+            elif encrypt_password is False:
+                tokens.append('UNENCRYPTED')
+            tokens.append('PASSWORD')
+            tokens.append("'{password}'".format(password=password))
+        if options:
+            tokens.extend(options)
+
+        if len(tokens) > 1:
+            return ' '.join(tokens)
+
+        return ''
+
+    @classmethod
+    def update_password(cls, name, password, encrypt_password=None):
         """Query to update the password for a user."""
 
-        return "ALTER USER \"{name}\" WITH PASSWORD '{password}'".format(
-            name=name,
-            password=password,
-        )
+        return cls.alter_user(name, password, encrypt_password)
+
+    @classmethod
+    def alter_user(cls, name, password, encrypt_password=None, *options):
+        """Query to alter a user."""
+
+        alter_clause = "ALTER USER \"{name}\"".format(name=name)
+        with_clause = cls._build_with_clause(
+            password, encrypt_password, *options)
+        return ''.join([alter_clause, with_clause])
 
     @classmethod
     def update_name(cls, old, new):
