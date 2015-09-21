@@ -20,7 +20,6 @@ from proboscis.asserts import assert_equal
 import testtools
 from testtools.matchers import Is, Equals, Not
 
-from trove.common.context import TroveContext
 from trove.common.exception import InsufficientSpaceForReplica
 from trove.common.exception import ProcessExecutionError
 from trove.common import instance as rd_instance
@@ -34,12 +33,13 @@ from trove.guestagent import dbaas as base_dbaas
 from trove.guestagent import pkg as pkg
 from trove.guestagent import volume
 from trove.guestagent.volume import VolumeDevice
+from trove.tests.unittests import trove_testtools
 
 
 class GuestAgentManagerTest(testtools.TestCase):
     def setUp(self):
         super(GuestAgentManagerTest, self).setUp()
-        self.context = TroveContext()
+        self.context = trove_testtools.TroveTestContext(self)
         self.manager = Manager()
         self.origin_MySqlAppStatus = dbaas.MySqlAppStatus
         self.origin_os_path_exists = os.path.exists

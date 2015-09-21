@@ -19,7 +19,6 @@ from mock import patch
 from oslo_utils import netutils
 import testtools
 
-from trove.common.context import TroveContext
 from trove.common.instance import ServiceStatuses
 from trove.guestagent.datastore.experimental.couchdb import (
     manager as couchdb_manager)
@@ -27,6 +26,7 @@ from trove.guestagent.datastore.experimental.couchdb import (
     service as couchdb_service)
 from trove.guestagent import pkg as pkg
 from trove.guestagent import volume
+from trove.tests.unittests import trove_testtools
 
 
 class GuestAgentCouchDBManagerTest(testtools.TestCase):
@@ -43,7 +43,7 @@ class GuestAgentCouchDBManagerTest(testtools.TestCase):
 
         couchdb_service.CouchDBAppStatus.set_status = MagicMock(
             return_value=FakeInstanceServiceStatus())
-        self.context = TroveContext()
+        self.context = trove_testtools.TroveTestContext(self)
         self.manager = couchdb_manager.Manager()
         self.pkg = couchdb_service.packager
         self.real_db_app_status = couchdb_service.CouchDBAppStatus

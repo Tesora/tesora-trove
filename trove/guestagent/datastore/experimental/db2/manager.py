@@ -17,6 +17,7 @@ from oslo_log import log as logging
 
 from trove.common import cfg
 from trove.common import exception
+from trove.common.notification import EndNotification
 from trove.guestagent.datastore.experimental.db2 import service
 from trove.guestagent.datastore import manager
 from trove.guestagent import dbaas
@@ -93,11 +94,13 @@ class Manager(manager.Manager):
 
     def create_database(self, context, databases):
         LOG.debug("Creating database(s)." % databases)
-        self.admin.create_database(databases)
+        with EndNotification(context):
+            self.admin.create_database(databases)
 
     def delete_database(self, context, database):
-        LOG.debug("Deleting database %s." % database)
-        return self.admin.delete_database(database)
+        with EndNotification(context):
+            LOG.debug("Deleting database %s." % database)
+            return self.admin.delete_database(database)
 
     def list_databases(self, context, limit=None, marker=None,
                        include_marker=False):
@@ -106,11 +109,13 @@ class Manager(manager.Manager):
 
     def create_user(self, context, users):
         LOG.debug("Create user(s).")
-        self.admin.create_user(users)
+        with EndNotification(context):
+            self.admin.create_user(users)
 
     def delete_user(self, context, user):
         LOG.debug("Delete a user %s." % user)
-        self.admin.delete_user(user)
+        with EndNotification(context):
+            self.admin.delete_user(user)
 
     def get_user(self, context, username, hostname):
         LOG.debug("Show details of user %s." % username)
@@ -166,13 +171,15 @@ class Manager(manager.Manager):
 
     def change_passwords(self, context, users):
         LOG.debug("Changing password.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='change_passwords', datastore=MANAGER)
+        with EndNotification(context):
+            raise exception.DatastoreOperationNotSupported(
+                operation='change_passwords', datastore=MANAGER)
 
     def update_attributes(self, context, username, hostname, user_attrs):
         LOG.debug("Updating database attributes.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='update_attributes', datastore=MANAGER)
+        with EndNotification(context):
+            raise exception.DatastoreOperationNotSupported(
+                operation='update_attributes', datastore=MANAGER)
 
     def enable_root(self, context):
         LOG.debug("Enabling root.")
@@ -200,8 +207,9 @@ class Manager(manager.Manager):
 
     def create_backup(self, context, backup_info):
         LOG.debug("Creating backup.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='create_backup', datastore=MANAGER)
+        with EndNotification(context):
+            raise exception.DatastoreOperationNotSupported(
+                operation='create_backup', datastore=MANAGER)
 
     def get_config_changes(self, cluster_config, mount_point=None):
         LOG.debug("Get configuration changes")

@@ -22,6 +22,7 @@ from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance as trove_instance
+from trove.common.notification import EndNotification
 from trove.guestagent import backup
 from trove.guestagent.datastore.experimental.cassandra import service
 from trove.guestagent.datastore.experimental.cassandra.service import (
@@ -148,22 +149,29 @@ class Manager(manager.Manager):
             self.create_user(context, users)
 
     def change_passwords(self, context, users):
-        self.__admin.change_passwords(context, users)
+        with EndNotification(context):
+            self.__admin.change_passwords(context, users)
 
     def update_attributes(self, context, username, hostname, user_attrs):
-        self.__admin.update_attributes(context, username, hostname, user_attrs)
+        with EndNotification(context):
+            self.__admin.update_attributes(context, username, hostname,
+                                           user_attrs)
 
     def create_database(self, context, databases):
-        self.__admin.create_database(context, databases)
+        with EndNotification(context):
+            self.__admin.create_database(context, databases)
 
     def create_user(self, context, users):
-        self.__admin.create_user(context, users)
+        with EndNotification(context):
+            self.__admin.create_user(context, users)
 
     def delete_database(self, context, database):
-        self.__admin.delete_database(context, database)
+        with EndNotification(context):
+            self.__admin.delete_database(context, database)
 
     def delete_user(self, context, user):
-        self.__admin.delete_user(context, user)
+        with EndNotification(context):
+            self.__admin.delete_user(context, user)
 
     def get_user(self, context, username, hostname):
         return self.__admin.get_user(context, username, hostname)
@@ -226,7 +234,8 @@ class Manager(manager.Manager):
                             backup task, location, type, and other data.
         """
 
-        backup.backup(context, backup_info)
+        with EndNotification(context):
+            backup.backup(context, backup_info)
 
     def mount_volume(self, context, device_path=None, mount_point=None):
         device = volume.VolumeDevice(device_path)

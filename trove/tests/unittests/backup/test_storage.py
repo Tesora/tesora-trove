@@ -16,7 +16,6 @@ import hashlib
 
 from mock import Mock, MagicMock, patch
 
-from trove.common.context import TroveContext
 from trove.guestagent.strategies.storage import swift
 from trove.guestagent.strategies.storage.swift import StreamReader
 from trove.guestagent.strategies.storage.swift \
@@ -39,7 +38,7 @@ class SwiftStorageSaveChecksumTests(trove_testtools.TestCase):
 
     def test_swift_checksum_save(self):
         """This tests that SwiftStorage.save returns the swift checksum."""
-        context = TroveContext()
+        context = trove_testtools.TroveTestContext(self)
         backup_id = '123'
         user = 'user'
         password = 'password'
@@ -67,7 +66,7 @@ class SwiftStorageSaveChecksumTests(trove_testtools.TestCase):
         """This tests that when etag doesn't match segment uploaded checksum
             False is returned and None for checksum and location
         """
-        context = TroveContext()
+        context = trove_testtools.TroveTestContext(self)
         # this backup_id will trigger fake swift client with calculate_etag
         # enabled to spit out a bad etag when a segment object is uploaded
         backup_id = 'bad_segment_etag_123'
@@ -100,7 +99,7 @@ class SwiftStorageSaveChecksumTests(trove_testtools.TestCase):
         """This tests that when etag doesn't match swift checksum False is
             returned and None for checksum and location
         """
-        context = TroveContext()
+        context = trove_testtools.TroveTestContext(self)
         # this backup_id will trigger fake swift client with calculate_etag
         # enabled to spit out a bad etag when a segment object is uploaded
         backup_id = 'bad_manifest_etag_123'
@@ -134,7 +133,7 @@ class SwiftStorageUtils(trove_testtools.TestCase):
 
     def setUp(self):
         super(SwiftStorageUtils, self).setUp()
-        self.context = TroveContext()
+        self.context = trove_testtools.TroveTestContext(self)
         self.swift_client = FakeSwiftConnection()
         self.create_swift_client_patch = patch.object(
             swift, 'create_swift_client',
@@ -180,7 +179,7 @@ class SwiftStorageLoad(trove_testtools.TestCase):
             matches swift object etag
         """
 
-        context = TroveContext()
+        context = trove_testtools.TroveTestContext(self)
         location = "/backup/location/123"
         backup_checksum = "fake-md5-sum"
 
@@ -198,7 +197,7 @@ class SwiftStorageLoad(trove_testtools.TestCase):
             does not match swift object etag
         """
 
-        context = TroveContext()
+        context = trove_testtools.TroveTestContext(self)
         location = "/backup/location/123"
         backup_checksum = "checksum_different_then_fake_swift_etag"
 
@@ -279,7 +278,7 @@ class SwiftMetadataTests(trove_testtools.TestCase):
     def setUp(self):
         super(SwiftMetadataTests, self).setUp()
         self.swift_client = FakeSwiftConnection()
-        self.context = TroveContext()
+        self.context = trove_testtools.TroveTestContext(self)
         self.create_swift_client_patch = patch.object(
             swift, 'create_swift_client',
             MagicMock(return_value=self.swift_client))

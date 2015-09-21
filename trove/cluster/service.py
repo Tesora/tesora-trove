@@ -22,6 +22,8 @@ from trove.common import apischema
 from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
+from trove.common import notification
+from trove.common.notification import StartNotification
 from trove.common import pagination
 from trove.common.strategies.cluster import strategy
 from trove.common import utils
@@ -113,7 +115,10 @@ class ClusterController(wsgi.Controller):
 
         context = req.environ[wsgi.CONTEXT_KEY]
         cluster = models.Cluster.load(context, id)
-        cluster.delete()
+        context.notification = notification.DBaaSClusterDelete(context,
+                                                               request=req)
+        with StartNotification(context, cluster_id=id):
+            cluster.delete()
         return wsgi.Result(None, 202)
 
     def index(self, req, tenant_id):
@@ -176,8 +181,12 @@ class ClusterController(wsgi.Controller):
                               "nics": nics,
                               "availability_zone": availability_zone})
 
-        cluster = models.Cluster.create(context, name, datastore,
-                                        datastore_version, instances,
-                                        extended_properties)
+        context.notification = notification.DBaaSClusterCreate(context,
+                                                               request=req)
+        with StartNotification(context, name=name, datastore=datastore.name,
+                               datastore_version=datastore_version.name):
+            cluster = models.Cluster.create(context, name, datastore,
+                                            datastore_version, instances,
+                                            extended_properties)
         view = views.load_view(cluster, req=req, load_servers=False)
         return wsgi.Result(view.data(), 200)

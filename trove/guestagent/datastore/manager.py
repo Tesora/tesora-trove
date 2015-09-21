@@ -23,6 +23,7 @@ from oslo_service import periodic_task
 from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
+from trove.common.notification import EndNotification
 from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.common.operating_system import FileMode
@@ -208,23 +209,24 @@ class Manager(periodic_task.PeriodicTasks):
                 cluster_config=None, snapshot=None):
         """Set up datastore on a Guest Instance."""
         LOG.info(_("Starting datastore prepare."))
-        self.status.begin_install()
-        post_processing = True if cluster_config else False
-        try:
-            self.do_prepare(
-                context, packages, databases, memory_mb, users,
-                device_path=device_path, mount_point=mount_point,
-                backup_info=backup_info, config_contents=config_contents,
-                root_password=root_password, overrides=overrides,
-                cluster_config=cluster_config, snapshot=snapshot)
-        except Exception:
-            self.prepare_error = True
-            LOG.exception("An error occurred preparing datastore")
-            raise
-        finally:
-            LOG.info(_("Ending datastore prepare."))
-            self.status.end_install(error_occurred=self.prepare_error,
-                                    post_processing=post_processing)
+        with EndNotification(context):
+            self.status.begin_install()
+            post_processing = True if cluster_config else False
+            try:
+                self.do_prepare(
+                    context, packages, databases, memory_mb, users,
+                    device_path=device_path, mount_point=mount_point,
+                    backup_info=backup_info, config_contents=config_contents,
+                    root_password=root_password, overrides=overrides,
+                    cluster_config=cluster_config, snapshot=snapshot)
+            except Exception:
+                self.prepare_error = True
+                LOG.exception("An error occurred preparing datastore")
+                raise
+            finally:
+                LOG.info(_("Ending datastore prepare."))
+                self.status.end_install(error_occurred=self.prepare_error,
+                                        post_processing=post_processing)
         LOG.info(_('Completed setup of datastore successfully.'))
 
     @abc.abstractmethod

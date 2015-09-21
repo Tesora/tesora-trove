@@ -29,6 +29,7 @@ from trove.common import cfg
 from trove.common import exception
 from trove.common import i18n as i18n
 import trove.common.instance as tr_instance
+from trove.common.notification import StartNotification
 from trove.common.remote import create_cinder_client
 from trove.common.remote import create_dns_client
 from trove.common.remote import create_guest_client
@@ -687,6 +688,15 @@ class Instance(BuiltInstance):
                configuration_id=None, slave_of_id=None, cluster_config=None,
                replica_count=None, volume_type=None):
 
+        call_args = {
+            'name': name,
+            'flavor_id': flavor_id,
+            'datastore': datastore.name if datastore else None,
+            'datastore_version': datastore_version.name,
+            'image_id': image_id,
+            'availability_zone': availability_zone,
+        }
+
         # All nova flavors are permitted for a datastore-version unless one
         # or more entries are found in datastore_version_metadata,
         # in which case only those are permitted.
@@ -710,6 +720,7 @@ class Instance(BuiltInstance):
         deltas = {'instances': 1}
         volume_support = datastore_cfg.volume_support
         if volume_support:
+            call_args['volume_size'] = volume_size
             validate_volume_size(volume_size)
             deltas['volumes'] = volume_size
             # Instance volume should have enough space for the backup
@@ -725,6 +736,7 @@ class Instance(BuiltInstance):
                 target_size = flavor.ephemeral  # ephemeral_Storage
 
         if backup_id:
+            call_args['backup_id'] = backup_id
             backup_info = Backup.get_by_id(context, backup_id)
             if not backup_info.is_done_successfuly:
                 raise exception.BackupNotCompleteError(
@@ -747,6 +759,8 @@ class Instance(BuiltInstance):
                     datastore2=datastore.name)
 
         if slave_of_id:
+            call_args['replica_of'] = slave_of_id
+            call_args['replica_count'] = replica_count
             replication_support = datastore_cfg.replication_strategy
             if not replication_support:
                 raise exception.ReplicationNotSupported(
@@ -791,6 +805,10 @@ class Instance(BuiltInstance):
         if CONF.default_neutron_networks:
             nics = [{"net-id": net_id}
                     for net_id in CONF.default_neutron_networks] + nics
+        if nics:
+            call_args['nics'] = nics
+        if cluster_config:
+            call_args['cluster_id'] = cluster_config.get("id", None)
 
         def _create_resources():
 
@@ -865,9 +883,8 @@ class Instance(BuiltInstance):
             return SimpleInstance(context, db_info, service_status,
                                   root_password)
 
-        return run_with_quotas(context.tenant,
-                               deltas,
-                               _create_resources)
+        with StartNotification(context, **call_args):
+            return run_with_quotas(context.tenant, deltas, _create_resources)
 
     def get_flavor(self):
         client = create_nova_client(self.context)

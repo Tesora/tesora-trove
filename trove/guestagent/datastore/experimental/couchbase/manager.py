@@ -21,6 +21,7 @@ from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance as rd_instance
+from trove.common.notification import EndNotification
 from trove.guestagent import backup
 from trove.guestagent.datastore.experimental.couchbase import service
 from trove.guestagent.datastore.experimental.couchbase import system
@@ -53,8 +54,9 @@ class Manager(manager.Manager):
         return True
 
     def change_passwords(self, context, users):
-        raise exception.DatastoreOperationNotSupported(
-            operation='change_passwords', datastore=MANAGER)
+        with EndNotification(context):
+            raise exception.DatastoreOperationNotSupported(
+                operation='change_passwords', datastore=MANAGER)
 
     def reset_configuration(self, context, configuration):
         self.app.reset_configuration(configuration)
@@ -109,24 +111,29 @@ class Manager(manager.Manager):
         return dbaas.get_filesystem_volume_stats(mount_point)
 
     def update_attributes(self, context, username, hostname, user_attrs):
-        raise exception.DatastoreOperationNotSupported(
-            operation='update_attributes', datastore=MANAGER)
+        with EndNotification(context):
+            raise exception.DatastoreOperationNotSupported(
+                operation='update_attributes', datastore=MANAGER)
 
     def create_database(self, context, databases):
-        raise exception.DatastoreOperationNotSupported(
-            operation='create_database', datastore=MANAGER)
+        with EndNotification(context):
+            raise exception.DatastoreOperationNotSupported(
+                operation='create_database', datastore=MANAGER)
 
     def create_user(self, context, users):
-        raise exception.DatastoreOperationNotSupported(
-            operation='create_user', datastore=MANAGER)
+        with EndNotification(context):
+            raise exception.DatastoreOperationNotSupported(
+                operation='create_user', datastore=MANAGER)
 
     def delete_database(self, context, database):
-        raise exception.DatastoreOperationNotSupported(
-            operation='delete_database', datastore=MANAGER)
+        with EndNotification(context):
+            raise exception.DatastoreOperationNotSupported(
+                operation='delete_database', datastore=MANAGER)
 
     def delete_user(self, context, user):
-        raise exception.DatastoreOperationNotSupported(
-            operation='delete_user', datastore=MANAGER)
+        with EndNotification(context):
+            raise exception.DatastoreOperationNotSupported(
+                operation='delete_user', datastore=MANAGER)
 
     def get_user(self, context, username, hostname):
         raise exception.DatastoreOperationNotSupported(
@@ -193,7 +200,8 @@ class Manager(manager.Manager):
         """
         Backup all couchbase buckets and their documents.
         """
-        backup.backup(context, backup_info)
+        with EndNotification(context):
+            backup.backup(context, backup_info)
 
     def mount_volume(self, context, device_path=None, mount_point=None):
         device = volume.VolumeDevice(device_path)

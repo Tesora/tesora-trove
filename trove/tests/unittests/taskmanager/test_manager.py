@@ -15,15 +15,14 @@
 #    under the License.
 
 from mock import Mock, patch, PropertyMock
+from proboscis.asserts import assert_equal
 
 from trove.backup.models import Backup
-from trove.common.context import TroveContext
+from trove.common.exception import TroveError, ReplicationSlaveAttachError
 from trove.instance.tasks import InstanceTasks
 from trove.taskmanager.manager import Manager
 from trove.taskmanager import models
 from trove.taskmanager import service
-from trove.common.exception import TroveError, ReplicationSlaveAttachError
-from proboscis.asserts import assert_equal
 from trove.tests.unittests import trove_testtools
 
 
@@ -32,7 +31,7 @@ class TestManager(trove_testtools.TestCase):
     def setUp(self):
         super(TestManager, self).setUp()
         self.manager = Manager()
-        self.context = TroveContext()
+        self.context = trove_testtools.TroveTestContext(self)
         self.mock_slave1 = Mock()
         self.mock_slave2 = Mock()
         type(self.mock_slave1).id = PropertyMock(return_value='some-inst-id')

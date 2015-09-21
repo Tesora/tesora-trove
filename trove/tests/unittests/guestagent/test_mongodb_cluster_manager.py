@@ -17,7 +17,6 @@ import mock
 from oslo_utils import netutils
 import pymongo
 
-import trove.common.context as context
 import trove.common.instance as ds_instance
 import trove.common.utils as utils
 from trove.guestagent.common import operating_system
@@ -34,7 +33,7 @@ class GuestAgentMongoDBClusterManagerTest(trove_testtools.TestCase):
                        return_value='')
     def setUp(self, _):
         super(GuestAgentMongoDBClusterManagerTest, self).setUp()
-        self.context = context.TroveContext()
+        self.context = trove_testtools.TroveTestContext(self)
         self.manager = manager.Manager()
         self.manager.app.configuration_manager = mock.MagicMock()
         self.manager.app.status.set_status = mock.MagicMock()

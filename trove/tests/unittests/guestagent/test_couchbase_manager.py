@@ -22,7 +22,6 @@ from mock import Mock
 from oslo_utils import netutils
 import testtools
 
-from trove.common.context import TroveContext
 from trove.common import utils
 from trove.guestagent import backup
 from trove.guestagent.datastore.experimental.couchbase import (
@@ -30,13 +29,14 @@ from trove.guestagent.datastore.experimental.couchbase import (
 from trove.guestagent.datastore.experimental.couchbase import (
     service as couch_service)
 from trove.guestagent import volume
+from trove.tests.unittests import trove_testtools
 
 
 class GuestAgentCouchbaseManagerTest(testtools.TestCase):
 
     def setUp(self):
         super(GuestAgentCouchbaseManagerTest, self).setUp()
-        self.context = TroveContext()
+        self.context = trove_testtools.TroveTestContext(self)
         self.manager = couch_manager.Manager()
         self.packages = 'couchbase-server'
         self.origin_CouchbaseAppStatus = couch_service.CouchbaseAppStatus

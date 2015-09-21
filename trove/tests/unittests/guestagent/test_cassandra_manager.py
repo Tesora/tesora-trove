@@ -22,7 +22,6 @@ import testtools
 from testtools import ExpectedException
 from trove.common import exception
 
-from trove.common.context import TroveContext
 from trove.common.instance import ServiceStatuses
 from trove.guestagent import backup
 from trove.guestagent.datastore.experimental.cassandra import (
@@ -32,6 +31,7 @@ from trove.guestagent.datastore.experimental.cassandra import (
 from trove.guestagent.db import models
 from trove.guestagent import pkg as pkg
 from trove.guestagent import volume
+from trove.tests.unittests import trove_testtools
 
 
 class GuestAgentCassandraDBManagerTest(testtools.TestCase):
@@ -78,7 +78,7 @@ class GuestAgentCassandraDBManagerTest(testtools.TestCase):
 
         cass_service.CassandraAppStatus.set_status = MagicMock(
             return_value=FakeInstanceServiceStatus())
-        self.context = TroveContext()
+        self.context = trove_testtools.TroveTestContext(self)
         self.manager = cass_manager.Manager()
         self.manager._Manager__admin = cass_service.CassandraAdmin(
             models.CassandraUser('Test'))

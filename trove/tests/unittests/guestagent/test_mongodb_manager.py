@@ -15,7 +15,6 @@
 import mock
 import pymongo
 
-import trove.common.context as context
 import trove.common.utils as utils
 import trove.guestagent.backup as backup
 import trove.guestagent.datastore.experimental.mongodb.manager as manager
@@ -31,7 +30,7 @@ class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
                        return_value='')
     def setUp(self, _):
         super(GuestAgentMongoDBManagerTest, self).setUp()
-        self.context = context.TroveContext()
+        self.context = trove_testtools.TroveTestContext(self)
         self.manager = manager.Manager()
 
         self.execute_with_timeout_patch = mock.patch.object(

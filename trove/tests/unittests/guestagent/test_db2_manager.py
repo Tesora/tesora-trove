@@ -17,7 +17,6 @@ from mock import patch
 import testtools
 from testtools.matchers import Is, Equals, Not
 
-from trove.common.context import TroveContext
 from trove.common.instance import ServiceStatuses
 from trove.guestagent.datastore.experimental.db2 import (
     manager as db2_manager)
@@ -25,6 +24,7 @@ from trove.guestagent.datastore.experimental.db2 import (
     service as db2_service)
 from trove.guestagent import pkg as pkg
 from trove.guestagent import volume
+from trove.tests.unittests import trove_testtools
 
 
 class GuestAgentDB2ManagerTest(testtools.TestCase):
@@ -41,7 +41,7 @@ class GuestAgentDB2ManagerTest(testtools.TestCase):
 
         db2_service.DB2AppStatus.set_status = MagicMock(
             return_value=FakeInstanceServiceStatus())
-        self.context = TroveContext()
+        self.context = trove_testtools.TroveTestContext(self)
         self.manager = db2_manager.Manager()
         self.real_db_app_status = db2_service.DB2AppStatus
         self.origin_format = volume.VolumeDevice.format

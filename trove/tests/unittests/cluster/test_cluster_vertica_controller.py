@@ -101,7 +101,7 @@ class TestClusterController(trove_testtools.TestCase):
                                       mock_cluster_create):
         body = self.cluster
         tenant_id = Mock()
-        context = Mock()
+        context = trove_testtools.TroveTestContext(self)
 
         req = Mock()
         req.environ = MagicMock()
@@ -126,7 +126,7 @@ class TestClusterController(trove_testtools.TestCase):
                              mock_cluster_create):
         body = self.cluster
         tenant_id = Mock()
-        context = Mock()
+        context = trove_testtools.TroveTestContext(self)
 
         req = Mock()
         req.environ = Mock()
@@ -165,7 +165,7 @@ class TestClusterController(trove_testtools.TestCase):
                           mock_cluster_load):
         tenant_id = Mock()
         id = Mock()
-        context = Mock()
+        context = trove_testtools.TroveTestContext(self)
         req = Mock()
         req.environ = Mock()
         req.environ.__getitem__ = Mock(return_value=context)
@@ -187,7 +187,7 @@ class TestClusterController(trove_testtools.TestCase):
         tenant_id = Mock()
         cluster_id = Mock()
         instance_id = Mock()
-        context = Mock()
+        context = trove_testtools.TroveTestContext(self)
         req = Mock()
         req.environ = Mock()
         req.environ.__getitem__ = Mock(return_value=context)
@@ -204,6 +204,7 @@ class TestClusterController(trove_testtools.TestCase):
         cluster_id = Mock()
         req = MagicMock()
         cluster = Mock()
+        trove_testtools.patch_notifier(self)
         mock_cluster_load.return_value = cluster
         self.controller.delete(req, tenant_id, cluster_id)
         cluster.delete.assert_called_with()
@@ -258,7 +259,7 @@ class TestClusterControllerWithStrategy(trove_testtools.TestCase):
 
         body = self.cluster
         tenant_id = Mock()
-        context = Mock()
+        context = trove_testtools.TroveTestContext(self)
 
         req = Mock()
         req.environ = MagicMock()
@@ -283,7 +284,7 @@ class TestClusterControllerWithStrategy(trove_testtools.TestCase):
 
         body = self.cluster
         tenant_id = Mock()
-        context = Mock()
+        context = trove_testtools.TroveTestContext(self)
 
         req = Mock()
         req.environ = MagicMock()
@@ -304,7 +305,7 @@ class TestClusterControllerWithStrategy(trove_testtools.TestCase):
 
         body = {'do_stuff2': {}}
         tenant_id = Mock()
-        context = Mock()
+        context = trove_testtools.TroveTestContext(self)
         id = Mock()
 
         req = Mock()
@@ -326,7 +327,7 @@ class TestClusterControllerWithStrategy(trove_testtools.TestCase):
 
         body = {'do_stuff': {}}
         tenant_id = Mock()
-        context = Mock()
+        context = trove_testtools.TroveTestContext(self)
         id = Mock()
 
         req = Mock()

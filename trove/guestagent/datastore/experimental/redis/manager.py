@@ -19,6 +19,7 @@ from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance as rd_instance
+from trove.common.notification import EndNotification
 from trove.common import utils
 from trove.guestagent import backup
 from trove.guestagent.common import operating_system
@@ -66,8 +67,9 @@ class Manager(manager.Manager):
         it is currently not not implemented.
         """
         LOG.debug("Change passwords called.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='change_passwords', datastore=MANAGER)
+        with EndNotification(context):
+            raise exception.DatastoreOperationNotSupported(
+                operation='change_passwords', datastore=MANAGER)
 
     def reset_configuration(self, context, configuration):
         """
@@ -154,7 +156,8 @@ class Manager(manager.Manager):
     def create_backup(self, context, backup_info):
         """Create a backup of the database."""
         LOG.debug("Creating backup.")
-        backup.backup(context, backup_info)
+        with EndNotification(context):
+            backup.backup(context, backup_info)
 
     def mount_volume(self, context, device_path=None, mount_point=None):
         device = volume.VolumeDevice(device_path)
@@ -186,28 +189,33 @@ class Manager(manager.Manager):
 
     def update_attributes(self, context, username, hostname, user_attrs):
         LOG.debug("Updating attributes.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='update_attributes', datastore=MANAGER)
+        with EndNotification(context):
+            raise exception.DatastoreOperationNotSupported(
+                operation='update_attributes', datastore=MANAGER)
 
     def create_database(self, context, databases):
         LOG.debug("Creating database.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='create_database', datastore=MANAGER)
+        with EndNotification(context):
+            raise exception.DatastoreOperationNotSupported(
+                operation='create_database', datastore=MANAGER)
 
     def create_user(self, context, users):
         LOG.debug("Creating user.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='create_user', datastore=MANAGER)
+        with EndNotification(context):
+            raise exception.DatastoreOperationNotSupported(
+                operation='create_user', datastore=MANAGER)
 
     def delete_database(self, context, database):
         LOG.debug("Deleting database.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='delete_database', datastore=MANAGER)
+        with EndNotification(context):
+            raise exception.DatastoreOperationNotSupported(
+                operation='delete_database', datastore=MANAGER)
 
     def delete_user(self, context, user):
         LOG.debug("Deleting user.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='delete_user', datastore=MANAGER)
+        with EndNotification(context):
+            raise exception.DatastoreOperationNotSupported(
+                operation='delete_user', datastore=MANAGER)
 
     def get_user(self, context, username, hostname):
         LOG.debug("Getting user.")

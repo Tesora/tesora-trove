@@ -25,6 +25,7 @@ from .service.root import PgSqlRoot
 from .service.status import PgSqlAppStatus
 import pgutil
 from trove.common import cfg
+from trove.common.notification import EndNotification
 from trove.common import utils
 from trove.guestagent import backup
 from trove.guestagent.datastore import manager
@@ -154,8 +155,9 @@ class Manager(
         return dbaas.get_filesystem_volume_stats(mount_point)
 
     def create_backup(self, context, backup_info):
-        self.enable_backups()
-        backup.backup(context, backup_info)
+        with EndNotification(context):
+            self.enable_backups()
+            backup.backup(context, backup_info)
 
     def mount_volume(self, context, device_path=None, mount_point=None):
         """Mount the volume as specified by device_path to mount_point."""

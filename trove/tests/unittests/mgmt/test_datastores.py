@@ -39,7 +39,7 @@ class TestDatastoreVersion(trove_testtools.TestCase):
         self.ds_version1 = models.DatastoreVersion.load(self.ds, 'test_vr1')
         self.ds_version2 = models.DatastoreVersion.load(self.ds, 'test_vr2')
 
-        self.context = Mock()
+        self.context = trove_testtools.TroveTestContext(self)
         self.req = Mock()
         self.req.environ = Mock()
         self.req.environ.__getitem__ = Mock(return_value=self.context)
