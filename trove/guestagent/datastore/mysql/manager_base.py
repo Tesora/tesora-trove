@@ -209,14 +209,14 @@ class BaseMySqlManager(manager.Manager):
         else:
             app.secure_root(secure_remote_root=True)
 
+        if snapshot:
+            self.attach_replica(context, snapshot, snapshot['config'])
+
         if databases:
             self.create_database(context, databases)
 
         if users:
             self.create_user(context, users)
-
-        if snapshot:
-            self.attach_replica(context, snapshot, snapshot['config'])
 
     def restart(self, context):
         app = self.mysql_app(self.mysql_app_status.get())
