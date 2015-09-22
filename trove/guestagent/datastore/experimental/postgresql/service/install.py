@@ -19,8 +19,6 @@ from trove.common import cfg
 from trove.common.i18n import _
 from trove.guestagent.datastore.experimental.postgresql.service.process import(
     PgSqlProcess)
-from trove.guestagent.datastore.experimental.postgresql.service.status import(
-    PgSqlAppStatus)
 from trove.guestagent import pkg
 
 LOG = logging.getLogger(__name__)
@@ -45,7 +43,6 @@ class PgSqlInstall(PgSqlProcess):
                 guest_id=CONF.guest_id
             )
         )
-        PgSqlAppStatus.get().begin_install()
         packager = pkg.Package()
         if not packager.pkg_is_installed(packages):
             try:

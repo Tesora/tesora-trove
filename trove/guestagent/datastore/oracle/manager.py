@@ -49,11 +49,12 @@
 # the logo is not reasonably feasible for technical reasons.
 
 from oslo_log import log as logging
-from oslo_service import periodic_task
 from trove.common import cfg
 from trove.common import exception
+from trove.common.i18n import _
 from trove.common import instance as ds_instance
 from trove.guestagent import backup
+from trove.guestagent.datastore import manager
 from trove.guestagent import dbaas
 from trove.guestagent import volume
 from trove.guestagent.datastore.oracle import service
@@ -63,36 +64,26 @@ CONF = cfg.CONF
 MANAGER = 'oracle'
 
 
-class Manager(periodic_task.PeriodicTasks):
+class Manager(manager.Manager):
     """
     This is the Oracle Manager class. It is dynamically loaded
     based off of the datastore of the Trove instance.
     """
     def __init__(self):
-        super(Manager, self).__init__(CONF)
+        super(Manager, self).__init__()
         self.appStatus = service.OracleAppStatus()
         self.app = service.OracleApp(self.appStatus)
         self.admin = service.OracleAdmin()
 
-    @periodic_task.periodic_task
-    def update_status(self, context):
-        """
-        Updates the status of Oracle Trove instance. It is decorated
-        with periodic task so it is automatically called every 3 ticks.
-        """
-        self.appStatus.update()
+    @property
+    def status(self):
+        return self.appStatus
 
-    def prepare(self, context, packages, databases, memory_mb, users,
+    def do_prepare(self, context, packages, databases, memory_mb, users,
                 device_path=None, mount_point=None, backup_info=None,
                 config_contents=None, root_password=None, overrides=None,
                 cluster_config=None, snapshot=None):
-        """
-        This is called when the Trove instance first comes online.
-        It is the first rpc message passed from the task manager.
-        prepare handles all the base configuration of the Oracle instance.
-        """
-        LOG.debug("Preparing the guest agent for Oracle.")
-        self.appStatus.begin_install()
+        """This is called from prepare in the base class."""
         if device_path:
             device = volume.VolumeDevice(device_path)
             device.unmount_device(device_path)
@@ -114,8 +105,6 @@ class Manager(periodic_task.PeriodicTasks):
 
         if root_password:
             self.admin.enable_root(root_password)
-
-        self.app.complete_install_or_restart()
 
     def restart(self, context):
         LOG.debug("Restart an Oracle server instance.")

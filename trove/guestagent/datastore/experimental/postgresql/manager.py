@@ -72,7 +72,6 @@ class Manager(
             snapshot=None
     ):
         self.install(context, packages)
-        PgSqlAppStatus.get().begin_restart()
         self.stop_db(context)
         if device_path:
             device = volume.VolumeDevice(device_path)
