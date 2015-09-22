@@ -52,6 +52,8 @@ from oslo_log import log as logging
 from oslo_service import periodic_task
 from trove.common import cfg
 from trove.common import exception
+from trove.common import instance as ds_instance
+from trove.guestagent import backup
 from trove.guestagent import dbaas
 from trove.guestagent import volume
 from trove.guestagent.datastore.oracle import service
@@ -67,6 +69,7 @@ class Manager(periodic_task.PeriodicTasks):
     based off of the datastore of the Trove instance.
     """
     def __init__(self):
+        super(Manager, self).__init__(CONF)
         self.appStatus = service.OracleAppStatus()
         self.app = service.OracleApp(self.appStatus)
         self.admin = service.OracleAdmin()
@@ -99,8 +102,12 @@ class Manager(periodic_task.PeriodicTasks):
 
         self.app.change_ownership(mount_point)
 
+        if backup_info:
+            self._perform_restore(backup_info, context,
+                                  mount_point, self.app)
+
         if databases:
-            self.create_database(context, databases)
+            self.admin.create_database(databases)
 
         if users:
             self.create_user(context, users)
@@ -126,11 +133,13 @@ class Manager(periodic_task.PeriodicTasks):
 
     def create_database(self, context, databases):
         LOG.debug("Creating database(s)." % databases)
-        self.admin.create_database(databases)
+        raise exception.DatastoreOperationNotSupported(
+            operation='create_database', datastore=MANAGER)
 
     def delete_database(self, context, database):
         LOG.debug("Deleting database %s." % database)
-        return self.admin.delete_database(database)
+        raise exception.DatastoreOperationNotSupported(
+            operation='delete_database', datastore=MANAGER)
 
     def list_databases(self, context, limit=None, marker=None,
                        include_marker=False):
@@ -209,18 +218,34 @@ class Manager(periodic_task.PeriodicTasks):
         LOG.debug("Enabling root.")
         return self.admin.enable_root()
 
+    def disable_root(self, context):
+        LOG.debug("Disabling root.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='disable_root', datastore=MANAGER)
+
+    def get_root_user(self, context):
+        LOG.debug("Get root user.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='get_root_user', datastore=MANAGER)
+
     def is_root_enabled(self, context):
         LOG.debug("Checking if root is enabled.")
         return self.admin.is_root_enabled()
 
     def _perform_restore(self, backup_info, context, restore_location, app):
-        raise exception.DatastoreOperationNotSupported(
-            operation='_perform_restore', datastore=MANAGER)
+        LOG.info(_("Restoring database from backup %s.") % backup_info['id'])
+        try:
+            backup.restore(context, backup_info, restore_location)
+        except Exception:
+            LOG.exception(_("Error performing restore from backup %s.") %
+                          backup_info['id'])
+            app.status.set_status(ds_instance.ServiceStatuses.FAILED)
+            raise
+        LOG.info(_("Restored database successfully."))
 
     def create_backup(self, context, backup_info):
         LOG.debug("Creating backup.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='create_backup', datastore=MANAGER)
+        backup.backup(context, backup_info)
 
     def get_config_changes(self, cluster_config, mount_point=None):
         LOG.debug("Get configuration changes")
