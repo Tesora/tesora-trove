@@ -50,7 +50,6 @@
 
 import ConfigParser
 import os
-from oslo_service import periodic_task
 
 import cx_Oracle
 
@@ -60,6 +59,7 @@ from trove.common import cfg
 from trove.common import exception
 from trove.common import utils as utils
 from trove.common.i18n import _
+from trove.guestagent.datastore import manager
 from trove.guestagent.datastore.oracle_ra.service import OracleAppStatus
 from trove.guestagent.datastore.oracle_ra.service import OracleAdmin
 from trove.guestagent.datastore.oracle_ra.service import OracleApp
@@ -70,15 +70,14 @@ CONF = cfg.CONF
 MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'oracle_ra'
 
 
-class Manager(periodic_task.PeriodicTasks):
+class Manager(manager.Manager):
 
     def __init__(self):
-        super(Manager, self).__init__(CONF)
+        super(Manager, self).__init__()
 
-    @periodic_task.periodic_task
-    def update_status(self, context):
-        """Update the status of the Oracle service."""
-        OracleAppStatus.get().update()
+    @property
+    def status(self):
+        return OracleAppStatus.get()
 
     def change_passwords(self, context, users):
         OracleAdmin().change_passwords(users)
@@ -199,12 +198,11 @@ class Manager(periodic_task.PeriodicTasks):
                                    RA_STATUS_FILE_TEMP,
                                    CONF.get(MANAGER).oracle_ra_status_file)
 
-    def prepare(self, context, packages, databases, memory_mb, users,
+    def do_prepare(self, context, packages, databases, memory_mb, users,
                 device_path=None, mount_point=None, backup_info=None,
                 config_contents=None, root_password=None, overrides=None,
                 cluster_config=None, snapshot=None):
-        """Makes ready DBAAS on a Guest container."""
-
+        """This is called from prepare in the base class."""
         ERROR_MSG = 'Failed to create Oracle database instance.'
 
         try:

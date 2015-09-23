@@ -87,9 +87,6 @@ class OracleApp(object):
         LOG.debug("state_change_wait_time = %s." % self.state_change_wait_time)
         self.status = status
 
-    def complete_install_or_restart(self):
-        self.status.end_install_or_restart()
-
     def change_ownership(self, mount_point):
         LOG.debug("Changing ownership of the Oracle data directory.")
         try:
@@ -163,7 +160,7 @@ class OracleApp(object):
             self.stop_db()
             self.start_db()
         finally:
-            self.status.end_install_or_restart()
+            self.status.end_restart()
 
 
 class OracleAppStatus(service.BaseDbStatus):
