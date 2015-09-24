@@ -172,11 +172,17 @@ class OracleAppStatus(service.BaseDbStatus):
             out, err = utils.execute_with_timeout(
                 system.ORACLE_STATUS, shell=True)
             if out != '0\n':
+                # If the number of 'ora' process is not zero, it means an Oracle
+                # instance is running.
                 LOG.debug("Setting state to rd_instance.ServiceStatuses.RUNNING")
                 return rd_instance.ServiceStatuses.RUNNING
             else:
-                LOG.debug("Setting state to rd_instance.ServiceStatuses.SHUTDOWN")
-                return rd_instance.ServiceStatuses.SHUTDOWN
+                # Oracle is installed but the database instance is in the process
+                # of being created. Since a Trove Oracle instance should always has
+                # one running Oracle instance in it's lifetime, this condition
+                # can only occur when we're building the Trove instance.
+                LOG.debug("Setting state to rd_instance.ServiceStatuses.BUILDING")
+                return rd_instance.ServiceStatuses.BUILDING
         except exception.ProcessExecutionError:
             LOG.exception(_("Error getting the Oracle server status."))
             return rd_instance.ServiceStatuses.CRASHED

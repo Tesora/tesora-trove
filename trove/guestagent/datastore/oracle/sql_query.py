@@ -129,7 +129,7 @@ class CreateUser(object):
     @property
     def _identity(self):
         if self.password:
-            return 'IDENTIFIED BY %s' % self.password
+            return 'IDENTIFIED BY "%s"' % self.password
         return ""
 
     def __str__(self):

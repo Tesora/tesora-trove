@@ -50,6 +50,8 @@
 
 import glob
 
+from oslo_log import log as logging
+
 from trove.common import cfg
 from trove.common import exception
 from trove.common import utils
@@ -57,7 +59,6 @@ from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.oracle import (
     service as oracle_service)
 from trove.guestagent.strategies.restore import base
-from trove.openstack.common import log as logging
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)

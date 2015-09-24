@@ -48,6 +48,8 @@
 # Tesora or display the words "Initial Development by Tesora" if the display of
 # the logo is not reasonably feasible for technical reasons.
 
+from oslo_log import log as logging
+
 from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
@@ -59,7 +61,6 @@ from trove.guestagent.datastore.oracle import sql_query
 from trove.guestagent.datastore.oracle.service import LocalOracleClient
 from trove.guestagent.db import models
 from trove.guestagent.strategies.backup import base
-from trove.openstack.common import log as logging
 
 CONF = cfg.CONF
 
