@@ -169,9 +169,9 @@ class IniCodec(StreamCodec):
         parser = self._build_parser()
         if sections:
             for section in sections:
-                    parser.add_section(section)
-                    for key, value in sections[section].items():
-                        parser.set(section, key, value)
+                parser.add_section(section)
+                for key, value in sections[section].items():
+                    parser.set(section, key, value)
 
         return parser
 
@@ -803,21 +803,25 @@ def _build_command_options(options):
     return ['-' + item[0] for item in options if item[1]]
 
 
-def list_files_in_directory(root_dir, recursive=False, pattern=None):
+def list_files_in_directory(root_dir, recursive=False, pattern=None,
+                            include_dirs=False):
     """
     Return absolute paths to all files in a given root directory.
 
     :param root_dir            Path to the root directory.
     :type root_dir             string
 
-    :param recursive           Also probe subdirectories if True.
+    :param recursive           Also descend into sub-directories if True.
     :type recursive            boolean
 
-    :param pattern             Return only files matching the pattern.
+    :param pattern             Return only names matching the pattern.
     :type pattern              string
+
+    :param include_dirs        Include paths to individual sub-directories.
+    :type include_dirs         boolean
     """
     return {os.path.abspath(os.path.join(root, name))
-            for (root, _, files) in os.walk(root_dir, topdown=True)
+            for (root, dirs, files) in os.walk(root_dir, topdown=True)
             if recursive or (root == root_dir)
-            for name in files
+            for name in (files + (dirs if include_dirs else []))
             if not pattern or re.match(pattern, name)}

@@ -13,72 +13,104 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import os
-import tempfile
-import uuid
-
 from oslo_log import log as logging
+import psycopg2
 
-from trove.common import utils
-from trove.guestagent.common import operating_system
-from trove.guestagent.common.operating_system import FileMode
+from trove.common import exception
 
 LOG = logging.getLogger(__name__)
 
 PG_ADMIN = 'os_admin'
 
 
-def result(filename):
-    """A generator representing the results of a query.
+# TODO(pmalik): This just adds complexity and potential for bugs for no real
+# benefit. The data sets queried by Trove are rather small.
+# We should just fetch all tuples at once.
+#
+# def result(filename):
+#     """A generator representing the results of a query.
+#
+#     This generator produces result records of a query by iterating over a
+#     CSV file created by the query. When the file is out of records it is
+#     removed.
+#
+#     The purpose behind this abstraction is to provide a record set interface
+#     with minimal memory consumption without requiring an active DB
+#     connection.
+#     This makes it possible to iterate over any sized record set without
+#     allocating memory for the entire record set and without using a DB
+#     cursor.
+#
+#     Each row is returned as an iterable of column values. The order of these
+#     values is determined by the query.
+#     """
+#
+#     operating_system.chmod(filename, FileMode.SET_FULL, as_root=True)
+#     with open(filename, 'r+') as file_handle:
+#         for line in file_handle:
+#             if line != "":
+#                 yield line.split(',')
+#     operating_system.remove(filename, as_root=True)
+#     raise StopIteration()
 
-    This generator produces result records of a query by iterating over a
-    CSV file created by the query. When the file is out of records it is
-    removed.
+class PostgresConnection(object):
 
-    The purpose behind this abstraction is to provide a record set interface
-    with minimal memory consumption without requiring an active DB connection.
-    This makes it possible to iterate over any sized record set without
-    allocating memory for the entire record set and without using a DB cursor.
+    def __init__(self, autocommit=False, **connection_args):
+        self._autocommit = autocommit
+        self._connection_args = connection_args
 
-    Each row is returned as an iterable of column values. The order of these
-    values is determined by the query.
-    """
+    def execute(self, statement, identifiers=None, data_values=None):
+        """Execute a non-returning statement.
+        """
+        self._execute_stmt(statement, identifiers, data_values, False)
 
-    operating_system.chmod(filename, FileMode.SET_FULL, as_root=True)
-    with open(filename, 'r+') as file_handle:
-        for line in file_handle:
-            if line != "":
-                yield line.split(',')
-    operating_system.remove(filename, as_root=True)
-    raise StopIteration()
+    def query(self, query, identifiers=None, data_values=None):
+        """Execute a query and return the result set.
+        """
+        return self._execute_stmt(query, identifiers, data_values, True)
+
+    def _execute_stmt(self, statement, identifiers, data_values, fetch):
+        if statement:
+            with psycopg2.connect(**self._connection_args) as connection:
+                connection.autocommit = self._autocommit
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        self._bind(statement, identifiers), data_values)
+                    if fetch:
+                        return cursor.fetchall()
+        else:
+            raise exception.UnprocessableEntity(_("Invalid SQL statement: %s")
+                                                % statement)
+
+    def _bind(self, statement, identifiers):
+        if identifiers:
+            return statement.format(*identifiers)
+        return statement
 
 
+class PostgresLocalhostConnection(PostgresConnection):
+
+    def __init__(self, user, password=None, port=5432, autocommit=False):
+        super(PostgresLocalhostConnection, self).__init__(
+            autocommit=autocommit, user=user, password=password, port=port)
+
+
+# TODO(pmalik): No need to recreate the connection every time.
 def psql(statement, timeout=30):
-    """Execute a statement using the psql client."""
-
-    LOG.debug('Sending to local db: {0}'.format(statement))
-    return utils.execute_with_timeout(
-        'psql', '-U', PG_ADMIN, '-c', statement, timeout=timeout)
-
-
-def query(statement, timeout=30):
-    """Execute a pgsql query and get a generator of results.
-
-    This method will pipe a CSV format of the query results into a temporary
-    file. The return value is a generator object that feeds from this file.
+    """Execute a non-returning statement (usually DDL);
+    Turn autocommit ON (this is necessary for statements that cannot run
+    within an implicit transaction, like CREATE DATABASE).
     """
+    return PostgresLocalhostConnection(
+        PG_ADMIN, autocommit=True).execute(statement)
 
-    filename = os.path.join(tempfile.gettempdir(), str(uuid.uuid4()))
-    LOG.debug('Querying: {0}'.format(statement))
-    psql(
-        "Copy ({statement}) To '{filename}' With CSV".format(
-            statement=statement,
-            filename=filename,
-        ),
-        timeout=timeout,
-    )
 
-    return result(filename)
+# TODO(pmalik): No need to recreate the connection every time.
+def query(query, timeout=30):
+    """Execute a query and return the result set.
+    """
+    return PostgresLocalhostConnection(
+        PG_ADMIN, autocommit=False).query(query)
 
 
 class DatabaseQuery(object):

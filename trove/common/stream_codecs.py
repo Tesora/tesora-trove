@@ -284,7 +284,7 @@ class PropertiesCodec(StreamCodec):
                             quoting=self.QUOTING_MODE,
                             strict=self.STRICT_MODE)
 
-        for key, value in sorted(dict_data.items()):
+        for key, value in dict_data.items():
             writer.writerows(self._to_rows(key, value))
 
         return output.getvalue()
