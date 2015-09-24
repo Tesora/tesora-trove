@@ -1,3 +1,10 @@
+# Pre-compute values used by the template expressions.
+# Note: The variables have to be in lists due to how scoping works in JINJA templates.
+#
+# The recommended amount for 'shared_buffers' on a dedicated database server is 25% of RAM.
+# Servers with less than 3GB of RAM require a more conservative value to save memory for other processes.
+{% set shared_buffers_mb = [(0.25 if flavor['ram'] >= 3072 else 0.10) * flavor['ram']] %}
+#
 # -----------------------------
 # PostgreSQL configuration file
 # -----------------------------
@@ -123,10 +130,8 @@
 
 # - Memory -
 
-shared_buffers = {{ (0.25 * flavor['ram'])|int }}MB			# min 128kB
+shared_buffers = {{ shared_buffers_mb[0]|int }}MB			# min 128kB
 					# (change requires restart)
-					# The recommended amount for a dedicated database server is
-					# 25% of RAM.
 #huge_pages = try			# on, off, or try
 					# (change requires restart)
 #temp_buffers = 8MB			# min 800kB
@@ -213,10 +218,10 @@ wal_level = minimal			# minimal, archive, hot_standby, or logical
 
 # - Checkpoints -
 
-#checkpoint_segments = {{ (0.25 * flavor['ram'] / 16 + 1)|int }}MB		# in logfile segments, min 1, 16MB each
+checkpoint_segments = {{ (shared_buffers_mb[0] / 16 + 1)|int }}MB		# in logfile segments, min 1, 16MB each
 								# Each segment is normally 16MB long.
 								# The number of segments should be enough to
-								# span the 'shared_buffers' size (defaulted to 25% of RAM).
+								# span the 'shared_buffers' size.
 								# We set the default to (shared_buffers / 16 + 1).
 #checkpoint_timeout = 5min		# range 30s-1h
 #checkpoint_completion_target = 0.5	# checkpoint target duration, 0.0 - 1.0
