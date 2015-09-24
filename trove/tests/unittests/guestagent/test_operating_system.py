@@ -713,6 +713,31 @@ class TestOperatingSystem(trove_testtools.TestCase):
                               "Got unknown keyword args: {'_unknown_kw': 0}"),
             'path', _unknown_kw=0)
 
+    def test_exists(self):
+        self.assertFalse(
+            operating_system.exists(tempfile.gettempdir(), is_directory=False))
+        self.assertTrue(
+            operating_system.exists(tempfile.gettempdir(), is_directory=True))
+
+        with tempfile.NamedTemporaryFile() as test_file:
+            self.assertTrue(
+                operating_system.exists(test_file.name, is_directory=False))
+            self.assertFalse(
+                operating_system.exists(test_file.name, is_directory=True))
+
+        self._assert_execute_call(
+            [['test -f path && echo 1 || echo 0']],
+            [{'shell': True, 'check_exit_code': False,
+              'run_as_root': True, 'root_helper': 'sudo'}],
+            operating_system.exists, None, 'path', is_directory=False,
+            as_root=True)
+        self._assert_execute_call(
+            [['test -d path && echo 1 || echo 0']],
+            [{'shell': True, 'check_exit_code': False,
+              'run_as_root': True, 'root_helper': 'sudo'}],
+            operating_system.exists, None, 'path', is_directory=True,
+            as_root=True)
+
     def _assert_execute_call(self, exec_args, exec_kwargs,
                              fun, return_value, *args, **kwargs):
         """
@@ -746,7 +771,8 @@ class TestOperatingSystem(trove_testtools.TestCase):
         :type kwargs:             dict
         """
 
-        with patch.object(utils, 'execute_with_timeout') as exec_call:
+        with patch.object(utils, 'execute_with_timeout',
+                          return_value=('0', '')) as exec_call:
             if isinstance(return_value, ExpectedException):
                 with return_value:
                     fun(*args, **kwargs)
