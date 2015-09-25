@@ -191,6 +191,11 @@ class Manager(manager.Manager):
         raise exception.DatastoreOperationNotSupported(
             operation='enable_root_with_password', datastore=MANAGER)
 
+    def disable_root(self, context):
+        LOG.debug("Disabling root.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='disable_root', datastore=MANAGER)
+
     def is_root_enabled(self, context):
         raise exception.DatastoreOperationNotSupported(
             operation='is_root_enabled', datastore=MANAGER)

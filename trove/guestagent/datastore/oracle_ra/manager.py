@@ -129,6 +129,11 @@ class Manager(manager.Manager):
     def enable_root(self, context):
         return OracleAdmin().enable_root()
 
+    def disable_root(self, context):
+        LOG.debug("Disabling root.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='disable_root', datastore=MANAGER)
+
     def is_root_enabled(self, context):
         return OracleAdmin().is_root_enabled()
 

@@ -163,6 +163,11 @@ class Manager(manager.Manager):
         raise exception.DatastoreOperationNotSupported(
             operation='enable_root_with_password', datastore=MANAGER)
 
+    def disable_root(self, context):
+        LOG.debug("Disabling root.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='disable_root', datastore=MANAGER)
+
     def is_root_enabled(self, context):
         LOG.debug("Checking if root is enabled.")
         return os.path.exists(system.pwd_file)
