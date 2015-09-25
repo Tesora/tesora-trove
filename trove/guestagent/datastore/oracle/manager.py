@@ -55,9 +55,10 @@ from trove.common.i18n import _
 from trove.common import instance as ds_instance
 from trove.guestagent import backup
 from trove.guestagent.datastore import manager
-from trove.guestagent import dbaas
-from trove.guestagent import volume
 from trove.guestagent.datastore.oracle import service
+from trove.guestagent import dbaas
+from trove.guestagent.db import models
+from trove.guestagent import volume
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
@@ -96,9 +97,9 @@ class Manager(manager.Manager):
         if backup_info:
             self._perform_restore(backup_info, context,
                                   mount_point, self.app)
-
-        if databases:
-            self.admin.create_database(databases)
+        else:
+            db = models.OracleSchema(CONF.guest_name)
+            self.admin.create_database(db.serialize())
 
         if users:
             self.create_user(context, users)

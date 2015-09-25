@@ -599,7 +599,7 @@ oracle_opts = [
                 'strategy. For strategies that do not implement an '
                 'incremental, the runner will use the default full backup.'),
     cfg.StrOpt('oracle_home',
-               default='/u01/app/oracle/product/11.2.0/dbhome_1',
+               default='/u01/app/oracle/product/dbaas',
                help='Default $ORACLE_HOME directory'),
     cfg.StrOpt('conf_file',
                default='/etc/oracle/oracle.cnf',
