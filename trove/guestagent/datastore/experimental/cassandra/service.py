@@ -29,6 +29,7 @@ from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance as rd_instance
+from trove.common import pagination
 from trove.common import utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.common.operating_system import FileMode
@@ -151,6 +152,56 @@ class CassandraApp(object):
         utils.execute_with_timeout('rm', '-r', '-f', system_keyspace_dir,
                                    run_as_root=True, root_helper='sudo')
 
+    def _apply_post_restore_updates(self, backup_info):
+        """The service should not be running at this point.
+
+        The restored database files carry some properties over from the
+        original instance that need to be updated with appropriate
+        values for the new instance.
+        These include:
+
+            - Reset the 'cluster_name' property to match the new unique
+              ID of this instance.
+              This is to ensure that the restored instance is a part of a new
+              single-node cluster rather than forming a one with the
+              original node.
+            - Reset the administrator's password.
+              The original password from the parent instance may be
+              compromised or long lost.
+
+        A general procedure is:
+            - update the configuration property with the current value
+              so that the service can start up
+            - reset the superuser password
+            - restart the service
+            - change the cluster name
+            - restart the service
+
+        :seealso: _reset_superuser_password
+        :seealso: change_cluster_name
+        """
+
+        if self.status.is_running:
+            raise RuntimeError(_("Cannot reset the cluster name. "
+                                 "The service is still running."))
+
+        LOG.debug("Applying post-restore updates to the database.")
+
+        try:
+            # Change the 'cluster_name' property to the current in-database
+            # value so that the database can start up.
+            self._update_cluster_name_property(backup_info['instance_id'])
+
+            # Reset the superuser password so that we can log-in.
+            self._reset_superuser_password()
+
+            # Start the database and update the 'cluster_name' to the
+            # new value.
+            self.start_db(update_db=False)
+            self.change_cluster_name(CONF.guest_id)
+        finally:
+            self.stop_db()  # Always restore the initial state of the service.
+
     def configure_superuser_access(self):
         LOG.info(_('Configuring Cassandra superuser.'))
         current_superuser = CassandraApp.get_current_superuser()
@@ -221,6 +272,33 @@ class CassandraApp(object):
                 "WHERE username='{}';", (current_superuser.name,),
                 (system.DEFAULT_SUPERUSER_PWD_HASH,))
 
+    def change_cluster_name(self, cluster_name):
+        """Change the 'cluster_name' property of an exesting running instance.
+        Cluster name is stored in the database and is required to match the
+        configuration value. Cassandra fails to start otherwise.
+        """
+
+        if not self.status.is_running:
+            raise RuntimeError(_("Cannot change the cluster name. "
+                                 "The service is not running."))
+
+        LOG.debug("Changing the cluster name to '%s'." % cluster_name)
+
+        # Update the in-database value.
+        self.__reset_cluster_name(cluster_name)
+
+        # Update the configuration property.
+        self._update_cluster_name_property(cluster_name)
+
+        self.restart()
+
+    def __reset_cluster_name(self, cluster_name):
+        current_superuser = CassandraApp.get_current_superuser()
+        with CassandraLocalhostConnection(current_superuser) as client:
+            client.execute(
+                "UPDATE system.local SET cluster_name = '{}' "
+                "WHERE key='local';", (cluster_name,))
+
     def __create_cqlsh_config(self, sections):
         config_path = self._get_cqlsh_conf_path()
         config_dir = os.path.dirname(config_path)
@@ -270,7 +348,7 @@ class CassandraApp(object):
         :type cluster_name:   string
         """
         self.make_host_reachable()
-        self.update_cluster_name_property(cluster_name or CONF.guest_id)
+        self._update_cluster_name_property(cluster_name or CONF.guest_id)
 
     def make_host_reachable(self):
         """
@@ -330,7 +408,7 @@ class CassandraApp(object):
 
         self._update_config(updates)
 
-    def update_cluster_name_property(self, name):
+    def _update_cluster_name_property(self, name):
         """This 'cluster_name' property prevents nodes from one
         logical cluster from talking to another.
         All nodes in a cluster must have the same value.
@@ -427,6 +505,12 @@ class CassandraApp(object):
     def _get_cqlsh_conf_path(self):
         return os.path.expanduser(system.CQLSH_CONF_PATH)
 
+    def get_data_directory(self):
+        """Return current data directory.
+        """
+        config = operating_system.read_yaml_file(self._CASSANDRA_CONF)
+        return config['data_file_directories'][0]
+
 
 class CassandraAppStatus(service.BaseDbStatus):
 
@@ -490,7 +574,8 @@ class CassandraAdmin(object):
         """
         self._create_user(client, user)
         for db in user.databases:
-            self._grant_full_access_on_keyspace(client, db, user)
+            self._grant_full_access_on_keyspace(
+                client, self._deserialize_keyspace(db), user)
 
     def _create_user(self, client, user):
         # Create only NOSUPERUSER accounts here.
@@ -530,8 +615,10 @@ class CassandraAdmin(object):
         Return an empty set if None.
         """
         with CassandraLocalhostConnection(self.__admin_user) as client:
-            return ([user.serialize() for user in
-                     self._get_non_system_users(client)], None)
+            users = [user.serialize() for user in
+                     self._get_non_system_users(client)]
+            return pagination.paginate_list(users, limit, marker,
+                                            include_marker)
 
     def _get_non_system_users(self, client):
         """
@@ -615,28 +702,32 @@ class CassandraAdmin(object):
         """
         Update a user of a given username.
         Updatable attributes include username and password.
-        If a new username is given a new user with that name
-        is created and all permissions from the original
+        If a new username and password are given a new user with those
+        attributes is created and all permissions from the original
         user get transfered to it. The original user is then dropped
         therefore revoking its permissions.
         If only new password is specified the existing user gets altered
         with that password.
         """
         if new_username is not None and user.name != new_username:
-            self._rename_user(client, user, new_username, new_password)
+            if new_password is not None:
+                self._rename_user(client, user, new_username, new_password)
+            else:
+                raise exception.UnprocessableEntity(
+                    _("Updating username requires specifying a password "
+                      "as well."))
         elif new_password is not None and user.password != new_password:
             user.password = new_password
             self._alter_user_password(client, user)
 
-    def _rename_user(self, client, user, new_username, new_password=None):
+    def _rename_user(self, client, user, new_username, new_password):
         """
-        Rename a given user also updating its password if given.
+        Rename a given user also updating its password.
         Transfer the current permissions to the new username.
         Drop the old username therefore revoking its permissions.
         """
         LOG.debug("Renaming user '%s' to '%s'" % (user.name, new_username))
-        new_user = models.CassandraUser(new_username,
-                                        new_password or user.password)
+        new_user = models.CassandraUser(new_username, new_password)
         new_user.databases.extend(user.databases)
         self._create_user_and_grant(client, new_user)
         self._drop_user(client, user)
@@ -696,8 +787,10 @@ class CassandraAdmin(object):
     def list_databases(self, context, limit=None, marker=None,
                        include_marker=False):
         with CassandraLocalhostConnection(self.__admin_user) as client:
-            return ([keyspace.serialize() for keyspace
-                     in self._get_available_keyspaces(client)], None)
+            databases = [keyspace.serialize() for keyspace
+                         in self._get_available_keyspaces(client)]
+            return pagination.paginate_list(databases, limit, marker,
+                                            include_marker)
 
     def _get_available_keyspaces(self, client):
         """

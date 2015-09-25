@@ -204,22 +204,7 @@ class Manager(manager.Manager):
         LOG.info(_("Restoring database from backup %s.") % backup_info['id'])
         try:
             backup.restore(context, backup_info, restore_location)
-
-            # Update the 'cluster_name' property to the original value
-            # (instance ID).
-            #
-            # The main reasons for this are:
-            # - Cluster name is stored in the database and is required
-            #   to match the current configuration value.
-            #   Cassandra fails to start otherwise.
-            # - The restored node should still belong to the same cluster.
-            self.app.update_cluster_name_property(backup_info['instance_id'])
-
-            # Now we proceed to reset the administrator's password.
-            # The original password comes from the parent instance and
-            # may be long lost.
-            self.app._reset_superuser_password()
-
+            self.app._apply_post_restore_updates(backup_info)
         except Exception as e:
             LOG.error(e)
             LOG.error(_("Error performing restore from backup %s.") %
