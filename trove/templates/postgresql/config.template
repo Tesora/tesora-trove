@@ -218,7 +218,7 @@ wal_level = minimal			# minimal, archive, hot_standby, or logical
 
 # - Checkpoints -
 
-checkpoint_segments = {{ (shared_buffers_mb[0] / 16 + 1)|int }}MB		# in logfile segments, min 1, 16MB each
+checkpoint_segments = {{ (shared_buffers_mb[0] / 16 + 1)|int }}		# in logfile segments, min 1, 16MB each
 								# Each segment is normally 16MB long.
 								# The number of segments should be enough to
 								# span the 'shared_buffers' size.
