@@ -106,6 +106,18 @@ class API(wsgi.Router):
                        controller=instance_resource,
                        action="configuration",
                        conditions={'method': ['GET']})
+        mapper.connect("/{tenant_id}/instances/{id}/log",
+                       controller=instance_resource,
+                       action="guest_log_list",
+                       conditions={'method': ['GET']})
+        mapper.connect("/{tenant_id}/instances/{id}/log",
+                       controller=instance_resource,
+                       action="guest_log_publish",
+                       conditions={'method': ['POST']})
+        mapper.connect("/{tenant_id}/instances/{id}/log-name/{log}",
+                       controller=instance_resource,
+                       action="guest_log_name",
+                       conditions={'method': ['GET']})
 
     def _cluster_router(self, mapper):
         cluster_resource = ClusterController().create_resource()

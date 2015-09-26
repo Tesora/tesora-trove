@@ -28,6 +28,7 @@ from trove.common import instance as rd_instance
 from trove.guestagent import backup
 from trove.guestagent.common import operating_system
 from trove.guestagent.datastore import manager
+from trove.guestagent.datastore.mysql import mysql_guest_log
 from trove.guestagent.datastore.mysql import service_base
 from trove.guestagent import dbaas
 from trove.guestagent.strategies.replication import get_replication_strategy
@@ -344,6 +345,19 @@ class BaseMySqlManager(manager.Manager):
         replication = self.replication_strategy_class(context)
         replica_info = replication.get_replica_context(app)
         return replica_info
+
+    def guest_log_list(self, context):
+        LOG.debug("Getting guest log.")
+        app = self.mysql_app(self.mysql_app_status.get())
+        result = mysql_guest_log.MySQLGuestLog.list(context, app)
+        LOG.debug("guest_log_list 2 returns %s", result)
+        return result
+
+    def publish_guest_log(self, context, log, disable):
+        LOG.debug("publishing guest log %s (disable=%s)." % (log, disable))
+        app = self.mysql_app(self.mysql_app_status.get())
+        return mysql_guest_log.MySQLGuestLog.publish(
+            context, app, log, disable)
 
     def _validate_slave_for_replication(self, context, replica_info):
         if (replica_info['replication_strategy'] != self.replication_strategy):

@@ -22,7 +22,8 @@ from trove.guestagent.datastore.mysql import manager_base
 from trove.guestagent.strategies.replication import get_replication_strategy
 
 CONF = cfg.CONF
-MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'mysql'
+MANAGER = CONF.datastore_manager or 'mysql'
+
 REPLICATION_STRATEGY = CONF.get(MANAGER).replication_strategy
 REPLICATION_NAMESPACE = CONF.get(MANAGER).replication_namespace
 REPLICATION_STRATEGY_CLASS = get_replication_strategy(REPLICATION_STRATEGY,
