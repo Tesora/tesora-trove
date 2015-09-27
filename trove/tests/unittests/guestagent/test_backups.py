@@ -293,6 +293,7 @@ class GuestAgentBackupTest(trove_testtools.TestCase):
                          restr.restore_cmd)
 
     def test_backup_encrypted_cbbackup_command(self):
+        backupBase.BackupRunner.is_zipped = True
         backupBase.BackupRunner.is_encrypted = True
         backupBase.BackupRunner.encrypt_key = CRYPTO_KEY
         RunnerClass = utils.import_class(BACKUP_CBBACKUP_CLS)
@@ -304,6 +305,7 @@ class GuestAgentBackupTest(trove_testtools.TestCase):
         self.assertIn("gz.enc", bkp.manifest)
 
     def test_backup_not_encrypted_cbbackup_command(self):
+        backupBase.BackupRunner.is_zipped = True
         backupBase.BackupRunner.is_encrypted = False
         backupBase.BackupRunner.encrypt_key = CRYPTO_KEY
         RunnerClass = utils.import_class(BACKUP_CBBACKUP_CLS)
@@ -350,6 +352,7 @@ class GuestAgentBackupTest(trove_testtools.TestCase):
     @mock.patch.object(MongoDBApp, '_init_overrides_dir',
                        return_value='')
     def test_backup_encrypted_mongodump_command(self, _):
+        backupBase.BackupRunner.is_zipped = True
         backupBase.BackupRunner.is_encrypted = True
         backupBase.BackupRunner.encrypt_key = CRYPTO_KEY
         RunnerClass = utils.import_class(BACKUP_MONGODUMP_CLS)
@@ -363,6 +366,7 @@ class GuestAgentBackupTest(trove_testtools.TestCase):
     @mock.patch.object(MongoDBApp, '_init_overrides_dir',
                        return_value='')
     def test_backup_not_encrypted_mongodump_command(self, _):
+        backupBase.BackupRunner.is_zipped = True
         backupBase.BackupRunner.is_encrypted = False
         backupBase.BackupRunner.encrypt_key = CRYPTO_KEY
         RunnerClass = utils.import_class(BACKUP_MONGODUMP_CLS)
@@ -399,6 +403,7 @@ class GuestAgentBackupTest(trove_testtools.TestCase):
                   mock.Mock(return_value={'dir': '/var/lib/redis',
                                           'dbfilename': 'dump.rdb'}))
     def test_backup_encrypted_redisbackup_command(self, *mocks):
+        backupBase.BackupRunner.is_zipped = True
         backupBase.BackupRunner.is_encrypted = True
         backupBase.BackupRunner.encrypt_key = CRYPTO_KEY
         RunnerClass = utils.import_class(BACKUP_REDIS_CLS)
@@ -413,6 +418,7 @@ class GuestAgentBackupTest(trove_testtools.TestCase):
                   mock.Mock(return_value={'dir': '/var/lib/redis',
                                           'dbfilename': 'dump.rdb'}))
     def test_backup_not_encrypted_redisbackup_command(self, *mocks):
+        backupBase.BackupRunner.is_zipped = True
         backupBase.BackupRunner.is_encrypted = False
         backupBase.BackupRunner.encrypt_key = CRYPTO_KEY
         RunnerClass = utils.import_class(BACKUP_REDIS_CLS)
