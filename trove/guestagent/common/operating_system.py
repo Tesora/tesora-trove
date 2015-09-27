@@ -346,8 +346,12 @@ class FileMode(object):
     """
 
     @classmethod
-    def SET_FULL(cls):
+    def SET_ALL_RWX(cls):
         return cls(reset=[stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO])  # =0777
+
+    @classmethod
+    def SET_FULL(cls):
+        return cls.SET_ALL_RWX()
 
     @classmethod
     def SET_GRP_RW_OTH_R(cls):
@@ -362,12 +366,20 @@ class FileMode(object):
         return cls(reset=[stat.S_IRUSR | stat.S_IWUSR])  # =0600
 
     @classmethod
-    def ADD_READ_ALL(cls):
+    def ADD_ALL_R(cls):
         return cls(add=[stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH])  # +0444
+
+    @classmethod
+    def ADD_READ_ALL(cls):
+        return cls.ADD_ALL_R()
 
     @classmethod
     def ADD_GRP_RW(cls):
         return cls(add=[stat.S_IRGRP | stat.S_IWGRP])  # +0060
+
+    @classmethod
+    def ADD_GRP_RX(cls):
+        return cls(add=[stat.S_IRGRP | stat.S_IXGRP])  # +0050
 
     def __init__(self, reset=None, add=None, remove=None):
         self._reset = list(reset) if reset is not None else []

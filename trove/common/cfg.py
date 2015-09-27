@@ -394,6 +394,16 @@ common_opts = [
     cfg.IntOpt('timeout_wait_for_service', default=120,
                help='Maximum time (in seconds) to wait for a service to '
                     'become alive.'),
+    cfg.StrOpt('guest_log_container_name',
+               default='log-%(datastore)s-%(log)s-%(instance_id)s',
+               help="Name of container which stores guest log components."),
+    cfg.StrOpt('guest_log_object_name',
+               default='log-%(timestamp)s',
+               help="Name of guest log component in container."),
+    cfg.IntOpt('guest_log_limit', default=1000000,
+               help='Maximum size of a chunk saved in guest log container'),
+    cfg.IntOpt('guest_log_expiry', default=2592000,
+               help='Expiry (in seconds) of objects in guest log container'),
 ]
 
 # Profiling specific option groups
@@ -487,6 +497,9 @@ mysql_opts = [
     cfg.StrOpt('root_controller',
                default='trove.extensions.mysql.service.MySQLRootController',
                help='Root controller implementation for mysql.'),
+    cfg.StrOpt('guest_log_expose',
+               default='ALL',
+               help="List of the logs available"),
 ]
 
 # Oracle remote agent

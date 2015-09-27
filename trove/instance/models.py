@@ -310,6 +310,8 @@ class SimpleInstance(object):
             return InstanceStatus.PROMOTE
         if InstanceTasks.EJECTING.action == action:
             return InstanceStatus.EJECT
+        if InstanceTasks.LOGGING.action == action:
+            return InstanceStatus.LOGGING
 
         # Check for server status.
         if self.db_info.server_status in ["BUILD", "ERROR", "REBOOT",
@@ -1006,6 +1008,12 @@ class Instance(BuiltInstance):
             dbinfo.save()
 
         task_api.API(self.context).eject_replica_source(self.id)
+
+    def list_logs(self):
+        self.validate_can_perform_action()
+        LOG.info(_LI("Listing log types for %s."), self.id)
+        self.update_db(task_status=InstanceTasks.LOGGING)
+        task_api.API(self.context).list_logs(self.id)
 
     def migrate(self, host=None):
         self.validate_can_perform_action()

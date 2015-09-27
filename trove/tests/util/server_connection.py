@@ -43,6 +43,22 @@ class ServerSSHConnection(object):
         print("RUNNING COMMAND: %s" % exe_cmd)
         return util.process(exe_cmd)
 
+    def scp(self, src, dest, dest_is_remote=True, user=None):
+        """SCP a file
+         :param remote_is_dest: Whether the destination is the remote file
+         """
+        if dest_is_remote:
+            dest = self.ip_address + ":" + dest
+            if user:
+                dest = user + '@' + dest
+        else:
+            src = self.ip_address + ":" + src
+            if user:
+                src = user + '@' + src
+        exe_cmd = "%s %s %s" % (tests.SCP_CMD, src, dest)
+        print("RUNNING COMMAND: %s" % exe_cmd)
+        return util.process(exe_cmd)
+
 
 class OpenVZServerConnection(object):
     def __init__(self, instance_id):
