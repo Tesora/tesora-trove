@@ -381,6 +381,18 @@ class FileMode(object):
     def ADD_GRP_RX(cls):
         return cls(add=[stat.S_IRGRP | stat.S_IXGRP])  # +0050
 
+    @classmethod
+    def OCTAL_MODE(cls, octal):
+        p = re.compile('^[0-4][0-7]{3}$')
+        if not p.match(octal):
+            raise ValueError("Invalid octal mode")
+
+        modes = 0
+        for i in range(len(octal)):
+            o = int(octal[i])
+            modes |= o << (3 - i) * 3
+        return cls(reset=[modes])
+
     def __init__(self, reset=None, add=None, remove=None):
         self._reset = list(reset) if reset is not None else []
         self._add = list(add) if add is not None else []
