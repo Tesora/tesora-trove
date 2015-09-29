@@ -257,6 +257,7 @@ class PropertiesCodec(StreamCodec):
 
     QUOTING_MODE = csv.QUOTE_MINIMAL
     STRICT_MODE = False
+    SKIP_INIT_SPACE = True
 
     def __init__(self, delimiter=' ', comment_markers=('#'),
                  unpack_singletons=True, string_mappings={}):
@@ -287,7 +288,8 @@ class PropertiesCodec(StreamCodec):
         output = StringIO.StringIO()
         writer = csv.writer(output, delimiter=self._delimiter,
                             quoting=self.QUOTING_MODE,
-                            strict=self.STRICT_MODE)
+                            strict=self.STRICT_MODE,
+                            skipinitialspace=self.SKIP_INIT_SPACE)
 
         for key, value in dict_data.items():
             writer.writerows(self._to_rows(key, value))
@@ -298,24 +300,27 @@ class PropertiesCodec(StreamCodec):
         reader = csv.reader(StringIO.StringIO(stream),
                             delimiter=self._delimiter,
                             quoting=self.QUOTING_MODE,
-                            strict=self.STRICT_MODE)
+                            strict=self.STRICT_MODE,
+                            skipinitialspace=self.SKIP_INIT_SPACE)
 
         return self._to_dict(reader)
 
     def _to_dict(self, reader):
         data_dict = {}
         for row in reader:
-            # Ignore comment lines.
-            if row and not row[0].strip().startswith(self._comment_markers):
-                items = self._string_converter.to_objects(
-                    [v if v else None for v in
-                     map(self._strip_comments, row[1:])])
-                current = data_dict.get(row[0])
-                if current is not None:
-                    current.append(trove_utils.unpack_singleton(items)
-                                   if self._unpack_singletons else items)
-                else:
-                    data_dict.update({row[0]: [items]})
+            if row:
+                key = row[0].strip()
+                # Ignore comment lines.
+                if not key.strip().startswith(self._comment_markers):
+                    items = self._string_converter.to_objects(
+                        [v if v else None for v in
+                         map(self._strip_comments, row[1:])])
+                    current = data_dict.get(key)
+                    if current is not None:
+                        current.append(trove_utils.unpack_singleton(items)
+                                       if self._unpack_singletons else items)
+                    else:
+                        data_dict.update({key: [items]})
 
         if self._unpack_singletons:
             # Unpack singleton values.
@@ -343,7 +348,9 @@ class PropertiesCodec(StreamCodec):
                     header, self._string_converter.to_strings(items)))
         else:
             # This is a single-row property with only one argument.
-            rows.append(self._to_list(header, items))
+            rows.append(
+                self._string_converter.to_strings(
+                    self._to_list(header, items)))
 
         return rows
 
