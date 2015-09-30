@@ -21,6 +21,7 @@ import os
 from oslo_log import log as logging
 
 from trove.common import cfg
+from trove.common import configurations
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance as rd_instance
@@ -83,24 +84,63 @@ class BaseMySqlManager(manager.Manager):
         return self._manager_name
 
     @property
+    def configuration_manager(self):
+        return self.mysql_app(
+            self.mysql_app_status.get()).configuration_manager
+
+    @property
     def status(self):
         return self.mysql_app_status.get()
 
     @property
     def datastore_log_defs(self):
-        return {'slow_query': {
+        owner = 'mysql'
+        datastore_dir = self.mysql_app.get_data_dir()
+        server_section = configurations.MySQLConfParser.SERVER_CONF_SECTION
+        long_query_time = CONF.get(self.manager).get(
+            'guest_log_long_query_time')
+        general_log_file = self.build_log_file_name(
+            self.GUEST_LOG_DEFS_GENERAL_LABEL, owner,
+            datastore_dir=datastore_dir)
+        error_log_file = self.validate_log_file('/var/log/mysqld.log', owner)
+        slow_query_log_file = self.build_log_file_name(
+            self.GUEST_LOG_DEFS_SLOW_QUERY_LABEL, owner,
+            datastore_dir=datastore_dir)
+        return {
+            self.GUEST_LOG_DEFS_GENERAL_LABEL: {
                 self.GUEST_LOG_TYPE_LABEL: guest_log.LogType.USER,
-                self.GUEST_LOG_USER_LABEL: None,
-                self.GUEST_LOG_FILE_LABEL: '/var/lib/mysql/my-slow.log'},
-                'general': {
+                self.GUEST_LOG_USER_LABEL: owner,
+                self.GUEST_LOG_FILE_LABEL: general_log_file,
+                self.GUEST_LOG_SECTION_LABEL: server_section,
+                self.GUEST_LOG_ENABLE_LABEL: {
+                    'general_log': 'on',
+                    'general_log_file': general_log_file,
+                    'log_output': 'file',
+                },
+                self.GUEST_LOG_DISABLE_LABEL: {
+                    'general_log': 'off',
+                },
+            },
+            self.GUEST_LOG_DEFS_SLOW_QUERY_LABEL: {
                 self.GUEST_LOG_TYPE_LABEL: guest_log.LogType.USER,
-                self.GUEST_LOG_USER_LABEL: None,
-                self.GUEST_LOG_FILE_LABEL: '/var/lib/mysql/my.log'},
-                'error': {
+                self.GUEST_LOG_USER_LABEL: owner,
+                self.GUEST_LOG_FILE_LABEL: slow_query_log_file,
+                self.GUEST_LOG_SECTION_LABEL: server_section,
+                self.GUEST_LOG_ENABLE_LABEL: {
+                    'slow_query_log': 'on',
+                    'slow_query_log_file': slow_query_log_file,
+                    'long_query_time': str(long_query_time),
+                },
+                self.GUEST_LOG_DISABLE_LABEL: {
+                    'slow_query_log': 'off',
+                },
+            },
+            self.GUEST_LOG_DEFS_ERROR_LABEL: {
                 self.GUEST_LOG_TYPE_LABEL: guest_log.LogType.SYS,
-                self.GUEST_LOG_USER_LABEL: 'mysql',
-                self.GUEST_LOG_FILE_LABEL: '/var/log/mysqld.log'},
-                }
+                self.GUEST_LOG_USER_LABEL: owner,
+                self.GUEST_LOG_FILE_LABEL: error_log_file,
+            },
+        }
 
     def rpc_ping(self, context):
         LOG.debug("Responding to RPC ping.")

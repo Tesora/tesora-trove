@@ -499,6 +499,9 @@ mysql_opts = [
                help='Root controller implementation for mysql.'),
     cfg.StrOpt('guest_log_exposed_logs', default='general,slow_query',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.FloatOpt('guest_log_long_query_time', default=1,
+                 help='The time in seconds that a statement must take in '
+                      'in order to be logged in the slow_query log.'),
 ]
 
 # Oracle remote agent
@@ -693,6 +696,9 @@ percona_opts = [
                help='Root controller implementation for percona.'),
     cfg.StrOpt('guest_log_exposed_logs', default='general,slow_query',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.FloatOpt('guest_log_long_query_time', default=1,
+                 help='The time in seconds that a statement must take in '
+                      'in order to be logged in the slow_query log.'),
 ]
 
 # Percona XtraDB Cluster
@@ -769,6 +775,9 @@ pxc_opts = [
                help='Root controller implementation for pxc.'),
     cfg.StrOpt('guest_log_exposed_logs', default='general,slow_query',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.FloatOpt('guest_log_long_query_time', default=1,
+                 help='The time in seconds that a statement must take in '
+                      'in order to be logged in the slow_query log.'),
 ]
 
 # Redis
@@ -1091,6 +1100,10 @@ postgresql_opts = [
                help='Root controller implementation for postgresql.'),
     cfg.StrOpt('guest_log_exposed_logs', default='general',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.IntOpt('guest_log_long_query_time', default=0,
+               help="The time in milliseconds that a statement must take in "
+                    "in order to be logged.  A value of '0' logs all "
+                    "statements, while '-1' turns off statement logging."),
 ]
 
 # Apache CouchDB
@@ -1306,6 +1319,9 @@ mariadb_opts = [
                help='Root controller implementation for mysql.'),
     cfg.StrOpt('guest_log_exposed_logs', default='general,slow_query',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.FloatOpt('guest_log_long_query_time', default=1,
+                 help='The time in seconds that a statement must take in '
+                      'in order to be logged in the slow_query log.'),
 ]
 
 # RPC version groups

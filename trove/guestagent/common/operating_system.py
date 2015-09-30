@@ -378,6 +378,11 @@ class FileMode(object):
         return cls(add=[stat.S_IRGRP | stat.S_IWGRP])  # +0060
 
     @classmethod
+    def ADD_USR_RW_GRP_RW(cls):
+        return cls(add=[stat.S_IRUSR | stat.S_IWUSR |
+                        stat.S_IRGRP | stat.S_IWGRP])  # +0660
+
+    @classmethod
     def ADD_GRP_RX(cls):
         return cls(add=[stat.S_IRGRP | stat.S_IXGRP])  # +0050
 

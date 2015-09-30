@@ -23,6 +23,9 @@ from oslo_service import periodic_task
 from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
+from trove.guestagent.common import guestagent_utils
+from trove.guestagent.common import operating_system
+from trove.guestagent.common.operating_system import FileMode
 from trove.guestagent import guest_log
 
 
@@ -38,9 +41,15 @@ class Manager(periodic_task.PeriodicTasks):
     GUEST_LOG_TYPE_LABEL = 'type'
     GUEST_LOG_USER_LABEL = 'user'
     GUEST_LOG_FILE_LABEL = 'file'
+    GUEST_LOG_SECTION_LABEL = 'section'
     GUEST_LOG_ENABLE_LABEL = 'enable'
     GUEST_LOG_DISABLE_LABEL = 'disable'
-    GUEST_LOG_SUBS_LABEL = 'subs'
+
+    GUEST_LOG_BASE_DIR = '/var/log/trove'
+    GUEST_LOG_DATASTORE_DIRNAME = 'datastore'
+    GUEST_LOG_DEFS_GENERAL_LABEL = 'general'
+    GUEST_LOG_DEFS_ERROR_LABEL = 'error'
+    GUEST_LOG_DEFS_SLOW_QUERY_LABEL = 'slow_query'
 
     def __init__(self):
 
@@ -55,11 +64,19 @@ class Manager(periodic_task.PeriodicTasks):
         self._guest_log_cache = None
         self._guest_log_defs = None
 
+    @property
     def manager(self):
         """This should return the name of the manager.  Each datastore
         can override this if the default is not correct.
         """
         return CONF.datastore_manager
+
+    @property
+    def configuration_manager(self):
+        """If the datastore supports the new-style configuration manager,
+        it should override this to return it.
+        """
+        return None
 
     @abc.abstractproperty
     def status(self):
@@ -85,11 +102,17 @@ class Manager(periodic_task.PeriodicTasks):
         Format of a dict entry:
 
         'name_of_log': {self.GUEST_LOG_TYPE_LABEL:
-                            Specified by the Enum in guest_log.LogType
+                            Specified by the Enum in guest_log.LogType,
                         self.GUEST_LOG_USER_LABEL:
-                            User that owns the file
+                            User that owns the file,
                         self.GUEST_LOG_FILE_LABEL:
-                            Path on filesystem where the log resides}
+                            Path on filesystem where the log resides,
+                        self.GUEST_LOG_SECTION_LABEL:
+                            Section where to put config (if ini style)
+                        self.GUEST_LOG_ENABLE_LABEL: {
+                            Dict of config_group settings to enable log},
+                        self.GUEST_LOG_DISABLE_LABEL: {
+                            Dict of config_group settings to disable log},
 
         See guestagent_log_defs for an example.
         """
@@ -238,16 +261,81 @@ class Manager(periodic_task.PeriodicTasks):
     def guest_log_publish(self, context, log_name, disable):
         LOG.debug("publishing guest log %s (disable=%s)." %
                   (log_name, disable))
-        if log_name in self.guest_log_cache:
-            if (self.guest_log_cache[log_name].type ==
-                    guest_log.LogType.USER):
-                self.guest_log_enable(log_name, disable)
-            return self.guest_log_cache[log_name].publish_log(disable)
+        self.guest_log_context = context
+        gl_cache = self.guest_log_cache
+        if log_name in gl_cache:
+            if gl_cache[log_name].type == guest_log.LogType.USER:
+                self.guest_log_enable(context, log_name, disable)
+            return gl_cache[log_name].publish_log(disable)
         else:
             raise exception.NotFound("Log '%s' is not defined." % log_name)
 
-    def guest_log_enable(self, log_name, disable):
+    def guest_log_enable(self, context, log_name, disable):
         """This method can be overridden by datastore implementations to
-        facilitate enabling and disabling USER type logs.
+        facilitate enabling and disabling USER type logs.  If the logs
+        can be enabled with simple configuration group changes, however,
+        the code here will probably suffice.
         """
-        pass
+        if self.configuration_manager:
+            prefix = ("Dis" if disable else "En")
+            LOG.debug("%sabling log '%s'" % (prefix, log_name))
+            gl_def = self.guest_log_defs[log_name]
+            enable_cfg_label = "%s_%s_log" % (self.GUEST_LOG_ENABLE_LABEL,
+                                              log_name)
+            disable_cfg_label = "%s_%s_log" % (self.GUEST_LOG_DISABLE_LABEL,
+                                               log_name)
+            if disable:
+                self.configuration_manager.remove_system_override(
+                    change_id=enable_cfg_label)
+                if self.GUEST_LOG_DISABLE_LABEL in gl_def:
+                    disable_cfg_values = gl_def[self.GUEST_LOG_DISABLE_LABEL]
+                    self.apply_overrides(context, disable_cfg_values)
+                    if self.GUEST_LOG_SECTION_LABEL in gl_def:
+                        section = gl_def[self.GUEST_LOG_SECTION_LABEL]
+                        disable_cfg_values = {section: disable_cfg_values}
+                    self.configuration_manager.apply_system_override(
+                        disable_cfg_values, change_id=disable_cfg_label)
+            else:
+                self.configuration_manager.remove_system_override(
+                    change_id=disable_cfg_label)
+                if self.GUEST_LOG_ENABLE_LABEL in gl_def:
+                    enable_cfg_values = gl_def[self.GUEST_LOG_ENABLE_LABEL]
+                    self.apply_overrides(context, enable_cfg_values)
+                    if self.GUEST_LOG_SECTION_LABEL in gl_def:
+                        section = gl_def[self.GUEST_LOG_SECTION_LABEL]
+                        enable_cfg_values = {section: enable_cfg_values}
+                    self.configuration_manager.apply_system_override(
+                        enable_cfg_values, change_id=enable_cfg_label)
+
+    def build_log_file_name(self, log_name, owner, datastore_dir=None):
+        """Build a log file name based on the log_name and make sure the
+        directories exist and are accessible by owner.
+        """
+        if datastore_dir is None:
+            base_dir = self.GUEST_LOG_BASE_DIR
+            if not operating_system.exists(base_dir, is_directory=True):
+                operating_system.create_directory(
+                    base_dir, user=owner, group=owner, force=True,
+                    as_root=True)
+
+            datastore_dir = guestagent_utils.build_file_path(
+                base_dir, self.GUEST_LOG_DATASTORE_DIRNAME)
+            if not operating_system.exists(datastore_dir, is_directory=True):
+                operating_system.create_directory(
+                    datastore_dir, user=owner, group=owner, force=True,
+                    as_root=True)
+
+        log_file_name = guestagent_utils.build_file_path(
+            datastore_dir, '%s-%s.log' % (self.manager, log_name))
+        return self.validate_log_file(log_file_name, owner)
+
+    def validate_log_file(self, log_file, owner):
+        """Make sure the log file exists and is accessible by owner.
+        """
+        if not operating_system.exists(log_file):
+            operating_system.write_file(log_file, '', as_root=True)
+            operating_system.chown(log_file, user=owner, group=owner,
+                                   as_root=True)
+            operating_system.chmod(log_file, FileMode.ADD_USR_RW_GRP_RW,
+                                   as_root=True)
+        return log_file

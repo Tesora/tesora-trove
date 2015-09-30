@@ -51,20 +51,43 @@ class Manager(
         super(Manager, self).__init__()
 
     @property
+    def configuration_manager(self):
+        return self.configuration_manager
+
+    @property
     def status(self):
         return PgSqlAppStatus.get()
 
     @property
     def datastore_log_defs(self):
-        return {'general': {
+        owner = 'postgres'
+        datastore_dir = self.PGSQL_DATA_DIR()
+        long_query_time = CONF.get(self.manager).get(
+            'guest_log_long_query_time')
+        general_log_file = self.build_log_file_name(
+            self.GUEST_LOG_DEFS_GENERAL_LABEL, owner,
+            datastore_dir=datastore_dir)
+        general_log_dir, general_log_filename = os.path.split(general_log_file)
+        return {
+            self.GUEST_LOG_DEFS_GENERAL_LABEL: {
                 self.GUEST_LOG_TYPE_LABEL: guest_log.LogType.USER,
-                self.GUEST_LOG_USER_LABEL: None,
-                self.GUEST_LOG_FILE_LABEL: '/var/lib/postgresql/post.log'},
-                'error': {
-                self.GUEST_LOG_TYPE_LABEL: guest_log.LogType.SYS,
-                self.GUEST_LOG_USER_LABEL: 'postgresql',
-                self.GUEST_LOG_FILE_LABEL: '/var/log/postgresql/postd.log'},
-                }
+                self.GUEST_LOG_USER_LABEL: owner,
+                self.GUEST_LOG_FILE_LABEL: general_log_file,
+                self.GUEST_LOG_ENABLE_LABEL: {
+                    'log_destination': 'stderr',
+                    'logging_collector': 'on',
+                    'log_directory': general_log_dir,
+                    'log_filename': general_log_filename,
+                    'log_output': 'file',
+                    'log_statement': 'all',
+                    'debug_print_plan': 'on',
+                    'log_min_duration_statement': long_query_time,
+                },
+                self.GUEST_LOG_DISABLE_LABEL: {
+                    'general_log': 'off',
+                },
+            },
+        }
 
     def rpc_ping(self, context):
         LOG.debug("Responding to RPC ping.")

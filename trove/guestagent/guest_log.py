@@ -13,7 +13,7 @@
 #    under the License.
 
 from datetime import datetime
-from enum import Enum
+import enum
 import hashlib
 import os
 
@@ -31,7 +31,7 @@ LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 
 
-class LogType(Enum):
+class LogType(enum.Enum):
     """Represent the type of the log object."""
 
     # System logs.  These are always enabled.
@@ -41,7 +41,7 @@ class LogType(Enum):
     USER = 2
 
 
-class LogStatus(Enum):
+class LogStatus(enum.Enum):
     """Represent the status of the log object."""
 
     # The log is disabled and potentially no data is being written to
@@ -66,11 +66,11 @@ class LogStatus(Enum):
 
 class GuestLog(object):
 
-    XCM_LOG_NAME = 'X-Container-Meta-Log-Name'
-    XCM_LOG_TYPE = 'X-Container-Meta-Log-Type'
-    XCM_LOG_FILE = 'X-Container-Meta-Log-File'
-    XCM_LOG_SIZE = 'X-Container-Meta-Log-Size'
-    XCM_LOG_HEAD = 'X-Container-Meta-Log-Header-Digest'
+    XCM_LOG_NAME = 'x-container-meta-log-name'
+    XCM_LOG_TYPE = 'x-container-meta-log-type'
+    XCM_LOG_FILE = 'x-container-meta-log-file'
+    XCM_LOG_SIZE = 'x-container-meta-log-size'
+    XCM_LOG_HEAD = 'x-container-meta-log-header-digest'
 
     def __init__(self, log_context, log_name, log_type, log_user, log_file,
                  log_exposed):
@@ -147,7 +147,7 @@ class GuestLog(object):
                 headers = self.swift_client.head_container(
                     self._container_name())
                 self._published_size = int(headers[self.XCM_LOG_SIZE])
-                self._published_header_digest = (headers[self.XCM_LOG_HEAD])
+                self._published_header_digest = headers[self.XCM_LOG_HEAD]
             except ClientException:
                 self._published_size = 0
 
@@ -157,6 +157,13 @@ class GuestLog(object):
 
     def _update_details(self):
         if os.path.isfile(self._file):
+            # Make sure we can read the file
+            log_dir = os.path.dirname(self._file)
+            operating_system.chmod(
+                log_dir, FileMode.ADD_GRP_RX, as_root=True)
+            operating_system.chmod(
+                self._file, FileMode.ADD_ALL_R, as_root=True)
+
             logstat = os.stat(self._file)
             self._size = logstat.st_size
             self._update_log_header_digest(self._file)
@@ -180,6 +187,8 @@ class GuestLog(object):
         else:
             self._published_size = 0
             self._size = 0
+
+        if not self._size:
             self._set_status(self._type == LogType.USER,
                              LogStatus.Disabled, LogStatus.Unavailable)
 
@@ -208,11 +217,6 @@ class GuestLog(object):
             self._delete_container()
         else:
             if os.path.isfile(self._file):
-                log_dir = os.path.dirname(self._file)
-                operating_system.chmod(
-                    log_dir, FileMode.ADD_GRP_RX, as_root=True)
-                operating_system.chmod(
-                    self._file, FileMode.ADD_ALL_R, as_root=True)
                 self._publish_to_container(self._file)
             else:
                 raise RuntimeError(_(
@@ -249,7 +253,7 @@ class GuestLog(object):
                 self._published_size + len(log_component))
             self._published_header_digest = self._header_digest
 
-        self._update_details()
+        self._refresh_details()
         self._set_container_details()
         object_header = {'X-Delete-After': CONF.guest_log_expiry}
         with open(log_filename, 'r') as log:
