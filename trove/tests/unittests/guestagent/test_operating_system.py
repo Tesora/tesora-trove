@@ -97,7 +97,8 @@ class TestOperatingSystem(trove_testtools.TestCase):
                 'key7': 0,
                 'key8': None,
                 'key9': [['str1', 'str2'], ['str3', 'str4']],
-                'key10': [['str1', 'str2', 'str3'], ['str3', 'str4'], 'str5']
+                'key10': [['str1', 'str2', 'str3'], ['str3', 'str4'], 'str5'],
+                'key11': True
                 }
 
         self._test_file_codec(data, PropertiesCodec())
