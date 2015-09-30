@@ -836,7 +836,8 @@ def list_files_in_directory(root_dir, recursive=False, pattern=None,
         if not include_dirs:
             cmd_args.extend(['-type', 'f'])
         if pattern:
-            cmd_args.extend(['-name', pattern])
+            cmd_args.extend(['-regextype', 'posix-extended',
+                             '-regex', os.path.join('.*', pattern) + '$'])
         files = _execute_shell_cmd('find', [], *cmd_args, as_root=True)
         return {fp for fp in files.splitlines()}
 

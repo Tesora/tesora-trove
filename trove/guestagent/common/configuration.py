@@ -270,7 +270,7 @@ class ImportOverrideStrategy(ConfigurationOverrideStrategy):
     within their set got applied.
     """
 
-    FILE_NAME_PATTERN = '^%s-([0-9]+)-%s\.%s$'
+    FILE_NAME_PATTERN = '%s-([0-9]+)-%s\.%s$'
 
     def __init__(self, revision_dir, revision_ext):
         """
@@ -388,12 +388,14 @@ class ImportOverrideStrategy(ConfigurationOverrideStrategy):
         """
         name_pattern = self._build_rev_name_pattern(group_name=group_name)
         return sorted(operating_system.list_files_in_directory(
-            self._revision_dir, recursive=False, pattern=name_pattern))
+            self._revision_dir, recursive=True, pattern=name_pattern,
+            as_root=self._requires_root))
 
     def _find_revision_file(self, group_name, change_id):
         name_pattern = self._build_rev_name_pattern(group_name, change_id)
         found = operating_system.list_files_in_directory(
-            self._revision_dir, recursive=False, pattern=name_pattern)
+            self._revision_dir, recursive=True, pattern=name_pattern,
+            as_root=self._requires_root)
         return next(iter(found), None)
 
     def _build_rev_name_pattern(self, group_name='.+', change_id='.+'):
