@@ -28,6 +28,7 @@ CONF = cfg.CONF
 
 
 class Base(object):
+
     def serialize(self):
         return self.__dict__
 
@@ -196,6 +197,28 @@ class CassandraSchema(DatastoreSchema):
 
     def _is_valid_schema_name(self, value):
         return True
+
+
+class PostgreSQLSchema(DatastoreSchema):
+    """Represents a PostgreSQL schema and its associated properties.
+
+    Permitted characters in quoted identifiers include the full
+    Unicode Basic Multilingual Plane (BMP), except U+0000.
+    Database, table, and column names cannot end with space characters.
+    """
+    name_regex = re.compile(ur'^[\u0001-\u007F\u0080-\uFFFF]+[^\s]$')
+
+    def __init__(self, name):
+        super(PostgreSQLSchema, self).__init__()
+        if name:
+            self.name = name
+
+    @property
+    def _max_schema_name_length(self):
+        return 63
+
+    def _is_valid_schema_name(self, value):
+        return self.name_regex.match(value) is not None
 
 
 class MySQLDatabase(Base):
@@ -501,6 +524,7 @@ class MySQLDatabase(Base):
 
 
 class ValidatedMySQLDatabase(MySQLDatabase):
+
     @MySQLDatabase.name.setter
     def name(self, value):
         if any([not value,
@@ -558,140 +582,6 @@ class ValidatedMySQLDatabase(MySQLDatabase):
             raise ValueError(_("'%s' not a valid character set.") % value)
         else:
             self._character_set = value
-
-
-class DatastoreUser(Base):
-    """Represents a datastore user."""
-
-    _HOSTNAME_WILDCARD = '%'
-
-    def __init__(self):
-        self._name = None
-        self._password = None
-        self._host = None
-        self._databases = []
-
-    @property
-    def name(self):
-        return self._name
-
-    @name.setter
-    def name(self, value):
-        self._validate_user_name(value)
-        self._name = value
-
-    @property
-    def password(self):
-        return self._password
-
-    @password.setter
-    def password(self, value):
-        if self._is_valid_password(value):
-            self._password = value
-        else:
-            raise ValueError(_("'%s' is not a valid password.") % value)
-
-    @property
-    def databases(self):
-        return self._databases
-
-    @databases.setter
-    def databases(self, value):
-        mydb = self._build_database_schema(value)
-        self._databases.append(mydb.serialize())
-
-    @property
-    def host(self):
-        if self._host is None:
-            return self._HOSTNAME_WILDCARD
-        return self._host
-
-    @host.setter
-    def host(self, value):
-        if self._is_valid_host_name(value):
-            self._host = value
-        else:
-            raise ValueError(_("'%s' is not a valid hostname.") % value)
-
-    @abc.abstractmethod
-    def _build_database_schema(self, name):
-        """Build a schema for this user.
-        :type name:              string
-        :type character_set:     string
-        :type collate:           string
-        """
-
-    def _validate_user_name(self, value):
-        """Perform validations on a given user name.
-        :param value:        Validated user name.
-        :type value:         string
-        :raises:             ValueError On validation errors.
-        """
-        if self._max_username_length and (len(value) >
-                                          self._max_username_length):
-            raise ValueError(_("User name '%(name)s' is too long. "
-                               "Max length = %(max_length)d.")
-                             % {'name': value,
-                                'max_length': self._max_username_length})
-        elif not self._is_valid_user_name(value):
-            raise ValueError(_("'%s' is not a valid user name.") % value)
-
-    @abc.abstractproperty
-    def _max_username_length(self):
-        """Return the maximum valid user name length if any.
-        :returns:            Maximum user name length or None if unlimited.
-        """
-
-    @abc.abstractmethod
-    def _is_valid_user_name(self, value):
-        """Validate a given user name.
-        :param value:        User name to be validated.
-        :type value:         string
-        :returns:            TRUE if valid, FALSE otherwise.
-        """
-
-    @abc.abstractmethod
-    def _is_valid_host_name(self, value):
-        """Validate a given host name.
-        :param value:        Host name to be validated.
-        :type value:         string
-        :returns:            TRUE if valid, FALSE otherwise.
-        """
-
-    @abc.abstractmethod
-    def _is_valid_password(self, value):
-        """Validate a given password.
-        :param value:        Password to be validated.
-        :type value:         string
-        :returns:            TRUE if valid, FALSE otherwise.
-        """
-
-
-class CassandraUser(DatastoreUser):
-    """Represents a Cassandra user and its associated properties."""
-
-    def __init__(self, name, password=None):
-        super(CassandraUser, self).__init__()
-        if name:
-            self.name = name
-        if password is not None:
-            self.password = password
-
-    def _build_database_schema(self, name):
-        return CassandraSchema(name)
-
-    @property
-    def _max_username_length(self):
-        return 65535
-
-    def _is_valid_user_name(self, value):
-        return True
-
-    def _is_valid_host_name(self, value):
-        return True
-
-    def _is_valid_password(self, value):
-        return True
 
 
 class DatastoreUser(Base):
@@ -818,6 +708,37 @@ class DatastoreUser(Base):
         deserialization.
         :returns:           List of required dictionary keys.
         """
+
+
+class CassandraUser(DatastoreUser):
+    """Represents a Cassandra user and its associated properties."""
+
+    def __init__(self, name, password=None):
+        super(CassandraUser, self).__init__()
+        if name:
+            self.name = name
+        if password is not None:
+            self.password = password
+
+    def _build_database_schema(self, name):
+        return CassandraSchema(name)
+
+    @property
+    def _max_username_length(self):
+        return 65535
+
+    def _is_valid_name(self, value):
+        return True
+
+    def _is_valid_host_name(self, value):
+        return True
+
+    def _is_valid_password(self, value):
+        return True
+
+    @classmethod
+    def _dict_requirements(cls):
+        return ['name']
 
 
 class MongoDBUser(DatastoreUser):
@@ -1075,7 +996,7 @@ class OracleUser(DatastoreUser):
     def _max_username_length(self):
         return 30
 
-    def _is_valid_user_name(self, value):
+    def _is_valid_name(self, value):
         return True
 
     def _is_valid_host_name(self, value):
@@ -1084,15 +1005,54 @@ class OracleUser(DatastoreUser):
     def _is_valid_password(self, value):
         return True
 
+    @classmethod
+    def _dict_requirements(cls):
+        return ['name']
 
+
+class PostgreSQLUser(DatastoreUser):
+    """Represents a PostgreSQL user and its associated properties."""
+
+    def __init__(self, name, password=None):
+        super(PostgreSQLUser, self).__init__()
+        if name:
+            self.name = name
+        if password is not None:
+            self.password = password
+
+    def _build_database_schema(self, name):
+        return PostgreSQLSchema(name)
+
+    @property
+    def _max_username_length(self):
+        return 63
+
+    def _is_valid_name(self, value):
+        return True
+
+    def _is_valid_host_name(self, value):
+        return True
+
+    def _is_valid_password(self, value):
+        return True
+
+    @classmethod
+    def _dict_requirements(cls):
+        return ['name']
+
+
+# TODO(pmalik): Datastores should be using their own user.
+# Not this one which is just a MySQL user.
 class RootUser(MySQLUser):
     """Overrides _ignore_users from the MySQLUser class."""
 
     _ignore_users = []
 
 
-class MySQLRootUser(RootUser):
+class MySQLRootUser(MySQLUser):
     """Represents the MySQL root user."""
+
+    _ignore_users = []
 
     def __init__(self, password=None):
         super(MySQLRootUser, self).__init__()
@@ -1102,3 +1062,11 @@ class MySQLRootUser(RootUser):
             self._password = utils.generate_random_password()
         else:
             self._password = password
+
+
+class PostgreSQLRootUser(PostgreSQLUser):
+    """Represents the PostgreSQL default superuser."""
+
+    def __init__(self, password=None):
+        password = password if not None else utils.generate_random_password()
+        super(PostgreSQLRootUser, self).__init__("postgres", password=password)
