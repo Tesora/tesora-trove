@@ -28,9 +28,9 @@ from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common.notification import EndNotification
-from trove.common import utils
 from trove.guestagent import backup
 from trove.guestagent.datastore import manager
+from trove.guestagent.db import models
 from trove.guestagent import dbaas
 from trove.guestagent import guest_log
 from trove.guestagent.strategies.replication import get_replication_strategy
@@ -71,18 +71,17 @@ class Manager(
 
     @property
     def datastore_log_defs(self):
-        owner = 'postgres'
         datastore_dir = '/var/log/postgresql/'
         long_query_time = CONF.get(self.manager).get(
             'guest_log_long_query_time')
         general_log_file = self.build_log_file_name(
-            self.GUEST_LOG_DEFS_GENERAL_LABEL, owner,
+            self.GUEST_LOG_DEFS_GENERAL_LABEL, self.PGSQL_OWNER,
             datastore_dir=datastore_dir)
         general_log_dir, general_log_filename = os.path.split(general_log_file)
         return {
             self.GUEST_LOG_DEFS_GENERAL_LABEL: {
                 self.GUEST_LOG_TYPE_LABEL: guest_log.LogType.USER,
-                self.GUEST_LOG_USER_LABEL: owner,
+                self.GUEST_LOG_USER_LABEL: self.PGSQL_OWNER,
                 self.GUEST_LOG_FILE_LABEL: general_log_file,
                 self.GUEST_LOG_ENABLE_LABEL: {
                     'logging_collector': 'on',
@@ -156,11 +155,11 @@ class Manager(
     def _secure(self, context):
         # Create a new administrative user for Trove and also
         # disable the built-in superuser.
-        self.create_database(context, [{'_name': self.ADMIN_USER}])
-        self._create_admin_user(context)
+        os_admin_db = models.PostgreSQLSchema(self.ADMIN_USER)
+        self._create_database(context, os_admin_db)
+        self._create_admin_user(context, databases=[os_admin_db])
         pgutil.PG_ADMIN = self.ADMIN_USER
-        postgres = {'_name': self.PG_BUILTIN_ADMIN,
-                    '_password': utils.generate_random_password()}
+        postgres = models.PostgreSQLRootUser()
         self.alter_user(context, postgres, 'NOSUPERUSER', 'NOLOGIN')
 
     def get_filesystem_stats(self, context, fs_path):

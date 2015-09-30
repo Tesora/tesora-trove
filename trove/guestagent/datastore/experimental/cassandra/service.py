@@ -808,17 +808,13 @@ class CassandraAdmin(object):
 
     def _deserialize_keyspace(self, keyspace_dict):
         if keyspace_dict:
-            keyspace = models.CassandraSchema(None)
-            keyspace.deserialize(keyspace_dict)
-            return keyspace
+            return models.CassandraSchema.deserialize_schema(keyspace_dict)
 
         return None
 
     def _deserialize_user(self, user_dict):
         if user_dict:
-            user = models.CassandraUser(None)
-            user.deserialize(user_dict)
-            return user
+            return models.CassandraUser.deserialize_user(user_dict)
 
         return None
 
