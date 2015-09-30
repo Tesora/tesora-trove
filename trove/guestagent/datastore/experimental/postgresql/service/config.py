@@ -52,7 +52,7 @@ class PgSqlConfig(PgSqlProcess):
     LISTEN_ADDRESSES = ['*']  # Listen on all available IP (v4/v6) interfaces.
 
     def __init__(self):
-        self.configuration_manager = ConfigurationManager(
+        self._configuration_manager = ConfigurationManager(
             self.PGSQL_CONFIG, self.PGSQL_OWNER, self.PGSQL_OWNER,
             PropertiesCodec(
                 delimiter='=',
@@ -60,6 +60,10 @@ class PgSqlConfig(PgSqlProcess):
             requires_root=True,
             override_strategy=OneFileOverrideStrategy(
                 self._init_overrides_dir()))
+
+    @property
+    def configuration_manager(self):
+        return self._configuration_manager
 
     # TODO(pmalik): To be removed when
     # 'https://review.openstack.org/#/c/218382/' merges.

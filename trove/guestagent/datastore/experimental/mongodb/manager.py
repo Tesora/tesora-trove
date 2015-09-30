@@ -45,6 +45,10 @@ class Manager(manager.Manager):
     def status(self):
         return self.app.status
 
+    @property
+    def configuration_manager(self):
+        return self.app.configuration_manager
+
     def rpc_ping(self, context):
         LOG.debug("Responding to RPC ping.")
         return True

@@ -51,10 +51,6 @@ class Manager(
         super(Manager, self).__init__()
 
     @property
-    def configuration_manager(self):
-        return self.configuration_manager
-
-    @property
     def status(self):
         return PgSqlAppStatus.get()
 
