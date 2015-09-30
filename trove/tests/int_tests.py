@@ -19,6 +19,7 @@ from trove.tests.api import configurations
 from trove.tests.api import databases
 from trove.tests.api import datastores
 from trove.tests.api import flavors
+# from trove.tests.api import guest_log
 from trove.tests.api import instances
 from trove.tests.api import instances_actions
 from trove.tests.api.mgmt import accounts
@@ -89,6 +90,7 @@ black_box_groups = [
     versions.GROUP,
     instances.GROUP_GUEST,
     datastore_versions.GROUP,
+    # guest_log.GROUP,
 ]
 proboscis.register(groups=["blackbox", "mysql"],
                    depends_on_groups=black_box_groups)

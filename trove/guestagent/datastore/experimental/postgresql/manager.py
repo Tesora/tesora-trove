@@ -29,6 +29,7 @@ from trove.common import utils
 from trove.guestagent import backup
 from trove.guestagent.datastore import manager
 from trove.guestagent import dbaas
+from trove.guestagent import guest_log
 from trove.guestagent import volume
 
 
@@ -52,6 +53,18 @@ class Manager(
     @property
     def status(self):
         return PgSqlAppStatus.get()
+
+    @property
+    def datastore_log_defs(self):
+        return {'general': {
+                self.GUEST_LOG_TYPE_LABEL: guest_log.LogType.USER,
+                self.GUEST_LOG_USER_LABEL: None,
+                self.GUEST_LOG_FILE_LABEL: '/var/lib/postgresql/post.log'},
+                'error': {
+                self.GUEST_LOG_TYPE_LABEL: guest_log.LogType.SYS,
+                self.GUEST_LOG_USER_LABEL: 'postgresql',
+                self.GUEST_LOG_FILE_LABEL: '/var/log/postgresql/postd.log'},
+                }
 
     def rpc_ping(self, context):
         LOG.debug("Responding to RPC ping.")
