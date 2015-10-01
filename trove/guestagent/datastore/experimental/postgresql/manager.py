@@ -57,7 +57,7 @@ class Manager(
     @property
     def datastore_log_defs(self):
         owner = 'postgres'
-        datastore_dir = self.PGSQL_DATA_DIR()
+        datastore_dir = self.PGSQL_DATA_DIR
         long_query_time = CONF.get(self.manager).get(
             'guest_log_long_query_time')
         general_log_file = self.build_log_file_name(
