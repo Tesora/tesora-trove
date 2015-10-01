@@ -21,6 +21,7 @@ from oslo_log import log as logging
 from swiftclient.client import ClientException
 
 from trove.common import cfg
+from trove.common import exception
 from trove.common.i18n import _
 from trove.common.remote import create_swift_client
 from trove.guestagent.common import operating_system
@@ -91,6 +92,11 @@ class GuestLog(object):
         self._set_status(self._type == LogType.USER,
                          LogStatus.Disabled, LogStatus.Enabled)
 
+        # The directory should already exist - make sure we have access to it
+        log_dir = os.path.dirname(self._file)
+        operating_system.chmod(
+            log_dir, FileMode.ADD_GRP_RX_OTH_RX, as_root=True)
+
     @property
     def context(self):
         return self._context
@@ -158,9 +164,6 @@ class GuestLog(object):
     def _update_details(self):
         if os.path.isfile(self._file):
             # Make sure we can read the file
-            log_dir = os.path.dirname(self._file)
-            operating_system.chmod(
-                log_dir, FileMode.ADD_GRP_RX, as_root=True)
             operating_system.chmod(
                 self._file, FileMode.ADD_ALL_R, as_root=True)
 
@@ -213,16 +216,20 @@ class GuestLog(object):
         }
 
     def publish_log(self, disable):
-        if disable:
-            self._delete_container()
-        else:
-            if os.path.isfile(self._file):
-                self._publish_to_container(self._file)
+        if self.exposed:
+            if disable:
+                self._delete_container()
             else:
-                raise RuntimeError(_(
-                    "Cannot publish log file '%s' as it does not exist.") %
-                    self._file)
-        return self.show()
+                if os.path.isfile(self._file):
+                    self._publish_to_container(self._file)
+                else:
+                    raise RuntimeError(_(
+                        "Cannot publish log file '%s' as it does not exist.") %
+                        self._file)
+            return self.show()
+        else:
+            raise exception.UnauthorizedRequest(
+                "Not authorized to publish log '%s'." % self._name)
 
     def _delete_container(self):
         c = self._container_name()
