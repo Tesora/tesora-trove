@@ -55,6 +55,10 @@ class Manager(
         return PgSqlAppStatus.get()
 
     @property
+    def configuration_manager(self):
+        return self._configuration_manager
+
+    @property
     def datastore_log_defs(self):
         owner = 'postgres'
         datastore_dir = self.PGSQL_DATA_DIR

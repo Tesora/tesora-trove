@@ -61,10 +61,6 @@ class PgSqlConfig(PgSqlProcess):
             override_strategy=OneFileOverrideStrategy(
                 self._init_overrides_dir()))
 
-    @property
-    def configuration_manager(self):
-        return self._configuration_manager
-
     # TODO(pmalik): To be removed when
     # 'https://review.openstack.org/#/c/218382/' merges.
     def _init_overrides_dir(self):
