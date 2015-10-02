@@ -293,27 +293,27 @@ class Manager(periodic_task.PeriodicTasks):
             disable_cfg_label = "%s_%s_log" % (self.GUEST_LOG_DISABLE_LABEL,
                                                log_name)
             if disable:
-                self.configuration_manager.remove_system_override(
-                    change_id=enable_cfg_label)
-                if self.GUEST_LOG_DISABLE_LABEL in gl_def:
-                    disable_cfg_values = gl_def[self.GUEST_LOG_DISABLE_LABEL]
-                    self.apply_overrides(context, disable_cfg_values)
-                    if self.GUEST_LOG_SECTION_LABEL in gl_def:
-                        section = gl_def[self.GUEST_LOG_SECTION_LABEL]
-                        disable_cfg_values = {section: disable_cfg_values}
-                    self.configuration_manager.apply_system_override(
-                        disable_cfg_values, change_id=disable_cfg_label)
+                self._apply_log_overrides(
+                    context, enable_cfg_label, disable_cfg_label,
+                    gl_def.get(self.GUEST_LOG_DISABLE_LABEL),
+                    gl_def.get(self.GUEST_LOG_SECTION_LABEL))
             else:
-                self.configuration_manager.remove_system_override(
-                    change_id=disable_cfg_label)
-                if self.GUEST_LOG_ENABLE_LABEL in gl_def:
-                    enable_cfg_values = gl_def[self.GUEST_LOG_ENABLE_LABEL]
-                    self.apply_overrides(context, enable_cfg_values)
-                    if self.GUEST_LOG_SECTION_LABEL in gl_def:
-                        section = gl_def[self.GUEST_LOG_SECTION_LABEL]
-                        enable_cfg_values = {section: enable_cfg_values}
-                    self.configuration_manager.apply_system_override(
-                        enable_cfg_values, change_id=enable_cfg_label)
+                self._apply_log_overrides(
+                    context, disable_cfg_label, enable_cfg_label,
+                    gl_def.get(self.GUEST_LOG_ENABLE_LABEL),
+                    gl_def.get(self.GUEST_LOG_SECTION_LABEL))
+
+    def _apply_log_overrides(self, context, remove_label,
+                             apply_label, cfg_values, section_label):
+        self.configuration_manager.remove_system_override(
+            change_id=remove_label)
+        if cfg_values:
+            config_man_values = cfg_values
+            if section_label:
+                config_man_values = {section_label: cfg_values}
+            self.configuration_manager.apply_system_override(
+                config_man_values, change_id=apply_label)
+            self.apply_overrides(context, cfg_values)
 
     def build_log_file_name(self, log_name, owner, datastore_dir=None):
         """Build a log file name based on the log_name and make sure the
