@@ -72,7 +72,7 @@ class Manager(
     @property
     def datastore_log_defs(self):
         owner = 'postgres'
-        datastore_dir = self.PGSQL_DATA_DIR
+        datastore_dir = '/var/log/postgresql/'
         long_query_time = CONF.get(self.manager).get(
             'guest_log_long_query_time')
         general_log_file = self.build_log_file_name(
@@ -85,17 +85,16 @@ class Manager(
                 self.GUEST_LOG_USER_LABEL: owner,
                 self.GUEST_LOG_FILE_LABEL: general_log_file,
                 self.GUEST_LOG_ENABLE_LABEL: {
-                    'log_destination': 'stderr',
                     'logging_collector': 'on',
-                    'log_directory': general_log_dir,
-                    'log_filename': general_log_filename,
-                    'log_output': 'file',
-                    'log_statement': 'all',
+                    'log_destination': self._quote('stderr'),
+                    'log_directory': self._quote(general_log_dir),
+                    'log_filename': self._quote(general_log_filename),
+                    'log_statement': self._quote('all'),
                     'debug_print_plan': 'on',
                     'log_min_duration_statement': long_query_time,
                 },
                 self.GUEST_LOG_DISABLE_LABEL: {
-                    'general_log': 'off',
+                    'logging_collector': 'off',
                 },
             },
         }

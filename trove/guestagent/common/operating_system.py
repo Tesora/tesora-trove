@@ -374,17 +374,28 @@ class FileMode(object):
         return cls.ADD_ALL_R()
 
     @classmethod
-    def ADD_GRP_RW(cls):
-        return cls(add=[stat.S_IRGRP | stat.S_IWGRP])  # +0060
-
-    @classmethod
     def ADD_USR_RW_GRP_RW(cls):
         return cls(add=[stat.S_IRUSR | stat.S_IWUSR |
                         stat.S_IRGRP | stat.S_IWGRP])  # +0660
 
     @classmethod
+    def ADD_USR_RW_GRP_RW_OTH_R(cls):
+        return cls(add=[stat.S_IRUSR | stat.S_IWUSR |
+                        stat.S_IRGRP | stat.S_IWGRP |
+                        stat.S_IROTH])  # +0664
+
+    @classmethod
+    def ADD_GRP_RW(cls):
+        return cls(add=[stat.S_IRGRP | stat.S_IWGRP])  # +0060
+
+    @classmethod
     def ADD_GRP_RX(cls):
         return cls(add=[stat.S_IRGRP | stat.S_IXGRP])  # +0050
+
+    @classmethod
+    def ADD_GRP_RX_OTH_RX(cls):
+        return cls(add=[stat.S_IRGRP | stat.S_IXGRP |
+                        stat.S_IROTH | stat.S_IXOTH])  # +0055
 
     @classmethod
     def OCTAL_MODE(cls, octal):

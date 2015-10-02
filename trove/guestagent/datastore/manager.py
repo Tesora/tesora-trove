@@ -124,10 +124,16 @@ class Manager(periodic_task.PeriodicTasks):
         """These are log files that should be available on every Trove
         instance.  By definition, these should be of type LogType.SYS
         """
-        return {'guest': {self.GUEST_LOG_TYPE_LABEL: guest_log.LogType.SYS,
-                          self.GUEST_LOG_USER_LABEL: None,
-                          self.GUEST_LOG_FILE_LABEL:
-                              '/var/log/trove/trove-guestagent.log'}}
+        log_dir = CONF.get('log_dir', '/var/log/trove/')
+        log_file = CONF.get('log_file', 'trove-guestagent.log')
+        guestagent_log = guestagent_utils.build_file_path(log_dir, log_file)
+        return {
+            'guest': {
+                self.GUEST_LOG_TYPE_LABEL: guest_log.LogType.SYS,
+                self.GUEST_LOG_USER_LABEL: None,
+                self.GUEST_LOG_FILE_LABEL: guestagent_log,
+            },
+        }
 
     @property
     def guest_log_defs(self):
@@ -319,16 +325,16 @@ class Manager(periodic_task.PeriodicTasks):
                 operating_system.create_directory(
                     base_dir, user=owner, group=owner, force=True,
                     as_root=True)
-
             datastore_dir = guestagent_utils.build_file_path(
                 base_dir, self.GUEST_LOG_DATASTORE_DIRNAME)
-            if not operating_system.exists(datastore_dir, is_directory=True):
-                operating_system.create_directory(
-                    datastore_dir, user=owner, group=owner, force=True,
-                    as_root=True)
 
+        if not operating_system.exists(datastore_dir, is_directory=True):
+            operating_system.create_directory(
+                datastore_dir, user=owner, group=owner, force=True,
+                as_root=True)
         log_file_name = guestagent_utils.build_file_path(
             datastore_dir, '%s-%s.log' % (self.manager, log_name))
+
         return self.validate_log_file(log_file_name, owner)
 
     def validate_log_file(self, log_file, owner):
@@ -336,8 +342,9 @@ class Manager(periodic_task.PeriodicTasks):
         """
         if not operating_system.exists(log_file):
             operating_system.write_file(log_file, '', as_root=True)
-            operating_system.chown(log_file, user=owner, group=owner,
-                                   as_root=True)
-            operating_system.chmod(log_file, FileMode.ADD_USR_RW_GRP_RW,
-                                   as_root=True)
+
+        operating_system.chown(log_file, user=owner, group=owner,
+                               as_root=True)
+        operating_system.chmod(log_file, FileMode.ADD_USR_RW_GRP_RW_OTH_R,
+                               as_root=True)
         return log_file
