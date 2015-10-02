@@ -140,15 +140,14 @@ class VolumeDeviceTest(trove_testtools.TestCase):
         os.path.exists = origin_os_path_exists
         utils.execute = origin_execute
 
-    @patch.object(os.path, 'ismount', return_value=True)
     @patch.object(utils, 'execute', side_effect=ProcessExecutionError)
-    def test_fail_resize_fs(self, mock_execute, mock_mount):
+    @patch('trove.guestagent.volume.LOG')
+    def test_fail_resize_fs(self, mock_logging, mock_execute):
         with patch.object(self.volumeDevice, '_check_device_exists'):
             self.assertRaises(GuestError,
                               self.volumeDevice.resize_fs, '/mnt/volume')
             self.assertEqual(1,
                              self.volumeDevice._check_device_exists.call_count)
-            self.assertEqual(1, mock_mount.call_count)
 
     def test_unmount_positive(self):
         self._test_unmount()

@@ -546,7 +546,7 @@ class ResizeVolumeTest(trove_testtools.TestCase):
         self.instance.attach_mock(server, 'server')
         self.action.execute()
         self.assertEqual(1, self.instance.guest.stop_db.call_count)
-        self.assertEqual(1, self.instance.guest.unmount_volume.call_count)
+        self.assertEqual(2, self.instance.guest.unmount_volume.call_count)
         detach_count = (
             self.instance.nova_client.volumes.delete_server_volume.call_count)
         self.assertEqual(1, detach_count)
