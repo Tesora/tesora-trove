@@ -123,8 +123,6 @@ class VolumeDevice(object):
         """Resize the filesystem on the specified device."""
         self._check_device_exists()
         try:
-            if os.path.ismount(mount_point):
-                self.unmount_device(self.device_path)
             utils.execute("e2fsck", "-f", "-p", self.device_path,
                           run_as_root=True, root_helper="sudo")
             utils.execute("resize2fs", self.device_path,

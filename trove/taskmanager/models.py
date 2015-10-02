@@ -1673,6 +1673,10 @@ class ResizeVolumeAction(object):
         self._verify_extend()
         # if anything fails after this point, recovery is futile
         self._attach_volume(recover_func=self._fail)
+        # some platforms (e.g. RHEL) auto-mount attached volumes
+        # make sure to issue an explicit unmount
+        # this will be a no-op if the volume is not mounted
+        self._unmount_volume(recover_func=self._fail)
         self._resize_fs(recover_func=self._fail)
         self._mount_volume(recover_func=self._fail)
         self.instance.restart()
