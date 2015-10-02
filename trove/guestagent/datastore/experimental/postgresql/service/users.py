@@ -132,7 +132,7 @@ class PgSqlUsers(PgSqlAccess):
         """List all users on the instance along with their access permissions.
         Return a paginated list of serialized Postgres users.
         """
-        users = [user.serialise() for user in self._get_users(context)]
+        users = [user.serialize() for user in self._get_users(context)]
         return pagination.paginate_list(users, limit, marker, include_marker)
 
     def _get_users(self, context):
@@ -148,7 +148,9 @@ class PgSqlUsers(PgSqlAccess):
         Include all databases it has access to.
         """
         user = models.PostgreSQLUser(username)
-        user.databases(self.list_access(context, username, None))
+        l = self.list_access(context, username, None)
+        if l:
+            user.databases = l
         return user
 
     def delete_user(self, context, user):
@@ -277,7 +279,7 @@ class PgSqlUsers(PgSqlAccess):
         )
         # PostgreSQL handles the permission transfer itself.
         pgutil.psql(
-            pgutil.psql.UserQuery.update_name(
+            pgutil.UserQuery.update_name(
                 old=user.name,
                 new=new_username,
             ),
