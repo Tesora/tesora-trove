@@ -98,8 +98,12 @@ class Manager(manager.Manager):
             self._perform_restore(backup_info, context,
                                   mount_point, self.app)
         else:
-            db = models.OracleSchema(CONF.guest_name)
-            self.admin.create_database(db.serialize())
+            # using ValidatedMySQLDatabase here for to simulate the object
+            # that would normally be passed in via --databases, and to bookmark
+            # this for when per-datastore validation is added
+            db = models.ValidatedMySQLDatabase()
+            db.name = CONF.guest_name
+            self.admin.create_database([db.serialize()])
 
         if users:
             self.create_user(context, users)

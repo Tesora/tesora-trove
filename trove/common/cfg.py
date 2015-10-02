@@ -630,6 +630,8 @@ oracle_opts = [
                     'instance.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.StrOpt('template', default='General_Purpose_ArchiveLog.dbc',
+               help='Template file name used by dbca.'),
 ]
 
 # Percona

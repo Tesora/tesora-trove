@@ -48,31 +48,46 @@
 # Tesora or display the words "Initial Development by Tesora" if the display of
 # the logo is not reasonably feasible for technical reasons.
 
-from trove.common import cfg
+import testtools
+import mock
+
+import trove.common.cfg as cfg
+import trove.common.context as context
+import trove.guestagent.db.models as models
+
 
 CONF = cfg.CONF
 
+class GuestAgentManagerTest(testtools.TestCase):
+    def setUp(self):
+        super(GuestAgentManagerTest, self).setUp()
+        self.context = context.TroveContext()
 
-TIMEOUT = 1200
-DB2_INSTANCE_OWNER = "oracle.oinstall"
-ORACLE_INSTANCE_OWNER = "oracle"
-ORACLE_GROUP_OWNER = "oinstall"
-ORACLE_STATUS = ("ps -ef | grep " + ORACLE_INSTANCE_OWNER +
-                 " | grep ora_smon | "
-                 "grep -v grep | wc -l")
-CHANGE_DB_DIR_OWNER = "sudo chown " + ORACLE_INSTANCE_OWNER + " %(datadir)s"
-CHANGE_DB_DIR_GROUP_OWNER = (
-    "sudo chgrp " + ORACLE_GROUP_OWNER + " %(datadir)s")
+        # Mock out the Oracle driver cx_Oracle before importing
+        # the guestagent functionality
+        self.oracle_patch = mock.patch.dict('sys.modules', {'cx_Oracle': mock.Mock()})
+        self.addCleanup(self.oracle_patch.stop)
+        self.oracle_patch.start()
+        import trove.guestagent.datastore.oracle.manager as manager
+        import trove.guestagent.datastore.oracle.service as dbaas
+        self.manager = manager.Manager()
+        self.dbaas = dbaas
 
-CREATE_DB_COMMAND = ("dbca -silent -createDatabase "
-                     "-templateName %(template)s "
-                     "-gdbName %(gdbname)s "
-                     "-sid %(sid)s "
-                     "-sysPassword %(pswd)s "
-                     "-systemPassword %(pswd)s "
-                     "-storageType FS "
-                     "-totalMemory %(db_ram)s")
+        self.LocalOracleClient = self.dbaas.LocalOracleClient
+        self.dbaas.LocalOracleClient = mock.MagicMock()
 
-DELETE_DB_COMMAND = ("dbca -silent -deleteDatabase -sourceDB %(db)s "
-                     "-sysDBAUserName %(sys_user)s "
-                     "-sysDBAPassword %(sys_pswd)s")
+    def tearDown(self):
+        self.dbaas.LocalOracleClient = self.LocalOracleClient
+        self.oracle_patch.stop()
+        super(GuestAgentManagerTest, self).tearDown()
+
+    def test_prepare(self):
+        CONF.guest_name = 'testdb'
+        schema = models.ValidatedMySQLDatabase()
+        schema.name = 'testdb'
+        with mock.patch.object(self.manager, 'admin'), \
+             mock.patch.object(self.manager, 'app'):
+            self.manager.do_prepare(
+                self.context, None, None, None, None
+            )
+            self.manager.admin.create_database.assert_called_with([schema.serialize()])

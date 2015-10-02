@@ -302,7 +302,8 @@ class OracleAdmin(object):
                 sys_pwd = utils.generate_random_password(password_length=30)
                 run_command(system.CREATE_DB_COMMAND %
                             {'gdbname': dbName, 'sid': dbName,
-                             'pswd': sys_pwd, 'db_ram': CONF.get(MANAGER).db_ram_size})
+                             'pswd': sys_pwd, 'db_ram': CONF.get(MANAGER).db_ram_size,
+                             'template': CONF.get(MANAGER).template})
                 client = LocalOracleClient(sid=dbName, service=True, user_id='sys', password=sys_pwd)
                 self._create_admin_user(client)
                 self.create_cloud_user_role(database)
