@@ -273,7 +273,12 @@ class Manager(periodic_task.PeriodicTasks):
         gl_cache = self.guest_log_cache
         if log_name in gl_cache:
             if gl_cache[log_name].type == guest_log.LogType.USER:
-                self.guest_log_enable(context, log_name, disable)
+                requires_change = (
+                    (gl_cache[log_name].enabled and disable) or
+                    (not gl_cache[log_name].enabled and not disable))
+                if requires_change:
+                    self.guest_log_enable(context, log_name, disable)
+                    gl_cache[log_name].enabled = not disable
             return gl_cache[log_name].publish_log(disable)
         else:
             raise exception.NotFound("Log '%s' is not defined." % log_name)

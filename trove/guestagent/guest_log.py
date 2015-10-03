@@ -88,6 +88,8 @@ class GuestLog(object):
         self._status = None
         self._cached_context = None
         self._cached_swift_client = None
+        self._enabled = None
+        self._file_readable = False
 
         self._set_status(self._type == LogType.USER,
                          LogStatus.Disabled, LogStatus.Enabled)
@@ -120,6 +122,14 @@ class GuestLog(object):
     @property
     def exposed(self):
         return self._exposed or self.context.is_admin
+
+    @property
+    def enabled(self):
+        return self._enabled
+
+    @enabled.setter
+    def enabled(self, enabled):
+        self._enabled = enabled
 
     def _set_status(self, use_first, first_status, second_status):
         if use_first:
@@ -162,11 +172,14 @@ class GuestLog(object):
             self._name, self._size, self._published_size))
 
     def _update_details(self):
-        if os.path.isfile(self._file):
-            # Make sure we can read the file
-            operating_system.chmod(
-                self._file, FileMode.ADD_ALL_R, as_root=True)
+        # Make sure we can read the file
+        if not self._file_readable:
+            if operating_system.exists(self._file, as_root=True):
+                operating_system.chmod(
+                    self._file, FileMode.ADD_ALL_R, as_root=True)
+                self._file_readable = True
 
+        if os.path.isfile(self._file):
             logstat = os.stat(self._file)
             self._size = logstat.st_size
             self._update_log_header_digest(self._file)
@@ -192,8 +205,11 @@ class GuestLog(object):
             self._size = 0
 
         if not self._size:
+            user_status = LogStatus.Disabled
+            if self.enabled:
+                user_status = LogStatus.Enabled
             self._set_status(self._type == LogType.USER,
-                             LogStatus.Disabled, LogStatus.Unavailable)
+                             user_status, LogStatus.Unavailable)
 
     def _log_rotated(self):
         """If the file is smaller than the last reported size
