@@ -196,6 +196,9 @@ class PostgresqlReplicationStreaming(
 
         hba_entry = "host   replication   replicator    0.0.0.0/0   md5 \n"
 
+        operating_system.chmod(self.PGSQL_DATA_DIR,
+                               FileMode(add=[stat.S_IXOTH]),
+                               as_root=True)
         operating_system.chmod(self.PGSQL_HBA_CONFIG,
                                FileMode(add=[stat.S_IWOTH | stat.S_IROTH]),
                                as_root=True)
@@ -204,6 +207,9 @@ class PostgresqlReplicationStreaming(
 
         operating_system.chmod(self.PGSQL_HBA_CONFIG,
                                FileMode(remove=[stat.S_IWOTH | stat.S_IROTH]),
+                               as_root=True)
+        operating_system.chmod(self.PGSQL_DATA_DIR,
+                               FileMode(remove=[stat.S_IXOTH]),
                                as_root=True)
 
     def get_replica_context(self, service):
