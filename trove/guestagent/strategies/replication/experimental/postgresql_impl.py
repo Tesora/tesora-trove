@@ -13,7 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-import stat
 
 from oslo_log import log as logging
 from oslo_utils import netutils
@@ -196,21 +195,21 @@ class PostgresqlReplicationStreaming(
 
         hba_entry = "host   replication   replicator    0.0.0.0/0   md5 \n"
 
-        operating_system.chmod(self.PGSQL_DATA_DIR,
-                               FileMode(add=[stat.S_IXOTH]),
+        # TODO(atomic77) Remove this hack after adding cfg manager for pg_hba
+        tmp_hba = '/tmp/pg_hba'
+        operating_system.copy(self.PGSQL_HBA_CONFIG, tmp_hba,
+                              force=True, as_root=True)
+        operating_system.chmod(tmp_hba, FileMode.OCTAL_MODE("0777"),
                                as_root=True)
-        operating_system.chmod(self.PGSQL_HBA_CONFIG,
-                               FileMode(add=[stat.S_IWOTH | stat.S_IROTH]),
-                               as_root=True)
-        with open(self.PGSQL_HBA_CONFIG, 'a+') as hba_file:
+        with open(tmp_hba, 'a+') as hba_file:
             hba_file.write(hba_entry)
 
+        operating_system.copy(tmp_hba, self.PGSQL_HBA_CONFIG,
+                              force=True, as_root=True)
         operating_system.chmod(self.PGSQL_HBA_CONFIG,
-                               FileMode(remove=[stat.S_IWOTH | stat.S_IROTH]),
+                               FileMode.OCTAL_MODE("0600"),
                                as_root=True)
-        operating_system.chmod(self.PGSQL_DATA_DIR,
-                               FileMode(remove=[stat.S_IXOTH]),
-                               as_root=True)
+        operating_system.remove(tmp_hba, as_root=True)
 
     def get_replica_context(self, service):
         repl_user_info = {
