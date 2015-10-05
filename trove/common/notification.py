@@ -731,7 +731,7 @@ class DBaaSConfigurationCreate(DBaaSAPINotification):
 
     @abc.abstractmethod
     def event_type(self):
-        return 'user_configuration_create'
+        return 'configuration_create'
 
     @abc.abstractmethod
     def required_start_traits(self):
@@ -745,7 +745,7 @@ class DBaaSConfigurationDelete(DBaaSAPINotification):
 
     @abc.abstractmethod
     def event_type(self):
-        return 'user_configuration_delete'
+        return 'configuration_delete'
 
     @abc.abstractmethod
     def required_start_traits(self):
@@ -756,7 +756,7 @@ class DBaaSConfigurationUpdate(DBaaSAPINotification):
 
     @abc.abstractmethod
     def event_type(self):
-        return 'user_configuration_update'
+        return 'configuration_update'
 
     @abc.abstractmethod
     def required_start_traits(self):
@@ -767,7 +767,7 @@ class DBaaSConfigurationEdit(DBaaSAPINotification):
 
     @abc.abstractmethod
     def event_type(self):
-        return 'user_configuration_edit'
+        return 'configuration_edit'
 
     @abc.abstractmethod
     def required_start_traits(self):
