@@ -198,7 +198,7 @@ class OracleConfig(object):
     _CONF_FILE_TMP = "/tmp/oracle.cnf"
     _CONF_ORA_SEC = 'ORACLE'
     _CONF_ADMIN_KEY = 'os_admin_pwd'
-    _CONF_SYS_KEY = 'sys_pwd'
+    _CONF_ROOT_ENABLED = 'root_enabled'
 
     def __init__(self):
         self._admin_pwd = None
@@ -218,8 +218,8 @@ class OracleConfig(object):
             try:
                 if self._CONF_ADMIN_KEY in config[self._CONF_ORA_SEC]:
                     self._admin_pwd = config[self._CONF_ORA_SEC][self._CONF_ADMIN_KEY]
-                if self._CONF_SYS_KEY in config[self._CONF_ORA_SEC]:
-                    self._sys_pwd = config[self._CONF_ORA_SEC][self._CONF_SYS_KEY]
+                if self._CONF_ROOT_ENABLED in config[self._CONF_ORA_SEC]:
+                    self._root_enabled = config[self._CONF_ORA_SEC][self._CONF_ROOT_ENABLED]
             except KeyError:
                 # the ORACLE section does not exist, stop parsing
                 pass
@@ -238,14 +238,12 @@ class OracleConfig(object):
         self._save_value_in_file(self._CONF_ADMIN_KEY, value)
         self._admin_pwd = value
 
-    @property
-    def sys_password(self):
-        return self._sys_pwd
+    def is_root_enabled(self):
+        return bool(self._root_enabled)
 
-    @sys_password.setter
-    def sys_password(self, value):
-        self._save_value_in_file(self._CONF_SYS_KEY, value)
-        self._sys_pwd = value
+    def enable_root(self):
+        self._save_value_in_file(self._CONF_ROOT_ENABLED, 'true')
+        self._root_enabled = 'true'
 
 
 class LocalOracleClient(object):
@@ -353,6 +351,10 @@ class OracleAdmin(object):
            reset the sys password.
         """
         return OracleRootAccess.enable_root(root_password)
+
+    def disable_root(self):
+        """Disable reset the sys password."""
+        return OracleRootAccess.disable_root()
 
     def _database_is_up(self, dbname):
         try:
@@ -523,7 +525,7 @@ class OracleRootAccess(object):
     @classmethod
     def is_root_enabled(cls):
         """Return True if root access is enabled; False otherwise."""
-        return OracleConfig().sys_password is not None
+        return OracleConfig().is_root_enabled()
 
     @classmethod
     def enable_root(cls, root_password=None):
@@ -544,10 +546,23 @@ class OracleRootAccess(object):
                                sys_pwd)
 
         oracnf = OracleConfig()
-        oracnf.sys_password = sys_pwd
+        oracnf.enable_root()
 
         user = models.RootUser()
         user.name = "sys"
         user.host = "%"
         user.password = sys_pwd
         return user.serialize()
+
+    @classmethod
+    def disable_root(cls):
+        """Disable reset the sys password."""
+        sys_pwd = utils.generate_random_password(password_length=30)
+        ora_admin = OracleAdmin()
+        databases, marker = ora_admin.list_databases()
+        for database in databases:
+            oradb = models.OracleSchema(None)
+            oradb.deserialize(database)
+            with LocalOracleClient(oradb.name, service=True) as client:
+                client.execute('alter user sys identified by "%s"' %
+                               sys_pwd)

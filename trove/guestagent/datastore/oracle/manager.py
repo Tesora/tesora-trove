@@ -213,8 +213,7 @@ class Manager(manager.Manager):
 
     def disable_root(self, context):
         LOG.debug("Disabling root.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='disable_root', datastore=MANAGER)
+        return self.admin.disable_root()
 
     def is_root_enabled(self, context):
         LOG.debug("Checking if root is enabled.")
