@@ -572,6 +572,9 @@ oracle_ra_opts = [
                help='oracle_ra_status_file'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.StrOpt('root_controller',
+               default='trove.extensions.common.service.DefaultRootController',
+               help='Root controller implementation for Oracle Remote Agent.'),
 ]
 
 # Oracle
@@ -635,6 +638,9 @@ oracle_opts = [
                help='List of Guest Logs to expose for publishing.'),
     cfg.StrOpt('template', default='General_Purpose_ArchiveLog.dbc',
                help='Template file name used by dbca.'),
+    cfg.StrOpt('root_controller',
+               default='trove.extensions.common.service.DefaultRootController',
+               help='Root controller implementation for Oracle.'),
 ]
 
 # Percona
