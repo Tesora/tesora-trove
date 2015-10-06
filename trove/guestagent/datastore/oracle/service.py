@@ -286,6 +286,7 @@ class OracleAdmin(object):
     """
     Handles administrative tasks on the Oracle instance.
     """
+    _DBNAME = CONF.guest_name
     _DBNAME_REGEX = re.compile(r'^([a-zA-Z0-9]+):*:')
 
     def create_database(self, databases):
@@ -405,21 +406,18 @@ class OracleAdmin(object):
         for item in users:
             user = models.OracleUser(None)
             user.deserialize(item)
-            for database in user.databases:
-                oradb = models.OracleSchema(None)
-                oradb.deserialize(database)
-                if self._database_is_up(oradb.name):
-                    with LocalOracleClient(oradb.name, service=True) as client:
-                        q = sql_query.CreateUser(user.name, user.password)
-                        client.execute(str(q))
-                        # TO-DO: Refactor GRANT query into the sql_query module
-                        client.execute('GRANT cloud_user_role to %s' % user.name)
-                        client.execute('GRANT UNLIMITED TABLESPACE to %s' % user.name)
-                    LOG.debug(_("Created user %(user)s on %(db)s") %
-                              {'user': user.name, 'db': oradb.name})
-                else:
-                    LOG.debug(_("Failed to create user %(user)s on %(db)s") %
-                              {'user': user.name, 'db': oradb.name})
+            if self._database_is_up(self._DBNAME):
+                with LocalOracleClient(self._DBNAME, service=True) as client:
+                    q = sql_query.CreateUser(user.name, user.password)
+                    client.execute(str(q))
+                    # TO-DO: Refactor GRANT query into the sql_query module
+                    client.execute('GRANT cloud_user_role to %s' % user.name)
+                    client.execute('GRANT UNLIMITED TABLESPACE to %s' % user.name)
+                LOG.debug(_("Created user %(user)s on %(db)s") %
+                          {'user': user.name, 'db': self._DBNAME})
+            else:
+                LOG.debug(_("Failed to create user %(user)s on %(db)s") %
+                          {'user': user.name, 'db': self._DBNAME})
         LOG.debug("Finished creating database users")
 
     def delete_user(self, user):
