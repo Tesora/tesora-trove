@@ -196,17 +196,16 @@ class Manager(manager.Manager):
     def reset_configuration(self, context, configuration):
         LOG.debug("Resetting Oracle configuration.")
         raise exception.DatastoreOperationNotSupported(
-            operation='change_passwords', datastore=MANAGER)
+            operation='reset_configuration', datastore=MANAGER)
 
     def change_passwords(self, context, users):
         LOG.debug("Changing password.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='change_passwords', datastore=MANAGER)
+        return self.admin.change_passwords(users)
 
     def update_attributes(self, context, username, hostname, user_attrs):
         LOG.debug("Updating database attributes.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='update_attributes', datastore=MANAGER)
+        return self.admin.update_attributes(
+            username, hostname, user_attrs)
 
     def enable_root(self, context):
         LOG.debug("Enabling root.")

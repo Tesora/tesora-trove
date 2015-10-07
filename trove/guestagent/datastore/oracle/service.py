@@ -505,6 +505,27 @@ class OracleAdmin(object):
         user = self._get_user(username, hostname)
         return user.databases
 
+    def change_passwords(self, users):
+        """Change the passwords of one or more existing users."""
+        LOG.debug("Changing the password of some users.")
+        with LocalOracleClient(self._DBNAME, service=True) as client:
+            for item in users:
+                LOG.debug("Changing password for user %s." % item)
+                user = models.OracleUser(item['name'],
+                                         password=item['password'])
+                q = sql_query.AlterUser(user.name, password=user.password)
+                client.execute(str(q))
+
+    def update_attributes(self, username, hostname, user_attrs):
+        """Change the attributes of an existing user."""
+        LOG.debug("Changing user attributes for user %s." % username)
+        user = self._get_user(username, hostname)
+        if user:
+            password = user_attrs.get('password')
+            if password:
+                self.change_passwords([{'name': username,
+                                        'password': password}])
+
 
 class OracleRootAccess(object):
     @classmethod
