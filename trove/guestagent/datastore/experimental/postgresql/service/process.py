@@ -14,6 +14,7 @@
 #    under the License.
 
 import os
+import re
 
 from oslo_log import log as logging
 
@@ -91,6 +92,17 @@ class PgSqlProcess(object):
         """
         r = pgutil.query("SELECT pg_is_in_recovery()")
         return r[0][0]
+
+    def pg_primary_host(self):
+        """There seems to be no way to programmatically  determine this
+        on a hot standby, so grab what we have written to the recovery
+        file
+        """
+        r = operating_system.read_file(self.PGSQL_RECOVERY_CONFIG,
+                                       as_root=True)
+        regexp = re.compile("host=(\d+.\d+.\d+.\d+) ")
+        m = regexp.search(r)
+        return m.group(1)
 
     @classmethod
     def recreate_wal_archive_dir(cls):

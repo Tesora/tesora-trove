@@ -17,6 +17,7 @@
 from oslo_log import log as logging
 from oslo_utils import netutils
 from trove.common import cfg
+from trove.common import exception
 from trove.common import stream_codecs
 from trove.guestagent.backup.backupagent import BackupAgent
 from trove.guestagent.common import operating_system
@@ -32,6 +33,7 @@ from trove.guestagent.datastore.experimental.postgresql \
     .service.process import PgSqlProcess
 from trove.guestagent.datastore.experimental.postgresql\
     .service.root import PgSqlRoot
+# from trove.guestagent.db import models
 from trove.guestagent.strategies import backup
 from trove.guestagent.strategies.replication import base
 
@@ -113,8 +115,17 @@ class PostgresqlReplicationStreaming(
         the replication user in pg_hba and ensure that WAL logging is
         at the appropriate level (use the same settings as backups)
         """
+        try:
+            self.get_user(None, REPL_USER, None)
+        except exception.UserNotFound:
+            # TODO(atomic77) Alter user is swallowing the replication
+            # option for some reason -- enable this code when the
+            # underlying issue is fixed
 
-        if not self.get_user(None, REPL_USER, None):
+            # repl_user = models.PostgreSQLUser(name=REPL_USER,
+            #                                  password=REPL_PW)
+            # self._create_user(context=None, user=repl_user)
+            # self.alter_user(None, repl_user, 'REPLICATION', 'LOGIN')
             pgutil.psql("CREATE USER %s REPLICATION LOGIN ENCRYPTED "
                         "PASSWORD '%s';" % (REPL_USER, REPL_PW))
 

@@ -28,6 +28,7 @@ from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common.notification import EndNotification
+from trove.common import utils
 from trove.guestagent import backup
 from trove.guestagent.datastore import manager
 from trove.guestagent.db import models
@@ -235,6 +236,11 @@ class Manager(
             lsn = self.pg_current_xlog_location()
         LOG.info("Last xlog location found: %s" % lsn)
         return lsn
+
+    def get_last_txn(self, context):
+        master_host = self.pg_primary_host()
+        repl_offset = self.get_latest_txn_id(context)
+        return master_host, repl_offset
 
     def wait_for_txn(self, context, txn):
         if not self.pg_is_in_recovery():
