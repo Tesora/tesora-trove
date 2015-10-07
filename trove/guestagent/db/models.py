@@ -53,10 +53,19 @@ class Base(object):
 class DatastoreSchema(Base):
     """Represents a database schema."""
 
-    def __init__(self):
+    def __init__(self, name, deserializing=False, *args, **kwargs):
         self._name = None
         self._collate = None
         self._character_set = None
+
+        # need one or the other, not both, not none (!= ~ XOR)
+        if not (bool(deserializing) != bool(name)):
+            raise ValueError(_("Bad args. name: %(name)s, "
+                               "deserializing %(deser)s.")
+                             % ({'name': bool(name),
+                                 'deser': bool(deserializing)}))
+        if not deserializing:
+            self.name = name
 
     @classmethod
     def deserialize_schema(cls, value):
@@ -65,7 +74,7 @@ class DatastoreSchema(Base):
                                "Required: %(reqs)s")
                              % ({'keys': value.keys(),
                                  'reqs': cls._dict_requirements()}))
-        schema = cls(deserializing=True)
+        schema = cls(name=None, deserializing=True)
         schema.deserialize(value)
         return schema
 
@@ -78,6 +87,10 @@ class DatastoreSchema(Base):
         self._validate_schema_name(value)
         self._name = value
 
+    # TODO(pmalik): The collate and character_set properties are datastore
+    # specific and should be moved to derived classes that require them.
+    # They are currently here because many datastores still use the MySQL
+    # extensions which try to access them.
     @property
     def collate(self):
         return self._collate
@@ -133,16 +146,8 @@ class MongoDBSchema(DatastoreSchema):
 
     name_regex = re.compile(r'^[a-zA-Z0-9_\-]+$')
 
-    def __init__(self, name=None, deserializing=False):
-        super(MongoDBSchema, self).__init__()
-        # need one or the other, not both, not none (!= ~ XOR)
-        if not (bool(deserializing) != bool(name)):
-            raise ValueError(_("Bad args. name: %(name)s, "
-                               "deserializing %(deser)s.")
-                             % ({'name': bool(name),
-                                 'deser': bool(deserializing)}))
-        if not deserializing:
-            self.name = name
+    def __init__(self, name, *args, **kwargs):
+        super(MongoDBSchema, self).__init__(name, *args, **kwargs)
 
     @property
     def _max_schema_name_length(self):
@@ -166,10 +171,8 @@ class OracleSchema(DatastoreSchema):
     """
     name_regex = re.compile(r'[a-zA-Z0-9]\w+$')
 
-    def __init__(self, name):
-        super(OracleSchema, self).__init__()
-        if name:
-            self.name = name
+    def __init__(self, name, *args, **kwargs):
+        super(OracleSchema, self).__init__(name, *args, **kwargs)
 
     @property
     def _max_schema_name_length(self):
@@ -177,6 +180,10 @@ class OracleSchema(DatastoreSchema):
 
     def _is_valid_schema_name(self, value):
         return self.name_regex.match(value) is not None
+
+    @classmethod
+    def _dict_requirements(cls):
+        return ['_name']
 
 
 class CassandraSchema(DatastoreSchema):
@@ -186,10 +193,8 @@ class CassandraSchema(DatastoreSchema):
     the first of which is an alpha character.
     """
 
-    def __init__(self, name):
-        super(CassandraSchema, self).__init__()
-        if name:
-            self.name = name
+    def __init__(self, name, *args, **kwargs):
+        super(CassandraSchema, self).__init__(name, *args, **kwargs)
 
     @property
     def _max_schema_name_length(self):
@@ -197,6 +202,10 @@ class CassandraSchema(DatastoreSchema):
 
     def _is_valid_schema_name(self, value):
         return True
+
+    @classmethod
+    def _dict_requirements(cls):
+        return ['_name']
 
 
 class PostgreSQLSchema(DatastoreSchema):
@@ -208,10 +217,20 @@ class PostgreSQLSchema(DatastoreSchema):
     """
     name_regex = re.compile(ur'^[\u0001-\u007F\u0080-\uFFFF]+[^\s]$')
 
-    def __init__(self, name):
-        super(PostgreSQLSchema, self).__init__()
-        if name:
-            self.name = name
+    def __init__(self, name, character_set=None, collate=None,
+                 *args, **kwargs):
+        super(PostgreSQLSchema, self).__init__(name, *args, **kwargs)
+
+        self.character_set = character_set
+        self.collate = collate
+
+    @DatastoreSchema.collate.setter
+    def collate(self, value):
+        self._collate = value
+
+    @DatastoreSchema.character_set.setter
+    def character_set(self, value):
+        self._character_set = value
 
     @property
     def _max_schema_name_length(self):
@@ -219,6 +238,10 @@ class PostgreSQLSchema(DatastoreSchema):
 
     def _is_valid_schema_name(self, value):
         return self.name_regex.match(value) is not None
+
+    @classmethod
+    def _dict_requirements(cls):
+        return ['_name']
 
 
 class MySQLDatabase(Base):
@@ -589,11 +612,26 @@ class DatastoreUser(Base):
 
     _HOSTNAME_WILDCARD = '%'
 
-    def __init__(self):
+    def __init__(self, name, password, deserializing=False, *args, **kwargs):
         self._name = None
         self._password = None
         self._host = None
         self._databases = []
+
+        # need only one of: deserializing, name, or (name and password)
+        if ((not (bool(deserializing) != bool(name))) or
+                (bool(deserializing) and bool(password))):
+            raise ValueError(_("Bad args. name: %(name)s, "
+                               "password %(pass)s, "
+                               "deserializing %(deser)s.")
+                             % ({'name': bool(name),
+                                 'pass': bool(password),
+                                 'deser': bool(deserializing)}))
+        if not deserializing:
+            if name:
+                self.name = name
+            if password is not None:
+                self.password = password
 
     @classmethod
     def deserialize_user(cls, value):
@@ -602,7 +640,7 @@ class DatastoreUser(Base):
                                "Required: %(reqs)s")
                              % ({'keys': value.keys(),
                                  'reqs': cls._dict_requirements()}))
-        user = cls(deserializing=True)
+        user = cls(name=None, password=None, deserializing=True)
         user.deserialize(value)
         return user
 
@@ -713,12 +751,8 @@ class DatastoreUser(Base):
 class CassandraUser(DatastoreUser):
     """Represents a Cassandra user and its associated properties."""
 
-    def __init__(self, name, password=None):
-        super(CassandraUser, self).__init__()
-        if name:
-            self.name = name
-        if password is not None:
-            self.password = password
+    def __init__(self, name, password=None, *args, **kwargs):
+        super(CassandraUser, self).__init__(name, password, *args, **kwargs)
 
     def _build_database_schema(self, name):
         return CassandraSchema(name)
@@ -738,7 +772,7 @@ class CassandraUser(DatastoreUser):
 
     @classmethod
     def _dict_requirements(cls):
-        return ['name']
+        return ['_name']
 
 
 class MongoDBUser(DatastoreUser):
@@ -747,24 +781,11 @@ class MongoDBUser(DatastoreUser):
     Trove stores this as <database>.<username>
     """
 
-    def __init__(self, name=None, password=None, deserializing=False):
-        super(MongoDBUser, self).__init__()
-        self._name = None
+    def __init__(self, name=None, password=None, *args, **kwargs):
         self._username = None
         self._database = None
         self._roles = []
-        # need only one of: deserializing, name, or (name and password)
-        if ((not (bool(deserializing) != bool(name))) or
-                (bool(deserializing) and bool(password))):
-            raise ValueError(_("Bad args. name: %(name)s, "
-                               "password %(pass)s, "
-                               "deserializing %(deser)s.")
-                             % ({'name': bool(name),
-                                 'pass': bool(password),
-                                 'deser': bool(deserializing)}))
-        if not deserializing:
-            self.name = name
-            self.password = password
+        super(MongoDBUser, self).__init__(name, password, *args, **kwargs)
 
     @property
     def username(self):
@@ -982,12 +1003,8 @@ class MySQLUser(Base):
 class OracleUser(DatastoreUser):
     """Represents an Oracle user and its associated properties."""
 
-    def __init__(self, name, password=None):
-        super(OracleUser, self).__init__()
-        if name:
-            self.name = name
-        if password is not None:
-            self.password = password
+    def __init__(self, name, password=None, *args, **kwargs):
+        super(OracleUser, self).__init__(name, password, *args, **kwargs)
 
     def _build_database_schema(self, name):
         return OracleSchema(name)
@@ -1007,18 +1024,14 @@ class OracleUser(DatastoreUser):
 
     @classmethod
     def _dict_requirements(cls):
-        return ['name']
+        return ['_name']
 
 
 class PostgreSQLUser(DatastoreUser):
     """Represents a PostgreSQL user and its associated properties."""
 
-    def __init__(self, name, password=None):
-        super(PostgreSQLUser, self).__init__()
-        if name:
-            self.name = name
-        if password is not None:
-            self.password = password
+    def __init__(self, name, password=None, *args, **kwargs):
+        super(PostgreSQLUser, self).__init__(name, password, *args, **kwargs)
 
     def _build_database_schema(self, name):
         return PostgreSQLSchema(name)
@@ -1038,7 +1051,7 @@ class PostgreSQLUser(DatastoreUser):
 
     @classmethod
     def _dict_requirements(cls):
-        return ['name']
+        return ['_name']
 
 
 # TODO(pmalik): Datastores should be using their own user.
@@ -1067,6 +1080,7 @@ class MySQLRootUser(MySQLUser):
 class PostgreSQLRootUser(PostgreSQLUser):
     """Represents the PostgreSQL default superuser."""
 
-    def __init__(self, password=None):
+    def __init__(self, password=None, *args, **kwargs):
         password = password if not None else utils.generate_random_password()
-        super(PostgreSQLRootUser, self).__init__("postgres", password=password)
+        super(PostgreSQLRootUser, self).__init__("postgres", password=password,
+                                                 *args, **kwargs)
