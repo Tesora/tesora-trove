@@ -86,9 +86,8 @@ class RmanBackup(base.BackupRunner):
 
     def _get_db_name(self):
         dbs, marker = self.ora_admin.list_databases()
-        oradb = models.OracleSchema(None)
         # There will be only one Oracle database per trove instance
-        oradb.deserialize(dbs[0])
+        oradb = models.OracleSchema.deserialize_schema(dbs[0])
         return oradb.name
 
     def _run_pre_backup(self):

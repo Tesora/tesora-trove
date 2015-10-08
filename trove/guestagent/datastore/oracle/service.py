@@ -106,8 +106,7 @@ class OracleApp(object):
         ora_admin = OracleAdmin()
         databases, marker = ora_admin.list_databases(online_only=False)
         for database in databases:
-            oradb = models.OracleSchema(None)
-            oradb.deserialize(database)
+            oradb = models.OracleSchema.deserialize_schema(database)
             # at this point the trove instance is in reboot mode and
             # the DB is not running, pass in the SID through
             # environment variable
@@ -131,8 +130,7 @@ class OracleApp(object):
         ora_admin = OracleAdmin()
         databases, marker = ora_admin.list_databases()
         for database in databases:
-            oradb = models.OracleSchema(None)
-            oradb.deserialize(database)
+            oradb = models.OracleSchema.deserialize_schema(database)
             try:
                 dsn_tns = cx_Oracle.makedsn('localhost', CONF.get(MANAGER).listener_port,
                                             oradb.name)
@@ -295,8 +293,7 @@ class OracleAdmin(object):
         db_create_failed = []
         LOG.debug("Creating Oracle databases.")
         for database in databases:
-            oradb = models.OracleSchema(None)
-            oradb.deserialize(database)
+            oradb = models.OracleSchema.deserialize_schema(database)
             dbName = oradb.name
             LOG.debug("Creating Oracle database: %s." % dbName)
             try:
@@ -321,8 +318,7 @@ class OracleAdmin(object):
         """Delete the specified database."""
         dbName = None
         try:
-            oradb = models.OracleSchema(None)
-            oradb.deserialize(database)
+            oradb = models.OracleSchema.deserialize_schema(database)
             dbName = oradb.name
             LOG.debug("Deleting Oracle database: %s." % dbName)
             run_command(system.DELETE_DB_COMMAND %
@@ -388,8 +384,7 @@ class OracleAdmin(object):
 
     def create_cloud_user_role(self, database):
         LOG.debug("Creating database cloud user role")
-        oradb = models.OracleSchema(None)
-        oradb.deserialize(database)
+        oradb = models.OracleSchema.deserialize_schema(database)
         with LocalOracleClient(oradb.name, service=True) as client:
             q = sql_query.CreateRole(CONF.get(MANAGER).cloud_user_role)
             client.execute(str(q))
@@ -436,8 +431,7 @@ class OracleAdmin(object):
 
         LOG.debug("databases for user = %r." % databases)
         for database in databases:
-            oradb = models.OracleSchema(None)
-            oradb.deserialize(database)
+            oradb = models.OracleSchema.deserialize_schema(database)
             with LocalOracleClient(oradb.name, service=True) as client:
                 q = sql_query.DropUser(oracle_user.name, cascade=True)
                 client.execute(str(q))
@@ -449,8 +443,7 @@ class OracleAdmin(object):
 
         databases, marker = self.list_databases()
         for database in databases:
-            oracle_db = models.OracleSchema(None)
-            oracle_db.deserialize(database)
+            oracle_db = models.OracleSchema.deserialize_schema(database)
             with LocalOracleClient(oracle_db.name, service=True) as client:
                 q = sql_query.Query()
                 q.columns = ["grantee"]
@@ -482,8 +475,7 @@ class OracleAdmin(object):
         user = models.OracleUser(username)
         databases, marker = self.list_databases()
         for database in databases:
-            oracle_db = models.OracleSchema(None)
-            oracle_db.deserialize(database)
+            oracle_db = models.OracleSchema.deserialize_schema(database)
             with LocalOracleClient(oracle_db.name, service=True) as client:
                 q = sql_query.Query()
                 q.columns = ["username"]
@@ -546,8 +538,7 @@ class OracleRootAccess(object):
         ora_admin = OracleAdmin()
         databases, marker = ora_admin.list_databases()
         for database in databases:
-            oradb = models.OracleSchema(None)
-            oradb.deserialize(database)
+            oradb = models.OracleSchema.deserialize_schema(database)
             with LocalOracleClient(oradb.name, service=True) as client:
                 client.execute('alter user sys identified by "%s"' %
                                sys_pwd)
