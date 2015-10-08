@@ -133,7 +133,8 @@ class PgSqlUsers(PgSqlAccess):
         Return a paginated list of serialized Postgres users.
         """
         users = [user.serialize() for user in self._get_users(context)]
-        return pagination.paginate_list(users, limit, marker, include_marker)
+        return pagination.paginate_dict_list(users, limit, marker,
+                                             include_marker)
 
     def _get_users(self, context):
         """Return all non-system Postgres users on the instance."""
@@ -148,22 +149,30 @@ class PgSqlUsers(PgSqlAccess):
         Include all databases it has access to.
         """
         user = models.PostgreSQLUser(username)
-        l = self.list_access(context, username, None)
-        if l:
-            user.databases = l
+        # The setter for DatastoreScema.databases is broken; manually
+        # rebuild the list of dbs this user has access to
+        dbs = self.list_access(context, username, None)
+        for d in dbs:
+            user.databases.append(d)
         return user
 
     def delete_user(self, context, user):
         """Delete the specified user.
         """
-        self._drop_user(models.PostgreSQLUser.deserialize_user(user))
+        self._drop_user(context, models.PostgreSQLUser.deserialize_user(user))
 
-    def _drop_user(self, user):
+    def _drop_user(self, context, user):
         """Drop a given Postgres user.
 
         :param user:              User to be dropped.
         :type user:               PostgreSQLUser
         """
+        # Postgresql requires that you revoke grants before dropping the user
+        dbs = self.list_access(context, user.name, None)
+        for d in dbs:
+            db = models.PostgreSQLSchema.deserialize_schema(d)
+            self.revoke_access(context, user.name, None, db.name)
+
         LOG.info(
             _("{guest_id}: Dropping user {name}.").format(
                 guest_id=CONF.guest_id,

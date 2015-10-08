@@ -95,8 +95,11 @@ class PgSqlDatabase(object):
         """List all databases on the instance.
         Return a paginated list of serialized Postgres databases.
         """
-        dbs = [user.serialize() for user in self._get_databases()]
-        return pagination.paginate_list(dbs, limit, marker, include_marker)
+
+        dbs = [db.serialize() for db in self._get_databases()]
+        dblist, marker = pagination.paginate_dict_list(dbs, limit, marker,
+                                                       include_marker)
+        return dblist, marker
 
     def _get_databases(self):
         """Return all non-system Postgres databases on the instance."""

@@ -49,6 +49,17 @@ def paginate_list(li, limit=None, marker=None, include_marker=False):
         return li[pos:], None
 
 
+def paginate_dict_list(li, limit=None, marker=None, include_marker=False,
+                       key='_name'):
+    """Wrapper for paginate_list to handle lists of dicts paginated
+    based on a key.
+    """
+    objmap = {e[key]: e for e in li}
+    l, m = paginate_list(objmap.keys(), limit, marker, include_marker)
+    objlist = [objmap[k] for k in l]
+    return objlist, m
+
+
 class PaginatedDataView(object):
 
     def __init__(self, collection_type, collection, current_page_url,

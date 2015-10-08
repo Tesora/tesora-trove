@@ -64,3 +64,28 @@ class TestPaginatedDataView(trove_testtools.TestCase):
         li_4, marker_4 = self._do_paginate_list(marker='f')
         self.assertEqual([], li_4)
         self.assertEqual(None, marker_4)
+
+    def test_dict_paginate(self):
+        li = [{'_collate': 'en_US.UTF-8',
+               '_character_set': 'UTF8',
+               '_name': 'db1'},
+              {'_collate': 'en_US.UTF-8',
+               '_character_set': 'UTF8',
+               '_name': 'db3'},
+              {'_collate': 'en_US.UTF-8',
+               '_character_set': 'UTF8',
+               '_name': 'db2'},
+              {'_collate': 'en_US.UTF-8',
+               '_character_set': 'UTF8',
+               '_name': 'db5'},
+              {'_collate': 'en_US.UTF-8',
+               '_character_set': 'UTF8',
+               '_name': 'db4'}
+              ]
+        key = '_name'
+
+        l, m = pagination.paginate_dict_list(li, key=key, limit=1,
+                                             marker='db1',
+                                             include_marker=True)
+        self.assertEqual(l[0], li[0])
+        self.assertEqual(m, 'db2')
