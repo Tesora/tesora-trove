@@ -239,16 +239,21 @@ def exists(path, is_directory=False, as_root=False):
     :param as_root:            Execute as root.
     :type as_root:             boolean
     """
-    if as_root:
+
+    found = (not is_directory and os.path.isfile(path) or
+             (is_directory and os.path.isdir(path)))
+
+    # Only check as root if we can't see it as the regular user, since
+    # this is very expensive
+    if not found and as_root:
         test_flag = '-d' if is_directory else '-f'
         cmd = 'test %s %s && echo 1 || echo 0' % (test_flag, path)
         stdout, _ = utils.execute_with_timeout(
             cmd, shell=True, check_exit_code=False,
             run_as_root=True, root_helper='sudo')
-        return bool(int(stdout))
+        found = bool(int(stdout))
 
-    return (not is_directory and os.path.isfile(path) or
-            (is_directory and os.path.isdir(path)))
+    return found
 
 
 def _read_file_as_root(path, codec):
