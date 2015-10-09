@@ -23,36 +23,6 @@ LOG = logging.getLogger(__name__)
 PG_ADMIN = 'os_admin'
 
 
-# TODO(pmalik): This just adds complexity and potential for bugs for no real
-# benefit. The data sets queried by Trove are rather small.
-# We should just fetch all tuples at once.
-#
-# def result(filename):
-#     """A generator representing the results of a query.
-#
-#     This generator produces result records of a query by iterating over a
-#     CSV file created by the query. When the file is out of records it is
-#     removed.
-#
-#     The purpose behind this abstraction is to provide a record set interface
-#     with minimal memory consumption without requiring an active DB
-#     connection.
-#     This makes it possible to iterate over any sized record set without
-#     allocating memory for the entire record set and without using a DB
-#     cursor.
-#
-#     Each row is returned as an iterable of column values. The order of these
-#     values is determined by the query.
-#     """
-#
-#     operating_system.chmod(filename, FileMode.SET_FULL, as_root=True)
-#     with open(filename, 'r+') as file_handle:
-#         for line in file_handle:
-#             if line != "":
-#                 yield line.split(',')
-#     operating_system.remove(filename, as_root=True)
-#     raise StopIteration()
-
 class PostgresConnection(object):
 
     def __init__(self, autocommit=False, **connection_args):
@@ -90,9 +60,12 @@ class PostgresConnection(object):
 
 class PostgresLocalhostConnection(PostgresConnection):
 
+    HOST = 'localhost'
+
     def __init__(self, user, password=None, port=5432, autocommit=False):
         super(PostgresLocalhostConnection, self).__init__(
-            autocommit=autocommit, user=user, password=password, port=port)
+            autocommit=autocommit, user=user, password=password,
+            host=self.HOST, port=port)
 
 
 # TODO(pmalik): No need to recreate the connection every time.
