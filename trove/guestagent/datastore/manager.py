@@ -345,11 +345,12 @@ class Manager(periodic_task.PeriodicTasks):
     def validate_log_file(self, log_file, owner):
         """Make sure the log file exists and is accessible by owner.
         """
-        if not operating_system.exists(log_file):
+        if not operating_system.exists(log_file, as_root=True):
             operating_system.write_file(log_file, '', as_root=True)
 
         operating_system.chown(log_file, user=owner, group=owner,
                                as_root=True)
         operating_system.chmod(log_file, FileMode.ADD_USR_RW_GRP_RW_OTH_R,
                                as_root=True)
+        LOG.debug("Set log file '%s' as readable" % log_file)
         return log_file

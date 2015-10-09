@@ -64,6 +64,9 @@ class LogStatus(enum.Enum):
     # Logging is on and some data has been published
     Partial = 5
 
+    # Log file has been rotated, so next publish will delete container first
+    Rotated = 6
+
 
 class GuestLog(object):
 
@@ -144,12 +147,15 @@ class GuestLog(object):
             container_name = 'None'
             if self._published_size:
                 container_name = self._container_name()
+            pending = self._size - self._published_size
+            if self._status == LogStatus.Rotated:
+                pending = self._size
             show_details = {
                 'name': self._name,
                 'type': self._type.name,
                 'status': self._status.name,
                 'published': self._published_size,
-                'pending': self._size - self._published_size,
+                'pending': pending,
                 'container': container_name,
             }
         return show_details
@@ -173,24 +179,22 @@ class GuestLog(object):
 
     def _update_details(self):
         # Make sure we can read the file
-        if not self._file_readable:
-            if operating_system.exists(self._file, as_root=True):
-                operating_system.chmod(
-                    self._file, FileMode.ADD_ALL_R, as_root=True)
-                self._file_readable = True
+        if not self._file_readable or not os.access(self._file, os.R_OK):
+            if not os.access(self._file, os.R_OK):
+                if operating_system.exists(self._file, as_root=True):
+                    operating_system.chmod(
+                        self._file, FileMode.ADD_ALL_R, as_root=True)
+            self._file_readable = True
 
         if os.path.isfile(self._file):
             logstat = os.stat(self._file)
             self._size = logstat.st_size
             self._update_log_header_digest(self._file)
 
-            # Check for potential log rotation
-            if self._published_size > 0 and self._log_rotated():
-                LOG.debug("Log file rotation detected for '%s'" % self._name)
-                self._delete_container()
-
-            # We have stuff to publish
-            if logstat.st_size > self._published_size:
+            if self._log_rotated():
+                self._status = LogStatus.Rotated
+            # See if we have stuff to publish
+            elif logstat.st_size > self._published_size:
                 self._set_status(self._published_size,
                                  LogStatus.Partial, LogStatus.Ready)
             # We've published everything so far
@@ -216,8 +220,9 @@ class GuestLog(object):
         or the first line hash is different, we can probably assume
         the file changed under our nose.
         """
-        if (self._size < self._published_size or
-                self._published_header_digest != self._header_digest):
+        if (self._published_size > 0 and
+                (self._size < self._published_size or
+                 self._published_header_digest != self._header_digest)):
             return True
 
     def _update_log_header_digest(self, log_file):
@@ -236,6 +241,10 @@ class GuestLog(object):
             if disable:
                 self._delete_container()
             else:
+                if self._log_rotated():
+                    LOG.debug("Log file rotation detected for '%s'" %
+                              self._name)
+                    self._delete_container()
                 if os.path.isfile(self._file):
                     self._publish_to_container(self._file)
                 else:
@@ -253,7 +262,8 @@ class GuestLog(object):
         for f in files:
             self.swift_client.delete_object(c, f)
         self.swift_client.delete_container(c)
-        self._status = LogStatus.Disabled
+        self._set_status(self._type == LogType.USER,
+                         LogStatus.Disabled, LogStatus.Enabled)
         self._published_size = 0
 
     def _publish_to_container(self, log_filename):
@@ -262,10 +272,10 @@ class GuestLog(object):
 
         def _read_chunk(f):
             while True:
-                chunk = f.read(chunk_size)
-                if not chunk:
+                current_chunk = f.read(chunk_size)
+                if not current_chunk:
                     break
-                yield chunk
+                yield current_chunk
 
         def _write_log_component():
             object_header.update({'X-Object-Meta-Lines': log_lines})
