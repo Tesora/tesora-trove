@@ -104,7 +104,7 @@ class OracleApp(object):
         LOG.debug("Start the Oracle databases.")
         os.environ["ORACLE_HOME"] = CONF.get(MANAGER).oracle_home
         ora_admin = OracleAdmin()
-        databases, marker = ora_admin.list_databases(online_only=False)
+        databases, marker = ora_admin.list_databases()
         for database in databases:
             oradb = models.OracleSchema.deserialize_schema(database)
             # at this point the trove instance is in reboot mode and
@@ -175,12 +175,8 @@ class OracleAppStatus(service.BaseDbStatus):
                 LOG.debug("Setting state to rd_instance.ServiceStatuses.RUNNING")
                 return rd_instance.ServiceStatuses.RUNNING
             else:
-                # Oracle is installed but the database instance is in the process
-                # of being created. Since a Trove Oracle instance should always has
-                # one running Oracle instance in it's lifetime, this condition
-                # can only occur when we're building the Trove instance.
-                LOG.debug("Setting state to rd_instance.ServiceStatuses.BUILDING")
-                return rd_instance.ServiceStatuses.BUILDING
+                LOG.debug("Setting state to rd_instance.ServiceStatuses.SHUTDOWN")
+                return rd_instance.ServiceStatuses.SHUTDOWN
         except exception.ProcessExecutionError:
             LOG.exception(_("Error getting the Oracle server status."))
             return rd_instance.ServiceStatuses.CRASHED
@@ -372,13 +368,11 @@ class OracleAdmin(object):
         except cx_Oracle.DatabaseError:
             return False
 
-    def list_databases(self, limit=None, marker=None, include_marker=False,
-                       online_only=True):
+    def list_databases(self, limit=None, marker=None, include_marker=False):
         with open('/etc/oratab') as oratab:
             dblist = [ self._DBNAME_REGEX.search(line)
                       for line in oratab if self._DBNAME_REGEX.search(line) ]
-            dblist = [ db.group(1) for db in dblist
-                      if online_only or self._database_is_up(db.group(1)) ]
+            dblist = [ db.group(1) for db in dblist ]
         dblist_page, next_marker = pagination.paginate_list(dblist, limit, marker,
                                                             include_marker)
         result = [ models.OracleSchema(name).serialize() for name in dblist_page ]
@@ -401,8 +395,7 @@ class OracleAdmin(object):
     def create_user(self, users):
         LOG.debug("Creating database users")
         for item in users:
-            user = models.OracleUser(None)
-            user.deserialize(item)
+            user = models.OracleUser.deserialize_user(item)
             if self._database_is_up(self._DBNAME):
                 with LocalOracleClient(self._DBNAME, service=True) as client:
                     q = sql_query.CreateUser(user.name, user.password)
@@ -419,8 +412,7 @@ class OracleAdmin(object):
 
     def delete_user(self, user):
         LOG.debug("Delete a given user.")
-        oracle_user = models.OracleUser(None)
-        oracle_user.deserialize(user)
+        oracle_user = models.OracleUser.deserialize_user(user)
         userName = oracle_user.name
         user_dbs = oracle_user.databases
         LOG.debug("For user %s, databases to be deleted = %r." % (
@@ -456,8 +448,7 @@ class OracleAdmin(object):
                 for row in client:
                     user_name = row[0]
                     if user_name in user_list:
-                        user = models.OracleUser(None)
-                        user.deserialize(user_list.get(user_name))
+                        user = models.OracleUser.deserialize_user(user_list.get(user_name))
                     else:
                         user = models.OracleUser(user_name)
                     user.databases = oracle_db.name
@@ -561,8 +552,7 @@ class OracleRootAccess(object):
         ora_admin = OracleAdmin()
         databases, marker = ora_admin.list_databases()
         for database in databases:
-            oradb = models.OracleSchema(None)
-            oradb.deserialize(database)
+            oradb = models.OracleSchema.deserialize_schema(database)
             with LocalOracleClient(oradb.name, service=True) as client:
                 client.execute('alter user sys identified by "%s"' %
                                sys_pwd)
