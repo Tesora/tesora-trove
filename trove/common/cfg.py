@@ -895,7 +895,7 @@ cassandra_group = cfg.OptGroup(
     'cassandra', title='Cassandra options',
     help="Oslo option group designed for Cassandra datastore")
 cassandra_opts = [
-    cfg.ListOpt('tcp_ports', default=["7000", "7001", "9042", "9160"],
+    cfg.ListOpt('tcp_ports', default=["7000", "7001", "7199", "9042", "9160"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
                      'if trove_security_groups_support is True).'),
@@ -945,6 +945,28 @@ cassandra_opts = [
                help='Root controller implementation for Cassandra.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.BoolOpt('cluster_support', default=True,
+                help='Enable clusters to be created and managed.'),
+    cfg.StrOpt('api_strategy',
+               default='trove.common.strategies.cluster.experimental.'
+               'cassandra.api.CassandraAPIStrategy',
+               help='Class that implements datastore-specific API logic.'),
+    cfg.StrOpt('taskmanager_strategy',
+               default='trove.common.strategies.cluster.experimental'
+               '.cassandra.taskmanager.CassandraTaskManagerStrategy',
+               help='Class that implements datastore-specific task manager '
+                    'logic.'),
+    cfg.StrOpt('guestagent_strategy',
+               default='trove.common.strategies.cluster.experimental'
+               '.cassandra.guestagent.CassandraGuestAgentStrategy',
+               help='Class that implements datastore-specific Guest Agent API '
+                    'logic.'),
+    cfg.BoolOpt('cleanup_on_grow', default=False,
+                help='Whether to perform an automatic node cleanup after '
+                'adding nodes to an existing cluster.'
+                'The operation has to be run sequentially on all previously '
+                'existing nodes and can take an excessive amount of time.'
+                'Cleanup can be safely postponed for low-usage hours.'),
 ]
 
 # DSE (mostly uses same options as Cassandra community edition).

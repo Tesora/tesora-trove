@@ -57,29 +57,43 @@ class ClusterController(wsgi.Controller):
                   "Tenant '%s'" % tenant_id)
         LOG.info(_("req : '%s'\n\n") % req)
         LOG.info(_("id : '%s'\n\n") % id)
+
         if not body:
             raise exception.BadRequest(_("Invalid request body."))
+
         context = req.environ[wsgi.CONTEXT_KEY]
         cluster = models.Cluster.load(context, id)
         manager = cluster.datastore_version.manager
         api_strategy = strategy.load_api_strategy(manager)
         _actions = api_strategy.cluster_controller_actions
-        selected_action = None
-        for key in body:
-            if key in _actions:
-                selected_action = _actions[key]
-                break
-        else:
-            message = _("No action '%(action)s' supplied "
-                        "by strategy for manager '%(manager)s'") % (
-                            {'action': key, 'manager': manager})
-            raise exception.TroveError(message)
-        cluster = selected_action(cluster, body)
+
+        def find_action_key():
+            for key in body:
+                if key in _actions:
+                    return key
+            else:
+                message = _("No action '%(action)s' supplied "
+                            "by strategy for manager '%(manager)s'") % (
+                                {'action': key, 'manager': manager})
+                raise exception.TroveError(message)
+
+        action_key = find_action_key()
+        if action_key == 'grow':
+            context.notification = notification.DBaaSClusterGrow(context,
+                                                                 request=req)
+        elif action_key == 'shrink':
+            context.notification = notification.DBaaSClusterShrink(context,
+                                                                   request=req)
+        with StartNotification(context, cluster_id=id):
+            selected_action = _actions[action_key]
+            cluster = selected_action(cluster, body)
+
         if cluster:
             view = views.load_view(cluster, req=req, load_servers=False)
             wsgi_result = wsgi.Result(view.data(), 202)
         else:
             wsgi_result = wsgi.Result(None, 202)
+
         return wsgi_result
 
     def show(self, req, tenant_id, id):
