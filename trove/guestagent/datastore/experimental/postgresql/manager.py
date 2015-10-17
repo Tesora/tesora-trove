@@ -96,6 +96,7 @@ class Manager(
                 self.GUEST_LOG_DISABLE_LABEL: {
                     'logging_collector': 'off',
                 },
+                self.GUEST_LOG_RESTART_LABEL: True,
             },
         }
 

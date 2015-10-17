@@ -100,6 +100,8 @@ class ServiceStatuses(object):
     FAILED_TIMEOUT_GUESTAGENT = ServiceStatus(0x18, 'guestagent error',
                                               'ERROR')
     INSTANCE_READY = ServiceStatus(0x19, 'instance ready', 'BUILD')
+    RESTART_REQUIRED = ServiceStatus(0x20, 'restart required',
+                                     'RESTART_REQUIRED')
 
 # Dissuade further additions at run-time.
 ServiceStatus.__init__ = None
