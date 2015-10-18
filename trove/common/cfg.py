@@ -33,8 +33,8 @@ path_opts = [
 ]
 
 common_opts = [
-    cfg.StrOpt('bind_host', default='0.0.0.0',
-               help='IP address the API server will listen on.'),
+    cfg.IPOpt('bind_host', default='0.0.0.0',
+              help='IP address the API server will listen on.'),
     cfg.IntOpt('bind_port', default=8779,
                help='Port the API server will listen on.'),
     cfg.StrOpt('api_paste_config', default="api-paste.ini",
@@ -76,8 +76,8 @@ common_opts = [
                help='Service endpoint type to use when searching catalog.'),
     cfg.StrOpt('trove_auth_url', default='http://0.0.0.0:5000/v2.0',
                help='Trove authentication URL.'),
-    cfg.StrOpt('host', default='0.0.0.0',
-               help='Host to listen for RPC messages.'),
+    cfg.IPOpt('host', default='0.0.0.0',
+              help='Host to listen for RPC messages.'),
     cfg.IntOpt('report_interval', default=30,
                help='The interval (in seconds) which periodic tasks are run.'),
     cfg.BoolOpt('trove_dns_support', default=False,
@@ -332,8 +332,9 @@ common_opts = [
     cfg.StrOpt('nova_proxy_admin_pass', default='',
                help="Admin password used to connect to Nova.", secret=True),
     cfg.StrOpt('nova_proxy_admin_tenant_id', default='',
-               deprecated_name='nova_proxy_admin_tenant_name',
                help="Admin tenant ID used to connect to Nova.", secret=True),
+    cfg.StrOpt('nova_proxy_admin_tenant_name', default='',
+               help="Admin tenant name used to connect to Nova.", secret=True),
     cfg.StrOpt('network_label_regex', default='^private$',
                help='Regular expression to match Trove network labels.'),
     cfg.StrOpt('ip_regex', default=None,
@@ -754,8 +755,8 @@ pxc_opts = [
                 help='Users to exclude when listing users.'),
     cfg.BoolOpt('cluster_support', default=True,
                 help='Enable clusters to be created and managed.'),
-    cfg.IntOpt('cluster_member_count', default=3,
-               help='Number of members in PXC cluster.'),
+    cfg.IntOpt('min_cluster_member_count', default=3,
+               help='Minimum number of members in PXC cluster.'),
     cfg.StrOpt('api_strategy',
                default='trove.common.strategies.cluster.experimental.'
                'pxc.api.PXCAPIStrategy',

@@ -125,11 +125,12 @@ class TestClusterController(trove_testtools.TestCase):
         datastore_version.manager = 'mysql'
         mock_get_datastore_version.return_value = (Mock(), datastore_version)
 
-        self.assertRaises(exception.ClusterDatastoreNotSupported,
-                          self.controller.create,
-                          req,
-                          body,
-                          tenant_id)
+        self.assertRaisesRegexp(exception.ClusterDatastoreNotSupported,
+                                "Clusters not supported for",
+                                self.controller.create,
+                                req,
+                                body,
+                                tenant_id)
 
     @patch.object(Cluster, 'create')
     @patch.object(utils, 'get_id_from_href')
@@ -301,8 +302,12 @@ class TestClusterControllerWithStrategy(trove_testtools.TestCase):
         datastore_version.manager = 'redis'
         mock_get_datastore_version.return_value = (Mock(), datastore_version)
 
-        self.assertRaises(exception.TroveError, self.controller.create, req,
-                          body, tenant_id)
+        self.assertRaisesRegexp(exception.TroveError,
+                                "Clusters not supported for",
+                                self.controller.create,
+                                req,
+                                body,
+                                tenant_id)
 
     @patch.object(views.ClusterView, 'data', return_value={})
     @patch.object(datastore_models, 'get_datastore_version')
@@ -348,8 +353,14 @@ class TestClusterControllerWithStrategy(trove_testtools.TestCase):
         cluster.datastore_version.manager = 'redis'
         mock_cluster_load.return_value = cluster
 
-        self.assertRaises(exception.TroveError, self.controller.action, req,
-                          body, tenant_id, id)
+        self.assertRaisesRegexp(exception.TroveError,
+                                "No action 'do_stuff2' supplied " +
+                                "by strategy for manager 'redis'",
+                                self.controller.action,
+                                req,
+                                body,
+                                tenant_id,
+                                id)
 
     @patch.object(strategy, 'load_api_strategy')
     @patch.object(models.Cluster, 'load')
