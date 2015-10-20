@@ -23,6 +23,7 @@ from oslo_service import periodic_task
 from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
+from trove.common import instance
 from trove.common.notification import EndNotification
 from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
@@ -45,6 +46,7 @@ class Manager(periodic_task.PeriodicTasks):
     GUEST_LOG_SECTION_LABEL = 'section'
     GUEST_LOG_ENABLE_LABEL = 'enable'
     GUEST_LOG_DISABLE_LABEL = 'disable'
+    GUEST_LOG_RESTART_LABEL = 'restart'
 
     GUEST_LOG_BASE_DIR = '/var/log/trove'
     GUEST_LOG_DATASTORE_DIRNAME = 'datastore'
@@ -277,7 +279,11 @@ class Manager(periodic_task.PeriodicTasks):
                     (gl_cache[log_name].enabled and disable) or
                     (not gl_cache[log_name].enabled and not disable))
                 if requires_change:
-                    self.guest_log_enable(context, log_name, disable)
+                    restart_required = self.guest_log_enable(context, log_name,
+                                                             disable)
+                    if restart_required:
+                        self.set_guest_log_status(
+                            guest_log.LogStatus.Restart_Required, log_name)
                     gl_cache[log_name].enabled = not disable
             return gl_cache[log_name].publish_log(disable)
         else:
@@ -288,7 +294,10 @@ class Manager(periodic_task.PeriodicTasks):
         facilitate enabling and disabling USER type logs.  If the logs
         can be enabled with simple configuration group changes, however,
         the code here will probably suffice.
+        Must return whether the datastore needs to be restarted in order for
+        the logging to begin.
         """
+        restart_required = False
         if self.configuration_manager:
             prefix = ("Dis" if disable else "En")
             LOG.debug("%sabling log '%s'" % (prefix, log_name))
@@ -297,19 +306,25 @@ class Manager(periodic_task.PeriodicTasks):
                                               log_name)
             disable_cfg_label = "%s_%s_log" % (self.GUEST_LOG_DISABLE_LABEL,
                                                log_name)
+            restart_required = gl_def.get(self.GUEST_LOG_RESTART_LABEL,
+                                          restart_required)
             if disable:
                 self._apply_log_overrides(
                     context, enable_cfg_label, disable_cfg_label,
                     gl_def.get(self.GUEST_LOG_DISABLE_LABEL),
-                    gl_def.get(self.GUEST_LOG_SECTION_LABEL))
+                    gl_def.get(self.GUEST_LOG_SECTION_LABEL),
+                    restart_required)
             else:
                 self._apply_log_overrides(
                     context, disable_cfg_label, enable_cfg_label,
                     gl_def.get(self.GUEST_LOG_ENABLE_LABEL),
-                    gl_def.get(self.GUEST_LOG_SECTION_LABEL))
+                    gl_def.get(self.GUEST_LOG_SECTION_LABEL),
+                    restart_required)
+        return restart_required
 
     def _apply_log_overrides(self, context, remove_label,
-                             apply_label, cfg_values, section_label):
+                             apply_label, cfg_values, section_label,
+                             restart_required):
         self.configuration_manager.remove_system_override(
             change_id=remove_label)
         if cfg_values:
@@ -318,7 +333,21 @@ class Manager(periodic_task.PeriodicTasks):
                 config_man_values = {section_label: cfg_values}
             self.configuration_manager.apply_system_override(
                 config_man_values, change_id=apply_label)
+        if restart_required:
+            self.status.set_status(instance.ServiceStatuses.RESTART_REQUIRED)
+        else:
             self.apply_overrides(context, cfg_values)
+
+    def set_guest_log_status(self, status, log_name=None):
+        """Sets the status of log_name to 'status' - if log_name is not
+        provided, sets the status on all logs.
+        """
+        gl_cache = self.guest_log_cache
+        if log_name and log_name in gl_cache:
+            gl_cache[log_name].status = status
+        else:
+            for name in gl_cache.keys():
+                gl_cache[name].status = status
 
     def build_log_file_name(self, log_name, owner, datastore_dir=None):
         """Build a log file name based on the log_name and make sure the
