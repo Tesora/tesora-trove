@@ -268,16 +268,25 @@ class Manager(periodic_task.PeriodicTasks):
         LOG.debug("Returning list of logs: %s", result)
         return result
 
-    def guest_log_publish(self, context, log_name, disable):
-        LOG.debug("publishing guest log %s (disable=%s)." %
-                  (log_name, disable))
+    def guest_log_action(self, context, log_name, enable, disable,
+                         publish, discard):
+        if enable and disable:
+            raise exception.BadRequest("Cannot enable and disable log '%s'." %
+                                       log_name)
+        # Enable if we are publishing, unless told to disable
+        if publish and not disable:
+            enable = True
+        LOG.debug("Processing guest log '%s' "
+                  "(enable=%s, disable=%s, publish=%s, discard=%s)." %
+                  (log_name, enable, disable, publish, discard))
         self.guest_log_context = context
         gl_cache = self.guest_log_cache
+        response = None
         if log_name in gl_cache:
             if gl_cache[log_name].type == guest_log.LogType.USER:
                 requires_change = (
                     (gl_cache[log_name].enabled and disable) or
-                    (not gl_cache[log_name].enabled and not disable))
+                    (not gl_cache[log_name].enabled and enable))
                 if requires_change:
                     restart_required = self.guest_log_enable(context, log_name,
                                                              disable)
@@ -285,9 +294,15 @@ class Manager(periodic_task.PeriodicTasks):
                         self.set_guest_log_status(
                             guest_log.LogStatus.Restart_Required, log_name)
                     gl_cache[log_name].enabled = not disable
-            return gl_cache[log_name].publish_log(disable)
+                    response = gl_cache[log_name].show()
+            if discard:
+                response = gl_cache[log_name].discard_log()
+            if publish:
+                response = gl_cache[log_name].publish_log()
         else:
             raise exception.NotFound("Log '%s' is not defined." % log_name)
+
+        return response
 
     def guest_log_enable(self, context, log_name, disable):
         """This method can be overridden by datastore implementations to
