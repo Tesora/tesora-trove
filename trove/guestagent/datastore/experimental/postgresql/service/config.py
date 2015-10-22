@@ -36,6 +36,7 @@ LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 
 BACKUP_CFG_OVERRIDE = 'PgBaseBackupConfig'
+DEBUG_MODE_OVERRIDE = 'DebugLevelOverride'
 
 
 class PgSqlConfig(PgSqlProcess):
@@ -223,8 +224,20 @@ class PgSqlConfig(PgSqlProcess):
             'max_wal_senders': 8,
             # 'checkpoint_segments ': 8,
             'wal_keep_segments': 8,
+            'wal_log_hints': 'on',
             'archive_command': arch_cmd
         }
         self.configuration_manager.apply_system_override(opts,
                                                          BACKUP_CFG_OVERRIDE)
+        # self.enable_debugging(level=1)
         self.restart(None)
+
+    def disable_debugging(self, level=1):
+        """Enable debug-level logging in postgres"""
+        self.configuration_manager.remove_system_override(DEBUG_MODE_OVERRIDE)
+
+    def enable_debugging(self, level=1):
+        """Enable debug-level logging in postgres"""
+        opt = {'log_min_messages': 'DEBUG%s' % level}
+        self.configuration_manager.apply_system_override(opt,
+                                                         DEBUG_MODE_OVERRIDE)

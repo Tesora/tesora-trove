@@ -203,6 +203,14 @@ class PgSqlUsers(PgSqlAccess):
 
         raise exception.UserNotFound()
 
+    def user_exists(self, username):
+        """Wrapper for find user to avoid need to catch an exception"""
+        try:
+            self._find_user(context=None, username=username)
+            return True
+        except exception.UserNotFound:
+            return False
+
     def change_passwords(self, context, users):
         """Change the passwords of one or more existing users.
         The users parameter is a list of serialized Postgres users.
