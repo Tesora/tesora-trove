@@ -53,26 +53,26 @@ class LogStatus(enum.Enum):
     Enabled = 2
 
     # Logging is on, but no log data is available to publish
-    Unavailable = 2
+    Unavailable = 3
 
     # Logging is on and data is available to be published
-    Ready = 3
+    Ready = 4
 
     # Logging is on and all data has been published
-    Published = 4
+    Published = 5
 
     # Logging is on and some data has been published
-    Partial = 5
+    Partial = 6
 
     # Log file has been rotated, so next publish will delete container first
-    Rotated = 6
+    Rotated = 7
 
     # Waiting for a datastore restart to begin logging
-    Restart_Required = 7
+    Restart_Required = 8
 
     # Now that restart has completed, regular status can be reported again
     # This is an internal status
-    Restart_Completed = 8
+    Restart_Completed = 9
 
 
 class GuestLog(object):
@@ -260,25 +260,30 @@ class GuestLog(object):
             'instance_id': CONF.guest_id
         }
 
-    def publish_log(self, disable):
+    def publish_log(self):
         if self.exposed:
-            if disable:
+            if self._log_rotated():
+                LOG.debug("Log file rotation detected for '%s' - "
+                          "discarding old log" % self._name)
                 self._delete_container()
+            if os.path.isfile(self._file):
+                self._publish_to_container(self._file)
             else:
-                if self._log_rotated():
-                    LOG.debug("Log file rotation detected for '%s'" %
-                              self._name)
-                    self._delete_container()
-                if os.path.isfile(self._file):
-                    self._publish_to_container(self._file)
-                else:
-                    raise RuntimeError(_(
-                        "Cannot publish log file '%s' as it does not exist.") %
-                        self._file)
+                raise RuntimeError(_(
+                    "Cannot publish log file '%s' as it does not exist.") %
+                    self._file)
             return self.show()
         else:
             raise exception.UnauthorizedRequest(
                 "Not authorized to publish log '%s'." % self._name)
+
+    def discard_log(self):
+        if self.exposed:
+            self._delete_container()
+            return self.show()
+        else:
+            raise exception.UnauthorizedRequest(
+                "Not authorized to discard log '%s'." % self._name)
 
     def _delete_container(self):
         c = self._container_name()

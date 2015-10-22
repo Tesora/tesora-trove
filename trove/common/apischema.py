@@ -523,13 +523,16 @@ backup = {
 }
 
 guest_log = {
-    "publish": {
-        "name": "guest_log:publish",
+    "action": {
+        "name": "guest_log:action",
         "type": "object",
         "required": ["name"],
         "properties": {
             "name": non_empty_string,
-            "disable": boolean_string
+            "enable": boolean_string,
+            "disable": boolean_string,
+            "publish": boolean_string,
+            "discard": boolean_string
         }
     }
 }

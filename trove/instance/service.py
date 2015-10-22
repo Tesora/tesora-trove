@@ -378,14 +378,20 @@ class InstanceController(wsgi.Controller):
         guest_log_list = client.guest_log_list()
         return wsgi.Result({'logs': guest_log_list}, 200)
 
-    def guest_log_publish(self, req, body, tenant_id, id):
-        """Publish updates to a log to the swift container."""
-        LOG.info(_("Publishing logs for tenant %s"), tenant_id)
+    def guest_log_action(self, req, body, tenant_id, id):
+        """Processes a guest log."""
+        LOG.info(_("Processing log for tenant %s"), tenant_id)
         context = req.environ[wsgi.CONTEXT_KEY]
         log_name = body['name']
-        disable = body['disable'] if 'disable' in body else None
+        enable = body.get('enable', None)
+        disable = body.get('disable', None)
+        publish = body.get('publish', None)
+        discard = body.get('discard', None)
+        if enable and disable:
+            raise exception.BadRequest(_("Cannot enable and disable log."))
         client = create_guest_client(context, id)
-        guest_log = client.guest_log_publish(log_name, disable)
+        guest_log = client.guest_log_action(log_name, enable, disable,
+                                            publish, discard)
         return wsgi.Result({'log': guest_log}, 200)
 
     def guest_log_name(self, req, tenant_id, id, log):
