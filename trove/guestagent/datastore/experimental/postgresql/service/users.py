@@ -29,7 +29,8 @@ from trove.guestagent.db.models import PostgreSQLSchema
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
-IGNORE_USERS_LIST = CONF.get(CONF.datastore_manager).ignore_users
+MANAGER = CONF.datastore_manager or 'postgresql'
+IGNORE_USERS_LIST = CONF.get(MANAGER).ignore_users
 
 
 class PgSqlUsers(PgSqlAccess):

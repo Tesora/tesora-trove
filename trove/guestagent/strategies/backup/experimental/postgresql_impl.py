@@ -23,11 +23,14 @@ from oslo_log import log as logging
 
 from trove.common import cfg
 from trove.common.i18n import _
+from trove.common import utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.common.operating_system import FileMode
 from trove.guestagent.datastore.experimental.postgresql import pgutil
 from trove.guestagent.datastore.experimental.postgresql.service.config \
     import PgSqlConfig
+from trove.guestagent.datastore.experimental.postgresql.service.users \
+    import PgSqlUsers
 from trove.guestagent.strategies.backup import base
 
 CONF = cfg.CONF
@@ -82,7 +85,8 @@ class PgBaseBackupUtil(object):
         return wal
 
 
-class PgBaseBackup(base.BackupRunner, PgSqlConfig, PgBaseBackupUtil):
+class PgBaseBackup(base.BackupRunner, PgSqlConfig, PgBaseBackupUtil,
+                   PgSqlUsers):
     """Base backups are taken with the pg_basebackup filesystem-level backup
      tool pg_basebackup creates a copy of the binary files in the PostgreSQL
      cluster data directory and enough WAL segments to allow the database to
@@ -103,8 +107,8 @@ class PgBaseBackup(base.BackupRunner, PgSqlConfig, PgBaseBackupUtil):
 
     @property
     def cmd(self):
-        cmd = "pg_basebackup -U os_admin --pgdata=-" \
-              " --format=tar --xlog "
+        cmd = "pg_basebackup -h %s -U %s --pgdata=-" \
+              " --format=tar --xlog " % (self.UNIX_SOCKET_DIR, self.ADMIN_USER)
 
         return cmd + self.zip_cmd + self.encrypt_cmd
 
@@ -162,6 +166,15 @@ class PgBaseBackup(base.BackupRunner, PgSqlConfig, PgBaseBackupUtil):
         meta = self.base_backup_metadata(os.path.join(WAL_ARCHIVE_DIR, f))
         LOG.info(_("Metadata for backup: %s.") % str(meta))
         return meta
+
+    def _run_post_backup(self):
+        """Get rid of WAL data we don't need any longer"""
+        arch_cleanup_bin = os.path.join(self.PGSQL_EXTRA_BIN_DIR,
+                                        "pg_archivecleanup")
+        f = os.path.basename(self.most_recent_backup_file())
+        cmd_full = " ".join((arch_cleanup_bin, WAL_ARCHIVE_DIR, f))
+        out, err = utils.execute("sudo", "su", "-", self.PGSQL_OWNER, "-c",
+                                 "%s" % cmd_full)
 
 
 class PgBaseBackupIncremental(PgBaseBackup):
