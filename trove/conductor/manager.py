@@ -144,7 +144,7 @@ class Manager(periodic_task.PeriodicTasks):
         notification.notify_end(**notification_args)
 
     def notify_exc_info(self, context, serialized_notification,
-                        etype, value, traceback):
+                        message, exception):
         notification = SerializableNotification.deserialize(
             context, serialized_notification)
-        notification.notify_exc_info(etype, value, traceback)
+        notification.notify_exc_info(message, exception)

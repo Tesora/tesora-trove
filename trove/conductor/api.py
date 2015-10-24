@@ -84,7 +84,7 @@ class API(object):
                    serialized_notification=serialized,
                    notification_args=notification_args)
 
-    def notify_exc_info(self, etype, value, trace):
+    def notify_exc_info(self, message, exception):
         LOG.debug("Making async call to cast error notification")
         cctxt = self.client.prepare(version=self.version_cap)
         context = self.context
@@ -92,4 +92,4 @@ class API(object):
                                                         context.notification)
         cctxt.cast(self.context, "notify_exception",
                    serialized_notification=serialized,
-                   etype=etype, value=value, trace=trace)
+                   message=message, exception=exception)
