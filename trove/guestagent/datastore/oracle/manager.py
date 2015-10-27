@@ -180,8 +180,7 @@ class Manager(manager.Manager):
 
     def start_db_with_conf_changes(self, context, config_contents):
         LOG.debug("Starting Oracle with configuration changes.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='start_db_with_conf_changes', datastore=MANAGER)
+        self.app.start_db_with_conf_changes(config_contents)
 
     def grant_access(self, context, username, hostname, databases):
         LOG.debug("Granting acccess.")

@@ -100,6 +100,18 @@ class OracleApp(object):
             raise RuntimeError(_(
                 "Command to change ownership of Oracle data directory failed."))
 
+    def start_db_with_conf_changes(self, config_contents):
+        LOG.info(_("Starting Oracle with conf changes."))
+        LOG.debug("Inside the guest - Status is_running = (%s)."
+                  % self.status.is_running)
+        if self.status.is_running:
+            LOG.error(_("Cannot execute start_db_with_conf_changes because "
+                        "Oracle state == %s.") % self.status)
+            raise RuntimeError("Oracle not stopped.")
+        # Config change for Oracle is currently not supported. So we'll
+        # simply start up the database here.
+        self.start_db()
+
     def start_db(self, update_db=False):
         LOG.debug("Start the Oracle databases.")
         os.environ["ORACLE_HOME"] = CONF.get(MANAGER).oracle_home
