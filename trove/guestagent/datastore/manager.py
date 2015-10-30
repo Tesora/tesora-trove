@@ -283,6 +283,15 @@ class Manager(periodic_task.PeriodicTasks):
         gl_cache = self.guest_log_cache
         response = None
         if log_name in gl_cache:
+            if ((gl_cache[log_name].type == guest_log.LogType.SYS) and
+                    not publish):
+                if enable or disable:
+                    if enable:
+                        action_text = "enable"
+                    else:
+                        action_text = "disable"
+                    raise exception.BadRequest("Cannot %s a SYSTEM log ('%s')."
+                                               % (action_text, log_name))
             if gl_cache[log_name].type == guest_log.LogType.USER:
                 requires_change = (
                     (gl_cache[log_name].enabled and disable) or
