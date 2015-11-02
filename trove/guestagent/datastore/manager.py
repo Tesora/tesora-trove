@@ -302,8 +302,8 @@ class Manager(periodic_task.PeriodicTasks):
                     if restart_required:
                         self.set_guest_log_status(
                             guest_log.LogStatus.Restart_Required, log_name)
-                    gl_cache[log_name].enabled = not disable
-                    response = gl_cache[log_name].show()
+                    gl_cache[log_name].enabled = enable
+                response = gl_cache[log_name].show()
             if discard:
                 response = gl_cache[log_name].discard_log()
             if publish:
