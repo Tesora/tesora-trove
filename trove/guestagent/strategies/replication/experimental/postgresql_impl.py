@@ -307,8 +307,11 @@ class PostgresqlReplicationStreaming(
                                group="postgres", as_root=True)
 
     def enable_hot_standby(self, service):
-        opts = {'hot_standby': 'on',
-                'wal_log_hints': 'on'}
+        opts = {'hot_standby': 'on'}
+        # wal_log_hints for pg_rewind is only supported in 9.4+
+        if self.pg_version[1] in ('9.4', '9.5'):
+            opts['wal_log_hints'] = 'on'
+
         service.configuration_manager.\
             apply_system_override(opts, SLAVE_STANDBY_OVERRIDE)
 

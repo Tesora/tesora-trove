@@ -80,6 +80,17 @@ class PgSqlConfig(PgSqlProcess):
         return revision_dir
 
     @property
+    def PGSQL_EXTRA_BIN_DIR(self):
+        """Redhat and Ubuntu packages for PgSql do not place 'extra' important
+        binaries in /usr/bin, but rather in a directory like /usr/pgsql-9.4/bin
+        in the case of PostgreSQL 9.4 for RHEL/CentOS
+        """
+        version = self.pg_version[1]
+        return {operating_system.DEBIAN: '/usr/lib/postgresql/%s/bin',
+                operating_system.REDHAT: '/usr/pgsql-%s/bin',
+                operating_system.SUSE: '/usr/bin'}[self.OS] % version
+
+    @property
     def PGSQL_CONFIG(self):
         return self._find_config_file('postgresql.conf')
 
@@ -224,9 +235,11 @@ class PgSqlConfig(PgSqlProcess):
             'max_wal_senders': 8,
             # 'checkpoint_segments ': 8,
             'wal_keep_segments': 8,
-            'wal_log_hints': 'on',
             'archive_command': arch_cmd
         }
+        if self.pg_version[1] in ('9.4', '9.5'):
+            opts['wal_log_hints'] = 'on'
+
         self.configuration_manager.apply_system_override(opts,
                                                          BACKUP_CFG_OVERRIDE)
         # self.enable_debugging(level=1)
