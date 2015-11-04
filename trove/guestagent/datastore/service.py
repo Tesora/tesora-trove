@@ -328,8 +328,12 @@ class BaseDbStatus(object):
             actual_status = self._get_actual_db_status()
             LOG.debug("DB status was %s after %d seconds."
                       % (actual_status, waited_time))
+            # Always keep the internal status up-to-date.
+            self.status = actual_status
             if actual_status == status:
                 if update_db:
+                    # Cast a conductor message to also update the public status
+                    # in the Trove database.
                     self.set_status(actual_status)
                 return True
         LOG.error(_("Timeout while waiting for database status to change."))
