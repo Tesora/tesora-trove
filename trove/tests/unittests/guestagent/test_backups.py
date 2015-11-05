@@ -473,19 +473,23 @@ class CassandraBackupTest(trove_testtools.TestCase):
 
     def setUp(self):
         super(CassandraBackupTest, self).setUp()
-        self.orig_1 = cass_service.CassandraAppStatus
-        self.orig_2 = operating_system.read_yaml_file
-        self.orig_3 = netutils.get_my_ipv4
-        cass_service.CassandraAppStatus = mock.MagicMock()
-        operating_system.read_yaml_file = mock.MagicMock(return_value={
-            'data_file_directories': [self._DATA_DIR]
-        })
+        self.get_my_ipv4_patcher = patch.object(
+            netutils, 'get_my_ipv4', return_value=self._MOCK_IP)
+        self.addCleanup(self.get_my_ipv4_patcher.stop)
+        self.get_my_ipv4_patcher.start()
+        self.app_status_patcher = patch(
+            'trove.guestagent.datastore.experimental.cassandra.service.'
+            'CassandraAppStatus')
+        self.addCleanup(self.app_status_patcher.stop)
+        self.app_status_patcher.start()
+        self.get_data_dirs_patcher = patch.object(
+            cass_service.CassandraApp, 'get_data_file_directories',
+            return_value=[self._DATA_DIR])
+        self.addCleanup(self.get_data_dirs_patcher.stop)
+        self.get_data_dirs_patcher.start()
 
     def tearDown(self):
         super(CassandraBackupTest, self).tearDown()
-        netutils.get_my_ipv4 = self.orig_3
-        operating_system.read_yaml_file = self.orig_2
-        cass_service.CassandraAppStatus = self.orig_1
 
     def test_backup_encrypted_zipped_nodetoolsnapshot_command(self):
         bkp = self._build_backup_runner(True, True)
@@ -533,7 +537,10 @@ class CassandraBackupTest(trove_testtools.TestCase):
         self.assertIn(".enc", bkp.manifest)
         self.assertNotIn(".gz", bkp.manifest)
 
-    def test_restore_encrypted_but_not_zipped_nodetoolsnapshot_command(self):
+    @mock.patch.object(cass_service.CassandraApp, '_init_overrides_dir',
+                       return_value='')
+    def test_restore_encrypted_but_not_zipped_nodetoolsnapshot_command(
+            self, _):
         restoreBase.RestoreRunner.is_zipped = False
         restoreBase.RestoreRunner.is_encrypted = True
         restoreBase.RestoreRunner.decrypt_key = CRYPTO_KEY
@@ -544,11 +551,12 @@ class CassandraBackupTest(trove_testtools.TestCase):
         self.assertEqual(self._BASE_RESTORE_CMD % self._RESTORE_LOCATION,
                          rstr.base_restore_cmd % self._RESTORE_LOCATION)
 
-    def _build_backup_runner(self, is_encrypted, is_zipped):
+    @mock.patch.object(cass_service.CassandraApp, '_init_overrides_dir',
+                       return_value='')
+    def _build_backup_runner(self, is_encrypted, is_zipped, _):
         backupBase.BackupRunner.is_zipped = is_zipped
         backupBase.BackupRunner.is_encrypted = is_encrypted
         backupBase.BackupRunner.encrypt_key = CRYPTO_KEY
-        netutils.get_my_ipv4 = mock.Mock(return_value=self._MOCK_IP)
         RunnerClass = utils.import_class(BACKUP_NODETOOLSNAPSHOT_CLS)
         runner = RunnerClass(self._SNAPSHOT_NAME)
         runner._remove_snapshot = mock.MagicMock()
