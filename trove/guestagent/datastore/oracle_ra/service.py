@@ -196,7 +196,7 @@ class OracleAdmin(object):
 
     def delete_user(self, user):
         """Delete the specified user."""
-        oracle_user = self._deserialize_user(user)
+        oracle_user = models.OracleUser.deserialize_user(user)
         self.delete_user_by_name(oracle_user.name)
 
     def delete_user_by_name(self, name):
@@ -303,14 +303,6 @@ class OracleAdmin(object):
                            "WHERE USERNAME = upper('%s')"
                            % ROOT_USERNAME.upper())
             return client.rowcount != 0
-
-    def _deserialize_user(self, user_dict):
-        if user_dict:
-            user = models.OracleUser(None)
-            user.deserialize(user_dict)
-            return user
-
-        return None
 
 
 class OracleApp(object):
