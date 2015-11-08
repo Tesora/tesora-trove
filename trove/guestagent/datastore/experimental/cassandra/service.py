@@ -293,11 +293,16 @@ class CassandraApp(object):
         self.restart()
 
     def __reset_cluster_name(self, cluster_name):
+        # Reset the in-database value stored locally on this node.
         current_superuser = CassandraApp.get_current_superuser()
         with CassandraLocalhostConnection(current_superuser) as client:
             client.execute(
                 "UPDATE system.local SET cluster_name = '{}' "
                 "WHERE key='local';", (cluster_name,))
+
+        # Newer version of Cassandra require a flush to ensure the changes
+        # to the local system keyspace persist.
+        self.flush_tables('system', 'local')
 
     def __create_cqlsh_config(self, sections):
         config_path = self._get_cqlsh_conf_path()
@@ -510,6 +515,23 @@ class CassandraApp(object):
         """
         config = operating_system.read_yaml_file(self._CASSANDRA_CONF)
         return config['data_file_directories'][0]
+
+    def flush_tables(self, keyspace, *tables):
+        """Flushes one or more tables from the memtable.
+        """
+        LOG.debug("Flushing tables.")
+        # nodetool -h <HOST> -p <PORT> -u <USER> -pw <PASSWORD> flush --
+        # <keyspace> ( <table> ... )
+        self._run_nodetool_command('flush', keyspace, *tables)
+
+    def _run_nodetool_command(self, cmd, *args, **kwargs):
+        """Execute a nodetool command on this node.
+        """
+        cassandra = self.get_current_superuser()
+        return utils.execute('nodetool',
+                             '-h', 'localhost',
+                             '-u', cassandra.name,
+                             '-pw', cassandra.password, cmd, *args, **kwargs)
 
 
 class CassandraAppStatus(service.BaseDbStatus):
