@@ -71,7 +71,7 @@ class NegativeClusterActionsRunner(TestRunner):
 class MongodbNegativeClusterActionsRunner(NegativeClusterActionsRunner):
 
     def run_create_constrained_size_cluster(self):
-        super(NegativeClusterActionsRunner,
+        super(MongodbNegativeClusterActionsRunner,
               self).run_create_constrained_size_cluster(min_nodes=3,
                                                         max_nodes=3)
 
@@ -83,3 +83,18 @@ class CassandraNegativeClusterActionsRunner(NegativeClusterActionsRunner):
 
     def run_create_heterogeneous_cluster(self):
         raise SkipTest("No constraints apply to the size of cluster nodes.")
+
+
+class RedisNegativeClusterActionsRunner(NegativeClusterActionsRunner):
+
+    def run_create_constrained_size_cluster(self):
+        raise SkipTest("No constraints apply to the number of cluster nodes.")
+
+    def run_create_heterogeneous_cluster(self):
+        raise SkipTest("No constraints apply to the size of cluster nodes.")
+
+
+class PxcNegativeClusterActionsRunner(NegativeClusterActionsRunner):
+
+    def run_create_constrained_size_cluster(self):
+        raise SkipTest("No constraints apply to the number of cluster nodes.")
