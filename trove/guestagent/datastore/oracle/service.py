@@ -100,14 +100,25 @@ class OracleApp(object):
             raise RuntimeError(_(
                 "Command to change ownership of Oracle data directory failed."))
 
+    def start_db_with_conf_changes(self, config_contents):
+        LOG.info(_("Starting Oracle with conf changes."))
+        LOG.debug("Inside the guest - Status is_running = (%s)."
+                  % self.status.is_running)
+        if self.status.is_running:
+            LOG.error(_("Cannot execute start_db_with_conf_changes because "
+                        "Oracle state == %s.") % self.status)
+            raise RuntimeError("Oracle not stopped.")
+        # Config change for Oracle is currently not supported. So we'll
+        # simply start up the database here.
+        self.start_db()
+
     def start_db(self, update_db=False):
         LOG.debug("Start the Oracle databases.")
         os.environ["ORACLE_HOME"] = CONF.get(MANAGER).oracle_home
         ora_admin = OracleAdmin()
-        databases, marker = ora_admin.list_databases(online_only=False)
+        databases, marker = ora_admin.list_databases()
         for database in databases:
-            oradb = models.OracleSchema(None)
-            oradb.deserialize(database)
+            oradb = models.OracleSchema.deserialize_schema(database)
             # at this point the trove instance is in reboot mode and
             # the DB is not running, pass in the SID through
             # environment variable
@@ -131,8 +142,7 @@ class OracleApp(object):
         ora_admin = OracleAdmin()
         databases, marker = ora_admin.list_databases()
         for database in databases:
-            oradb = models.OracleSchema(None)
-            oradb.deserialize(database)
+            oradb = models.OracleSchema.deserialize_schema(database)
             try:
                 dsn_tns = cx_Oracle.makedsn('localhost', CONF.get(MANAGER).listener_port,
                                             oradb.name)
@@ -177,12 +187,8 @@ class OracleAppStatus(service.BaseDbStatus):
                 LOG.debug("Setting state to rd_instance.ServiceStatuses.RUNNING")
                 return rd_instance.ServiceStatuses.RUNNING
             else:
-                # Oracle is installed but the database instance is in the process
-                # of being created. Since a Trove Oracle instance should always has
-                # one running Oracle instance in it's lifetime, this condition
-                # can only occur when we're building the Trove instance.
-                LOG.debug("Setting state to rd_instance.ServiceStatuses.BUILDING")
-                return rd_instance.ServiceStatuses.BUILDING
+                LOG.debug("Setting state to rd_instance.ServiceStatuses.SHUTDOWN")
+                return rd_instance.ServiceStatuses.SHUTDOWN
         except exception.ProcessExecutionError:
             LOG.exception(_("Error getting the Oracle server status."))
             return rd_instance.ServiceStatuses.CRASHED
@@ -200,7 +206,7 @@ class OracleConfig(object):
     _CONF_FILE_TMP = "/tmp/oracle.cnf"
     _CONF_ORA_SEC = 'ORACLE'
     _CONF_ADMIN_KEY = 'os_admin_pwd'
-    _CONF_SYS_KEY = 'sys_pwd'
+    _CONF_ROOT_ENABLED = 'root_enabled'
 
     def __init__(self):
         self._admin_pwd = None
@@ -220,8 +226,8 @@ class OracleConfig(object):
             try:
                 if self._CONF_ADMIN_KEY in config[self._CONF_ORA_SEC]:
                     self._admin_pwd = config[self._CONF_ORA_SEC][self._CONF_ADMIN_KEY]
-                if self._CONF_SYS_KEY in config[self._CONF_ORA_SEC]:
-                    self._sys_pwd = config[self._CONF_ORA_SEC][self._CONF_SYS_KEY]
+                if self._CONF_ROOT_ENABLED in config[self._CONF_ORA_SEC]:
+                    self._root_enabled = config[self._CONF_ORA_SEC][self._CONF_ROOT_ENABLED]
             except KeyError:
                 # the ORACLE section does not exist, stop parsing
                 pass
@@ -240,14 +246,12 @@ class OracleConfig(object):
         self._save_value_in_file(self._CONF_ADMIN_KEY, value)
         self._admin_pwd = value
 
-    @property
-    def sys_password(self):
-        return self._sys_pwd
+    def is_root_enabled(self):
+        return bool(self._root_enabled)
 
-    @sys_password.setter
-    def sys_password(self, value):
-        self._save_value_in_file(self._CONF_SYS_KEY, value)
-        self._sys_pwd = value
+    def enable_root(self):
+        self._save_value_in_file(self._CONF_ROOT_ENABLED, 'true')
+        self._root_enabled = 'true'
 
 
 class LocalOracleClient(object):
@@ -286,6 +290,7 @@ class OracleAdmin(object):
     """
     Handles administrative tasks on the Oracle instance.
     """
+    _DBNAME = CONF.guest_name
     _DBNAME_REGEX = re.compile(r'^([a-zA-Z0-9]+):*:')
 
     def create_database(self, databases):
@@ -294,15 +299,15 @@ class OracleAdmin(object):
         db_create_failed = []
         LOG.debug("Creating Oracle databases.")
         for database in databases:
-            oradb = models.OracleSchema(None)
-            oradb.deserialize(database)
+            oradb = models.OracleSchema.deserialize_schema(database)
             dbName = oradb.name
             LOG.debug("Creating Oracle database: %s." % dbName)
             try:
                 sys_pwd = utils.generate_random_password(password_length=30)
                 run_command(system.CREATE_DB_COMMAND %
                             {'gdbname': dbName, 'sid': dbName,
-                             'pswd': sys_pwd, 'db_ram': CONF.get(MANAGER).db_ram_size})
+                             'pswd': sys_pwd, 'db_ram': CONF.get(MANAGER).db_ram_size,
+                             'template': CONF.get(MANAGER).template})
                 client = LocalOracleClient(sid=dbName, service=True, user_id='sys', password=sys_pwd)
                 self._create_admin_user(client)
                 self.create_cloud_user_role(database)
@@ -319,8 +324,7 @@ class OracleAdmin(object):
         """Delete the specified database."""
         dbName = None
         try:
-            oradb = models.OracleSchema(None)
-            oradb.deserialize(database)
+            oradb = models.OracleSchema.deserialize_schema(database)
             dbName = oradb.name
             LOG.debug("Deleting Oracle database: %s." % dbName)
             run_command(system.DELETE_DB_COMMAND %
@@ -356,6 +360,10 @@ class OracleAdmin(object):
         """
         return OracleRootAccess.enable_root(root_password)
 
+    def disable_root(self):
+        """Disable reset the sys password."""
+        return OracleRootAccess.disable_root()
+
     def _database_is_up(self, dbname):
         try:
             with LocalOracleClient(dbname, service=True) as client:
@@ -372,13 +380,11 @@ class OracleAdmin(object):
         except cx_Oracle.DatabaseError:
             return False
 
-    def list_databases(self, limit=None, marker=None, include_marker=False,
-                       online_only=True):
+    def list_databases(self, limit=None, marker=None, include_marker=False):
         with open('/etc/oratab') as oratab:
             dblist = [ self._DBNAME_REGEX.search(line)
                       for line in oratab if self._DBNAME_REGEX.search(line) ]
-            dblist = [ db.group(1) for db in dblist
-                      if online_only or self._database_is_up(db.group(1)) ]
+            dblist = [ db.group(1) for db in dblist ]
         dblist_page, next_marker = pagination.paginate_list(dblist, limit, marker,
                                                             include_marker)
         result = [ models.OracleSchema(name).serialize() for name in dblist_page ]
@@ -386,8 +392,7 @@ class OracleAdmin(object):
 
     def create_cloud_user_role(self, database):
         LOG.debug("Creating database cloud user role")
-        oradb = models.OracleSchema(None)
-        oradb.deserialize(database)
+        oradb = models.OracleSchema.deserialize_schema(database)
         with LocalOracleClient(oradb.name, service=True) as client:
             q = sql_query.CreateRole(CONF.get(MANAGER).cloud_user_role)
             client.execute(str(q))
@@ -402,29 +407,24 @@ class OracleAdmin(object):
     def create_user(self, users):
         LOG.debug("Creating database users")
         for item in users:
-            user = models.OracleUser(None)
-            user.deserialize(item)
-            for database in user.databases:
-                oradb = models.OracleSchema(None)
-                oradb.deserialize(database)
-                if self._database_is_up(oradb.name):
-                    with LocalOracleClient(oradb.name, service=True) as client:
-                        q = sql_query.CreateUser(user.name, user.password)
-                        client.execute(str(q))
-                        # TO-DO: Refactor GRANT query into the sql_query module
-                        client.execute('GRANT cloud_user_role to %s' % user.name)
-                        client.execute('GRANT UNLIMITED TABLESPACE to %s' % user.name)
-                    LOG.debug(_("Created user %(user)s on %(db)s") %
-                              {'user': user.name, 'db': oradb.name})
-                else:
-                    LOG.debug(_("Failed to create user %(user)s on %(db)s") %
-                              {'user': user.name, 'db': oradb.name})
+            user = models.OracleUser.deserialize_user(item)
+            if self._database_is_up(self._DBNAME):
+                with LocalOracleClient(self._DBNAME, service=True) as client:
+                    q = sql_query.CreateUser(user.name, user.password)
+                    client.execute(str(q))
+                    # TO-DO: Refactor GRANT query into the sql_query module
+                    client.execute('GRANT cloud_user_role to %s' % user.name)
+                    client.execute('GRANT UNLIMITED TABLESPACE to %s' % user.name)
+                LOG.debug(_("Created user %(user)s on %(db)s") %
+                          {'user': user.name, 'db': self._DBNAME})
+            else:
+                LOG.debug(_("Failed to create user %(user)s on %(db)s") %
+                          {'user': user.name, 'db': self._DBNAME})
         LOG.debug("Finished creating database users")
 
     def delete_user(self, user):
         LOG.debug("Delete a given user.")
-        oracle_user = models.OracleUser(None)
-        oracle_user.deserialize(user)
+        oracle_user = models.OracleUser.deserialize_user(user)
         userName = oracle_user.name
         user_dbs = oracle_user.databases
         LOG.debug("For user %s, databases to be deleted = %r." % (
@@ -437,8 +437,7 @@ class OracleAdmin(object):
 
         LOG.debug("databases for user = %r." % databases)
         for database in databases:
-            oradb = models.OracleSchema(None)
-            oradb.deserialize(database)
+            oradb = models.OracleSchema.deserialize_schema(database)
             with LocalOracleClient(oradb.name, service=True) as client:
                 q = sql_query.DropUser(oracle_user.name, cascade=True)
                 client.execute(str(q))
@@ -450,8 +449,7 @@ class OracleAdmin(object):
 
         databases, marker = self.list_databases()
         for database in databases:
-            oracle_db = models.OracleSchema(None)
-            oracle_db.deserialize(database)
+            oracle_db = models.OracleSchema.deserialize_schema(database)
             with LocalOracleClient(oracle_db.name, service=True) as client:
                 q = sql_query.Query()
                 q.columns = ["grantee"]
@@ -462,8 +460,7 @@ class OracleAdmin(object):
                 for row in client:
                     user_name = row[0]
                     if user_name in user_list:
-                        user = models.OracleUser(None)
-                        user.deserialize(user_list.get(user_name))
+                        user = models.OracleUser.deserialize_user(user_list.get(user_name))
                     else:
                         user = models.OracleUser(user_name)
                     user.databases = oracle_db.name
@@ -483,8 +480,7 @@ class OracleAdmin(object):
         user = models.OracleUser(username)
         databases, marker = self.list_databases()
         for database in databases:
-            oracle_db = models.OracleSchema(None)
-            oracle_db.deserialize(database)
+            oracle_db = models.OracleSchema.deserialize_schema(database)
             with LocalOracleClient(oracle_db.name, service=True) as client:
                 q = sql_query.Query()
                 q.columns = ["username"]
@@ -506,12 +502,33 @@ class OracleAdmin(object):
         user = self._get_user(username, hostname)
         return user.databases
 
+    def change_passwords(self, users):
+        """Change the passwords of one or more existing users."""
+        LOG.debug("Changing the password of some users.")
+        with LocalOracleClient(self._DBNAME, service=True) as client:
+            for item in users:
+                LOG.debug("Changing password for user %s." % item)
+                user = models.OracleUser(item['name'],
+                                         password=item['password'])
+                q = sql_query.AlterUser(user.name, password=user.password)
+                client.execute(str(q))
+
+    def update_attributes(self, username, hostname, user_attrs):
+        """Change the attributes of an existing user."""
+        LOG.debug("Changing user attributes for user %s." % username)
+        user = self._get_user(username, hostname)
+        if user:
+            password = user_attrs.get('password')
+            if password:
+                self.change_passwords([{'name': username,
+                                        'password': password}])
+
 
 class OracleRootAccess(object):
     @classmethod
     def is_root_enabled(cls):
         """Return True if root access is enabled; False otherwise."""
-        return OracleConfig().sys_password is not None
+        return OracleConfig().is_root_enabled()
 
     @classmethod
     def enable_root(cls, root_password=None):
@@ -526,17 +543,28 @@ class OracleRootAccess(object):
         ora_admin = OracleAdmin()
         databases, marker = ora_admin.list_databases()
         for database in databases:
-            oradb = models.OracleSchema(None)
-            oradb.deserialize(database)
+            oradb = models.OracleSchema.deserialize_schema(database)
             with LocalOracleClient(oradb.name, service=True) as client:
                 client.execute('alter user sys identified by "%s"' %
                                sys_pwd)
 
         oracnf = OracleConfig()
-        oracnf.sys_password = sys_pwd
+        oracnf.enable_root()
 
         user = models.RootUser()
         user.name = "sys"
         user.host = "%"
         user.password = sys_pwd
         return user.serialize()
+
+    @classmethod
+    def disable_root(cls):
+        """Disable reset the sys password."""
+        sys_pwd = utils.generate_random_password(password_length=30)
+        ora_admin = OracleAdmin()
+        databases, marker = ora_admin.list_databases()
+        for database in databases:
+            oradb = models.OracleSchema.deserialize_schema(database)
+            with LocalOracleClient(oradb.name, service=True) as client:
+                client.execute('alter user sys identified by "%s"' %
+                               sys_pwd)

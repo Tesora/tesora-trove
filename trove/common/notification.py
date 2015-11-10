@@ -49,9 +49,11 @@ class EndNotification(object):
     def __enter__(self):
         return self.context.notification
 
-    def __exit__(self, etype, value, traceback):
+    def __exit__(self, etype, value, tb):
         if etype:
-            self._notifier.notify_exc_info(etype, value, traceback)
+            message = str(value)
+            exception = traceback.format_exception(etype, value, tb)
+            self._notifier.notify_exc_info(message, exception)
         else:
             self._notifier.notify_end()
 
@@ -435,10 +437,10 @@ class DBaaSAPINotification(object):
         self._notify('error', self.required_error_traits(),
                      self.optional_error_traits())
 
-    def notify_exc_info(self, etype, value, tb):
+    def notify_exc_info(self, message, exception):
         self.payload.update({
-            'message': str(value),
-            'exception': traceback.format_exception(etype, value, tb)
+            'message': message,
+            'exception': exception
         })
         self._notify('error', self.required_error_traits(),
                      self.optional_error_traits())

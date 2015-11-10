@@ -325,7 +325,10 @@ common_opts = [
                          'couchdb': 'f0a9ab7b-66f7-4352-93d7-071521d44c7c',
                          'vertica': 'a8d805ae-a3b2-c4fd-gb23-b62cee5201ae',
                          'db2': 'e040cd37-263d-4869-aaa6-c62aa97523b5',
-                         'mariadb': '7a4f82cc-10d2-4bc6-aadc-d9aacc2a3cb5'},
+                         'mariadb': '7a4f82cc-10d2-4bc6-aadc-d9aacc2a3cb5',
+                         'oracle': 'dc43ae4f-9480-4f52-a818-ceb06594893d',
+                         'oracle_ra': '94d3fe48-3927-4041-8944-457a2fac86ce',
+                         },
                 help='Unique ID to tag notification events.'),
     cfg.StrOpt('nova_proxy_admin_user', default='',
                help="Admin username used to connect to Nova.", secret=True),
@@ -570,6 +573,9 @@ oracle_ra_opts = [
                help='oracle_ra_status_file'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.StrOpt('root_controller',
+               default='trove.extensions.oracle.service.OracleRootController',
+               help='Root controller implementation for Oracle Remote Agent.'),
 ]
 
 # Oracle
@@ -631,6 +637,11 @@ oracle_opts = [
                     'instance.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.StrOpt('template', default='General_Purpose_ArchiveLog.dbc',
+               help='Template file name used by dbca.'),
+    cfg.StrOpt('root_controller',
+               default='trove.extensions.oracle.service.OracleRootController',
+               help='Root controller implementation for Oracle.'),
 ]
 
 # Percona
@@ -938,7 +949,7 @@ couchbase_opts = [
     cfg.StrOpt('mount_point', default='/var/lib/couchbase',
                help="Filesystem path for mounting "
                "volumes if volume support is enabled."),
-    cfg.BoolOpt('root_on_create', default=True,
+    cfg.BoolOpt('root_on_create', default=False,
                 help='Enable the automatic creation of the root user for the '
                 'service during instance-create. The generated password for '
                 'the root user is immediately returned in the response of '
@@ -971,7 +982,7 @@ mongodb_group = cfg.OptGroup(
     'mongodb', title='MongoDB options',
     help="Oslo option group designed for MongoDB datastore")
 mongodb_opts = [
-    cfg.ListOpt('tcp_ports', default=["2500", "27017"],
+    cfg.ListOpt('tcp_ports', default=["2500", "27017", "27019"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
                      'if trove_security_groups_support is True).'),

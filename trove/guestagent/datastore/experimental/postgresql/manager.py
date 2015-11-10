@@ -96,6 +96,7 @@ class Manager(
                 self.GUEST_LOG_DISABLE_LABEL: {
                     'logging_collector': 'off',
                 },
+                self.GUEST_LOG_RESTART_LABEL: True,
             },
         }
 
@@ -254,7 +255,7 @@ class Manager(
         try:
             utils.poll_until(_wait_for_txn, time_out=120)
         except exception.PollTimeOut:
-            raise RuntimeError(_("Timeout occurred waiting for Redis repl "
+            raise RuntimeError(_("Timeout occurred waiting for xlog "
                                  "offset to change to '%s'.") % txn)
 
     def cleanup_source_on_replica_detach(self, context, replica_info):

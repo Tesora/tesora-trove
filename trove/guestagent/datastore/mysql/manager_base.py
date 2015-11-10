@@ -130,7 +130,7 @@ class BaseMySqlManager(manager.Manager):
                 self.GUEST_LOG_ENABLE_LABEL: {
                     'slow_query_log': 'on',
                     'slow_query_log_file': slow_query_log_file,
-                    'long_query_time': str(long_query_time),
+                    'long_query_time': long_query_time,
                 },
                 self.GUEST_LOG_DISABLE_LABEL: {
                     'slow_query_log': 'off',

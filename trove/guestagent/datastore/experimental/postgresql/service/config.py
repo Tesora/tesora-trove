@@ -36,6 +36,7 @@ LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 
 BACKUP_CFG_OVERRIDE = 'PgBaseBackupConfig'
+DEBUG_MODE_OVERRIDE = 'DebugLevelOverride'
 
 
 class PgSqlConfig(PgSqlProcess):
@@ -77,6 +78,17 @@ class PgSqlConfig(PgSqlProcess):
                 force=True, as_root=True)
 
         return revision_dir
+
+    @property
+    def PGSQL_EXTRA_BIN_DIR(self):
+        """Redhat and Ubuntu packages for PgSql do not place 'extra' important
+        binaries in /usr/bin, but rather in a directory like /usr/pgsql-9.4/bin
+        in the case of PostgreSQL 9.4 for RHEL/CentOS
+        """
+        version = self.pg_version[1]
+        return {operating_system.DEBIAN: '/usr/lib/postgresql/%s/bin',
+                operating_system.REDHAT: '/usr/pgsql-%s/bin',
+                operating_system.SUSE: '/usr/bin'}[self.OS] % version
 
     @property
     def PGSQL_CONFIG(self):
@@ -225,6 +237,20 @@ class PgSqlConfig(PgSqlProcess):
             'wal_keep_segments': 8,
             'archive_command': arch_cmd
         }
+        if self.pg_version[1] in ('9.4', '9.5'):
+            opts['wal_log_hints'] = 'on'
+
         self.configuration_manager.apply_system_override(opts,
                                                          BACKUP_CFG_OVERRIDE)
+        # self.enable_debugging(level=1)
         self.restart(None)
+
+    def disable_debugging(self, level=1):
+        """Enable debug-level logging in postgres"""
+        self.configuration_manager.remove_system_override(DEBUG_MODE_OVERRIDE)
+
+    def enable_debugging(self, level=1):
+        """Enable debug-level logging in postgres"""
+        opt = {'log_min_messages': 'DEBUG%s' % level}
+        self.configuration_manager.apply_system_override(opt,
+                                                         DEBUG_MODE_OVERRIDE)

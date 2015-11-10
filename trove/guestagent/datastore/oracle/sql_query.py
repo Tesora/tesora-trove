@@ -164,3 +164,18 @@ class CreateRole(object):
 
     def __str__(self):
         return "CREATE ROLE %s" % self.role
+
+class AlterUser(object):
+
+    def __init__(self, user, password=None):
+        self.user = user
+        self.password = password
+
+    def __repr__(self):
+        return str(self)
+
+    def __str__(self):
+        q = "ALTER USER %s" % self.user
+        if self.password:
+            q += " IDENTIFIED BY %s" % self.password
+        return q

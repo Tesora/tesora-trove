@@ -15,7 +15,7 @@
 
 import hashlib
 
-from trove.openstack.common import log as logging
+from oslo_log import log as logging
 
 from trove.common import cfg
 from trove.common.i18n import _

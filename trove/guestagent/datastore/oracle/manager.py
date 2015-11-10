@@ -98,8 +98,12 @@ class Manager(manager.Manager):
             self._perform_restore(backup_info, context,
                                   mount_point, self.app)
         else:
-            db = models.OracleSchema(CONF.guest_name)
-            self.admin.create_database(db.serialize())
+            # using ValidatedMySQLDatabase here for to simulate the object
+            # that would normally be passed in via --databases, and to bookmark
+            # this for when per-datastore validation is added
+            db = models.ValidatedMySQLDatabase()
+            db.name = CONF.guest_name
+            self.admin.create_database([db.serialize()])
 
         if users:
             self.create_user(context, users)
@@ -176,8 +180,7 @@ class Manager(manager.Manager):
 
     def start_db_with_conf_changes(self, context, config_contents):
         LOG.debug("Starting Oracle with configuration changes.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='start_db_with_conf_changes', datastore=MANAGER)
+        self.app.start_db_with_conf_changes(config_contents)
 
     def grant_access(self, context, username, hostname, databases):
         LOG.debug("Granting acccess.")
@@ -190,19 +193,21 @@ class Manager(manager.Manager):
             operation='revoke_access', datastore=MANAGER)
 
     def reset_configuration(self, context, configuration):
+        """
+         Currently this method does nothing. This method needs to be
+         implemented to enable rollback of flavor-resize on guestagent side.
+        """
         LOG.debug("Resetting Oracle configuration.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='change_passwords', datastore=MANAGER)
+        pass
 
     def change_passwords(self, context, users):
         LOG.debug("Changing password.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='change_passwords', datastore=MANAGER)
+        return self.admin.change_passwords(users)
 
     def update_attributes(self, context, username, hostname, user_attrs):
         LOG.debug("Updating database attributes.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='update_attributes', datastore=MANAGER)
+        return self.admin.update_attributes(
+            username, hostname, user_attrs)
 
     def enable_root(self, context):
         LOG.debug("Enabling root.")
@@ -210,8 +215,7 @@ class Manager(manager.Manager):
 
     def disable_root(self, context):
         LOG.debug("Disabling root.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='disable_root', datastore=MANAGER)
+        return self.admin.disable_root()
 
     def is_root_enabled(self, context):
         LOG.debug("Checking if root is enabled.")

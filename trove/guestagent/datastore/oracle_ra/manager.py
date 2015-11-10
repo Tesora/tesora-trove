@@ -143,24 +143,14 @@ class Manager(manager.Manager):
         /etc/trove/trove-guestagent.conf, so that the instance can
         recover the Oracle connectivity after rebooting.
         """
-        ORACLE_CONFIG_FILE_TEMP = '/tmp/oracle-ra.cnf.tmp'
         TROVEGUEST_CONFIG_FILE = '/etc/trove/trove-guestagent.conf'
         TROVEGUEST_CONFIG_FILE_TEMP = '/tmp/trove-guestagent.conf.tmp'
 
-        try:
-            with open(ORACLE_CONFIG_FILE_TEMP, 'w') as t:
-                t.write(config_contents)
-
-            config = ConfigParser.RawConfigParser()
-            config.read(ORACLE_CONFIG_FILE_TEMP)
-
-            oracle_host = config.get('ORACLE', 'oracle_host')
-            oracle_port = config.get('ORACLE', 'oracle_port')
-            oracle_sys_usr = config.get('ORACLE', 'sys_usr')
-            oracle_sys_pswd = config.get('ORACLE', 'sys_pswd')
-            oracle_cdb_name = config.get('ORACLE', 'cdb_name')
-        finally:
-            os.unlink(ORACLE_CONFIG_FILE_TEMP)
+        oracle_host = config_contents.get('oracle_host')
+        oracle_port = config_contents.get('oracle_port')
+        oracle_sys_usr = config_contents.get('sys_usr')
+        oracle_sys_pswd = config_contents.get('sys_pswd')
+        oracle_cdb_name = config_contents.get('cdb_name')
 
         CONF.set_override(name='oracle_host',
                           override=oracle_host,

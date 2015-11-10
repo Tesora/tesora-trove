@@ -181,9 +181,9 @@ class GuestLogView(object):
             'name': self.guest_log.name,
             'type': self.guest_log.type,
             'status': self.guest_log.status,
-            'publishable': self.guest_log.publishable,
+            'published': self.guest_log.published,
+            'pending': self.guest_log.pending,
             'container': self.guest_log.container,
-            'url': self.guest_log.container_url,
         }
 
 

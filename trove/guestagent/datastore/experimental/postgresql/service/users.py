@@ -29,7 +29,8 @@ from trove.guestagent.db.models import PostgreSQLSchema
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
-IGNORE_USERS_LIST = CONF.get(CONF.datastore_manager).ignore_users
+MANAGER = CONF.datastore_manager or 'postgresql'
+IGNORE_USERS_LIST = CONF.get(MANAGER).ignore_users
 
 
 class PgSqlUsers(PgSqlAccess):
@@ -202,6 +203,14 @@ class PgSqlUsers(PgSqlAccess):
             return self._build_user(context, username)
 
         raise exception.UserNotFound()
+
+    def user_exists(self, username):
+        """Wrapper for find user to avoid need to catch an exception"""
+        try:
+            self._find_user(context=None, username=username)
+            return True
+        except exception.UserNotFound:
+            return False
 
     def change_passwords(self, context, users):
         """Change the passwords of one or more existing users.
