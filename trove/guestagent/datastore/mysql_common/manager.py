@@ -20,6 +20,7 @@ import os
 
 from oslo_log import log as logging
 
+from trove.common import cfg
 from trove.common import configurations
 from trove.common import exception
 from trove.common.i18n import _
@@ -35,6 +36,7 @@ from trove.guestagent import volume
 
 
 LOG = logging.getLogger(__name__)
+CONF = cfg.CONF
 
 
 class MySqlManager(manager.Manager):
