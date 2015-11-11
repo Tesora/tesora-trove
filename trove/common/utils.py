@@ -62,6 +62,11 @@ def build_jinja_environment():
 ENV = build_jinja_environment()
 
 
+def pagination_limit(limit, default_limit):
+    limit = int(limit or default_limit)
+    return min(limit, default_limit)
+
+
 def create_method_args_string(*args, **kwargs):
     """Returns a string representation of args and keyword args.
 

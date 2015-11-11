@@ -29,8 +29,6 @@ from trove.guestagent.db.models import PostgreSQLSchema
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
-MANAGER = CONF.datastore_manager or 'postgresql'
-IGNORE_USERS_LIST = CONF.get(MANAGER).ignore_users
 
 
 class PgSqlUsers(PgSqlAccess):
@@ -140,7 +138,7 @@ class PgSqlUsers(PgSqlAccess):
     def _get_users(self, context):
         """Return all non-system Postgres users on the instance."""
         results = pgutil.query(
-            pgutil.UserQuery.list(ignore=IGNORE_USERS_LIST),
+            pgutil.UserQuery.list(ignore=cfg.get_ignored_users()),
             timeout=30,
         )
         return [self._build_user(context, row[0].strip()) for row in results]

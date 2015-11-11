@@ -23,8 +23,6 @@ from trove.guestagent.db import models
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
-IGNORE_USERS_LIST = CONF.get(CONF.datastore_manager).ignore_users
-MANAGER = CONF.datastore_manager
 
 
 class PgSqlRoot(PgSqlUsers):
@@ -34,7 +32,7 @@ class PgSqlRoot(PgSqlUsers):
         """Return True if there is a superuser account enabled.
         """
         results = pgutil.query(
-            pgutil.UserQuery.list_root(),
+            pgutil.UserQuery.list_root(ignore=cfg.get_ignored_users()),
             timeout=30,
         )
 

@@ -649,7 +649,7 @@ class CassandraAdmin(object):
         """
         return {self._build_user(client, user.name)
                 for user in client.execute("LIST USERS;")
-                if not user.super and user.name not in CONF.ignore_users}
+                if not user.super and user.name not in cfg.get_ignored_users()}
 
     def _build_user(self, client, username):
         user = models.CassandraUser(username)
@@ -822,7 +822,7 @@ class CassandraAdmin(object):
         return {models.CassandraSchema(db.keyspace_name)
                 for db in client.execute("SELECT * FROM "
                                          "system.schema_keyspaces;")
-                if db.keyspace_name not in CONF.ignore_dbs}
+                if db.keyspace_name not in cfg.get_ignored_dbs()}
 
     def list_access(self, context, username, hostname):
         with CassandraLocalhostConnection(self.__admin_user) as client:

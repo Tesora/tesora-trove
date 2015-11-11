@@ -17,7 +17,6 @@ import os
 
 from oslo_log import log as logging
 
-from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance as ds_instance
@@ -32,15 +31,13 @@ from trove.guestagent import volume
 
 
 LOG = logging.getLogger(__name__)
-CONF = cfg.CONF
-MANAGER = CONF.datastore_manager
 
 
 class Manager(manager.Manager):
 
     def __init__(self):
         self.app = service.MongoDBApp()
-        super(Manager, self).__init__()
+        super(Manager, self).__init__('mongodb')
 
     @property
     def status(self):
@@ -50,14 +47,10 @@ class Manager(manager.Manager):
     def configuration_manager(self):
         return self.app.configuration_manager
 
-    def rpc_ping(self, context):
-        LOG.debug("Responding to RPC ping.")
-        return True
-
     def do_prepare(self, context, packages, databases, memory_mb, users,
-                   device_path=None, mount_point=None, backup_info=None,
-                   config_contents=None, root_password=None, overrides=None,
-                   cluster_config=None, snapshot=None):
+                   device_path, mount_point, backup_info,
+                   config_contents, root_password, overrides,
+                   cluster_config, snapshot):
         """This is called from prepare in the base class."""
         self.app.install_if_needed(packages)
         self.app.wait_for_start()
@@ -105,12 +98,6 @@ class Manager(manager.Manager):
             LOG.debug('Root password provided. Enabling root.')
             service.MongoDBAdmin().enable_root(root_password)
 
-        if not cluster_config:
-            if databases:
-                self.create_database(context, databases)
-            if users:
-                self.create_user(context, users)
-
     def restart(self, context):
         LOG.debug("Restarting MongoDB.")
         self.app.restart()
@@ -130,6 +117,7 @@ class Manager(manager.Manager):
     def get_filesystem_stats(self, context, fs_path):
         """Gets the filesystem stats for the path given."""
         LOG.debug("Getting file system status.")
+        # TODO(peterstac) - why is this hard-coded?
         return dbaas.get_filesystem_volume_stats(system.MONGODB_MOUNT_POINT)
 
     def change_passwords(self, context, users):
@@ -198,7 +186,7 @@ class Manager(manager.Manager):
     def enable_root_with_password(self, context, root_password=None):
         LOG.debug("Enabling root with password.")
         raise exception.DatastoreOperationNotSupported(
-            operation='enable_root_with_password', datastore=MANAGER)
+            operation='enable_root_with_password', datastore=self.manager)
 
     def disable_root(self, context):
         LOG.debug("Disabling root.")
@@ -257,46 +245,46 @@ class Manager(manager.Manager):
                                  replica_source_config=None):
         LOG.debug("Getting replication snapshot.")
         raise exception.DatastoreOperationNotSupported(
-            operation='get_replication_snapshot', datastore=MANAGER)
+            operation='get_replication_snapshot', datastore=self.manager)
 
     def attach_replication_slave(self, context, snapshot, slave_config):
         LOG.debug("Attaching replica.")
         raise exception.DatastoreOperationNotSupported(
-            operation='attach_replication_slave', datastore=MANAGER)
+            operation='attach_replication_slave', datastore=self.manager)
 
     def detach_replica(self, context, for_failover=False):
         LOG.debug("Detaching replica.")
         raise exception.DatastoreOperationNotSupported(
-            operation='detach_replica', datastore=MANAGER)
+            operation='detach_replica', datastore=self.manager)
 
     def get_replica_context(self, context):
         raise exception.DatastoreOperationNotSupported(
-            operation='get_replica_context', datastore=MANAGER)
+            operation='get_replica_context', datastore=self.manager)
 
     def make_read_only(self, context, read_only):
         raise exception.DatastoreOperationNotSupported(
-            operation='make_read_only', datastore=MANAGER)
+            operation='make_read_only', datastore=self.manager)
 
     def enable_as_master(self, context, replica_source_config):
         raise exception.DatastoreOperationNotSupported(
-            operation='enable_as_master', datastore=MANAGER)
+            operation='enable_as_master', datastore=self.manager)
 
     def get_txn_count(self):
         raise exception.DatastoreOperationNotSupported(
-            operation='get_txn_count', datastore=MANAGER)
+            operation='get_txn_count', datastore=self.manager)
 
     def get_latest_txn_id(self):
         raise exception.DatastoreOperationNotSupported(
-            operation='get_latest_txn_id', datastore=MANAGER)
+            operation='get_latest_txn_id', datastore=self.manager)
 
     def wait_for_txn(self, txn):
         raise exception.DatastoreOperationNotSupported(
-            operation='wait_for_txn', datastore=MANAGER)
+            operation='wait_for_txn', datastore=self.manager)
 
     def demote_replication_master(self, context):
         LOG.debug("Demoting replica source.")
         raise exception.DatastoreOperationNotSupported(
-            operation='demote_replication_master', datastore=MANAGER)
+            operation='demote_replication_master', datastore=self.manager)
 
     def add_members(self, context, members):
         try:

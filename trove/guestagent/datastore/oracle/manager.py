@@ -71,7 +71,7 @@ class Manager(manager.Manager):
     based off of the datastore of the Trove instance.
     """
     def __init__(self):
-        super(Manager, self).__init__()
+        super(Manager, self).__init__('oracle')
         self.appStatus = service.OracleAppStatus()
         self.app = service.OracleApp(self.appStatus)
         self.admin = service.OracleAdmin()

@@ -25,7 +25,6 @@ from trove.guestagent import backup
 from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.experimental.redis import service
 from trove.guestagent.datastore import manager
-from trove.guestagent import dbaas
 from trove.guestagent.strategies.replication import get_replication_strategy
 from trove.guestagent import volume
 
@@ -46,7 +45,7 @@ class Manager(manager.Manager):
     """
 
     def __init__(self):
-        super(Manager, self).__init__()
+        super(Manager, self).__init__(MANAGER)
         self._app = service.RedisApp()
 
     @property
@@ -56,10 +55,6 @@ class Manager(manager.Manager):
     @property
     def configuration_manager(self):
         return self._app.configuration_manager
-
-    def rpc_ping(self, context):
-        LOG.debug("Responding to RPC ping.")
-        return True
 
     def change_passwords(self, context, users):
         """
@@ -92,9 +87,9 @@ class Manager(manager.Manager):
         LOG.info(_("Restored database successfully."))
 
     def do_prepare(self, context, packages, databases, memory_mb, users,
-                   device_path=None, mount_point=None, backup_info=None,
-                   config_contents=None, root_password=None, overrides=None,
-                   cluster_config=None, snapshot=None):
+                   device_path, mount_point, backup_info,
+                   config_contents, root_password, overrides,
+                   cluster_config, snapshot):
         """This is called from prepare in the base class."""
         if device_path:
             device = volume.VolumeDevice(device_path)
@@ -148,13 +143,6 @@ class Manager(manager.Manager):
         """
         LOG.debug("Stop DB called.")
         self._app.stop_db(do_not_start_on_reboot=do_not_start_on_reboot)
-
-    def get_filesystem_stats(self, context, fs_path):
-        """Gets the filesystem stats for the path given."""
-        LOG.debug("Get Filesystem Stats.")
-        mount_point = CONF.get(
-            'mysql' if not MANAGER else MANAGER).mount_point
-        return dbaas.get_filesystem_volume_stats(mount_point)
 
     def create_backup(self, context, backup_info):
         """Create a backup of the database."""
@@ -286,8 +274,7 @@ class Manager(manager.Manager):
             replication.snapshot_for_replication(context, self._app, None,
                                                  snapshot_info))
 
-        mount_point = CONF.get(MANAGER).mount_point
-        volume_stats = dbaas.get_filesystem_volume_stats(mount_point)
+        volume_stats = self.get_filesystem_stats(context, None)
 
         replication_snapshot = {
             'dataset': {
