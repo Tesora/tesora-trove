@@ -77,7 +77,7 @@ from trove.guestagent.datastore.mysql.service import MySqlAdmin
 from trove.guestagent.datastore.mysql.service import MySqlApp
 from trove.guestagent.datastore.mysql.service import MySqlAppStatus
 from trove.guestagent.datastore.mysql.service import MySqlRootAccess
-import trove.guestagent.datastore.mysql.service_base as dbaas_base
+import trove.guestagent.datastore.mysql_common.service as dbaas_base
 import trove.guestagent.datastore.service as base_datastore_service
 from trove.guestagent.datastore.service import BaseDbStatus
 from trove.guestagent.db import models
@@ -536,7 +536,8 @@ class MySqlAdminTest(testtools.TestCase):
                     "default_character_set_name as charset,",
                     "default_collation_name as collation",
                     "FROM information_schema.schemata",
-                    ("schema_name NOT IN ('" + "', '".join(CONF.ignore_dbs) +
+                    ("schema_name NOT IN ('" +
+                     "', '".join(cfg.get_ignored_dbs()) +
                      "')"),
                     "ORDER BY schema_name ASC",
                     ]
@@ -552,8 +553,8 @@ class MySqlAdminTest(testtools.TestCase):
                     "default_character_set_name as charset,",
                     "default_collation_name as collation",
                     "FROM information_schema.schemata",
-                    ("schema_name NOT IN ('" + "', '".join(CONF.ignore_dbs) +
-                     "')"),
+                    ("schema_name NOT IN ('" +
+                     "', '".join(cfg.get_ignored_dbs()) + "')"),
                     "ORDER BY schema_name ASC",
                     ]
         for text in expected:
@@ -569,8 +570,8 @@ class MySqlAdminTest(testtools.TestCase):
                     "default_character_set_name as charset,",
                     "default_collation_name as collation",
                     "FROM information_schema.schemata",
-                    ("schema_name NOT IN ('" + "', '".join(CONF.ignore_dbs) +
-                     "')"),
+                    ("schema_name NOT IN ('" +
+                     "', '".join(cfg.get_ignored_dbs()) + "')"),
                     "ORDER BY schema_name ASC",
                     ]
 
@@ -589,8 +590,8 @@ class MySqlAdminTest(testtools.TestCase):
                     "default_character_set_name as charset,",
                     "default_collation_name as collation",
                     "FROM information_schema.schemata",
-                    ("schema_name NOT IN ('" + "', '".join(CONF.ignore_dbs) +
-                     "')"),
+                    ("schema_name NOT IN ('" +
+                     "', '".join(cfg.get_ignored_dbs()) + "')"),
                     "ORDER BY schema_name ASC",
                     ]
         for text in expected:

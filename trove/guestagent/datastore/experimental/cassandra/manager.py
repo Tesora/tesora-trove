@@ -29,12 +29,11 @@ from trove.guestagent.datastore.experimental.cassandra.service import (
     CassandraAdmin
 )
 from trove.guestagent.datastore import manager
-from trove.guestagent import dbaas
 from trove.guestagent import volume
+
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
-MANAGER = CONF.datastore_manager
 
 
 class Manager(manager.Manager):
@@ -44,7 +43,7 @@ class Manager(manager.Manager):
             service.CassandraApp.get_current_superuser())
         self.app = service.CassandraApp(self.appStatus)
         self.__admin = CassandraAdmin(self.app.get_current_superuser())
-        super(Manager, self).__init__()
+        super(Manager, self).__init__('cassandra')
 
     @property
     def status(self):
@@ -54,18 +53,8 @@ class Manager(manager.Manager):
     def configuration_manager(self):
         return self.app.configuration_manager
 
-    def rpc_ping(self, context):
-        LOG.debug("Responding to RPC ping.")
-        return True
-
     def restart(self, context):
         self.app.restart()
-
-    def get_filesystem_stats(self, context, fs_path):
-        """Gets the filesystem stats for the path given."""
-        mount_point = CONF.get(
-            'mysql' if not MANAGER else MANAGER).mount_point
-        return dbaas.get_filesystem_volume_stats(mount_point)
 
     def start_db_with_conf_changes(self, context, config_contents):
         self.app.start_db_with_conf_changes(config_contents)
@@ -77,9 +66,9 @@ class Manager(manager.Manager):
         self.app.reset_configuration(configuration)
 
     def do_prepare(self, context, packages, databases, memory_mb, users,
-                   device_path=None, mount_point=None, backup_info=None,
-                   config_contents=None, root_password=None, overrides=None,
-                   cluster_config=None, snapshot=None):
+                   device_path, mount_point, backup_info,
+                   config_contents, root_password, overrides,
+                   cluster_config, snapshot):
         """This is called from prepare in the base class."""
         self.app.install_if_needed(packages)
         self.app.init_storage_structure(mount_point)
@@ -142,12 +131,6 @@ class Manager(manager.Manager):
 
         self.__admin = CassandraAdmin(self.app.get_current_superuser())
 
-        if databases:
-            self.create_database(context, databases)
-
-        if users:
-            self.create_user(context, users)
-
     def change_passwords(self, context, users):
         with EndNotification(context):
             self.__admin.change_passwords(context, users)
@@ -196,12 +179,12 @@ class Manager(manager.Manager):
 
     def enable_root(self, context):
         raise exception.DatastoreOperationNotSupported(
-            operation='enable_root', datastore=MANAGER)
+            operation='enable_root', datastore=self.manager)
 
     def enable_root_with_password(self, context, root_password=None):
         LOG.debug("Enabling root with password.")
         raise exception.DatastoreOperationNotSupported(
-            operation='enable_root_with_password', datastore=MANAGER)
+            operation='enable_root_with_password', datastore=self.manager)
 
     def disable_root(self, context):
         LOG.debug("Disabling root.")
@@ -210,7 +193,7 @@ class Manager(manager.Manager):
 
     def is_root_enabled(self, context):
         raise exception.DatastoreOperationNotSupported(
-            operation='is_root_enabled', datastore=MANAGER)
+            operation='is_root_enabled', datastore=self.manager)
 
     def _perform_restore(self, backup_info, context, restore_location):
         LOG.info(_("Restoring database from backup %s.") % backup_info['id'])
@@ -269,42 +252,42 @@ class Manager(manager.Manager):
     def get_replication_snapshot(self, context, snapshot_info,
                                  replica_source_config=None):
         raise exception.DatastoreOperationNotSupported(
-            operation='get_replication_snapshot', datastore=MANAGER)
+            operation='get_replication_snapshot', datastore=self.manager)
 
     def attach_replication_slave(self, context, snapshot, slave_config):
         LOG.debug("Attaching replication slave.")
         raise exception.DatastoreOperationNotSupported(
-            operation='attach_replication_slave', datastore=MANAGER)
+            operation='attach_replication_slave', datastore=self.manager)
 
     def detach_replica(self, context, for_failover=False):
         raise exception.DatastoreOperationNotSupported(
-            operation='detach_replica', datastore=MANAGER)
+            operation='detach_replica', datastore=self.manager)
 
     def get_replica_context(self, context):
         raise exception.DatastoreOperationNotSupported(
-            operation='get_replica_context', datastore=MANAGER)
+            operation='get_replica_context', datastore=self.manager)
 
     def make_read_only(self, context, read_only):
         raise exception.DatastoreOperationNotSupported(
-            operation='make_read_only', datastore=MANAGER)
+            operation='make_read_only', datastore=self.manager)
 
     def enable_as_master(self, context, replica_source_config):
         raise exception.DatastoreOperationNotSupported(
-            operation='enable_as_master', datastore=MANAGER)
+            operation='enable_as_master', datastore=self.manager)
 
     def get_txn_count(self):
         raise exception.DatastoreOperationNotSupported(
-            operation='get_txn_count', datastore=MANAGER)
+            operation='get_txn_count', datastore=self.manager)
 
     def get_latest_txn_id(self):
         raise exception.DatastoreOperationNotSupported(
-            operation='get_latest_txn_id', datastore=MANAGER)
+            operation='get_latest_txn_id', datastore=self.manager)
 
     def wait_for_txn(self, txn):
         raise exception.DatastoreOperationNotSupported(
-            operation='wait_for_txn', datastore=MANAGER)
+            operation='wait_for_txn', datastore=self.manager)
 
     def demote_replication_master(self, context):
         LOG.debug("Demoting replication master.")
         raise exception.DatastoreOperationNotSupported(
-            operation='demote_replication_master', datastore=MANAGER)
+            operation='demote_replication_master', datastore=self.manager)

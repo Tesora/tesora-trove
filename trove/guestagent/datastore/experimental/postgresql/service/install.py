@@ -43,7 +43,6 @@ class PgSqlInstall(PgSqlProcess):
                 guest_id=CONF.guest_id
             )
         )
-
         PgSqlProcess.recreate_wal_archive_dir()
 
         packager = pkg.Package()

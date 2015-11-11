@@ -215,7 +215,7 @@ class PgSqlConfig(PgSqlProcess):
 
     def enable_backups(self):
         """Apply necessary changes to config to enable WAL-based backups
-           if we are using the PgBaseBackup strategy
+        if we are using the PgBaseBackup strategy
         """
         LOG.info("Checking if we need to apply changes to WAL config")
         if not CONF.postgresql.backup_strategy == 'PgBaseBackup':

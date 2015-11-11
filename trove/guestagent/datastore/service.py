@@ -72,20 +72,21 @@ class BaseDbStatus(object):
     @property
     def prepare_completed(self):
         if self._prepare_completed is None:
-            self._prepare_completed = os.path.isfile(
-                guestagent_utils.build_file_path(
-                    self.GUESTAGENT_DIR, self.PREPARE_END_FILENAME))
+            # Force the file check
+            self.prepare_completed = None
         return self._prepare_completed
 
     @prepare_completed.setter
     def prepare_completed(self, value):
         # Set the value based on the existence of the file; 'value' is ignored
+        # This is required as the value of prepare_completed is cached, so
+        # this must be referenced any time the existence of the file changes
         self._prepare_completed = os.path.isfile(
             guestagent_utils.build_file_path(
                 self.GUESTAGENT_DIR, self.PREPARE_END_FILENAME))
 
     def begin_install(self):
-        """Called right before DB is prepared."""
+        """First call of the DB prepare."""
         prepare_start_file = guestagent_utils.build_file_path(
             self.GUESTAGENT_DIR, self.PREPARE_START_FILENAME)
         operating_system.write_file(prepare_start_file, '')
@@ -98,7 +99,7 @@ class BaseDbStatus(object):
         self.restart_mode = True
 
     def end_install(self, error_occurred=False, post_processing=False):
-        """Called after prepare completes."""
+        """Called after prepare has ended."""
 
         # Set the "we're done" flag if there's no error and
         # no post_processing is necessary

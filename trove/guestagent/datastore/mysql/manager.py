@@ -18,8 +18,9 @@
 
 from oslo_utils import importutils
 from trove.common import cfg
-from trove.guestagent.datastore.mysql import manager_base
+from trove.guestagent.datastore.mysql_common import manager
 from trove.guestagent.strategies.replication import get_replication_strategy
+
 
 CONF = cfg.CONF
 MANAGER = CONF.datastore_manager or 'mysql'
@@ -34,7 +35,7 @@ MYSQL_APP_STATUS = "trove.guestagent.datastore.mysql.service.MySqlAppStatus"
 MYSQL_ADMIN = "trove.guestagent.datastore.mysql.service.MySqlAdmin"
 
 
-class Manager(manager_base.BaseMySqlManager):
+class Manager(manager.MySqlManager):
 
     def __init__(self):
         mysql_app = importutils.import_class(MYSQL_APP)

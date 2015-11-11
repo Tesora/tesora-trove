@@ -28,6 +28,7 @@ from trove.common.notification import EndNotification
 from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.common.operating_system import FileMode
+from trove.guestagent import dbaas
 from trove.guestagent import guest_log
 
 
@@ -54,11 +55,13 @@ class Manager(periodic_task.PeriodicTasks):
     GUEST_LOG_DEFS_ERROR_LABEL = 'error'
     GUEST_LOG_DEFS_SLOW_QUERY_LABEL = 'slow_query'
 
-    def __init__(self):
+    def __init__(self, manager_name):
 
         super(Manager, self).__init__(CONF)
 
         # Manager properties
+        self.__manager_name = manager_name
+        self.__manager = None
         self.__prepare_error = False
 
         # Guest log
@@ -68,11 +71,24 @@ class Manager(periodic_task.PeriodicTasks):
         self._guest_log_defs = None
 
     @property
+    def manager_name(self):
+        """This returns the passed-in name of the manager."""
+        return self.__manager_name
+
+    @property
     def manager(self):
-        """This should return the name of the manager.  Each datastore
-        can override this if the default is not correct.
-        """
-        return CONF.datastore_manager
+        """This returns the name of the manager."""
+        if not self.__manager:
+            self.__manager = CONF.datastore_manager or self.__manager_name
+        return self.__manager
+
+    @property
+    def prepare_error(self):
+        return self.__prepare_error
+
+    @prepare_error.setter
+    def prepare_error(self, prepare_error):
+        self.__prepare_error = prepare_error
 
     @property
     def configuration_manager(self):
@@ -88,14 +104,6 @@ class Manager(periodic_task.PeriodicTasks):
         must implement this property.
         """
         return None
-
-    @property
-    def prepare_error(self):
-        return self.__prepare_error
-
-    @prepare_error.setter
-    def prepare_error(self, prepare_error):
-        self.__prepare_error = prepare_error
 
     @property
     def datastore_log_defs(self):
@@ -197,45 +205,79 @@ class Manager(periodic_task.PeriodicTasks):
 
         self._guest_log_loaded_context = self.guest_log_context
 
-    ########################
-    # Status related methods
-    ########################
+    ################
+    # Status related
+    ################
     @periodic_task.periodic_task
     def update_status(self, context):
         """Update the status of the trove instance. It is decorated with
-        perodic task so it is called automatically.
+        perodic_task so it is called automatically.
         """
         LOG.debug("Update status called.")
         self.status.update()
 
-    #########################
-    # Prepare related methods
-    #########################
+    def rpc_ping(self, context):
+        LOG.debug("Responding to RPC ping.")
+        return True
+
+    #################
+    # Prepare related
+    #################
     def prepare(self, context, packages, databases, memory_mb, users,
                 device_path=None, mount_point=None, backup_info=None,
                 config_contents=None, root_password=None, overrides=None,
                 cluster_config=None, snapshot=None):
         """Set up datastore on a Guest Instance."""
-        LOG.info(_("Starting datastore prepare."))
+        LOG.info(_("Starting datastore prepare for '%s'.") % self.manager)
         with EndNotification(context):
             self.status.begin_install()
             post_processing = True if cluster_config else False
             try:
-                self.do_prepare(
-                    context, packages, databases, memory_mb, users,
-                    device_path=device_path, mount_point=mount_point,
-                    backup_info=backup_info, config_contents=config_contents,
-                    root_password=root_password, overrides=overrides,
-                    cluster_config=cluster_config, snapshot=snapshot)
-            except Exception:
+                self.do_prepare(context, packages, databases, memory_mb,
+                                users, device_path, mount_point, backup_info,
+                                config_contents, root_password, overrides,
+                                cluster_config, snapshot)
+            except Exception as ex:
                 self.prepare_error = True
-                LOG.exception("An error occurred preparing datastore")
+                LOG.exception(_("An error occurred preparing datastore: %s") %
+                              ex.message)
                 raise
             finally:
-                LOG.info(_("Ending datastore prepare."))
+                LOG.info(_("Ending datastore prepare for '%s'.") %
+                         self.manager)
                 self.status.end_install(error_occurred=self.prepare_error,
                                         post_processing=post_processing)
+        # At this point critical 'prepare' work is done and the instance
+        # is now in the correct 'ACTIVE' 'INSTANCE_READY' or 'ERROR' state.
+        # Of cource if an error has occurred, none of the code that follows
+        # will run.
         LOG.info(_('Completed setup of datastore successfully.'))
+
+        # We only create databases and users automatically for non-cluster
+        # instances.
+        if not cluster_config:
+            try:
+                if databases:
+                    LOG.debug('Calling add databases.')
+                    self.create_database(context, databases)
+                if users:
+                    LOG.debug('Calling add users.')
+                    self.create_user(context, users)
+            except Exception as ex:
+                LOG.exception(_("An error occurred creating databases/users: "
+                                "%s") % ex.message)
+                raise
+
+        try:
+            LOG.debug('Calling post_prepare.')
+            self.post_prepare(context, packages, databases, memory_mb,
+                              users, device_path, mount_point, backup_info,
+                              config_contents, root_password, overrides,
+                              cluster_config, snapshot)
+        except Exception as ex:
+            LOG.exception(_("An error occurred in post prepare: %s") %
+                          ex.message)
+            raise
 
     @abc.abstractmethod
     def do_prepare(self, context, packages, databases, memory_mb, users,
@@ -244,10 +286,37 @@ class Manager(periodic_task.PeriodicTasks):
         """This is called from prepare when the Trove instance first comes
         online.  'Prepare' is the first rpc message passed from the
         task manager.  do_prepare handles all the base configuration of
-        the instance and is where the actual work is done.  Each datastore
-        must implement this method.
+        the instance and is where the actual work is done.  Once this method
+        completes, the datastore is considered either 'ready' for use (or
+        for final connections to other datastores) or in an 'error' state,
+        and the status is changed accordingly.  Each datastore must
+        implement this method.
         """
         pass
+
+    def post_prepare(self, context, packages, databases, memory_mb, users,
+                     device_path, mount_point, backup_info, config_contents,
+                     root_password, overrides, cluster_config, snapshot):
+        """This is called after prepare has completed successfully.
+        Processing done here should be limited to things that will not
+        affect the actual 'running' status of the datastore (for example,
+        creating databases and users, although these are now handled
+        automatically).  Any exceptions are caught, logged and rethrown,
+        however no status changes are made and the end-user will not be
+        informed of the error.
+        """
+        LOG.debug('No post_prepare work has been defined.')
+        pass
+
+    #####################
+    # File System related
+    #####################
+    def get_filesystem_stats(self, context, fs_path):
+        """Gets the filesystem stats for the path given."""
+        # TODO(peterstac) - note that fs_path is not used in this method.
+        mount_point = CONF.get(self.manager).mount_point
+        LOG.debug("Getting file system stats for '%s'" % mount_point)
+        return dbaas.get_filesystem_volume_stats(mount_point)
 
     #########################
     # Cluster related methods
@@ -256,9 +325,9 @@ class Manager(periodic_task.PeriodicTasks):
         LOG.debug("Cluster creation complete, starting status checks.")
         self.status.end_install()
 
-    #####################
-    # Log related methods
-    #####################
+    #############
+    # Log related
+    #############
     def guest_log_list(self, context):
         LOG.debug("Getting list of guest logs.")
         self.guest_log_context = context

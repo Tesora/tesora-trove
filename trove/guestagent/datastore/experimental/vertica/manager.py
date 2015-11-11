@@ -15,7 +15,6 @@ import os
 
 from oslo_log import log as logging
 
-from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance as rd_ins
@@ -24,12 +23,10 @@ from trove.guestagent.datastore.experimental.vertica.service import (
     VerticaAppStatus)
 from trove.guestagent.datastore.experimental.vertica.service import VerticaApp
 from trove.guestagent.datastore import manager
-from trove.guestagent import dbaas
 from trove.guestagent import volume
 
+
 LOG = logging.getLogger(__name__)
-CONF = cfg.CONF
-MANAGER = 'vertica' if not CONF.datastore_manager else CONF.datastore_manager
 
 
 class Manager(manager.Manager):
@@ -37,20 +34,16 @@ class Manager(manager.Manager):
     def __init__(self):
         self.appStatus = VerticaAppStatus()
         self.app = VerticaApp(self.appStatus)
-        super(Manager, self).__init__()
+        super(Manager, self).__init__('vertica')
 
     @property
     def status(self):
         return self.appStatus
 
-    def rpc_ping(self, context):
-        LOG.debug("Responding to RPC ping.")
-        return True
-
     def do_prepare(self, context, packages, databases, memory_mb, users,
-                   device_path=None, mount_point=None, backup_info=None,
-                   config_contents=None, root_password=None, overrides=None,
-                   cluster_config=None, snapshot=None):
+                   device_path, mount_point, backup_info,
+                   config_contents, root_password, overrides,
+                   cluster_config, snapshot):
         """This is called from prepare in the base class."""
         if device_path:
             device = volume.VolumeDevice(device_path)
@@ -77,12 +70,6 @@ class Manager(manager.Manager):
         LOG.debug("Restarting the database.")
         self.app.restart()
         LOG.debug("Restarted the database.")
-
-    def get_filesystem_stats(self, context, fs_path):
-        """Gets the filesystem stats for the path given."""
-        LOG.debug("Finding the file-systems stats.")
-        mount_point = CONF.get(MANAGER).mount_point
-        return dbaas.get_filesystem_volume_stats(mount_point)
 
     def stop_db(self, context, do_not_start_on_reboot=False):
         LOG.debug("Stopping the database.")
@@ -119,69 +106,69 @@ class Manager(manager.Manager):
         LOG.debug("Changing password.")
         with EndNotification(context):
             raise exception.DatastoreOperationNotSupported(
-                operation='change_passwords', datastore=MANAGER)
+                operation='change_passwords', datastore=self.manager)
 
     def update_attributes(self, context, username, hostname, user_attrs):
         LOG.debug("Updating database attributes.")
         with EndNotification(context):
             raise exception.DatastoreOperationNotSupported(
-                operation='update_attributes', datastore=MANAGER)
+                operation='update_attributes', datastore=self.manager)
 
     def create_database(self, context, databases):
         LOG.debug("Creating database.")
         with EndNotification(context):
             raise exception.DatastoreOperationNotSupported(
-                operation='create_database', datastore=MANAGER)
+                operation='create_database', datastore=self.manager)
 
     def create_user(self, context, users):
         LOG.debug("Creating user.")
         with EndNotification(context):
             raise exception.DatastoreOperationNotSupported(
-                operation='create_user', datastore=MANAGER)
+                operation='create_user', datastore=self.manager)
 
     def delete_database(self, context, database):
         LOG.debug("Deleting database.")
         with EndNotification(context):
             raise exception.DatastoreOperationNotSupported(
-                operation='delete_database', datastore=MANAGER)
+                operation='delete_database', datastore=self.manager)
 
     def delete_user(self, context, user):
         LOG.debug("Deleting user.")
         with EndNotification(context):
             raise exception.DatastoreOperationNotSupported(
-                operation='delete_user', datastore=MANAGER)
+                operation='delete_user', datastore=self.manager)
 
     def get_user(self, context, username, hostname):
         LOG.debug("Getting user.")
         raise exception.DatastoreOperationNotSupported(
-            operation='get_user', datastore=MANAGER)
+            operation='get_user', datastore=self.manager)
 
     def grant_access(self, context, username, hostname, databases):
         LOG.debug("Granting acccess.")
         raise exception.DatastoreOperationNotSupported(
-            operation='grant_access', datastore=MANAGER)
+            operation='grant_access', datastore=self.manager)
 
     def revoke_access(self, context, username, hostname, database):
         LOG.debug("Revoking access.")
         raise exception.DatastoreOperationNotSupported(
-            operation='revoke_access', datastore=MANAGER)
+            operation='revoke_access', datastore=self.manager)
 
     def list_access(self, context, username, hostname):
         LOG.debug("Listing access.")
         raise exception.DatastoreOperationNotSupported(
-            operation='list_access', datastore=MANAGER)
+            operation='list_access', datastore=self.manager)
 
     def list_databases(self, context, limit=None, marker=None,
                        include_marker=False):
         LOG.debug("Listing databases.")
         raise exception.DatastoreOperationNotSupported(
-            operation='list_databases', datastore=MANAGER)
+            operation='list_databases', datastore=self.manager)
 
     def list_users(self, context, limit=None, marker=None,
                    include_marker=False):
         LOG.debug("Listing users.")
         raise exception.DatastoreOperationNotSupported(
-            operation='list_users', datastore=MANAGER)
+            operation='list_users', datastore=self.manager)
 
     def enable_root(self, context):
         LOG.debug("Enabling root.")
@@ -194,7 +181,7 @@ class Manager(manager.Manager):
     def disable_root(self, context):
         LOG.debug("Disabling root.")
         raise exception.DatastoreOperationNotSupported(
-            operation='disable_root', datastore=MANAGER)
+            operation='disable_root', datastore=self.manager)
 
     def is_root_enabled(self, context):
         LOG.debug("Checking if root is enabled.")
@@ -204,7 +191,7 @@ class Manager(manager.Manager):
         LOG.debug("Creating backup.")
         with EndNotification(context):
             raise exception.DatastoreOperationNotSupported(
-                operation='create_backup', datastore=MANAGER)
+                operation='create_backup', datastore=self.manager)
 
     def start_db_with_conf_changes(self, context, config_contents):
         LOG.debug("Starting with configuration changes.")

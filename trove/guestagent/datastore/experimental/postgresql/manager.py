@@ -23,8 +23,8 @@ from .service.database import PgSqlDatabase
 from .service.install import PgSqlInstall
 from .service.root import PgSqlRoot
 from .service.status import PgSqlAppStatus
+from .service.users import PgSqlUsers
 import pgutil
-from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common.notification import EndNotification
@@ -32,14 +32,12 @@ from trove.common import utils
 from trove.guestagent import backup
 from trove.guestagent.datastore import manager
 from trove.guestagent.db import models
-from trove.guestagent import dbaas
 from trove.guestagent import guest_log
 from trove.guestagent.strategies.replication import get_replication_strategy
 from trove.guestagent import volume
 
 
 LOG = logging.getLogger(__name__)
-CONF = cfg.CONF
 
 MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'postgresql'
 
@@ -51,6 +49,7 @@ REPLICATION_STRATEGY_CLASS = get_replication_strategy(REPLICATION_STRATEGY,
 
 class Manager(
         manager.Manager,
+        PgSqlUsers,
         PgSqlDatabase,
         PgSqlRoot,
         PgSqlConfig,
@@ -100,26 +99,9 @@ class Manager(
             },
         }
 
-    def rpc_ping(self, context):
-        LOG.debug("Responding to RPC ping.")
-        return True
-
-    def do_prepare(
-            self,
-            context,
-            packages,
-            databases,
-            memory_mb,
-            users,
-            device_path=None,
-            mount_point=None,
-            backup_info=None,
-            config_contents=None,
-            root_password=None,
-            overrides=None,
-            cluster_config=None,
-            snapshot=None
-    ):
+    def do_prepare(self, context, packages, databases, memory_mb, users,
+                   device_path, mount_point, backup_info, config_contents,
+                   root_password, overrides, cluster_config, snapshot):
         pgutil.PG_ADMIN = self.PG_BUILTIN_ADMIN
         self.install(context, packages)
         self.stop_db(context)
@@ -148,12 +130,6 @@ class Manager(
         if root_password and not backup_info:
             self.enable_root(context, root_password)
 
-        if databases:
-            self.create_database(context, databases)
-
-        if users:
-            self.create_user(context, users)
-
     def _secure(self, context):
         # Create a new administrative user for Trove and also
         # disable the built-in superuser.
@@ -163,10 +139,6 @@ class Manager(
         pgutil.PG_ADMIN = self.ADMIN_USER
         postgres = models.PostgreSQLRootUser()
         self.alter_user(context, postgres, 'NOSUPERUSER', 'NOLOGIN')
-
-    def get_filesystem_stats(self, context, fs_path):
-        mount_point = CONF.get(CONF.datastore_manager).mount_point
-        return dbaas.get_filesystem_volume_stats(mount_point)
 
     def create_backup(self, context, backup_info):
         with EndNotification(context):
@@ -281,7 +253,7 @@ class Manager(
                                                  snapshot_info))
 
         mount_point = CONF.get(MANAGER).mount_point
-        volume_stats = dbaas.get_filesystem_volume_stats(mount_point)
+        volume_stats = self.get_filesystem_volume_stats(mount_point)
 
         replication_snapshot = {
             'dataset': {

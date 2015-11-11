@@ -23,6 +23,7 @@ from trove.common import cfg
 from trove.common import exception
 from trove.common.notification import StartNotification
 from trove.common.remote import create_guest_client
+from trove.common import utils
 from trove.extensions.common.models import load_and_verify
 from trove.extensions.common.models import RootHistory
 from trove.guestagent.db import models as guest_models
@@ -173,8 +174,7 @@ class UserAccess(object):
 def load_via_context(cls, context, instance_id):
     """Creates guest and fetches pagination arguments from the context."""
     load_and_verify(context, instance_id)
-    limit = int(context.limit or cls.DEFAULT_LIMIT)
-    limit = cls.DEFAULT_LIMIT if limit > cls.DEFAULT_LIMIT else limit
+    limit = utils.pagination_limit(context.limit, cls.DEFAULT_LIMIT)
     client = create_guest_client(context, instance_id)
     # The REST API standard dictates that we *NEVER* include the marker.
     return cls.load_with_client(client=client, limit=limit,
@@ -196,11 +196,10 @@ class Users(object):
             marker=marker,
             include_marker=include_marker)
         model_users = []
-        ignore_users = CONF.ignore_users
         for user in user_list:
             mysql_user = guest_models.MySQLUser()
             mysql_user.deserialize(user)
-            if mysql_user.name in ignore_users:
+            if mysql_user.name in cfg.get_ignored_users():
                 continue
             # TODO(hub-cap): databases are not being returned in the
             # reference agent
@@ -260,11 +259,10 @@ class Schemas(object):
             marker=marker,
             include_marker=include_marker)
         model_schemas = []
-        ignore_dbs = CONF.ignore_dbs
         for schema in schemas:
             mysql_schema = guest_models.MySQLDatabase()
             mysql_schema.deserialize(schema)
-            if mysql_schema.name in ignore_dbs:
+            if mysql_schema.name in cfg.get_ignored_dbs():
                 continue
             model_schemas.append(Schema(mysql_schema.name,
                                         mysql_schema.collate,
