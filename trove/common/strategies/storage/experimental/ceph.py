@@ -19,7 +19,7 @@ from oslo_log import log as logging
 
 from trove.common import cfg
 from trove.common.i18n import _
-from trove.guestagent.strategies.storage import swift
+from trove.common.strategies.storage import swift
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
