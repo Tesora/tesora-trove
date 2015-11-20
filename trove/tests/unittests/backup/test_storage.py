@@ -16,11 +16,11 @@ import hashlib
 
 from mock import Mock, MagicMock, patch
 
-from trove.guestagent.strategies.storage import swift
-from trove.guestagent.strategies.storage.swift import StreamReader
-from trove.guestagent.strategies.storage.swift \
+from trove.common.strategies.storage import swift
+from trove.common.strategies.storage.swift import StreamReader
+from trove.common.strategies.storage.swift \
     import SwiftDownloadIntegrityError
-from trove.guestagent.strategies.storage.swift import SwiftStorage
+from trove.common.strategies.storage.swift import SwiftStorage
 from trove.tests.fakes.swift import FakeSwiftConnection
 from trove.tests.unittests.backup.test_backupagent \
     import MockBackup as MockBackupRunner

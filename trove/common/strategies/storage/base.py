@@ -15,7 +15,7 @@
 #
 
 import abc
-from trove.guestagent.strategy import Strategy
+from trove.common.strategies.strategy import Strategy
 
 
 class Storage(Strategy):
