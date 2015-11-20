@@ -37,6 +37,7 @@ from trove.common.exception import TroveError
 from trove.common.instance import ServiceStatuses
 from trove.common.notification import TroveInstanceModifyVolume
 from trove.common import remote
+from trove.common.strategies import storage
 import trove.common.template as template
 from trove.common import utils
 from trove.datastore import models as datastore_models
@@ -907,6 +908,11 @@ class BackupTasksTest(trove_testtools.TestCase):
             return_value=self.container_content)
         self.swift_client.delete_object = MagicMock(return_value=None)
         self.swift_client.delete_container = MagicMock(return_value=None)
+        self.storage_patch = patch.object(storage, 'get_storage_strategy')
+        self.storage_mock = self.storage_patch.start()
+        self.addCleanup(self.storage_patch.stop)
+        self.storage_mock.get_container_name = MagicMock(
+            return_value='database_backups')
 
     def tearDown(self):
         super(BackupTasksTest, self).tearDown()
