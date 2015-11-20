@@ -42,7 +42,7 @@ class Manager(
 ):
 
     def __init__(self):
-        super(Manager, self).__init__()
+        super(Manager, self).__init__('postgresql')
 
     @property
     def status(self):
