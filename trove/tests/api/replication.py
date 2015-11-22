@@ -43,6 +43,7 @@ class SlaveInstanceTestInfo(object):
 GROUP = "dbaas.api.replication"
 slave_instance = SlaveInstanceTestInfo()
 existing_db_on_master = generate_uuid()
+backup_count = None
 
 
 def _get_user_count(server_info):
@@ -129,6 +130,9 @@ class CreateReplicationSlave(object):
     @test(runs_after=['test_create_db_on_master'])
     def test_create_slave(self):
         slave_instance.id = create_slave()
+        global backup_count
+        backup_count = len(
+            instance_info.dbaas.instances.backups(instance_info.id))
 
 
 @test(groups=[GROUP])
@@ -159,11 +163,6 @@ class VerifySlave(object):
     @time_out(5 * 60)
     def test_correctly_started_replication(self):
         poll_until(slave_is_running())
-
-    @test(runs_after=[test_correctly_started_replication])
-    def test_backup_deleted(self):
-        backup = instance_info.dbaas.instances.backups(instance_info.id)
-        assert_equal(len(backup), 0)
 
     @test(depends_on=[test_correctly_started_replication])
     def test_slave_is_read_only(self):
@@ -369,3 +368,11 @@ class DeleteSlaveInstance(object):
         poll_until(instance_is_gone)
         assert_raises(exceptions.NotFound, instance_info.dbaas.instances.get,
                       slave_instance.id)
+
+    @test(runs_after=[test_delete_slave_instance])
+    def test_backup_deleted(self):
+        if CONFIG.fake_mode:
+            raise SkipTest("Skipping due to timing issues in fake mode")
+
+        backup = instance_info.dbaas.instances.backups(instance_info.id)
+        assert_equal(backup_count, len(backup))
