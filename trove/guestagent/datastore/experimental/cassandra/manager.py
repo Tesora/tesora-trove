@@ -40,15 +40,13 @@ MANAGER = CONF.datastore_manager
 class Manager(manager.Manager):
 
     def __init__(self):
-        self.appStatus = service.CassandraAppStatus(
-            service.CassandraApp.get_current_superuser())
-        self.app = service.CassandraApp(self.appStatus)
+        self.app = service.CassandraApp()
         self.__admin = CassandraAdmin(self.app.get_current_superuser())
         super(Manager, self).__init__()
 
     @property
     def status(self):
-        return self.appStatus
+        return self.app.status
 
     @property
     def configuration_manager(self):
@@ -83,6 +81,7 @@ class Manager(manager.Manager):
         """This is called from prepare in the base class."""
         self.app.install_if_needed(packages)
         self.app.init_storage_structure(mount_point)
+
         if config_contents or device_path or backup_info:
 
             # FIXME(pmalik) Once the cassandra bug
@@ -100,7 +99,7 @@ class Manager(manager.Manager):
             # we assume it is not going to and proceed with configuration
             # right away.
             LOG.debug("Waiting for database first boot.")
-            if (self.appStatus.wait_for_real_status_to_change_to(
+            if (self.app.status.wait_for_real_status_to_change_to(
                     trove_instance.ServiceStatuses.RUNNING,
                     CONF.state_change_wait_time,
                     False)):
@@ -111,8 +110,8 @@ class Manager(manager.Manager):
             LOG.debug("Starting initial configuration.")
             if config_contents:
                 LOG.debug("Applying configuration.")
-                self.app.write_config(config_contents, is_raw=True)
-                # Instance nodes use the unique guest id by default.
+                self.app.configuration_manager.save_configuration(
+                    config_contents)
                 self.app.apply_initial_guestagent_configuration()
 
             if device_path:
@@ -140,7 +139,7 @@ class Manager(manager.Manager):
                 self.app.configure_superuser_access()
                 self.app.restart()
 
-        self.__admin = CassandraAdmin(self.app.get_current_superuser())
+            self.__admin = CassandraAdmin(self.app.get_current_superuser())
 
         if databases:
             self.create_database(context, databases)
@@ -258,7 +257,8 @@ class Manager(manager.Manager):
         LOG.debug("Updating overrides.")
         if remove:
             self.app.remove_overrides()
-        self.app.update_overrides(context, overrides, remove)
+        else:
+            self.app.update_overrides(context, overrides, remove)
 
     def apply_overrides(self, context, overrides):
         """Configuration changes are made in the config YAML file and

@@ -33,8 +33,9 @@ class NodetoolSnapshot(base.RestoreRunner):
     __strategy_name__ = 'nodetoolsnapshot'
 
     def __init__(self, storage, **kwargs):
-        data_dir = service.CassandraApp(None).get_data_directory()
-        kwargs.update({'restore_location': data_dir})
+        app = service.CassandraApp()
+        data_dirs = app.get_data_file_directories()
+        kwargs.update({'restore_location': data_dirs[0]})
         super(NodetoolSnapshot, self).__init__(storage, **kwargs)
 
     def pre_restore(self):
@@ -46,19 +47,20 @@ class NodetoolSnapshot(base.RestoreRunner):
         """
 
         LOG.debug('Initializing a data directory.')
-        operating_system.create_directory(self.restore_location,
-                                          user=system.CASSANDRA_OWNER,
-                                          group=system.CASSANDRA_OWNER,
-                                          force=True, as_root=True)
+        operating_system.create_directory(
+            self.restore_location,
+            user=system.CASSANDRA_OWNER, group=system.CASSANDRA_OWNER,
+            force=True, as_root=True)
 
     def post_restore(self):
         """Updated ownership on the restored files.
         """
 
         LOG.debug('Updating ownership of the restored files.')
-        operating_system.chown(self.restore_location,
-                               system.CASSANDRA_OWNER, system.CASSANDRA_OWNER,
-                               recursive=True, force=True, as_root=True)
+        operating_system.chown(
+            self.restore_location,
+            system.CASSANDRA_OWNER, system.CASSANDRA_OWNER,
+            recursive=True, force=True, as_root=True)
 
     @property
     def base_restore_cmd(self):

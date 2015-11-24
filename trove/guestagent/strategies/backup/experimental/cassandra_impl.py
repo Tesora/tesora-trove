@@ -15,10 +15,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import os
-
 from oslo_log import log as logging
 
+import os
 from trove.common import exception
 from trove.common import utils
 from trove.guestagent.datastore.experimental.cassandra import service
@@ -38,6 +37,10 @@ class NodetoolSnapshot(base.BackupRunner):
 
     __strategy_name__ = 'nodetoolsnapshot'
     _SNAPSHOT_EXTENSION = 'db'
+
+    def __init__(self, filename, **kwargs):
+        self._app = service.CassandraApp()
+        super(NodetoolSnapshot, self).__init__(filename, **kwargs)
 
     def _run_pre_backup(self):
         """Take snapshot(s) for all keyspaces.
@@ -79,8 +82,8 @@ class NodetoolSnapshot(base.BackupRunner):
         """Command to collect and package keyspace snapshot(s).
         """
 
-        data_dir = service.CassandraApp(None).get_data_directory()
-        return self._build_snapshot_package_cmd(data_dir, self.filename)
+        data_dirs = self._app.get_data_file_directories()
+        return self._build_snapshot_package_cmd(data_dirs[0], self.filename)
 
     def _build_snapshot_package_cmd(self, data_dir, snapshot_name):
         """Collect all files for a given snapshot and build a package

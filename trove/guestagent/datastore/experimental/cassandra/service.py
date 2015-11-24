@@ -13,7 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import collections
 import os
 import stat
 
@@ -30,9 +29,13 @@ from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance as rd_instance
 from trove.common import pagination
+from trove.common.stream_codecs import IniCodec
+from trove.common.stream_codecs import SafeYamlCodec
 from trove.common import utils
+from trove.guestagent.common.configuration import ConfigurationManager
+from trove.guestagent.common.configuration import OneFileOverrideStrategy
+from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
-from trove.guestagent.common.operating_system import FileMode
 from trove.guestagent.datastore.experimental.cassandra import system
 from trove.guestagent.datastore import service
 from trove.guestagent.db import models
@@ -54,16 +57,36 @@ class CassandraApp(object):
     _CONF_DIR_MODS = stat.S_IRWXU
     _CONF_FILE_MODS = stat.S_IRUSR
     _CASSANDRA_CONF = system.CASSANDRA_CONF[operating_system.get_os()]
-    _CASSANDRA_CONF_BACKUP = system.CASSANDRA_CONF_BACKUP[
-        operating_system.get_os()]
 
-    def __init__(self, status):
-        """By default login with root no password for initial setup."""
+    @classmethod
+    def _init_overrides_dir(cls):
+        """Initialize a directory for configuration overrides.
+        """
+        revision_dir = guestagent_utils.build_file_path(
+            os.path.dirname(cls._CASSANDRA_CONF),
+            ConfigurationManager.DEFAULT_STRATEGY_OVERRIDES_SUB_DIR)
+
+        if not os.path.exists(revision_dir):
+            operating_system.create_directory(
+                revision_dir,
+                user=system.CASSANDRA_OWNER, group=system.CASSANDRA_OWNER,
+                force=True, as_root=True)
+
+        return revision_dir
+
+    def __init__(self):
         self.state_change_wait_time = CONF.state_change_wait_time
-        self.status = status
+        self.status = CassandraAppStatus(self.get_current_superuser())
+
+        revision_dir = self._init_overrides_dir()
+        self.configuration_manager = ConfigurationManager(
+            self._CASSANDRA_CONF,
+            system.CASSANDRA_OWNER, system.CASSANDRA_OWNER,
+            SafeYamlCodec(default_flow_style=False), requires_root=True,
+            override_strategy=OneFileOverrideStrategy(revision_dir))
 
     def install_if_needed(self, packages):
-        """Prepare the guest machine with a cassandra server installation."""
+        """Prepare the guest machine with a Cassandra server installation."""
         LOG.info(_("Preparing Guest as a Cassandra Server"))
         if not packager.pkg_is_installed(packages):
             self._install_db(packages)
@@ -125,7 +148,7 @@ class CassandraApp(object):
             self.status.end_restart()
 
     def _install_db(self, packages):
-        """Install cassandra server"""
+        """Install Cassandra server"""
         LOG.debug("Installing Cassandra server.")
         packager.pkg_install(packages, None, system.INSTALL_TIMEOUT)
         LOG.debug("Finished installing Cassandra server")
@@ -147,10 +170,10 @@ class CassandraApp(object):
                                  "The service is still running."))
 
         LOG.info(_('Removing existing system tables.'))
-        system_keyspace_dir = '%s/%s/' % (system.CASSANDRA_DATA_DIR,
-                                          system.CASSANDRA_SYSTEM_KEYSPACE)
-        utils.execute_with_timeout('rm', '-r', '-f', system_keyspace_dir,
-                                   run_as_root=True, root_helper='sudo')
+        system_keyspace_dir = guestagent_utils.build_file_path(
+            system.CASSANDRA_DATA_DIR, system.CASSANDRA_SYSTEM_KEYSPACE)
+        operating_system.remove(system_keyspace_dir,
+                                force=True, recursive=True, as_root=True)
 
     def _apply_post_restore_updates(self, backup_info):
         """The service should not be running at this point.
@@ -311,7 +334,7 @@ class CassandraApp(object):
             os.mkdir(config_dir, self._CONF_DIR_MODS)
         else:
             os.chmod(config_dir, self._CONF_DIR_MODS)
-        operating_system.write_config_file(config_path, sections)
+        operating_system.write_file(config_path, sections, codec=IniCodec())
         os.chmod(config_path, self._CONF_FILE_MODS)
 
     @classmethod
@@ -337,7 +360,8 @@ class CassandraApp(object):
 
     @classmethod
     def __load_current_superuser(self):
-        config = operating_system.read_config_file(self._get_cqlsh_conf_path())
+        config = operating_system.read_file(self._get_cqlsh_conf_path(),
+                                            codec=IniCodec())
         return models.CassandraUser(
             config[self._CONF_AUTH_SEC][self._CONF_USR_KEY],
             config[self._CONF_AUTH_SEC][self._CONF_PWD_KEY]
@@ -352,10 +376,10 @@ class CassandraApp(object):
                               Use the unique guest id by default.
         :type cluster_name:   string
         """
-        self.make_host_reachable()
+        self._make_host_reachable()
         self._update_cluster_name_property(cluster_name or CONF.guest_id)
 
-    def make_host_reachable(self):
+    def _make_host_reachable(self):
         """
         Some of these settings may be overriden by user defined
         configuration groups.
@@ -384,7 +408,7 @@ class CassandraApp(object):
                               }
         }
 
-        self._update_config(updates)
+        self.configuration_manager.apply_system_override(updates)
 
     def __disable_remote_access(self):
         updates = {
@@ -395,7 +419,7 @@ class CassandraApp(object):
                               }
         }
 
-        self._update_config(updates)
+        self.configuration_manager.apply_system_override(updates)
 
     def __enable_authentication(self):
         updates = {
@@ -403,7 +427,7 @@ class CassandraApp(object):
             'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer'
         }
 
-        self._update_config(updates)
+        self.configuration_manager.apply_system_override(updates)
 
     def __disable_authentication(self):
         updates = {
@@ -411,92 +435,34 @@ class CassandraApp(object):
             'authorizer': 'org.apache.cassandra.auth.AllowAllAuthorizer'
         }
 
-        self._update_config(updates)
+        self.configuration_manager.apply_system_override(updates)
 
     def _update_cluster_name_property(self, name):
         """This 'cluster_name' property prevents nodes from one
         logical cluster from talking to another.
         All nodes in a cluster must have the same value.
         """
-        self._update_config({'cluster_name': name})
+        self.configuration_manager.apply_system_override({'cluster_name':
+                                                          name})
+
+    def get_data_file_directories(self):
+        """Return a list of Cassandra's data directories.
+        """
+        return self.configuration_manager.get_value('data_file_directories')
 
     def update_overrides(self, context, overrides, remove=False):
         if overrides:
-            if not os.path.exists(self._CASSANDRA_CONF_BACKUP):
-                utils.execute_with_timeout("cp", "-f", "-p",
-                                           self._CASSANDRA_CONF,
-                                           self._CASSANDRA_CONF_BACKUP,
-                                           run_as_root=True,
-                                           root_helper="sudo")
-                LOG.info(_("The old configuration has been saved to '%s'.")
-                         % self._CASSANDRA_CONF_BACKUP)
-                self._update_config(overrides)
-            else:
-                raise exception.TroveError(
-                    _("This instance already has a "
-                      "Configuration Group attached."))
+            self.configuration_manager.apply_user_override(overrides)
 
     def remove_overrides(self):
-        if os.path.exists(self._CASSANDRA_CONF_BACKUP):
-            LOG.info(_("Restoring previous configuration from '%s'.")
-                     % self._CASSANDRA_CONF_BACKUP)
-            utils.execute_with_timeout("mv", "-f",
-                                       self._CASSANDRA_CONF_BACKUP,
-                                       self._CASSANDRA_CONF,
-                                       run_as_root=True, root_helper="sudo")
-        else:
-            raise exception.TroveError(
-                _("This instance does not have a "
-                  "Configuration Group attached."))
-
-    def _update_config(self, options):
-        config = operating_system.read_yaml_file(self._CASSANDRA_CONF)
-        self.write_config(CassandraApp._update_dict(options, config))
-
-    @staticmethod
-    def _update_dict(updates, target):
-        """Recursively update a target dictionary with given updates.
-
-        Updates are provided as a dictionary of key-value pairs
-        where a value can also be a nested dictionary in which case
-        its key is treated as a sub-section of the outer key.
-        If a list value is encountered the update is applied
-        iteratively on all its items.
-        """
-        if isinstance(target, list):
-            for index, item in enumerate(target):
-                target[index] = CassandraApp._update_dict(updates, item)
-            return target
-
-        for k, v in updates.iteritems():
-            if isinstance(v, collections.Mapping):
-                target[k] = CassandraApp._update_dict(v, target.get(k, {}))
-            else:
-                target[k] = updates[k]
-        return target
-
-    def write_config(self, config, is_raw=False):
-        LOG.info(_('Saving Cassandra configuration.'))
-
-        if is_raw:
-            operating_system.write_file(self._CASSANDRA_CONF, config,
-                                        as_root=True)
-        else:
-            operating_system.write_yaml_file(self._CASSANDRA_CONF, config,
-                                             as_root=True)
-
-        operating_system.chown(self._CASSANDRA_CONF,
-                               system.CASSANDRA_OWNER, system.CASSANDRA_OWNER,
-                               as_root=True)
-        operating_system.chmod(self._CASSANDRA_CONF, FileMode.ADD_READ_ALL,
-                               as_root=True)
+        self.configuration_manager.remove_user_override()
 
     def start_db_with_conf_changes(self, config_contents):
         LOG.debug("Starting database with configuration changes.")
         if self.status.is_running:
             raise RuntimeError(_("The service is still running."))
 
-        self.write_config(config_contents, is_raw=True)
+        self.configuration_manager.save_configuration(config_contents)
         # The configuration template has to be updated with
         # guestagent-controlled settings.
         self.apply_initial_guestagent_configuration()
@@ -504,17 +470,12 @@ class CassandraApp(object):
 
     def reset_configuration(self, configuration):
         LOG.debug("Resetting configuration.")
-        self.write_config(configuration['config_contents'], is_raw=True)
+        config_contents = configuration['config_contents']
+        self.configuration_manager.save_configuration(config_contents)
 
     @classmethod
     def _get_cqlsh_conf_path(self):
         return os.path.expanduser(system.CQLSH_CONF_PATH)
-
-    def get_data_directory(self):
-        """Return current data directory.
-        """
-        config = operating_system.read_yaml_file(self._CASSANDRA_CONF)
-        return config['data_file_directories'][0]
 
     def flush_tables(self, keyspace, *tables):
         """Flushes one or more tables from the memtable.
