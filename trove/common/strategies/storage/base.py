@@ -42,3 +42,7 @@ class Storage(Strategy):
     @abc.abstractmethod
     def save_metadata(self, location, metadata={}):
         """Save metadata for a persisted object."""
+
+    @abc.abstractmethod
+    def get_container_name(self):
+        """Get the name of the container."""

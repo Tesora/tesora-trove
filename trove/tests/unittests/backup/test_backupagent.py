@@ -139,6 +139,9 @@ class MockStorage(Storage):
     def is_enabled(self):
         return True
 
+    def get_container_name(self):
+        return 'database_backups'
+
 
 class MockRestoreRunner(RestoreRunner):
 

@@ -53,6 +53,7 @@ from trove.common.remote import create_cinder_client
 from trove.common.remote import create_dns_client
 from trove.common.remote import create_heat_client
 from trove.common.strategies.cluster import strategy
+from trove.common.strategies.storage import get_storage_strategy
 from trove.common import template
 from trove.common import utils
 from trove.common.utils import try_recover
@@ -1428,7 +1429,10 @@ class BackupTasks(object):
 
     @classmethod
     def delete_files_from_swift(cls, context, filename):
-        container = CONF.backup_swift_container
+        storage = get_storage_strategy(
+            CONF.storage_strategy,
+            CONF.storage_namespace)(context)
+        container = storage.get_container_name()
         client = remote.create_swift_client(context)
         obj = client.head_object(container, filename)
         manifest = obj.get('x-object-manifest', '')
