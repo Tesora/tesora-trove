@@ -16,11 +16,11 @@ import hashlib
 
 from mock import Mock, MagicMock, patch
 
-from trove.guestagent.strategies.storage import swift
-from trove.guestagent.strategies.storage.swift import StreamReader
-from trove.guestagent.strategies.storage.swift \
+from trove.common import remote
+from trove.common.strategies.storage.swift import StreamReader
+from trove.common.strategies.storage.swift \
     import SwiftDownloadIntegrityError
-from trove.guestagent.strategies.storage.swift import SwiftStorage
+from trove.common.strategies.storage.swift import SwiftStorage
 from trove.tests.fakes.swift import FakeSwiftConnection
 from trove.tests.unittests.backup.test_backupagent \
     import MockBackup as MockBackupRunner
@@ -44,7 +44,7 @@ class SwiftStorageSaveChecksumTests(trove_testtools.TestCase):
         password = 'password'
 
         swift_client = FakeSwiftConnection()
-        with patch.object(swift, 'create_swift_client',
+        with patch.object(remote, 'create_swift_client',
                           return_value=swift_client):
             storage_strategy = SwiftStorage(context)
 
@@ -74,7 +74,7 @@ class SwiftStorageSaveChecksumTests(trove_testtools.TestCase):
         password = 'password'
 
         swift_client = FakeSwiftConnection()
-        with patch.object(swift, 'create_swift_client',
+        with patch.object(remote, 'create_swift_client',
                           return_value=swift_client):
             storage_strategy = SwiftStorage(context)
 
@@ -107,7 +107,7 @@ class SwiftStorageSaveChecksumTests(trove_testtools.TestCase):
         password = 'password'
 
         swift_client = FakeSwiftConnection()
-        with patch.object(swift, 'create_swift_client',
+        with patch.object(remote, 'create_swift_client',
                           return_value=swift_client):
             storage_strategy = SwiftStorage(context)
 
@@ -136,7 +136,7 @@ class SwiftStorageUtils(trove_testtools.TestCase):
         self.context = trove_testtools.TroveTestContext(self)
         self.swift_client = FakeSwiftConnection()
         self.create_swift_client_patch = patch.object(
-            swift, 'create_swift_client',
+            remote, 'create_swift_client',
             MagicMock(return_value=self.swift_client))
         self.create_swift_client_mock = self.create_swift_client_patch.start()
         self.addCleanup(self.create_swift_client_patch.stop)
@@ -184,7 +184,7 @@ class SwiftStorageLoad(trove_testtools.TestCase):
         backup_checksum = "fake-md5-sum"
 
         swift_client = FakeSwiftConnection()
-        with patch.object(swift, 'create_swift_client',
+        with patch.object(remote, 'create_swift_client',
                           return_value=swift_client):
 
             storage_strategy = SwiftStorage(context)
@@ -202,7 +202,7 @@ class SwiftStorageLoad(trove_testtools.TestCase):
         backup_checksum = "checksum_different_then_fake_swift_etag"
 
         swift_client = FakeSwiftConnection()
-        with patch.object(swift, 'create_swift_client',
+        with patch.object(remote, 'create_swift_client',
                           return_value=swift_client):
             storage_strategy = SwiftStorage(context)
 
@@ -227,13 +227,14 @@ class StreamReaderTests(trove_testtools.TestCase):
                                        password='password')
         self.stream = StreamReader(self.runner,
                                    self.runner.manifest,
+                                   'database_backups',
                                    max_file_size=100)
 
     def test_base_filename(self):
         self.assertEqual('123', self.stream.base_filename)
 
     def test_base_filename_no_extension(self):
-        stream_reader = StreamReader(self.runner, 'foo')
+        stream_reader = StreamReader(self.runner, 'foo', 'database_backups')
         self.assertEqual('foo', stream_reader.base_filename)
 
     def test_prefix(self):
@@ -280,7 +281,7 @@ class SwiftMetadataTests(trove_testtools.TestCase):
         self.swift_client = FakeSwiftConnection()
         self.context = trove_testtools.TroveTestContext(self)
         self.create_swift_client_patch = patch.object(
-            swift, 'create_swift_client',
+            remote, 'create_swift_client',
             MagicMock(return_value=self.swift_client))
         self.create_swift_client_mock = self.create_swift_client_patch.start()
         self.addCleanup(self.create_swift_client_patch.stop)

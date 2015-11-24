@@ -19,7 +19,7 @@ from oslo_log import log as logging
 
 from trove.common import cfg
 from trove.common.i18n import _
-from trove.guestagent.strategies.storage import swift
+from trove.common.strategies.storage import swift
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
@@ -44,21 +44,22 @@ class CephStorage(swift.SwiftStorage):
         """
 
         # Create the container if it doesn't already exist
-        self.connection.put_container(BACKUP_CONTAINER)
+        self.connection.put_container(self.get_container_name())
 
         # Swift Checksum is the checksum of the concatenated segment checksums
         swift_checksum = hashlib.md5()
 
         # Wrap the output of the backup process to segment it for swift
-        stream_reader = swift.StreamReader(stream, filename)
+        stream_reader = swift.StreamReader(stream, filename,
+                                           self.get_container_name())
 
         url = self.connection.url
         # Full location where the backup manifest is stored
-        location = "%s/%s/%s" % (url, BACKUP_CONTAINER, filename)
+        location = "%s/%s/%s" % (url, self.get_container_name(), filename)
 
         # Read from the stream and write to the container in swift
         while not stream_reader.end_of_file:
-            etag = self.connection.put_object(BACKUP_CONTAINER,
+            etag = self.connection.put_object(self.get_container_name(),
                                               stream_reader.segment,
                                               stream_reader)
 
@@ -81,12 +82,12 @@ class CephStorage(swift.SwiftStorage):
         # file can be downloaded.
         headers = {'X-Object-Manifest': stream_reader.prefix}
 
-        self.connection.put_object(BACKUP_CONTAINER,
+        self.connection.put_object(self.get_container_name(),
                                    filename,
                                    contents='',
                                    headers=headers)
 
-        resp = self.connection.head_object(BACKUP_CONTAINER, filename)
+        resp = self.connection.head_object(self.get_container_name(), filename)
         # swift returns etag in double quotes
         # e.g. '"dc3b0827f276d8d78312992cc60c2c3f"'
         etag = resp['etag'].strip('"')
@@ -112,3 +113,8 @@ class CephStorage(swift.SwiftStorage):
 
         return (True, "Successfully saved data to Swift!",
                 final_swift_checksum, location)
+
+    def get_container_name(self):
+        """Get the name of the container."""
+        # Ceph requires the bucket name to be unique across users
+        return BACKUP_CONTAINER + '_' + self.context.tenant
