@@ -13,15 +13,14 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import datetime
 import os
 import re
 import stat
-import uuid
 
 from oslo_log import log as logging
 
 from trove.common import cfg
+from trove.common import exception
 from trove.common.i18n import _
 from trove.common import utils
 from trove.guestagent.common import operating_system
@@ -65,6 +64,8 @@ class PgBaseBackupUtil(object):
         b = [f for f in os.listdir(WAL_ARCHIVE_DIR)
              if walre.search(f)]
         b = sorted(b, reverse=True)
+        if not b:
+            return None
         return b[pos]
 
     def log_files_since_last_backup(self, pos=0):
@@ -104,11 +105,13 @@ class PgBaseBackup(base.BackupRunner, PgSqlConfig, PgBaseBackupUtil,
         self.start_wal_file = None
         self.stop_wal_file = None
         self.checkpoint_location = None
+        self.mrb = None
 
     @property
     def cmd(self):
-        cmd = "pg_basebackup -h %s -U %s --pgdata=-" \
-              " --format=tar --xlog " % (self.UNIX_SOCKET_DIR, self.ADMIN_USER)
+        cmd = ("pg_basebackup -h %s -U %s --pgdata=-"
+               " --label=%s --format=tar --xlog " %
+               (self.UNIX_SOCKET_DIR, self.ADMIN_USER, self.base_filename))
 
         return cmd + self.zip_cmd + self.encrypt_cmd
 
@@ -162,10 +165,34 @@ class PgBaseBackup(base.BackupRunner, PgSqlConfig, PgBaseBackupUtil,
         return True
 
     def metadata(self):
-        f = self.most_recent_backup_file()
-        meta = self.base_backup_metadata(os.path.join(WAL_ARCHIVE_DIR, f))
-        LOG.info(_("Metadata for backup: %s.") % str(meta))
-        return meta
+        """pg_basebackup may complete, and we arrive here before the
+        history file is written to the wal archive. So we need to
+        handle two possibilities:
+        - this is the first backup, and no history file exists yet
+        - this isn't the first backup, and so the history file we retrieve
+        isn't the one we just ran!
+         """
+        def _metadata_found():
+            LOG.debug("Polling for backup metadata... ")
+            self.mrb = self.most_recent_backup_file()
+            if not self.mrb:
+                LOG.debug("No history files found!")
+                return False
+            meta = self.base_backup_metadata(
+                os.path.join(WAL_ARCHIVE_DIR, self.mrb))
+            LOG.debug("Label to pg_basebackup: %s label found: %s" %
+                      (self.base_filename, meta['label']))
+            LOG.info(_("Metadata for backup: %s.") % str(meta))
+            return meta['label'] == self.base_filename
+
+        try:
+            utils.poll_until(_metadata_found, sleep_time=5, time_out=60)
+        except exception.PollTimeOut:
+            raise RuntimeError(_("Timeout waiting for backup metadata for"
+                                 " backup %s") % self.base_filename)
+
+        return self.base_backup_metadata(
+            os.path.join(WAL_ARCHIVE_DIR, self.mrb))
 
     def _run_post_backup(self):
         """Get rid of WAL data we don't need any longer"""
@@ -194,10 +221,7 @@ class PgBaseBackupIncremental(PgBaseBackup):
         self.parent_checksum = kwargs.get('parent_checksum')
 
     def _run_pre_backup(self):
-        # TODO(atomic77) Would be nice to use the actual backup id instead
-        self.backup_label = "%s-%s" % (
-            datetime.date.today(), str(uuid.uuid4())[0:8]
-        )
+        self.backup_label = self.base_filename
         r = pgutil.query("SELECT pg_start_backup('%s', true)" %
                          self.backup_label)
         self.start_segment = r[0][0]
