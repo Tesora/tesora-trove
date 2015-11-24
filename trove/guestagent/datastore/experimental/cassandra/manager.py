@@ -40,13 +40,21 @@ MANAGER = CONF.datastore_manager
 class Manager(manager.Manager):
 
     def __init__(self):
-        self.app = service.CassandraApp()
+        self._app = service.CassandraApp()
         self.__admin = CassandraAdmin(self.app.get_current_superuser())
         super(Manager, self).__init__()
 
     @property
     def status(self):
         return self.app.status
+
+    @property
+    def app(self):
+        return self._app
+
+    @property
+    def admin(self):
+        return self.__admin
 
     @property
     def configuration_manager(self):
@@ -134,7 +142,7 @@ class Manager(manager.Manager):
             LOG.debug("Starting database with configuration changes.")
             self.app.start_db(update_db=False)
 
-            if not service.CassandraApp.has_user_config():
+            if not self.app.has_user_config():
                 LOG.debug("Securing superuser access.")
                 self.app.configure_superuser_access()
                 self.app.restart()
@@ -149,49 +157,49 @@ class Manager(manager.Manager):
 
     def change_passwords(self, context, users):
         with EndNotification(context):
-            self.__admin.change_passwords(context, users)
+            self.admin.change_passwords(context, users)
 
     def update_attributes(self, context, username, hostname, user_attrs):
         with EndNotification(context):
-            self.__admin.update_attributes(context, username, hostname,
-                                           user_attrs)
+            self.admin.update_attributes(context, username, hostname,
+                                         user_attrs)
 
     def create_database(self, context, databases):
         with EndNotification(context):
-            self.__admin.create_database(context, databases)
+            self.admin.create_database(context, databases)
 
     def create_user(self, context, users):
         with EndNotification(context):
-            self.__admin.create_user(context, users)
+            self.admin.create_user(context, users)
 
     def delete_database(self, context, database):
         with EndNotification(context):
-            self.__admin.delete_database(context, database)
+            self.admin.delete_database(context, database)
 
     def delete_user(self, context, user):
         with EndNotification(context):
-            self.__admin.delete_user(context, user)
+            self.admin.delete_user(context, user)
 
     def get_user(self, context, username, hostname):
-        return self.__admin.get_user(context, username, hostname)
+        return self.admin.get_user(context, username, hostname)
 
     def grant_access(self, context, username, hostname, databases):
-        self.__admin.grant_access(context, username, hostname, databases)
+        self.admin.grant_access(context, username, hostname, databases)
 
     def revoke_access(self, context, username, hostname, database):
-        self.__admin.revoke_access(context, username, hostname, database)
+        self.admin.revoke_access(context, username, hostname, database)
 
     def list_access(self, context, username, hostname):
-        return self.__admin.list_access(context, username, hostname)
+        return self.admin.list_access(context, username, hostname)
 
     def list_databases(self, context, limit=None, marker=None,
                        include_marker=False):
-        return self.__admin.list_databases(context, limit, marker,
-                                           include_marker)
+        return self.admin.list_databases(context, limit, marker,
+                                         include_marker)
 
     def list_users(self, context, limit=None, marker=None,
                    include_marker=False):
-        return self.__admin.list_users(context, limit, marker, include_marker)
+        return self.admin.list_users(context, limit, marker, include_marker)
 
     def enable_root(self, context):
         raise exception.DatastoreOperationNotSupported(

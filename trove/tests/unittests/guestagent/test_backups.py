@@ -14,7 +14,7 @@
 import mock
 import os
 
-from mock import ANY, DEFAULT, Mock, patch
+from mock import ANY, DEFAULT, Mock, patch, PropertyMock
 from oslo_utils import netutils
 from testtools.testcase import ExpectedException
 from trove.common import exception
@@ -462,8 +462,8 @@ class GuestAgentBackupTest(trove_testtools.TestCase):
 
 class CassandraBackupTest(trove_testtools.TestCase):
 
-    _BASE_BACKUP_CMD = ('tar --transform="s#snapshots/%s/##" -cpPf - -C "%s" '
-                        '"%s"')
+    _BASE_BACKUP_CMD = ('sudo tar --transform="s#snapshots/%s/##" -cpPf - '
+                        '-C "%s" "%s"')
     _BASE_RESTORE_CMD = 'sudo tar -xpPf - -C "%(restore_location)s"'
     _DATA_DIR = 'data_dir'
     _SNAPSHOT_NAME = 'snapshot_name'
@@ -483,10 +483,16 @@ class CassandraBackupTest(trove_testtools.TestCase):
         self.addCleanup(self.app_status_patcher.stop)
         self.app_status_patcher.start()
         self.get_data_dirs_patcher = patch.object(
-            cass_service.CassandraApp, 'get_data_file_directories',
-            return_value=[self._DATA_DIR])
+            cass_service.CassandraApp, 'cassandra_data_dir',
+            new_callable=PropertyMock)
         self.addCleanup(self.get_data_dirs_patcher.stop)
-        self.get_data_dirs_patcher.start()
+        data_dir_mock = self.get_data_dirs_patcher.start()
+        data_dir_mock.return_value = self._DATA_DIR
+        self.os_list_patcher = patch.object(
+            operating_system, 'list_files_in_directory',
+            return_value=self._SNAPSHOT_FILES)
+        self.addCleanup(self.os_list_patcher.stop)
+        self.os_list_patcher.start()
 
     def tearDown(self):
         super(CassandraBackupTest, self).tearDown()
@@ -561,9 +567,6 @@ class CassandraBackupTest(trove_testtools.TestCase):
         runner = RunnerClass(self._SNAPSHOT_NAME)
         runner._remove_snapshot = mock.MagicMock()
         runner._snapshot_all_keyspaces = mock.MagicMock()
-        runner._find_in_subdirectories = mock.MagicMock(
-            return_value=self._SNAPSHOT_FILES
-        )
 
         return runner
 

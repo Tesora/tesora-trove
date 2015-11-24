@@ -17,9 +17,10 @@
 
 from oslo_log import log as logging
 
-import os
 from trove.common import exception
+from trove.common.i18n import _
 from trove.common import utils
+from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.experimental.cassandra import service
 from trove.guestagent.strategies.backup import base
 
@@ -82,8 +83,8 @@ class NodetoolSnapshot(base.BackupRunner):
         """Command to collect and package keyspace snapshot(s).
         """
 
-        data_dirs = self._app.get_data_file_directories()
-        return self._build_snapshot_package_cmd(data_dirs[0], self.filename)
+        return self._build_snapshot_package_cmd(self._app.cassandra_data_dir,
+                                                self.filename)
 
     def _build_snapshot_package_cmd(self, data_dir, snapshot_name):
         """Collect all files for a given snapshot and build a package
@@ -99,26 +100,18 @@ class NodetoolSnapshot(base.BackupRunner):
 
         LOG.debug('Searching for all snapshot(s) with name "%s".'
                   % snapshot_name)
-        snapshot_files = self._find_in_subdirectories(data_dir, snapshot_name,
-                                                      self._SNAPSHOT_EXTENSION)
+        snapshot_files = operating_system.list_files_in_directory(
+            data_dir, recursive=True, include_dirs=False,
+            pattern='.*/snapshots/%s/.*\.%s' % (snapshot_name,
+                                                self._SNAPSHOT_EXTENSION),
+            as_root=True)
         num_snapshot_files = len(snapshot_files)
         LOG.debug('Found %d snapshot (*.%s) files.'
                   % (num_snapshot_files, self._SNAPSHOT_EXTENSION))
         if num_snapshot_files > 0:
-            return ('tar --transform="s#snapshots/%s/##" -cpPf - -C "%s" "%s"'
+            return ('sudo tar '
+                    '--transform="s#snapshots/%s/##" -cpPf - -C "%s" "%s"'
                     % (snapshot_name, data_dir, '" "'.join(snapshot_files)))
 
         # There should always be at least the system keyspace snapshot.
-        raise exception.BackupCreationError()
-
-    def _find_in_subdirectories(self, root_dir, subdir_name, file_extension):
-        """Find all files with a given extension that are contained
-        within all sub-directories of a given name below the root path
-        (i.e. '<root dir>/.../<sub dir>/.../*.ext').
-        """
-
-        return {os.path.relpath(os.path.join(root, name), root_dir)
-                for (root, _, files) in os.walk(root_dir, topdown=True)
-                if (os.path.split(root)[1] == subdir_name)
-                for name in files
-                if (os.path.splitext(name)[1][1:] == file_extension)}
+        raise exception.BackupCreationError(_("No data found."))

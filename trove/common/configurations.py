@@ -14,16 +14,6 @@
 #    under the License.
 
 from trove.common import stream_codecs
-import yaml
-
-
-class CassandraConfParser(object):
-
-    def __init__(self, config):
-        self.config = config
-
-    def parse(self):
-        return yaml.safe_load(self.config).items()
 
 
 class RedisConfParser(object):
@@ -66,6 +56,17 @@ class MongoDBConfParser(object):
 class PostgresqlConfParser(object):
 
     CODEC = stream_codecs.PropertiesCodec(delimiter='=')
+
+    def __init__(self, config):
+        self.config = config
+
+    def parse(self):
+        return self.CODEC.deserialize(self.config).items()
+
+
+class CassandraConfParser(object):
+
+    CODEC = stream_codecs.SafeYamlCodec(default_flow_style=False)
 
     def __init__(self, config):
         self.config = config

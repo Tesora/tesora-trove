@@ -249,7 +249,7 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
         mock_status = MagicMock()
         mock_app = MagicMock()
         mock_app.status = mock_status
-        self.manager.app = mock_app
+        self.manager._app = mock_app
 
         mock_status.begin_install = MagicMock(return_value=None)
         mock_app.install_if_needed = MagicMock(return_value=None)
@@ -527,8 +527,8 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
             self.assertEqual(usr2.serialize(), found)
 
         with patch.object(self.admin, self.__N_GSU, return_value=set()):
-            with ExpectedException(exception.UserNotFound):
-                self.manager.get_user(self.context, usr2.name, None)
+            self.assertIsNone(
+                self.manager.get_user(self.context, usr2.name, None))
 
     @patch.object(cass_service.CassandraAdmin, '_deserialize_keyspace',
                   side_effect=lambda p1: p1)

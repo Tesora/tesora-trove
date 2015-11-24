@@ -57,11 +57,18 @@ batchlog_replay_throttle_in_kb: 1024
 # Authentication backend, implementing IAuthenticator; used to identify users
 # Out of the box, Cassandra provides org.apache.cassandra.auth.{AllowAllAuthenticator,
 # PasswordAuthenticator}.
+# DSE also provides Kerberos and Ldap authenticators for external authentication.
 #
 # - AllowAllAuthenticator performs no checks - set it to disable authentication.
 # - PasswordAuthenticator relies on username/password pairs to authenticate
 #   users. It keeps usernames and hashed passwords in system_auth.credentials table.
 #   Please increase system_auth keyspace replication factor if you use this authenticator.
+# - com.datastax.bdp.cassandra.auth.KerberosAuthenticator For external authentication
+#   through Kerberos. Additional configuration is required in dse.yaml
+# - com.datastax.bdp.cassandra.auth.LdapAuthenticator For external authentication
+#   through Ldap. Additional configuration is required in dse.yaml
+#authenticator: com.datastax.bdp.cassandra.auth.KerberosAuthenticator
+#authenticator: com.datastax.bdp.cassandra.auth.LdapAuthenticator
 #
 # Authenticator is required to support Trove user functions.
 authenticator: org.apache.cassandra.auth.PasswordAuthenticator
@@ -108,7 +115,7 @@ partitioner: org.apache.cassandra.dht.Murmur3Partitioner
 # the configured compaction strategy.
 # If not set, the default directory is $CASSANDRA_HOME/data/data.
 data_file_directories:
-    - /var/lib/cassandra/data
+     - /var/lib/cassandra/data
 
 # commit log.  when running on magnetic HDD, this should be a
 # separate spindle than the data directories.
@@ -564,9 +571,9 @@ tombstone_failure_threshold: 100000
 column_index_size_in_kb: 64
 
 
-# Log WARN on any batch size exceeding this value. 5kb per batch by default.
+# Log WARN on any batch size exceeding this value. 64kb per batch by default.
 # Caution should be taken on increasing the size of this threshold as it can lead to node instability.
-batch_size_warn_threshold_in_kb: 5
+batch_size_warn_threshold_in_kb: 64
 
 # Number of simultaneous compactions to allow, NOT including
 # validation "compactions" for anti-entropy repair.  Simultaneous
@@ -703,10 +710,14 @@ cross_node_timeout: false
 #    address, respectively.  Unless this happens to match your
 #    deployment conventions, this is best used as an example of
 #    writing a custom Snitch class and is provided in that spirit.
+# DataStax Enterprise provides
+#  - com.datastax.bdp.snitch.DseSimpleSnitch:
+#    Proximity is determined by DSE workload, which places Cassandra,
+#    Analytics, and Solr nodes into their seperate datacenters.
 #
 # You can use a custom Snitch by setting this to the full class name
 # of the snitch, which will be assumed to be on your classpath.
-endpoint_snitch: SimpleSnitch
+endpoint_snitch: com.datastax.bdp.snitch.DseSimpleSnitch
 
 # controls how often to perform the more expensive part of host score
 # calculation
@@ -780,9 +791,9 @@ request_scheduler: org.apache.cassandra.scheduler.NoScheduler
 #
 server_encryption_options:
     internode_encryption: none
-    keystore: conf/.keystore
+    keystore: resources/dse/conf/.keystore
     keystore_password: cassandra
-    truststore: conf/.truststore
+    truststore: resources/dse/conf/.truststore
     truststore_password: cassandra
     # More advanced defaults below:
     # protocol: TLS
@@ -795,12 +806,12 @@ server_encryption_options:
 client_encryption_options:
     enabled: false
     # If enabled and optional is set to true encrypted and unencrypted connections are handled.
-    #optional: false # Only supported by versions >= 2.1.12
-    keystore: conf/.keystore
+    optional: false
+    keystore: resources/dse/conf/.keystore
     keystore_password: cassandra
     # require_client_auth: false
     # Set trustore and truststore_password if require_client_auth is true
-    # truststore: conf/.truststore
+    # truststore: resources/dse/conf/.truststore
     # truststore_password: cassandra
     # More advanced defaults below:
     # protocol: TLS

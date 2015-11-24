@@ -23,6 +23,32 @@ from oslo_log import log as logging
 import trove
 
 
+def find_first(iterable, matcher):
+    """Find and return the first element that matches the filter condition
+    or None if not found.
+
+    :param matcher                Filter expression.
+    :type matcher                 callable
+    """
+    return next((v for v in iterable if matcher(v)), None)
+
+
+def _update_options(options, *values):
+    """Return a copy of a given options list with matching options replaced by
+    given values.
+    """
+    updated_options = list(options)
+    for value in values:
+        match = find_first(updated_options,
+                           lambda opt: opt.name == value.name)
+        if match is not None:
+            match_index = updated_options.index(match)
+            updated_options.remove(match)
+            updated_options.insert(match_index, value)
+
+    return updated_options
+
+
 UNKNOWN_SERVICE_ID = 'unknown-service-id-error'
 
 path_opts = [
@@ -319,6 +345,7 @@ common_opts = [
                          'pxc': '75a628c3-f81b-4ffb-b10a-4087c26bc854',
                          'redis': 'b216ffc5-1947-456c-a4cf-70f94c05f7d0',
                          'cassandra': '459a230d-4e97-4344-9067-2a54a310b0ed',
+                         'dse': '30352416-8603-4844-8629-1a3ec54d16b5',
                          'couchbase': 'fa62fe68-74d9-4779-a24e-36f19602c415',
                          'mongodb': 'c8c907af-7375-456f-b929-b637ff9209ee',
                          'postgresql': 'ac277e0d-4f21-40aa-b347-1ea31e571720',
@@ -919,6 +946,18 @@ cassandra_opts = [
                help='List of Guest Logs to expose for publishing.'),
 ]
 
+# DSE (mostly uses same options as Cassandra community edition).
+# Extend the list of ignored keyspaces with DSE-specific names.
+dse_group = cfg.OptGroup(
+    'dse', title='DSE options',
+    help="Oslo option group designed for DSE datastore")
+dse_opts = _update_options(
+    cassandra_opts,
+    cfg.ListOpt('ignore_dbs',
+                default=['system', 'system_auth', 'system_traces',
+                         'dse_system', 'dse_perf', 'dse_security'],
+                help='Databases to exclude when listing databases.'))
+
 # Couchbase
 couchbase_group = cfg.OptGroup(
     'couchbase', title='Couchbase options',
@@ -1379,6 +1418,7 @@ CONF.register_group(percona_group)
 CONF.register_group(pxc_group)
 CONF.register_group(redis_group)
 CONF.register_group(cassandra_group)
+CONF.register_group(dse_group)
 CONF.register_group(couchbase_group)
 CONF.register_group(mongodb_group)
 CONF.register_group(postgresql_group)
@@ -1394,6 +1434,7 @@ CONF.register_opts(percona_opts, percona_group)
 CONF.register_opts(pxc_opts, pxc_group)
 CONF.register_opts(redis_opts, redis_group)
 CONF.register_opts(cassandra_opts, cassandra_group)
+CONF.register_opts(dse_opts, dse_group)
 CONF.register_opts(couchbase_opts, couchbase_group)
 CONF.register_opts(mongodb_opts, mongodb_group)
 CONF.register_opts(postgresql_opts, postgresql_group)

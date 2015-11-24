@@ -44,6 +44,8 @@ defaults = {
     'trove.guestagent.datastore.experimental.redis.manager.Manager',
     'cassandra':
     'trove.guestagent.datastore.experimental.cassandra.manager.Manager',
+    'dse':
+    'trove.guestagent.datastore.experimental.dse.manager.Manager',
     'couchbase':
     'trove.guestagent.datastore.experimental.couchbase.manager.Manager',
     'mongodb':
@@ -72,7 +74,7 @@ def get_custom_managers():
 
 def datastore_registry():
     return dict(chain(defaults.iteritems(),
-                get_custom_managers().iteritems()))
+                      get_custom_managers().iteritems()))
 
 
 def to_gb(bytes):

@@ -13,22 +13,19 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import abc
-from ConfigParser import SafeConfigParser
 import inspect
 import operator
 import os
 import re
 import stat
-import StringIO
 import tempfile
-import yaml
 
 from functools import reduce
 from oslo_concurrency.processutils import UnknownArgumentError
 
 from trove.common import exception
 from trove.common.i18n import _
+from trove.common import stream_codecs
 from trove.common import utils
 
 REDHAT = 'redhat'
@@ -42,162 +39,19 @@ SUSE = 'suse'
 NEWLINE = '\n'
 
 
-class StreamCodec(object):
-
-    @abc.abstractmethod
-    def serialize(self, data):
-        """Serialize a Python object into a stream.
-        """
-
-    @abc.abstractmethod
-    def deserialize(self, stream):
-        """Deserialize stream data into a Python structure.
-        """
-
-
-class IdentityCodec(StreamCodec):
-    """
-    A basic passthrough codec.
-    Does not modify the data in any way.
-    """
-
-    def serialize(self, data):
-        return data
-
-    def deserialize(self, stream):
-        return stream
-
-
-class YamlCodec(StreamCodec):
-    """
-    Read/write data from/into a YAML config file.
-
-    a: 1
-    b: {c: 3, d: 4}
-    ...
-
-    The above file content (flow-style) would be represented as:
-    {'a': 1,
-     'b': {'c': 3, 'd': 4,}
-     ...
-    }
-    """
-
-    def __init__(self, default_flow_style=False):
-        """
-        :param default_flow_style:  Use flow-style (inline) formatting of
-                                    nested collections.
-        :type default_flow_style:   boolean
-        """
-        self.__default_flow_style = default_flow_style
-
-    def serialize(self, dict_data):
-        return yaml.dump(dict_data, Dumper=self._get_dumper(),
-                         default_flow_style=self.__default_flow_style)
-
-    def deserialize(self, stream):
-        return yaml.load(stream, Loader=self._get_loader())
-
-    def _get_loader(self):
-        return yaml.loader.Loader
-
-    def _get_dumper(self):
-        return yaml.dumper.Dumper
-
-
-class SafeYamlCodec(YamlCodec):
-    """
-    Same as YamlCodec except that it uses safe Loader and Dumper which
-    encode Unicode strings and produce only basic YAML tags.
-    """
-
-    def __init__(self, default_flow_style=False):
-        super(SafeYamlCodec, self).__init__(
-            default_flow_style=default_flow_style)
-
-    def _get_loader(self):
-        return yaml.loader.SafeLoader
-
-    def _get_dumper(self):
-        return yaml.dumper.SafeDumper
-
-
-class IniCodec(StreamCodec):
-    """
-    Read/write data from/into an ini-style config file.
-
-    [section_1]
-    key = value
-    key = value
-    ...
-
-    [section_2]
-    key = value
-    key = value
-    ...
-
-    The above file content would be represented as:
-    {'section_1': {'key': value, 'key': value, ...},
-     'section_2': {'key': value, key': value, ...}
-     ...
-    }
-    """
-
-    def __init__(self, allow_no_value=False):
-        """
-        :param allow_no_value:  Allow keys without values
-                                (one line each, written without trailing '=').
-        :type allow_no_value:   boolean
-        """
-        self.__allow_no_value = allow_no_value
-
-    def serialize(self, dict_data):
-        parser = self.__init_config_parser(dict_data)
-        output = StringIO.StringIO()
-        parser.write(output)
-
-        return output.getvalue()
-
-    def deserialize(self, stream):
-        parser = self.__init_config_parser()
-        parser.readfp(StringIO.StringIO(stream))
-
-        return {s: {k: v for k, v in parser.items(s, raw=True)}
-                for s in parser.sections()}
-
-    def __init_config_parser(self, sections=None):
-        parser = self._build_parser()
-        if sections:
-            for section in sections:
-                parser.add_section(section)
-                for key, value in sections[section].items():
-                    parser.set(section, key, value)
-
-        return parser
-
-    def _build_parser(self):
-        return SafeConfigParser(allow_no_value=self.__allow_no_value)
-
-
 def read_config_file(path, allow_no_value=False):
-    return read_file(path, codec=IniCodec(allow_no_value=allow_no_value))
+    return read_file(
+        path, codec=stream_codecs.IniCodec(allow_no_value=allow_no_value))
 
 
 def write_config_file(path, data, allow_no_value=False, as_root=False):
-    codec = IniCodec(allow_no_value=allow_no_value)
-    write_file(path, data, codec=codec, as_root=as_root)
+    write_file(
+        path, data,
+        codec=stream_codecs.IniCodec(allow_no_value=allow_no_value),
+        as_root=as_root)
 
 
-def read_yaml_file(path):
-    return read_file(path, codec=SafeYamlCodec())
-
-
-def write_yaml_file(path, data, default_flow_style=False, as_root=False):
-    codec = SafeYamlCodec(default_flow_style=default_flow_style)
-    write_file(path, data, codec=codec, as_root=as_root)
-
-
-def read_file(path, codec=IdentityCodec(), as_root=False):
+def read_file(path, codec=stream_codecs.IdentityCodec(), as_root=False):
     """
     Read a file into a Python data structure
     digestible by 'write_file'.
@@ -271,7 +125,7 @@ def _read_file_as_root(path, codec):
         return codec.deserialize(fp.read())
 
 
-def write_file(path, data, codec=IdentityCodec(), as_root=False):
+def write_file(path, data, codec=stream_codecs.IdentityCodec(), as_root=False):
     """Write data into file using a given codec.
     Overwrite any existing contents.
     The written file can be read back into its original
