@@ -62,7 +62,7 @@ from trove.guestagent import volume
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
-MANAGER = 'oracle'
+MANAGER = CONF.datastore_manager or 'oracle'
 
 
 class Manager(manager.Manager):
@@ -104,6 +104,8 @@ class Manager(manager.Manager):
             db = models.ValidatedMySQLDatabase()
             db.name = CONF.guest_name
             self.admin.create_database([db.serialize()])
+
+        self.app.prep_pfile_management()
 
         if users:
             self.create_user(context, users)
@@ -236,7 +238,16 @@ class Manager(manager.Manager):
         LOG.debug("Creating backup.")
         backup.backup(context, backup_info)
 
-    def get_config_changes(self, cluster_config, mount_point=None):
-        LOG.debug("Get configuration changes")
-        raise exception.DatastoreOperationNotSupported(
-            operation='get_configuration_changes', datastore=MANAGER)
+    def update_overrides(self, context, overrides, remove=False):
+        LOG.debug("Update overrides request accepted.")
+        if remove:
+            self.app.remove_overrides()
+        else:
+            LOG.debug("Updating overrides: %s" % overrides)
+            self.app.update_overrides(overrides)
+
+    def apply_overrides(self, context, overrides):
+        LOG.debug("Apply overrides request accepted.")
+        if overrides:
+            LOG.debug("Applying overrides: %s" % overrides)
+            self.app.apply_overrides(overrides)

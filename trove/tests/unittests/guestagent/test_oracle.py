@@ -90,4 +90,5 @@ class GuestAgentManagerTest(testtools.TestCase):
             self.manager.do_prepare(
                 self.context, None, None, None, None
             )
+            self.manager.app.prep_pfile_management.assert_any_call()
             self.manager.admin.create_database.assert_called_with([schema.serialize()])

@@ -179,3 +179,20 @@ class AlterUser(object):
         if self.password:
             q += " IDENTIFIED BY %s" % self.password
         return q
+
+
+class AlterSystem(object):
+
+    def __init__(self):
+        self.query = None
+
+    @classmethod
+    def set_parameters(cls, params):
+        q = AlterSystem()
+        q.query = "SET " + ", ".join(
+            ['%s = %s' % (k, v) for k, v in params.items()]
+        )
+        return q
+
+    def __str__(self):
+        return "ALTER SYSTEM " + self.query
