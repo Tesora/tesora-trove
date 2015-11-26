@@ -13,6 +13,7 @@
 #    under the License.
 
 import os.path
+import time
 import traceback
 
 from cinderclient import exceptions as cinder_exceptions
@@ -1547,6 +1548,9 @@ class ResizeVolumeAction(object):
         # some platforms (e.g. RHEL) auto-mount attached volumes
         # make sure to issue an explicit unmount
         # this will be a no-op if the volume is not mounted
+        # NOTE: this sleep was added because the unmount caused
+        #       a race condition on RHEL (DBAAS-1037)
+        time.sleep(2)
         self._unmount_volume(recover_func=self._fail)
         self._resize_fs(recover_func=self._fail)
         self._mount_volume(recover_func=self._fail)
