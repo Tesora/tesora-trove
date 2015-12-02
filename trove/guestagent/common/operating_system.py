@@ -39,18 +39,6 @@ SUSE = 'suse'
 NEWLINE = '\n'
 
 
-def read_config_file(path, allow_no_value=False):
-    return read_file(
-        path, codec=stream_codecs.IniCodec(allow_no_value=allow_no_value))
-
-
-def write_config_file(path, data, allow_no_value=False, as_root=False):
-    write_file(
-        path, data,
-        codec=stream_codecs.IniCodec(allow_no_value=allow_no_value),
-        as_root=as_root)
-
-
 def read_file(path, codec=stream_codecs.IdentityCodec(), as_root=False):
     """
     Read a file into a Python data structure
