@@ -27,10 +27,11 @@ class SqlHelper(TestHelper):
 
     DATA_COLUMN_NAME = 'value'
 
-    def __init__(self, expected_override_name, protocol):
+    def __init__(self, expected_override_name, protocol, port=None):
         super(SqlHelper, self).__init__(expected_override_name)
 
         self.protocol = protocol
+        self.port = port
         self.credentials = self.get_helper_credentials()
         self.test_schema = self.credentials['database']
 
@@ -41,6 +42,9 @@ class SqlHelper(TestHelper):
         return sqlalchemy.create_engine(self._get_connection_string(host))
 
     def _get_connection_string(self, host):
+        if self.port:
+            host = "%s:%d" % (host, self.port)
+
         credentials = {'protocol': self.protocol,
                        'host': host,
                        'user': self.credentials.get('name', ''),

@@ -218,23 +218,43 @@ class TestRunner(object):
                 self.fail(str(task.poll_exception()))
 
     def _assert_instance_states(self, instance_id, expected_states,
-                                fast_fail_status='ERROR'):
-        for status in expected_states:
-            start_time = timer.time()
-            try:
-                poll_until(lambda: self._has_status(
-                    instance_id, status, fast_fail_status=fast_fail_status),
-                    sleep_time=self.def_sleep_time,
-                    time_out=self.def_timeout)
-                self.report.log("Instance has gone '%s' in %s." %
-                                (status, self._time_since(start_time)))
-            except exception.PollTimeOut:
-                self.report.log(
-                    "Status of instance '%s' did not change to '%s' after %s."
-                    % (instance_id, status, self._time_since(start_time)))
-                return False
+                                fast_fail_status='ERROR',
+                                require_all_states=False):
+        """Keep polling for the expected instance states until the instance
+        acquires either the last or fast-fail state.
 
-        return True
+        If the instance state does not match the state expected at the time of
+        polling (and 'require_all_states' is not set) the code assumes the
+        instance had already acquired before and moves to the next expected
+        state.
+        """
+
+        found = False
+        for status in expected_states:
+            if require_all_states or found or self._has_status(
+                    instance_id, status, fast_fail_status=fast_fail_status):
+                found = True
+                start_time = timer.time()
+                try:
+                    poll_until(lambda: self._has_status(
+                        instance_id, status,
+                        fast_fail_status=fast_fail_status),
+                        sleep_time=self.def_sleep_time,
+                        time_out=self.def_timeout)
+                    self.report.log("Instance has gone '%s' in %s." %
+                                    (status, self._time_since(start_time)))
+                except exception.PollTimeOut:
+                    self.report.log(
+                        "Status of instance '%s' did not change to '%s' "
+                        "after %s."
+                        % (instance_id, status, self._time_since(start_time)))
+                    return False
+            else:
+                self.report.log(
+                    "Instance state was not '%s', moving to the next expected "
+                    "state." % status)
+
+        return found
 
     def _time_since(self, start_time):
         return '%.1fs' % (timer.time() - start_time)
@@ -291,7 +311,7 @@ class TestRunner(object):
 
     def _has_status(self, instance_id, status, fast_fail_status=None):
         instance = self.get_instance(instance_id)
-        self.report.log("Waiting for instance '%s' to become '%s': %s"
+        self.report.log("Polling instance '%s' for state '%s', was '%s'."
                         % (instance_id, status, instance.status))
         if fast_fail_status and instance.status == fast_fail_status:
             raise RuntimeError("Instance '%s' acquired a fast-fail status: %s"
