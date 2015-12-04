@@ -311,8 +311,9 @@ class FreshInstanceTasksTest(trove_testtools.TestCase):
                   return_value=fake_InstanceServiceStatus.find_by())
     @patch.object(DBInstance, 'find_by',
                   return_value=fake_DBInstance.find_by())
+    @patch('trove.taskmanager.models.LOG')
     def test_update_status_of_instance_failure(
-            self, dbi_find_by_mock, iss_find_by_mock):
+            self, mock_logging, dbi_find_by_mock, iss_find_by_mock):
         self.task_models_conf_mock.get.return_value = ''
         self.freshinstancetasks.update_statuses_on_time_out()
         self.assertEqual(ServiceStatuses.FAILED_TIMEOUT_GUESTAGENT,
@@ -366,7 +367,9 @@ class FreshInstanceTasksTest(trove_testtools.TestCase):
 
     @patch.object(BaseInstance, 'update_db')
     @patch('trove.taskmanager.models.CONF')
-    def test_error_sec_group_create_instance(self, mock_conf, mock_update_db):
+    @patch('trove.taskmanager.models.LOG')
+    def test_error_sec_group_create_instance(self, mock_logging,
+                                             mock_conf, mock_update_db):
         mock_conf.get = Mock(
             return_value=FakeOptGroup(tcp_ports=['3306', '-3306']))
         mock_flavor = {'id': 7, 'ram': 256, 'name': 'smaller_flavor'}
@@ -389,6 +392,7 @@ class FreshInstanceTasksTest(trove_testtools.TestCase):
     @patch.object(template, 'OverrideConfigTemplate')
     @patch.object(taskmanager_models.FreshInstanceTasks, '_create_dns_entry',
                   side_effect=TroveError)
+    @patch('trove.taskmanager.models.LOG')
     def test_error_create_dns_entry_create_instance(self, *args):
         mock_flavor = {'id': 6, 'ram': 512, 'name': 'big_flavor'}
         self.assertRaisesRegexp(
@@ -454,6 +458,7 @@ class FreshInstanceTasksTest(trove_testtools.TestCase):
                   '_render_replica_config')
     @patch.object(trove.guestagent.api.API, 'attach_replication_slave',
                   side_effect=GuestError)
+    @patch('trove.taskmanager.models.LOG')
     def test_error_attach_replication_slave(self, *args):
         mock_flavor = {'id': 8, 'ram': 768, 'name': 'bigger_flavor'}
         snapshot = {'replication_strategy': 'MysqlGTIDReplication',
@@ -494,7 +499,8 @@ class ResizeVolumeTest(trove_testtools.TestCase):
     def tearDown(self):
         super(ResizeVolumeTest, self).tearDown()
 
-    def test_resize_volume_unmount_exception(self):
+    @patch('trove.taskmanager.models.LOG')
+    def test_resize_volume_unmount_exception(self, mock_logging):
         self.instance.guest.unmount_volume = Mock(
             side_effect=GuestError("test exception"))
         self.assertRaises(GuestError,
@@ -504,7 +510,8 @@ class ResizeVolumeTest(trove_testtools.TestCase):
         self.instance.guest.unmount_volume.side_effect = None
         self.instance.reset_mock()
 
-    def test_resize_volume_detach_exception(self):
+    @patch('trove.taskmanager.models.LOG')
+    def test_resize_volume_detach_exception(self, mock_logging):
         self.instance.nova_client.volumes.delete_server_volume = Mock(
             side_effect=nova_exceptions.ClientException("test exception"))
         self.assertRaises(nova_exceptions.ClientException,
@@ -516,7 +523,8 @@ class ResizeVolumeTest(trove_testtools.TestCase):
             None)
         self.instance.reset_mock()
 
-    def test_resize_volume_extend_exception(self):
+    @patch('trove.taskmanager.models.LOG')
+    def test_resize_volume_extend_exception(self, mock_logging):
         self.instance.volume_client.volumes.extend = Mock(
             side_effect=cinder_exceptions.ClientException("test exception"))
         self.assertRaises(cinder_exceptions.ClientException,
@@ -530,14 +538,16 @@ class ResizeVolumeTest(trove_testtools.TestCase):
         self.instance.volume_client.volumes.extend.side_effect = None
         self.instance.reset_mock()
 
-    def test_resize_volume_verify_extend_no_volume(self):
+    @patch('trove.taskmanager.models.LOG')
+    def test_resize_volume_verify_extend_no_volume(self, mock_logging):
         self.instance.volume_client.volumes.get = Mock(
             return_value=None)
         self.assertRaises(cinder_exceptions.ClientException,
                           self.action._verify_extend)
         self.instance.reset_mock()
 
-    def test_resize_volume_poll_timeout(self):
+    @patch('trove.taskmanager.models.LOG')
+    def test_resize_volume_poll_timeout(self, mock_logging):
         utils.poll_until = Mock(side_effect=PollTimeOut)
         self.assertRaises(PollTimeOut, self.action._verify_extend)
         self.assertEqual(2, self.instance.volume_client.volumes.get.call_count)
@@ -722,7 +732,8 @@ class BuiltInstanceTasksTest(trove_testtools.TestCase):
         self.assertEqual(1, self.stub_server_mgr.get.call_count)
         self.assertThat(self.db_instance.flavor_id, Is(self.new_flavor['id']))
 
-    def test_resize_flavor_resize_failure(self):
+    @patch('trove.taskmanager.models.LOG')
+    def test_resize_flavor_resize_failure(self, mock_logging):
         orig_server = self.instance_task.server
         self.stub_verifying_server.status = 'ERROR'
         with patch.object(self.instance_task._nova_client.servers, 'get',
@@ -754,7 +765,8 @@ class BuiltInstanceTasksTest(trove_testtools.TestCase):
         self.instance_task.set_datastore_status_to_paused.assert_any_call()
 
     @patch.object(utils, 'poll_until')
-    def test_reboot_datastore_not_ready(self, mock_poll):
+    @patch('trove.taskmanager.models.LOG')
+    def test_reboot_datastore_not_ready(self, mock_logging, mock_poll):
         self.instance_task.datastore_status_matches = Mock(return_value=False)
         self.instance_task._refresh_datastore_status = Mock()
         self.instance_task.server.reboot = Mock()
@@ -771,7 +783,8 @@ class BuiltInstanceTasksTest(trove_testtools.TestCase):
         self.instance_task._guest.detach_replica.assert_called_with(True)
         mock_update_db.assert_called_with(slave_of_id=None)
 
-    def test_error_detach_replica(self):
+    @patch('trove.taskmanager.models.LOG')
+    def test_error_detach_replica(self, mock_logging):
         with patch.object(self.instance_task._guest, 'detach_replica',
                           side_effect=GuestError):
             self.assertRaises(GuestError, self.instance_task.detach_replica,
@@ -803,7 +816,8 @@ class BuiltInstanceTasksTest(trove_testtools.TestCase):
             replica_context, config_content)
         mock_update_db.assert_called_with(slave_of_id=master.id)
 
-    def test_error_attach_replica(self):
+    @patch('trove.taskmanager.models.LOG')
+    def test_error_attach_replica(self, mock_logging):
         with patch.object(self.instance_task._guest, 'attach_replica',
                           side_effect=GuestError):
             self.assertRaises(GuestError, self.instance_task.attach_replica,
@@ -917,7 +931,8 @@ class BackupTasksTest(trove_testtools.TestCase):
                                                      self.backup.id)
         self.backup.delete.assert_any_call()
 
-    def test_delete_backup_fail_delete_manifest(self):
+    @patch('trove.taskmanager.models.LOG')
+    def test_delete_backup_fail_delete_manifest(self, mock_logging):
         with patch.object(self.swift_client, 'delete_object',
                           side_effect=ClientException("foo")):
             with patch.object(self.swift_client, 'head_object',
@@ -932,7 +947,8 @@ class BackupTasksTest(trove_testtools.TestCase):
                     self.backup.state,
                     "backup should be in DELETE_FAILED status")
 
-    def test_delete_backup_fail_delete_segment(self):
+    @patch('trove.taskmanager.models.LOG')
+    def test_delete_backup_fail_delete_segment(self, mock_logging):
         with patch.object(self.swift_client, 'delete_object',
                           side_effect=ClientException("foo")):
             self.assertRaises(
@@ -979,7 +995,8 @@ class NotifyMixinTest(trove_testtools.TestCase):
         mixin = taskmanager_models.NotifyMixin()
         self.assertThat(mixin._get_service_id('mysql', id_map), Equals('123'))
 
-    def test_get_service_id_unknown(self):
+    @patch('trove.taskmanager.models.LOG')
+    def test_get_service_id_unknown(self, mock_logging):
         id_map = {
             'mysql': '123',
             'percona': 'abc'

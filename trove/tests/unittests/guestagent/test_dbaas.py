@@ -42,6 +42,7 @@ from trove.common.exception import ProcessExecutionError
 from trove.common import instance as rd_instance
 from trove.common import utils
 from trove.conductor import api as conductor_api
+from trove.guestagent.common.configuration import ImportOverrideStrategy
 from trove.guestagent.common import operating_system
 from trove.guestagent.common.operating_system import FileMode
 from trove.guestagent.common import sql_query
@@ -108,6 +109,19 @@ conductor_api.API.get_client = Mock()
 conductor_api.API.heartbeat = Mock()
 
 
+class FakeTime:
+    COUNTER = 0
+
+    @classmethod
+    def time(cls):
+        cls.COUNTER += 1
+        return cls.COUNTER
+
+
+def faketime(*args, **kwargs):
+    return FakeTime.time()
+
+
 class FakeAppStatus(BaseDbStatus):
 
     def __init__(self, id, status):
@@ -160,7 +174,9 @@ class DbaasTest(testtools.TestCase):
             mock_remove.assert_not_called()
 
     @patch.object(operating_system, 'remove')
+    @patch('trove.guestagent.datastore.mysql_common.service.LOG')
     def test_fail_password_update_content_clear_expired_password(self,
+                                                                 mock_logging,
                                                                  mock_remove):
         secret_content = ("# The random password set for the "
                           "root user at Wed May 14 14:06:38 2014 "
@@ -172,12 +188,14 @@ class DbaasTest(testtools.TestCase):
             self.assertEqual(2, dbaas_base.utils.execute.call_count)
             mock_remove.assert_not_called()
 
+    @patch('trove.guestagent.datastore.mysql_common.service.LOG')
     @patch.object(operating_system, 'remove')
     @patch.object(dbaas_base.utils, 'execute',
                   side_effect=ProcessExecutionError)
     def test_fail_retrieve_secret_content_clear_expired_password(self,
                                                                  mock_execute,
-                                                                 mock_remove):
+                                                                 mock_remove,
+                                                                 mock_logging):
         dbaas_base.clear_expired_password()
         self.assertEqual(1, mock_execute.call_count)
         mock_remove.assert_not_called()
@@ -689,7 +707,8 @@ class MySqlAdminTest(testtools.TestCase):
             self.assertTrue(text in args[0].text, "%s not in query." % text)
         self.assertEqual(1, mock_associate_dbs.call_count)
 
-    def test_fail_get_user(self):
+    @patch('trove.guestagent.datastore.mysql_common.service.LOG')
+    def test_fail_get_user(self, *args):
         username = "os_admin"
         hostname = "host"
         self.assertRaisesRegexp(BadRequest, "Username os_admin is not valid",
@@ -712,7 +731,8 @@ class MySqlAdminTest(testtools.TestCase):
         self.assertTrue(dbaas.LocalSqlClient.execute.called,
                         "The client object was not called")
 
-    def test_fail_grant_access(self):
+    @patch('trove.guestagent.datastore.mysql_common.service.LOG')
+    def test_fail_grant_access(self, *args):
         user = MagicMock()
         user.name = "test_user"
         user.host = "%"
@@ -766,6 +786,7 @@ class MySqlAppTest(testtools.TestCase):
         self.orig_utils_execute_with_timeout = \
             dbaas_base.utils.execute_with_timeout
         self.orig_time_sleep = time.sleep
+        self.orig_time_time = time.time
         self.orig_unlink = os.unlink
         self.orig_get_auth_password = MySqlApp.get_auth_password
         self.orig_service_discovery = operating_system.service_discovery
@@ -786,6 +807,7 @@ class MySqlAppTest(testtools.TestCase):
         pxc_system.service_discovery = Mock(
             return_value=mysql_service)
         time.sleep = Mock()
+        time.time = Mock(side_effect=faketime)
         os.unlink = Mock()
         MySqlApp.get_auth_password = Mock()
         self.mock_client = Mock()
@@ -802,6 +824,7 @@ class MySqlAppTest(testtools.TestCase):
         dbaas_base.utils.execute_with_timeout = \
             self.orig_utils_execute_with_timeout
         time.sleep = self.orig_time_sleep
+        time.time = self.orig_time_time
         os.unlink = self.orig_unlink
         operating_system.service_discovery = self.orig_service_discovery
         MySqlApp.get_auth_password = self.orig_get_auth_password
@@ -847,8 +870,10 @@ class MySqlAppTest(testtools.TestCase):
         self.appStatus.set_next_status(
             rd_instance.ServiceStatuses.SHUTDOWN)
 
-        self.mySqlApp.stop_db()
-        self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.mySqlApp.stop_db()
+            self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
 
     def test_stop_mysql_with_db_update(self):
 
@@ -856,11 +881,13 @@ class MySqlAppTest(testtools.TestCase):
         self.appStatus.set_next_status(
             rd_instance.ServiceStatuses.SHUTDOWN)
 
-        self.mySqlApp.stop_db(True)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID,
-            {'service_status':
-             rd_instance.ServiceStatuses.SHUTDOWN.description}))
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.mySqlApp.stop_db(True)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID,
+                {'service_status':
+                 rd_instance.ServiceStatuses.SHUTDOWN.description}))
 
     @patch.object(utils, 'execute_with_timeout', return_value=('0', ''))
     def test_stop_mysql_do_not_start_on_reboot(self, mock_execute):
@@ -868,26 +895,36 @@ class MySqlAppTest(testtools.TestCase):
         self.appStatus.set_next_status(
             rd_instance.ServiceStatuses.SHUTDOWN)
 
-        self.mySqlApp.stop_db(True, True)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID,
-            {'service_status':
-             rd_instance.ServiceStatuses.SHUTDOWN.description}))
-        self.assertEqual(2, mock_execute.call_count)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.mySqlApp.stop_db(True, True)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID,
+                {'service_status':
+                 rd_instance.ServiceStatuses.SHUTDOWN.description}))
+            self.assertEqual(2, mock_execute.call_count)
 
-    def test_stop_mysql_error(self):
+    @patch('trove.guestagent.datastore.service.LOG')
+    @patch('trove.guestagent.datastore.mysql_common.service.LOG')
+    def test_stop_mysql_error(self, *args):
         dbaas_base.utils.execute_with_timeout = Mock()
         self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
         self.mySqlApp.state_change_wait_time = 1
-        self.assertRaises(RuntimeError, self.mySqlApp.stop_db)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.mySqlApp.stop_db)
 
+    @patch('trove.guestagent.datastore.mysql_common.service.LOG')
     @patch.object(operating_system, 'service_discovery',
                   side_effect=KeyError('error'))
     @patch.object(utils, 'execute_with_timeout', return_value=('0', ''))
-    def test_stop_mysql_key_error(self, mock_execute, mock_service):
-        self.assertRaisesRegexp(RuntimeError, 'Service is not discovered.',
-                                self.mySqlApp.stop_db)
-        self.assertEqual(0, mock_execute.call_count)
+    def test_stop_mysql_key_error(self, mock_execute, mock_service,
+                                  mock_logging):
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaisesRegexp(RuntimeError, 'Service is not discovered.',
+                                    self.mySqlApp.stop_db)
+            self.assertEqual(0, mock_execute.call_count)
 
     def test_restart_is_successful(self):
 
@@ -896,14 +933,16 @@ class MySqlAppTest(testtools.TestCase):
         self.mysql_stops_successfully()
         self.mysql_starts_successfully()
 
-        self.mySqlApp.restart()
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.mySqlApp.restart()
 
-        self.assertTrue(self.mySqlApp.stop_db.called)
-        self.assertTrue(self.mySqlApp.start_mysql.called)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID,
-            {'service_status':
-             rd_instance.ServiceStatuses.RUNNING.description}))
+            self.assertTrue(self.mySqlApp.stop_db.called)
+            self.assertTrue(self.mySqlApp.start_mysql.called)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID,
+                {'service_status':
+                 rd_instance.ServiceStatuses.RUNNING.description}))
 
     def test_restart_mysql_wont_start_up(self):
 
@@ -912,14 +951,17 @@ class MySqlAppTest(testtools.TestCase):
         self.mysql_stops_unsuccessfully()
         self.mysql_starts_unsuccessfully()
 
-        self.assertRaises(RuntimeError, self.mySqlApp.restart)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.mySqlApp.restart)
 
-        self.assertTrue(self.mySqlApp.stop_db.called)
-        self.assertFalse(self.mySqlApp.start_mysql.called)
-        self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
+            self.assertTrue(self.mySqlApp.stop_db.called)
+            self.assertFalse(self.mySqlApp.start_mysql.called)
+            self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
 
+    @patch('trove.guestagent.datastore.mysql_common.service.LOG')
     @patch.object(dbaas.MySqlApp, 'get_data_dir', return_value='some path')
-    def test_wipe_ib_logfiles_error(self, get_datadir_mock):
+    def test_wipe_ib_logfiles_error(self, get_datadir_mock, mock_logging):
 
         mocked = Mock(side_effect=ProcessExecutionError('Error'))
         dbaas_base.utils.execute_with_timeout = mocked
@@ -941,32 +983,42 @@ class MySqlAppTest(testtools.TestCase):
         self.mySqlApp._enable_mysql_on_boot = Mock()
         self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
 
-        self.mySqlApp.start_mysql(update_db=True)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID,
-            {'service_status':
-             rd_instance.ServiceStatuses.RUNNING.description}))
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.mySqlApp.start_mysql(update_db=True)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID,
+                {'service_status':
+                 rd_instance.ServiceStatuses.RUNNING.description}))
 
-    def test_start_mysql_runs_forever(self):
+    @patch('trove.guestagent.datastore.mysql_common.service.LOG')
+    @patch('trove.guestagent.datastore.service.LOG')
+    def test_start_mysql_runs_forever(self, *args):
 
         dbaas_base.utils.execute_with_timeout = Mock()
         self.mySqlApp._enable_mysql_on_boot = Mock()
         self.mySqlApp.state_change_wait_time = 1
         self.appStatus.set_next_status(rd_instance.ServiceStatuses.SHUTDOWN)
 
-        self.assertRaises(RuntimeError, self.mySqlApp.start_mysql)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID,
-            {'service_status':
-             rd_instance.ServiceStatuses.SHUTDOWN.description}))
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.mySqlApp.start_mysql)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID,
+                {'service_status':
+                 rd_instance.ServiceStatuses.SHUTDOWN.description}))
 
-    def test_start_mysql_error(self):
+    @patch('trove.guestagent.datastore.service.LOG')
+    @patch('trove.guestagent.datastore.mysql_common.service.LOG')
+    def test_start_mysql_error(self, *args):
 
         self.mySqlApp._enable_mysql_on_boot = Mock()
         mocked = Mock(side_effect=ProcessExecutionError('Error'))
         dbaas_base.utils.execute_with_timeout = mocked
 
-        self.assertRaises(RuntimeError, self.mySqlApp.start_mysql)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.mySqlApp.start_mysql)
 
     def test_start_db_with_conf_changes(self):
         self.mySqlApp.start_mysql = Mock()
@@ -982,7 +1034,8 @@ class MySqlAppTest(testtools.TestCase):
         self.assertEqual(rd_instance.ServiceStatuses.RUNNING,
                          self.appStatus._get_actual_db_status())
 
-    def test_start_db_with_conf_changes_mysql_is_running(self):
+    @patch('trove.guestagent.datastore.mysql_common.service.LOG')
+    def test_start_db_with_conf_changes_mysql_is_running(self, *args):
         self.mySqlApp.start_mysql = Mock()
 
         self.appStatus.status = rd_instance.ServiceStatuses.RUNNING
@@ -1025,10 +1078,12 @@ class MySqlAppTest(testtools.TestCase):
         mock_execute.assert_called_with(mysql_service['cmd_enable'],
                                         shell=True)
 
+    @patch('trove.guestagent.datastore.mysql_common.service.LOG')
     @patch.object(operating_system, 'service_discovery',
                   side_effect=KeyError('error'))
     @patch.object(utils, 'execute_with_timeout', return_value=('0', ''))
-    def test_fail__enable_mysql_on_boot(self, mock_execute, mock_service):
+    def test_fail__enable_mysql_on_boot(self, mock_execute, mock_service,
+                                        mock_logging):
         self.assertRaisesRegexp(RuntimeError, 'Service is not discovered.',
                                 self.mySqlApp._enable_mysql_on_boot)
         self.assertEqual(0, mock_execute.call_count)
@@ -1042,10 +1097,12 @@ class MySqlAppTest(testtools.TestCase):
         mock_execute.assert_called_with(mysql_service['cmd_disable'],
                                         shell=True)
 
+    @patch('trove.guestagent.datastore.mysql_common.service.LOG')
     @patch.object(operating_system, 'service_discovery',
                   side_effect=KeyError('error'))
     @patch.object(utils, 'execute_with_timeout', return_value=('0', ''))
-    def test_fail__disable_mysql_on_boot(self, mock_execute, mock_service):
+    def test_fail__disable_mysql_on_boot(self, mock_execute, mock_service,
+                                         mock_logging):
         self.assertRaisesRegexp(RuntimeError, 'Service is not discovered.',
                                 self.mySqlApp._disable_mysql_on_boot)
         self.assertEqual(0, mock_execute.call_count)
@@ -1309,18 +1366,20 @@ class MySqlAppTest(testtools.TestCase):
         self.mysql_starts_successfully()
         sqlalchemy.create_engine = Mock()
 
-        self.mySqlApp.secure('contents', 'overrides')
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.mySqlApp.secure('contents', 'overrides')
 
-        self.assertTrue(self.mySqlApp.stop_db.called)
-        reset_config_calls = [call('contents', auth_pwd_mock.return_value),
-                              call('contents', auth_pwd_mock.return_value)]
-        self.mySqlApp._reset_configuration.has_calls(reset_config_calls)
+            self.assertTrue(self.mySqlApp.stop_db.called)
+            reset_config_calls = [call('contents', auth_pwd_mock.return_value),
+                                  call('contents', auth_pwd_mock.return_value)]
+            self.mySqlApp._reset_configuration.has_calls(reset_config_calls)
 
-        apply_overrides_calls = [call('overrides'),
-                                 call('overrides')]
-        self.mySqlApp._reset_configuration.has_calls(apply_overrides_calls)
-        self.assertTrue(self.mySqlApp.start_mysql.called)
-        self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
+            apply_overrides_calls = [call('overrides'),
+                                     call('overrides')]
+            self.mySqlApp._reset_configuration.has_calls(apply_overrides_calls)
+            self.assertTrue(self.mySqlApp.start_mysql.called)
+            self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
 
     @patch.object(dbaas, 'get_engine',
                   return_value=MagicMock(name='get_engine'))
@@ -1609,7 +1668,8 @@ class InterrogatorTest(testtools.TestCase):
         self.assertEqual(2147483648, result['free'])
         self.assertEqual(2.0, result['used'])
 
-    def test_get_filesystem_volume_stats_error(self):
+    @patch('trove.guestagent.dbaas.LOG')
+    def test_get_filesystem_volume_stats_error(self, *args):
         with patch.object(os, 'statvfs', side_effect=OSError):
             self.assertRaises(
                 RuntimeError,
@@ -1793,6 +1853,7 @@ class BaseDbStatusTest(testtools.TestCase):
         super(BaseDbStatusTest, self).setUp()
         util.init_db()
         self.orig_dbaas_time_sleep = time.sleep
+        self.orig_time_time = time.time
         self.FAKE_ID = str(uuid4())
         InstanceServiceStatus.create(instance_id=self.FAKE_ID,
                                      status=rd_instance.ServiceStatuses.NEW)
@@ -1810,6 +1871,7 @@ class BaseDbStatusTest(testtools.TestCase):
     def tearDown(self):
         super(BaseDbStatusTest, self).tearDown()
         time.sleep = self.orig_dbaas_time_sleep
+        time.time = self.orig_time_time
         InstanceServiceStatus.find_by(instance_id=self.FAKE_ID).delete()
         dbaas.CONF.guest_id = None
 
@@ -1879,6 +1941,7 @@ class BaseDbStatusTest(testtools.TestCase):
         base_db_status._get_actual_db_status = Mock(
             return_value=rd_instance.ServiceStatuses.RUNNING)
         time.sleep = Mock()
+        time.time = Mock(side_effect=faketime)
 
         self.assertTrue(base_db_status.
                         wait_for_real_status_to_change_to
@@ -1889,6 +1952,7 @@ class BaseDbStatusTest(testtools.TestCase):
         base_db_status._get_actual_db_status = Mock(
             return_value=rd_instance.ServiceStatuses.RUNNING)
         time.sleep = Mock()
+        time.time = Mock(side_effect=faketime)
 
         self.assertFalse(base_db_status.
                          wait_for_real_status_to_change_to
@@ -2123,6 +2187,7 @@ class MySqlAppStatusTest(testtools.TestCase):
         self.orig_load_mysqld_options = dbaas_base.load_mysqld_options
         self.orig_dbaas_base_os_path_exists = dbaas_base.os.path.exists
         self.orig_dbaas_time_sleep = time.sleep
+        self.orig_time_time = time.time
         self.FAKE_ID = str(uuid4())
         InstanceServiceStatus.create(instance_id=self.FAKE_ID,
                                      status=rd_instance.ServiceStatuses.NEW)
@@ -2135,6 +2200,7 @@ class MySqlAppStatusTest(testtools.TestCase):
         dbaas_base.load_mysqld_options = self.orig_load_mysqld_options
         dbaas_base.os.path.exists = self.orig_dbaas_base_os_path_exists
         time.sleep = self.orig_dbaas_time_sleep
+        time.time = self.orig_time_time
         InstanceServiceStatus.find_by(instance_id=self.FAKE_ID).delete()
         dbaas.CONF.guest_id = None
 
@@ -2150,14 +2216,17 @@ class MySqlAppStatusTest(testtools.TestCase):
     @patch.object(utils, 'execute_with_timeout',
                   side_effect=ProcessExecutionError())
     @patch.object(os.path, 'exists', return_value=True)
-    def test_get_actual_db_status_error_crashed(self, mock_exists,
+    @patch('trove.guestagent.datastore.mysql_common.service.LOG')
+    def test_get_actual_db_status_error_crashed(self, mock_logging,
+                                                mock_exists,
                                                 mock_execute):
         dbaas_base.load_mysqld_options = Mock(return_value={})
         self.mySqlAppStatus = MySqlAppStatus.get()
         status = self.mySqlAppStatus._get_actual_db_status()
         self.assertEqual(rd_instance.ServiceStatuses.CRASHED, status)
 
-    def test_get_actual_db_status_error_shutdown(self):
+    @patch('trove.guestagent.datastore.mysql_common.service.LOG')
+    def test_get_actual_db_status_error_shutdown(self, *args):
 
         mocked = Mock(side_effect=ProcessExecutionError())
         dbaas_base.utils.execute_with_timeout = mocked
@@ -2169,7 +2238,8 @@ class MySqlAppStatusTest(testtools.TestCase):
 
         self.assertEqual(rd_instance.ServiceStatuses.SHUTDOWN, status)
 
-    def test_get_actual_db_status_error_blocked(self):
+    @patch('trove.guestagent.datastore.mysql_common.service.LOG')
+    def test_get_actual_db_status_error_blocked(self, *args):
 
         dbaas_base.utils.execute_with_timeout = MagicMock(
             side_effect=[ProcessExecutionError(), ("some output", None)])
@@ -2193,9 +2263,10 @@ class TestRedisApp(testtools.TestCase):
         self.orig_os_path_eu = os.path.expanduser
         os.path.expanduser = Mock(return_value='/tmp/.file')
 
-        with patch.multiple(RedisApp, _build_admin_client=DEFAULT,
-                            _init_overrides_dir=DEFAULT):
-            self.app = RedisApp(state_change_wait_time=0)
+        with patch.object(RedisApp, '_build_admin_client'):
+            with patch.object(ImportOverrideStrategy,
+                              '_initialize_import_directory'):
+                self.app = RedisApp(state_change_wait_time=0)
 
         self.orig_os_path_isfile = os.path.isfile
         self.orig_utils_execute_with_timeout = utils.execute_with_timeout
@@ -2302,7 +2373,8 @@ class TestRedisApp(testtools.TestCase):
             self.assertTrue(
                 mock_status.wait_for_real_status_to_change_to.called)
 
-    def test_stop_db_with_failure(self):
+    @patch('trove.guestagent.datastore.experimental.redis.service.LOG')
+    def test_stop_db_with_failure(self, *args):
         mock_status = MagicMock()
         mock_status.wait_for_real_status_to_change_to = MagicMock(
             return_value=True)
@@ -2326,15 +2398,17 @@ class TestRedisApp(testtools.TestCase):
         mock_status = MagicMock()
         self.app.status = mock_status
         mock_status.begin_restart = MagicMock(return_value=None)
-        with patch.object(RedisApp, 'stop_db', return_value=None):
-            with patch.object(RedisApp, 'start_redis', return_value=None):
-                mock_status.end_restart = MagicMock(
-                    return_value=None)
-                self.app.restart()
-                mock_status.begin_restart.assert_any_call()
-                RedisApp.stop_db.assert_any_call()
-                RedisApp.start_redis.assert_any_call()
-                mock_status.end_restart.assert_any_call()
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            with patch.object(RedisApp, 'stop_db', return_value=None):
+                with patch.object(RedisApp, 'start_redis', return_value=None):
+                    mock_status.end_restart = MagicMock(
+                        return_value=None)
+                    self.app.restart()
+                    mock_status.begin_restart.assert_any_call()
+                    RedisApp.stop_db.assert_any_call()
+                    RedisApp.start_redis.assert_any_call()
+                    mock_status.end_restart.assert_any_call()
 
     def test_start_redis(self):
         mock_status = MagicMock()
@@ -2343,8 +2417,9 @@ class TestRedisApp(testtools.TestCase):
 
         self._assert_start_redis(mock_status)
 
+    @patch('trove.guestagent.datastore.experimental.redis.service.LOG')
     @patch.object(utils, 'execute_with_timeout', return_value=('0', ''))
-    def test_start_redis_with_failure(self, exec_mock):
+    def test_start_redis_with_failure(self, exec_mock, mock_logging):
         mock_status = MagicMock()
         mock_status.wait_for_real_status_to_change_to = MagicMock(
             return_value=False)
@@ -2379,6 +2454,7 @@ class CassandraDBAppTest(testtools.TestCase):
         self.utils_execute_with_timeout = (
             cass_service.utils.execute_with_timeout)
         self.sleep = time.sleep
+        self.orig_time_time = time.time
         self.pkg_version = cass_service.packager.pkg_version
         self.pkg = cass_service.packager
         util.init_db()
@@ -2403,6 +2479,7 @@ class CassandraDBAppTest(testtools.TestCase):
         cass_service.utils.execute_with_timeout = (self.
                                                    utils_execute_with_timeout)
         time.sleep = self.sleep
+        time.time = self.orig_time_time
         cass_service.packager.pkg_version = self.pkg_version
         cass_service.packager = self.pkg
         InstanceServiceStatus.find_by(instance_id=self.FAKE_ID).delete()
@@ -2427,18 +2504,24 @@ class CassandraDBAppTest(testtools.TestCase):
         self.appStatus.set_next_status(
             rd_instance.ServiceStatuses.SHUTDOWN)
 
-        self.cassandra.stop_db(True)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID,
-            {'service_status':
-             rd_instance.ServiceStatuses.SHUTDOWN.description}))
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.cassandra.stop_db(True)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID,
+                {'service_status':
+                 rd_instance.ServiceStatuses.SHUTDOWN.description}))
 
-    def test_stop_db_error(self):
+    @patch('trove.guestagent.datastore.experimental.cassandra.service.LOG')
+    @patch('trove.guestagent.datastore.service.LOG')
+    def test_stop_db_error(self, *args):
 
         cass_service.utils.execute_with_timeout = Mock()
         self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
         self.cassandra.state_change_wait_time = 1
-        self.assertRaises(RuntimeError, self.cassandra.stop_db)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.cassandra.stop_db)
 
     def test_restart(self):
 
@@ -2446,13 +2529,15 @@ class CassandraDBAppTest(testtools.TestCase):
         self.cassandra.start_db = Mock()
         self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
 
-        self.cassandra.restart()
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.cassandra.restart()
 
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID,
-            {'service_status':
-             rd_instance.ServiceStatuses.RUNNING.description}))
-        self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID,
+                {'service_status':
+                 rd_instance.ServiceStatuses.RUNNING.description}))
+            self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
 
     def test_start_cassandra(self):
 
@@ -2462,18 +2547,21 @@ class CassandraDBAppTest(testtools.TestCase):
         self.cassandra.start_db()
         self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
 
-    def test_start_cassandra_runs_forever(self):
+    @patch('trove.guestagent.datastore.experimental.cassandra.service.LOG')
+    def test_start_cassandra_runs_forever(self, *args):
 
         cass_service.utils.execute_with_timeout = Mock()
         (self.cassandra.status.
          wait_for_real_status_to_change_to) = Mock(return_value=False)
         self.appStatus.set_next_status(rd_instance.ServiceStatuses.SHUTDOWN)
 
-        self.assertRaises(RuntimeError, self.cassandra.stop_db)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID,
-            {'service_status':
-             rd_instance.ServiceStatuses.SHUTDOWN.description}))
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.cassandra.stop_db)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID,
+                {'service_status':
+                 rd_instance.ServiceStatuses.SHUTDOWN.description}))
 
     def test_start_db_with_db_update(self):
 
@@ -2481,20 +2569,26 @@ class CassandraDBAppTest(testtools.TestCase):
         self.appStatus.set_next_status(
             rd_instance.ServiceStatuses.RUNNING)
 
-        self.cassandra.start_db(True)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID,
-            {'service_status':
-             rd_instance.ServiceStatuses.RUNNING.description}))
-        self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.cassandra.start_db(True)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID,
+                {'service_status':
+                 rd_instance.ServiceStatuses.RUNNING.description}))
+            self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
 
-    def test_start_cassandra_error(self):
+    @patch('trove.guestagent.datastore.experimental.cassandra.service.LOG')
+    @patch('trove.guestagent.datastore.service.LOG')
+    def test_start_cassandra_error(self, *args):
         self.cassandra._enable_db_on_boot = Mock()
         self.cassandra.state_change_wait_time = 1
         cass_service.utils.execute_with_timeout = Mock(
             side_effect=ProcessExecutionError('Error'))
 
-        self.assertRaises(RuntimeError, self.cassandra.start_db)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.cassandra.start_db)
 
     def test_install(self):
 
@@ -2551,7 +2645,9 @@ class CouchbaseAppTest(testtools.TestCase):
         self.orig_utils_execute_with_timeout = (
             couchservice.utils.execute_with_timeout)
         self.orig_time_sleep = time.sleep
+        self.orig_time_time = time.time
         time.sleep = Mock()
+        time.time = Mock(side_effect=faketime)
         self.orig_service_discovery = operating_system.service_discovery
         self.orig_get_ip = netutils.get_my_ipv4
         operating_system.service_discovery = (
@@ -2572,6 +2668,7 @@ class CouchbaseAppTest(testtools.TestCase):
         netutils.get_my_ipv4 = self.orig_get_ip
         operating_system.service_discovery = self.orig_service_discovery
         time.sleep = self.orig_time_sleep
+        time.time = self.orig_time_time
         InstanceServiceStatus.find_by(instance_id=self.FAKE_ID).delete()
         dbaas.CONF.guest_id = None
 
@@ -2587,12 +2684,16 @@ class CouchbaseAppTest(testtools.TestCase):
         self.couchbaseApp.stop_db()
         self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
 
-    def test_stop_db_error(self):
+    @patch('trove.guestagent.datastore.service.LOG')
+    @patch('trove.guestagent.datastore.experimental.couchbase.service.LOG')
+    def test_stop_db_error(self, *args):
         couchservice.utils.execute_with_timeout = Mock()
         self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
         self.couchbaseApp.state_change_wait_time = 1
 
-        self.assertRaises(RuntimeError, self.couchbaseApp.stop_db)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.couchbaseApp.stop_db)
 
     def test_restart(self):
         self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
@@ -2615,14 +2716,20 @@ class CouchbaseAppTest(testtools.TestCase):
         self.couchbaseApp.start_db()
         self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
 
-    def test_start_db_error(self):
+    @patch('trove.guestagent.datastore.service.LOG')
+    @patch('trove.guestagent.datastore.experimental.couchbase.service.LOG')
+    def test_start_db_error(self, *args):
         mocked = Mock(side_effect=ProcessExecutionError('Error'))
         couchservice.utils.execute_with_timeout = mocked
         self.couchbaseApp._enable_db_on_boot = Mock()
 
-        self.assertRaises(RuntimeError, self.couchbaseApp.start_db)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.couchbaseApp.start_db)
 
-    def test_start_db_runs_forever(self):
+    @patch('trove.guestagent.datastore.service.LOG')
+    @patch('trove.guestagent.datastore.experimental.couchbase.service.LOG')
+    def test_start_db_runs_forever(self, *args):
         couchservice.utils.execute_with_timeout = Mock()
         self.couchbaseApp._enable_db_on_boot = Mock()
         self.couchbaseApp.state_change_wait_time = 1
@@ -2657,7 +2764,9 @@ class CouchDBAppTest(testtools.TestCase):
         self.orig_utils_execute_with_timeout = (
             couchdb_service.utils.execute_with_timeout)
         self.orig_time_sleep = time.sleep
+        self.orig_time_time = time.time
         time.sleep = Mock()
+        time.time = Mock(side_effect=faketime)
         self.orig_service_discovery = operating_system.service_discovery
         self.orig_get_ip = netutils.get_my_ipv4
         operating_system.service_discovery = (
@@ -2679,6 +2788,7 @@ class CouchDBAppTest(testtools.TestCase):
         netutils.get_my_ipv4 = self.orig_get_ip
         operating_system.service_discovery = self.orig_service_discovery
         time.sleep = self.orig_time_sleep
+        time.time = self.orig_time_time
         InstanceServiceStatus.find_by(instance_id=self.FAKE_ID).delete()
         dbaas.CONF.guest_id = None
 
@@ -2694,12 +2804,16 @@ class CouchDBAppTest(testtools.TestCase):
         self.couchdbApp.stop_db()
         self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
 
-    def test_stop_db_error(self):
+    @patch('trove.guestagent.datastore.service.LOG')
+    @patch('trove.guestagent.datastore.experimental.couchdb.service.LOG')
+    def test_stop_db_error(self, *args):
         couchdb_service.utils.execute_with_timeout = Mock()
         self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
         self.couchdbApp.state_change_wait_time = 1
 
-        self.assertRaises(RuntimeError, self.couchdbApp.stop_db)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.couchdbApp.stop_db)
 
     def test_restart(self):
         self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
@@ -2722,12 +2836,16 @@ class CouchDBAppTest(testtools.TestCase):
         self.couchdbApp.start_db()
         self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
 
-    def test_start_db_error(self):
+    @patch('trove.guestagent.datastore.service.LOG')
+    @patch('trove.guestagent.datastore.experimental.couchdb.service.LOG')
+    def test_start_db_error(self, *args):
         couchdb_service.utils.execute_with_timeout = Mock(
             side_effect=ProcessExecutionError('Error'))
         self.couchdbApp._enable_db_on_boot = Mock()
 
-        self.assertRaises(RuntimeError, self.couchdbApp.start_db)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.couchdbApp.start_db)
 
     def test_install_when_couchdb_installed(self):
         couchdb_service.packager.pkg_is_installed = Mock(return_value=True)
@@ -2748,12 +2866,13 @@ class MongoDBAppTest(testtools.TestCase):
             'cmd_disable': 'disable'
         }
 
-    @patch.object(mongo_service.MongoDBApp, '_init_overrides_dir')
+    @patch.object(ImportOverrideStrategy, '_initialize_import_directory')
     def setUp(self, _):
         super(MongoDBAppTest, self).setUp()
         self.orig_utils_execute_with_timeout = (mongo_service.
                                                 utils.execute_with_timeout)
         self.orig_time_sleep = time.sleep
+        self.orig_time_time = time.time
         self.orig_packager = mongo_system.PACKAGER
         self.orig_service_discovery = operating_system.service_discovery
         self.orig_os_unlink = os.unlink
@@ -2771,6 +2890,7 @@ class MongoDBAppTest(testtools.TestCase):
         self.mongoDbApp.status = FakeAppStatus(self.FAKE_ID,
                                                rd_instance.ServiceStatuses.NEW)
         time.sleep = Mock()
+        time.time = Mock(side_effect=faketime)
         os.unlink = Mock()
 
     def tearDown(self):
@@ -2778,6 +2898,7 @@ class MongoDBAppTest(testtools.TestCase):
         mongo_service.utils.execute_with_timeout = (
             self.orig_utils_execute_with_timeout)
         time.sleep = self.orig_time_sleep
+        time.time = self.orig_time_time
         mongo_system.PACKAGER = self.orig_packager
         operating_system.service_discovery = self.orig_service_discovery
         os.unlink = self.orig_os_unlink
@@ -2803,17 +2924,23 @@ class MongoDBAppTest(testtools.TestCase):
         self.mongoDbApp.status.set_next_status(
             rd_instance.ServiceStatuses.SHUTDOWN)
 
-        self.mongoDbApp.stop_db(True)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID, {'service_status': 'shutdown'}))
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.mongoDbApp.stop_db(True)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID, {'service_status': 'shutdown'}))
 
-    def test_stop_db_error(self):
+    @patch('trove.guestagent.datastore.service.LOG')
+    @patch('trove.guestagent.datastore.experimental.mongodb.service.LOG')
+    def test_stop_db_error(self, *args):
 
         mongo_service.utils.execute_with_timeout = Mock()
         self.mongoDbApp.status.set_next_status(
             rd_instance.ServiceStatuses.RUNNING)
         self.mongoDbApp.state_change_wait_time = 1
-        self.assertRaises(RuntimeError, self.mongoDbApp.stop_db)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.mongoDbApp.stop_db)
 
     def test_restart(self):
 
@@ -2822,16 +2949,18 @@ class MongoDBAppTest(testtools.TestCase):
         self.mongoDbApp.stop_db = Mock()
         self.mongoDbApp.start_db = Mock()
 
-        self.mongoDbApp.restart()
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.mongoDbApp.restart()
 
-        self.assertTrue(self.mongoDbApp.stop_db.called)
-        self.assertTrue(self.mongoDbApp.start_db.called)
+            self.assertTrue(self.mongoDbApp.stop_db.called)
+            self.assertTrue(self.mongoDbApp.start_db.called)
 
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID, {'service_status': 'shutdown'}))
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID, {'service_status': 'shutdown'}))
 
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID, {'service_status': 'running'}))
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID, {'service_status': 'running'}))
 
     def test_start_db(self):
 
@@ -2848,11 +2977,15 @@ class MongoDBAppTest(testtools.TestCase):
         self.mongoDbApp.status.set_next_status(
             rd_instance.ServiceStatuses.RUNNING)
 
-        self.mongoDbApp.start_db(True)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID, {'service_status': 'running'}))
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.mongoDbApp.start_db(True)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID, {'service_status': 'running'}))
 
-    def test_start_db_runs_forever(self):
+    @patch('trove.guestagent.datastore.service.LOG')
+    @patch('trove.guestagent.datastore.experimental.mongodb.service.LOG')
+    def test_start_db_runs_forever(self, *args):
 
         mongo_service.utils.execute_with_timeout = Mock(
             return_value=["ubuntu 17036  0.0  0.1 618960 "
@@ -2861,17 +2994,23 @@ class MongoDBAppTest(testtools.TestCase):
         self.mongoDbApp.status.set_next_status(
             rd_instance.ServiceStatuses.SHUTDOWN)
 
-        self.assertRaises(RuntimeError, self.mongoDbApp.start_db)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID, {'service_status': 'shutdown'}))
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.mongoDbApp.start_db)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID, {'service_status': 'shutdown'}))
 
-    def test_start_db_error(self):
+    @patch('trove.guestagent.datastore.service.LOG')
+    @patch('trove.guestagent.datastore.experimental.mongodb.service.LOG')
+    def test_start_db_error(self, *args):
 
         self.mongoDbApp._enable_db_on_boot = Mock()
         mocked = Mock(side_effect=ProcessExecutionError('Error'))
         mongo_service.utils.execute_with_timeout = mocked
 
-        self.assertRaises(RuntimeError, self.mongoDbApp.start_db)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.mongoDbApp.start_db)
 
     def test_start_db_with_conf_changes_db_is_running(self):
 
@@ -2929,7 +3068,8 @@ class VerticaAppStatusTest(testtools.TestCase):
             status = self.verticaAppStatus._get_actual_db_status()
         self.assertEqual(rd_instance.ServiceStatuses.SHUTDOWN, status)
 
-    def test_get_actual_db_status_error_crashed(self):
+    @patch('trove.guestagent.datastore.experimental.vertica.service.LOG')
+    def test_get_actual_db_status_error_crashed(self, *args):
         self.verticaAppStatus = VerticaAppStatus()
         with patch.object(vertica_system, 'shell_execute',
                           MagicMock(side_effect=ProcessExecutionError('problem'
@@ -2998,7 +3138,8 @@ class VerticaAppTest(testtools.TestCase):
                     enable_user_arguments.assert_called_with(
                         'some_password', expected_enable_user_cmd)
 
-    def test_enable_root_is_root_not_enabled_failed(self):
+    @patch('trove.guestagent.datastore.experimental.vertica.service.LOG')
+    def test_enable_root_is_root_not_enabled_failed(self, *args):
         app = VerticaApp(MagicMock())
         with patch.object(app, 'read_config', return_value=self.test_config):
             with patch.object(app, 'is_root_enabled', return_value=False):
@@ -3007,7 +3148,8 @@ class VerticaAppTest(testtools.TestCase):
                     self.assertRaises(RuntimeError, app.enable_root,
                                       'root_password')
 
-    def test_enable_root_is_root_enabled(self):
+    @patch('trove.guestagent.datastore.experimental.vertica.service.LOG')
+    def test_enable_root_is_root_enabled(self, *args):
         app = VerticaApp(MagicMock())
         with patch.object(app, 'read_config', return_value=self.test_config):
             with patch.object(app, 'is_root_enabled', return_value=True):
@@ -3023,7 +3165,8 @@ class VerticaAppTest(testtools.TestCase):
                     alter_user_password_arguments.assert_called_with(
                         'some_password', expected_alter_user_cmd)
 
-    def test_enable_root_is_root_enabled_failed(self):
+    @patch('trove.guestagent.datastore.experimental.vertica.service.LOG')
+    def test_enable_root_is_root_enabled_failed(self, *arg):
         app = VerticaApp(MagicMock())
         with patch.object(app, 'read_config', return_value=self.test_config):
             with patch.object(app, 'is_root_enabled', return_value=True):
@@ -3046,7 +3189,8 @@ class VerticaAppTest(testtools.TestCase):
                 user_exists_args.assert_called_with(expected_user_exists_cmd,
                                                     'dbadmin')
 
-    def test_is_root_enable_failed(self):
+    @patch('trove.guestagent.datastore.experimental.vertica.service.LOG')
+    def test_is_root_enable_failed(self, *args):
         app = VerticaApp(MagicMock())
         with patch.object(app, 'read_config', return_value=self.test_config):
             with patch.object(vertica_system, 'shell_execute',
@@ -3078,7 +3222,8 @@ class VerticaAppTest(testtools.TestCase):
             " -m vertica.local_coerce")
         arguments.assert_called_with(expected_command)
 
-    def test_failure_prepare_for_install_vertica(self):
+    @patch('trove.guestagent.datastore.experimental.vertica.service.LOG')
+    def test_failure_prepare_for_install_vertica(self, *args):
         with patch.object(vertica_system, 'shell_execute',
                           side_effect=ProcessExecutionError('Error')):
             self.assertRaises(ProcessExecutionError,
@@ -3093,7 +3238,8 @@ class VerticaAppTest(testtools.TestCase):
             vertica_system.INSTALL_VERTICA % ('10.0.0.2', '/var/lib/vertica'))
         arguments.assert_called_with(expected_command)
 
-    def test_failure_install_vertica(self):
+    @patch('trove.guestagent.datastore.experimental.vertica.service.LOG')
+    def test_failure_install_vertica(self, *args):
         with patch.object(vertica_system, 'shell_execute',
                           side_effect=ProcessExecutionError('some exception')):
             self.assertRaisesRegexp(RuntimeError, 'install_vertica failed.',
@@ -3111,7 +3257,8 @@ class VerticaAppTest(testtools.TestCase):
                                                         'some_password'))
         arguments.assert_called_with(expected_command, 'dbadmin')
 
-    def test_failure_create_db(self):
+    @patch('trove.guestagent.datastore.experimental.vertica.service.LOG')
+    def test_failure_create_db(self, *args):
         with patch.object(self.app, 'read_config',
                           side_effect=RuntimeError('Error')):
             self.assertRaisesRegexp(RuntimeError,
@@ -3167,14 +3314,16 @@ class VerticaAppTest(testtools.TestCase):
         mock_status = MagicMock()
         app = VerticaApp(mock_status)
         mock_status.begin_restart = MagicMock(return_value=None)
-        with patch.object(VerticaApp, 'stop_db', return_value=None):
-            with patch.object(VerticaApp, 'start_db', return_value=None):
-                mock_status.end_restart = MagicMock(
-                    return_value=None)
-                app.restart()
-                mock_status.begin_restart.assert_any_call()
-                VerticaApp.stop_db.assert_any_call()
-                VerticaApp.start_db.assert_any_call()
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            with patch.object(VerticaApp, 'stop_db', return_value=None):
+                with patch.object(VerticaApp, 'start_db', return_value=None):
+                    mock_status.end_restart = MagicMock(
+                        return_value=None)
+                    app.restart()
+                    mock_status.begin_restart.assert_any_call()
+                    VerticaApp.stop_db.assert_any_call()
+                    VerticaApp.start_db.assert_any_call()
 
     def test_start_db(self):
         mock_status = MagicMock()
@@ -3266,7 +3415,8 @@ class VerticaAppTest(testtools.TestCase):
                 self.assertEqual(
                     2, vertica_system.shell_execute.call_count)
 
-    def test_stop_db_failure(self):
+    @patch('trove.guestagent.datastore.experimental.vertica.service.LOG')
+    def test_stop_db_failure(self, *args):
         mock_status = MagicMock()
         type(mock_status)._is_restarting = PropertyMock(return_value=False)
         app = VerticaApp(mock_status)
@@ -3287,7 +3437,8 @@ class VerticaAppTest(testtools.TestCase):
         self.app._export_conf_to_members(members=['member1', 'member2'])
         self.assertEqual(2, vertica_system.shell_execute.call_count)
 
-    def test_fail__export_conf_to_members(self):
+    @patch('trove.guestagent.datastore.experimental.vertica.service.LOG')
+    def test_fail__export_conf_to_members(self, *args):
         app = VerticaApp(MagicMock())
         with patch.object(vertica_system, 'shell_execute',
                           side_effect=ProcessExecutionError('Error')):
@@ -3319,7 +3470,8 @@ class VerticaAppTest(testtools.TestCase):
                 vertica_system.shell_execute.assert_any_call(
                     'cat ' + '/home/' + user + '/.ssh/authorized_keys')
 
-    def test_fail_authorize_public_keys(self):
+    @patch('trove.guestagent.datastore.experimental.vertica.service.LOG')
+    def test_fail_authorize_public_keys(self, *args):
         user = 'test_user'
         keys = ['test_key@machine1', 'test_key@machine2']
         with patch.object(os.path, 'expanduser',
@@ -3355,7 +3507,8 @@ class VerticaAppTest(testtools.TestCase):
                 self.assertEqual(2, vertica_system.shell_execute.call_count)
                 self.assertEqual('some_key', key)
 
-    def test_fail_get_public_keys(self):
+    @patch('trove.guestagent.datastore.experimental.vertica.service.LOG')
+    def test_fail_get_public_keys(self, *args):
         user = 'test_user'
         with patch.object(os.path, 'expanduser',
                           return_value=('/home/' + user)):
@@ -3391,7 +3544,8 @@ class VerticaAppTest(testtools.TestCase):
         restart_policy.assert_called_with(expected_restart_policy)
         agent_enable.assert_called_with(expected_agent_enable)
 
-    def test_failure__enable_db_on_boot(self):
+    @patch('trove.guestagent.datastore.experimental.vertica.service.LOG')
+    def test_failure__enable_db_on_boot(self, *args):
         with patch.object(subprocess, 'Popen', side_effect=OSError):
             self.assertRaisesRegexp(RuntimeError,
                                     'Could not enable db on boot.',
@@ -3412,7 +3566,8 @@ class VerticaAppTest(testtools.TestCase):
         restart_policy.assert_called_with(expected_restart_policy, 'dbadmin')
         agent_disable.assert_called_with(expected_agent_disable, 'root')
 
-    def test_failure__disable_db_on_boot(self):
+    @patch('trove.guestagent.datastore.experimental.vertica.service.LOG')
+    def test_failure__disable_db_on_boot(self, *args):
         with patch.object(vertica_system, 'shell_execute',
                           side_effect=ProcessExecutionError('Error')):
             self.assertRaisesRegexp(RuntimeError,
@@ -3428,7 +3583,8 @@ class VerticaAppTest(testtools.TestCase):
                              test_config.get('credentials', 'dbadmin_password')
                              )
 
-    def test_fail_read_config(self):
+    @patch('trove.guestagent.datastore.experimental.vertica.service.LOG')
+    def test_fail_read_config(self, *args):
         with patch.object(ConfigParser.ConfigParser, 'read',
                           side_effect=ConfigParser.Error()):
             self.assertRaises(RuntimeError, self.app.read_config)
@@ -3484,11 +3640,13 @@ class DB2AppTest(testtools.TestCase):
         mock_status.begin_restart = MagicMock(return_value=None)
         app.stop_db = MagicMock(return_value=None)
         app.start_db = MagicMock(return_value=None)
-        app.restart()
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            app.restart()
 
-        self.assertTrue(mock_status.begin_restart.called)
-        self.assertTrue(app.stop_db.called)
-        self.assertTrue(app.start_db.called)
+            self.assertTrue(mock_status.begin_restart.called)
+            self.assertTrue(app.stop_db.called)
+            self.assertTrue(app.start_db.called)
 
     def test_start_db(self):
         db2service.utils.execute_with_timeout = MagicMock(return_value=None)
@@ -3512,7 +3670,8 @@ class DB2AdminTest(testtools.TestCase):
         db2service.utils.execute_with_timeout = (
             self.orig_utils_execute_with_timeout)
 
-    def test_delete_database(self):
+    @patch('trove.guestagent.datastore.experimental.db2.service.LOG')
+    def test_delete_database(self, *args):
         with patch.object(
             db2service, 'run_command',
             MagicMock(
@@ -3527,7 +3686,8 @@ class DB2AdminTest(testtools.TestCase):
             self.assertEqual(expected, args[0],
                              "Delete database queries are not the same")
 
-    def test_list_databases(self):
+    @patch('trove.guestagent.datastore.experimental.db2.service.LOG')
+    def test_list_databases(self, *args):
         with patch.object(db2service, 'run_command', MagicMock(
                           side_effect=ProcessExecutionError('Error'))):
             self.db2Admin.list_databases()
@@ -3638,6 +3798,7 @@ class PXCAppTest(testtools.TestCase):
         self.orig_utils_execute_with_timeout = \
             dbaas_base.utils.execute_with_timeout
         self.orig_time_sleep = time.sleep
+        self.orig_time_time = time.time
         self.orig_unlink = os.unlink
         self.orig_get_auth_password = pxc_service.PXCApp.get_auth_password
         self.orig_service_discovery = operating_system.service_discovery
@@ -3657,6 +3818,7 @@ class PXCAppTest(testtools.TestCase):
         pxc_system.service_discovery = Mock(
             return_value=mysql_service)
         time.sleep = Mock()
+        time.time = Mock(side_effect=faketime)
         os.unlink = Mock()
         pxc_service.PXCApp.get_auth_password = Mock()
         self.mock_client = Mock()
@@ -3675,6 +3837,7 @@ class PXCAppTest(testtools.TestCase):
         dbaas_base.utils.execute_with_timeout = \
             self.orig_utils_execute_with_timeout
         time.sleep = self.orig_time_sleep
+        time.time = self.orig_time_time
         os.unlink = self.orig_unlink
         operating_system.service_discovery = self.orig_service_discovery
         pxc_system.service_discovery = self.orig_pxc_system_service_discovery

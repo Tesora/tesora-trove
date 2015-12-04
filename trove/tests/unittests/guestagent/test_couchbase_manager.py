@@ -160,7 +160,9 @@ class GuestAgentCouchbaseManagerTest(testtools.TestCase):
 
     @mock.patch.object(utils, 'execute_with_timeout',
                        Mock(return_value=('0', '')))
-    def test_write_password_to_file2(self):
+    @mock.patch(
+        'trove.guestagent.datastore.experimental.couchbase.service.LOG')
+    def test_write_password_to_file2(self, mock_logging):
         self.original_mkstemp = tempfile.mkstemp
         self.tempname = None
 

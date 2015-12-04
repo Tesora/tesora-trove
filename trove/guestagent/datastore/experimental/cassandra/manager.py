@@ -19,7 +19,6 @@ import os
 from oslo_log import log as logging
 
 from trove.common import cfg
-from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance as trove_instance
 from trove.common.notification import EndNotification
@@ -177,24 +176,6 @@ class Manager(manager.Manager):
                    include_marker=False):
         return self.__admin.list_users(context, limit, marker, include_marker)
 
-    def enable_root(self, context):
-        raise exception.DatastoreOperationNotSupported(
-            operation='enable_root', datastore=self.manager)
-
-    def enable_root_with_password(self, context, root_password=None):
-        LOG.debug("Enabling root with password.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='enable_root_with_password', datastore=self.manager)
-
-    def disable_root(self, context):
-        LOG.debug("Disabling root.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='disable_root', datastore=MANAGER)
-
-    def is_root_enabled(self, context):
-        raise exception.DatastoreOperationNotSupported(
-            operation='is_root_enabled', datastore=self.manager)
-
     def _perform_restore(self, backup_info, context, restore_location):
         LOG.info(_("Restoring database from backup %s.") % backup_info['id'])
         try:
@@ -220,23 +201,6 @@ class Manager(manager.Manager):
         with EndNotification(context):
             backup.backup(context, backup_info)
 
-    def mount_volume(self, context, device_path=None, mount_point=None):
-        device = volume.VolumeDevice(device_path)
-        device.mount(mount_point, write_to_fstab=False)
-        LOG.debug("Mounted the device %s at the mount point %s." %
-                  (device_path, mount_point))
-
-    def unmount_volume(self, context, device_path=None, mount_point=None):
-        device = volume.VolumeDevice(device_path)
-        device.unmount(mount_point)
-        LOG.debug("Unmounted the device %s from the mount point %s." %
-                  (device_path, mount_point))
-
-    def resize_fs(self, context, device_path=None, mount_point=None):
-        device = volume.VolumeDevice(device_path)
-        device.resize_fs(mount_point)
-        LOG.debug("Resized the filesystem at %s." % mount_point)
-
     def update_overrides(self, context, overrides, remove=False):
         LOG.debug("Updating overrides.")
         if remove:
@@ -248,46 +212,3 @@ class Manager(manager.Manager):
         require restart, so this is a no-op.
         """
         pass
-
-    def get_replication_snapshot(self, context, snapshot_info,
-                                 replica_source_config=None):
-        raise exception.DatastoreOperationNotSupported(
-            operation='get_replication_snapshot', datastore=self.manager)
-
-    def attach_replication_slave(self, context, snapshot, slave_config):
-        LOG.debug("Attaching replication slave.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='attach_replication_slave', datastore=self.manager)
-
-    def detach_replica(self, context, for_failover=False):
-        raise exception.DatastoreOperationNotSupported(
-            operation='detach_replica', datastore=self.manager)
-
-    def get_replica_context(self, context):
-        raise exception.DatastoreOperationNotSupported(
-            operation='get_replica_context', datastore=self.manager)
-
-    def make_read_only(self, context, read_only):
-        raise exception.DatastoreOperationNotSupported(
-            operation='make_read_only', datastore=self.manager)
-
-    def enable_as_master(self, context, replica_source_config):
-        raise exception.DatastoreOperationNotSupported(
-            operation='enable_as_master', datastore=self.manager)
-
-    def get_txn_count(self):
-        raise exception.DatastoreOperationNotSupported(
-            operation='get_txn_count', datastore=self.manager)
-
-    def get_latest_txn_id(self):
-        raise exception.DatastoreOperationNotSupported(
-            operation='get_latest_txn_id', datastore=self.manager)
-
-    def wait_for_txn(self, txn):
-        raise exception.DatastoreOperationNotSupported(
-            operation='wait_for_txn', datastore=self.manager)
-
-    def demote_replication_master(self, context):
-        LOG.debug("Demoting replication master.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='demote_replication_master', datastore=self.manager)

@@ -18,9 +18,10 @@
 import os.path
 
 from oslo_config import cfg
+from oslo_config.cfg import NoSuchOptError
 from oslo_log import log as logging
 
-import trove
+from trove.version import version_info as version
 
 
 UNKNOWN_SERVICE_ID = 'unknown-service-id-error'
@@ -35,8 +36,8 @@ path_opts = [
 common_opts = [
     cfg.IPOpt('bind_host', default='0.0.0.0',
               help='IP address the API server will listen on.'),
-    cfg.IntOpt('bind_port', default=8779,
-               help='Port the API server will listen on.'),
+    cfg.PortOpt('bind_port', default=8779,
+                help='Port the API server will listen on.'),
     cfg.StrOpt('api_paste_config', default="api-paste.ini",
                help='File name for the paste.deploy config for trove-api.'),
     cfg.BoolOpt('trove_volume_support', default=True,
@@ -144,6 +145,8 @@ common_opts = [
     cfg.StrOpt('guest_name', default=None, help="Name of the Guest Instance."),
     cfg.IntOpt('state_change_wait_time', default=3 * 60,
                help='Maximum time (in seconds) to wait for a state change.'),
+    cfg.IntOpt('state_change_poll_time', default=3,
+               help='Interval between state change poll requests (seconds).'),
     cfg.IntOpt('agent_heartbeat_time', default=10,
                help='Maximum time (in seconds) for the Guest Agent to reply '
                     'to a heartbeat request.'),
@@ -420,7 +423,9 @@ profiler_opts = [
     cfg.BoolOpt("enabled", default=False,
                 help="If False fully disable profiling feature."),
     cfg.BoolOpt("trace_sqlalchemy", default=True,
-                help="If False doesn't trace SQL requests.")
+                help="If False doesn't trace SQL requests."),
+    cfg.StrOpt("hmac_keys", default="SECRET_KEY",
+               help="Secret key to use to sign tracing messages."),
 ]
 
 
@@ -1064,10 +1069,10 @@ mongodb_opts = [
                help='Namespace to load restore strategies from.',
                deprecated_name='restore_namespace',
                deprecated_group='DEFAULT'),
-    cfg.IntOpt('mongodb_port', default=27017,
-               help='Port for mongod and mongos instances.'),
-    cfg.IntOpt('configsvr_port', default=27019,
-               help='Port for instances running as config servers.'),
+    cfg.PortOpt('mongodb_port', default=27017,
+                help='Port for mongod and mongos instances.'),
+    cfg.PortOpt('configsvr_port', default=27019,
+                help='Port for instances running as config servers.'),
     cfg.ListOpt('ignore_dbs', default=['admin', 'local', 'config'],
                 help='Databases to exclude when listing databases.'),
     cfg.ListOpt('ignore_users', default=['admin.os_admin', 'admin.root'],
@@ -1445,33 +1450,41 @@ def custom_parser(parsername, parser):
 def parse_args(argv, default_config_files=None):
     cfg.CONF(args=argv[1:],
              project='trove',
-             version=trove.__version__,
+             version=version.cached_version_string(),
              default_config_files=default_config_files)
 
 
 def get_ignored_dbs(manager=None):
-    """
-    Get the list of ignored databases taking into account the fact
-    that the manager may not be specified, and the manager (if
-    specified) may not list ignore_dbs.
-    """
-
-    _manager = manager or CONF.datastore_manager or 'mysql'
-
-    _ignore_dbs = CONF.get(_manager).ignore_dbs or CONF.ignore_dbs or []
-
-    return _ignore_dbs
+    try:
+        return get_configuration_property('ignore_dbs', manager=manager)
+    except NoSuchOptError:
+        return []
 
 
 def get_ignored_users(manager=None):
+    try:
+        return get_configuration_property('ignore_users', manager=manager)
+    except NoSuchOptError:
+        return []
+
+
+def get_configuration_property(property_name, manager=None):
     """
-    Get the list of ignored users taking into account the fact
-    that the manager may not be specified, and the manager (if
-    specified) may not list ignore_users.
+    Get a configuration property.
+    Try to get it from the datastore-specific section first.
+    If it is not available, retrieve it from the DEFAULT section.
     """
 
-    _manager = manager or CONF.datastore_manager or 'mysql'
+    # TODO(pmalik): Note that the unit and fake-integration tests
+    # do not define 'CONF.datastore_manager'. *MySQL* options will
+    # be loaded unless the caller passes a manager name explicitly.
+    #
+    # Once the tests are fixed this conditional expression should be removed
+    # and the proper value should always be either loaded from
+    # 'CONF.datastore_manager' or passed-in by the caller.
+    datastore_manager = manager or CONF.datastore_manager or 'mysql'
 
-    _ignore_users = CONF.get(_manager).ignore_users or CONF.ignore_users or []
-
-    return _ignore_users
+    try:
+        return CONF.get(datastore_manager).get(property_name)
+    except NoSuchOptError:
+        return CONF.get(property_name)

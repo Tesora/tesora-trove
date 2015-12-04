@@ -103,7 +103,8 @@ class PgSqlDatabase(object):
     def _get_databases(self):
         """Return all non-system Postgres databases on the instance."""
         results = pgutil.query(
-            pgutil.DatabaseQuery.list(ignore=cfg.get_ignored_dbs()),
+            pgutil.DatabaseQuery.list(ignore=cfg.get_ignored_dbs(
+                manager='postgresql')),
             timeout=30,
         )
         return [models.PostgreSQLSchema(

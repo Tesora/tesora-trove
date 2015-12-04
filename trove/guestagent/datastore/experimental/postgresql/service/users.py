@@ -138,7 +138,8 @@ class PgSqlUsers(PgSqlAccess):
     def _get_users(self, context):
         """Return all non-system Postgres users on the instance."""
         results = pgutil.query(
-            pgutil.UserQuery.list(ignore=cfg.get_ignored_users()),
+            pgutil.UserQuery.list(ignore=cfg.get_ignored_users(
+                manager='postgresql')),
             timeout=30,
         )
         return [self._build_user(context, row[0].strip()) for row in results]
