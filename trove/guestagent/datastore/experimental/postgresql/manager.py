@@ -59,7 +59,7 @@ class Manager(
     PG_BUILTIN_ADMIN = 'postgres'
 
     def __init__(self):
-        super(Manager, self).__init__()
+        super(Manager, self).__init__('postgresql')
 
     @property
     def status(self):
@@ -144,30 +144,6 @@ class Manager(
         with EndNotification(context):
             self.enable_backups()
             backup.backup(context, backup_info)
-
-    def mount_volume(self, context, device_path=None, mount_point=None):
-        """Mount the volume as specified by device_path to mount_point."""
-        device = volume.VolumeDevice(device_path)
-        device.mount(mount_point, write_to_fstab=False)
-        LOG.debug(
-            "Mounted device {device} at mount point {mount}.".format(
-                device=device_path, mount=mount_point))
-
-    def unmount_volume(self, context, device_path=None, mount_point=None):
-        """Unmount the volume as specified by device_path from mount_point."""
-        device = volume.VolumeDevice(device_path)
-        device.unmount(mount_point)
-        LOG.debug(
-            "Unmounted device {device} from mount point {mount}.".format(
-                device=device_path, mount=mount_point))
-
-    def resize_fs(self, context, device_path=None, mount_point=None):
-        """Resize the filesystem as specified by device_path at mount_point."""
-        device = volume.VolumeDevice(device_path)
-        device.resize_fs(mount_point)
-        LOG.debug(
-            "Resized the filesystem at {mount}.".format(
-                mount=mount_point))
 
     def backup_required_for_replication(self, context):
         # TODO(atomic77) Move this class into a single property

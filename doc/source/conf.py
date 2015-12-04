@@ -15,7 +15,8 @@
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
 extensions = ['sphinx.ext.todo',
               'sphinx.ext.viewcode',
-              'oslosphinx']
+              'oslosphinx',
+              'stevedore.sphinxext']
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -38,7 +39,7 @@ copyright = u'2013, OpenStack Foundation'
 # built documents.
 #
 # The short X.Y version.
-from trove import version as trove_version
+from trove.version import version_info as trove_version
 # The full version, including alpha/beta/rc tags.
 release = trove_version.version_string_with_vcs()
 # The short X.Y version.

@@ -40,6 +40,12 @@ class GuestAgentManagerTest(testtools.TestCase):
     def setUp(self):
         super(GuestAgentManagerTest, self).setUp()
         self.context = trove_testtools.TroveTestContext(self)
+        self.replication_strategy = 'MysqlGTIDReplication'
+        self.patch_rs = patch(
+            'trove.guestagent.strategies.replication.get_strategy',
+            return_value=self.replication_strategy)
+        self.mock_rs = self.patch_rs.start()
+        self.addCleanup(self.patch_rs.stop)
         self.manager = Manager()
         self.origin_MySqlAppStatus = dbaas.MySqlAppStatus
         self.origin_os_path_exists = os.path.exists
@@ -57,12 +63,10 @@ class GuestAgentManagerTest(testtools.TestCase):
         # set up common mock objects, etc. for replication testing
         self.patcher_gfvs = patch(
             'trove.guestagent.dbaas.get_filesystem_volume_stats')
-        self.patcher_rs = patch(self.manager.replication_namespace + "." +
-                                self.manager.replication_strategy)
+        self.patcher_rs = patch(
+            'trove.guestagent.strategies.replication.get_instance')
         self.mock_gfvs_class = self.patcher_gfvs.start()
         self.mock_rs_class = self.patcher_rs.start()
-        self.repl_datastore_manager = 'mysql'
-        self.repl_replication_strategy = 'MysqlGTIDReplication'
 
     def tearDown(self):
         super(GuestAgentManagerTest, self).tearDown()
@@ -197,7 +201,7 @@ class GuestAgentManagerTest(testtools.TestCase):
         self._prepare_dynamic(databases=['db1'], users=['user1'])
 
     def test_prepare_mysql_with_snapshot(self):
-        snapshot = {'replication_strategy': self.repl_replication_strategy,
+        snapshot = {'replication_strategy': self.replication_strategy,
                     'dataset': {'dataset_size': 1.0},
                     'config': None}
         self._prepare_dynamic(snapshot=snapshot)
@@ -326,12 +330,12 @@ class GuestAgentManagerTest(testtools.TestCase):
 
         expected_replication_snapshot = {
             'dataset': {
-                'datastore_manager': self.repl_datastore_manager,
+                'datastore_manager': self.manager.manager,
                 'dataset_size': used_size,
                 'volume_size': total_size,
                 'snapshot_id': snapshot_id
             },
-            'replication_strategy': self.repl_replication_strategy,
+            'replication_strategy': self.replication_strategy,
             'master': master_ref,
             'log_position': log_position
         }
@@ -361,7 +365,7 @@ class GuestAgentManagerTest(testtools.TestCase):
         self.mock_rs_class.return_value = mock_replication
         self.mock_gfvs_class.return_value = {'total': total_size}
 
-        snapshot = {'replication_strategy': self.repl_replication_strategy,
+        snapshot = {'replication_strategy': self.replication_strategy,
                     'dataset': {'dataset_size': dataset_size}}
 
         # entry point
@@ -369,7 +373,8 @@ class GuestAgentManagerTest(testtools.TestCase):
         # assertions
         self.assertEqual(1, mock_replication.enable_as_slave.call_count)
 
-    def test_attach_replication_slave_invalid(self):
+    @patch('trove.guestagent.datastore.mysql_common.manager.LOG')
+    def test_attach_replication_slave_invalid(self, *args):
         mock_status = MagicMock()
         dbaas.MySqlAppStatus.get = MagicMock(return_value=mock_status)
 
@@ -381,7 +386,7 @@ class GuestAgentManagerTest(testtools.TestCase):
         self.mock_rs_class.return_value = mock_replication
         self.mock_gfvs_class.return_value = {'total': total_size}
 
-        snapshot = {'replication_strategy': self.repl_replication_strategy,
+        snapshot = {'replication_strategy': self.replication_strategy,
                     'dataset': {'dataset_size': dataset_size}}
 
         # entry point
@@ -627,7 +632,7 @@ class GuestAgentManagerTest(testtools.TestCase):
         mock_replication = MagicMock()
         mock_replication.cleanup_source_on_replica_detach = MagicMock()
         self.mock_rs_class.return_value = mock_replication
-        snapshot = {'replication_strategy': self.repl_replication_strategy,
+        snapshot = {'replication_strategy': self.replication_strategy,
                     'dataset': {'dataset_size': '1.0'}}
 
         # entry point
@@ -671,7 +676,8 @@ class GuestAgentManagerTest(testtools.TestCase):
         # assertions
         self.assertEqual(mock_replication.enable_as_master.call_count, 1)
 
-    def test__perform_restore(self):
+    @patch('trove.guestagent.datastore.mysql_common.manager.LOG')
+    def test__perform_restore(self, *args):
         backup_info = {'id': 'backup_id_123abc',
                        'location': 'fake-location',
                        'type': 'InnoBackupEx',

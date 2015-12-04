@@ -17,6 +17,7 @@ import pymongo
 
 import trove.common.utils as utils
 import trove.guestagent.backup as backup
+from trove.guestagent.common.configuration import ImportOverrideStrategy
 import trove.guestagent.datastore.experimental.mongodb.manager as manager
 import trove.guestagent.datastore.experimental.mongodb.service as service
 import trove.guestagent.db.models as models
@@ -26,8 +27,7 @@ import trove.tests.unittests.trove_testtools as trove_testtools
 
 class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
 
-    @mock.patch.object(service.MongoDBApp, '_init_overrides_dir',
-                       return_value='')
+    @mock.patch.object(ImportOverrideStrategy, '_initialize_import_directory')
     def setUp(self, _):
         super(GuestAgentMongoDBManagerTest, self).setUp()
         self.context = trove_testtools.TroveTestContext(self)
@@ -163,12 +163,15 @@ class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
 
     @mock.patch.object(service, 'MongoDBClient')
     @mock.patch.object(service.MongoDBAdmin, '_admin_user')
-    def test_create_user(self, mocked_admin_user, mocked_client):
+    @mock.patch.object(service.MongoDBAdmin, '_get_user_record')
+    def test_create_user(self, mocked_get_user, mocked_admin_user,
+                         mocked_client):
         user = self._serialized_user.copy()
         user['_password'] = 'testpassword'
         users = [user]
 
         client = mocked_client().__enter__()['testdb']
+        mocked_get_user.return_value = None
 
         self.manager.create_user(self.context, users)
 
@@ -240,7 +243,7 @@ class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
         self.assertIsNone(next_marker)
         self.assertEqual(sorted([user1, user2]), users)
 
-    @mock.patch.object(service.MongoDBAdmin, 'create_user')
+    @mock.patch.object(service.MongoDBAdmin, 'create_validated_user')
     @mock.patch.object(utils, 'generate_random_password',
                        return_value='password')
     def test_enable_root(self, mock_gen_rand_pwd, mock_create_user):
