@@ -111,7 +111,7 @@ class CephStorage(swift.SwiftStorage):
         #         {'tag': etag, 'checksum': final_swift_checksum})
         #     return False, "Error saving data to Swift!", None, location
 
-        return (True, "Successfully saved data to Swift!",
+        return (True, "Successfully saved data to Ceph!",
                 final_swift_checksum, location)
 
     def get_container_name(self):
