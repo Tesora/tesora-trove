@@ -62,7 +62,7 @@ class SwiftStorageSaveChecksumTests(trove_testtools.TestCase):
                          location,
                          "Incorrect swift location was returned.")
 
-    @patch('trove.guestagent.strategies.storage.swift.LOG')
+    @patch('trove.common.strategies.storage.swift.LOG')
     def test_swift_segment_checksum_etag_mismatch(self, mock_logging):
         """This tests that when etag doesn't match segment uploaded checksum
             False is returned and None for checksum and location
@@ -96,7 +96,7 @@ class SwiftStorageSaveChecksumTests(trove_testtools.TestCase):
                          location,
                          "Incorrect swift location was returned.")
 
-    @patch('trove.guestagent.strategies.storage.swift.LOG')
+    @patch('trove.common.strategies.storage.swift.LOG')
     def test_swift_checksum_etag_mismatch(self, mock_logging):
         """This tests that when etag doesn't match swift checksum False is
             returned and None for checksum and location
@@ -158,7 +158,7 @@ class SwiftStorageUtils(trove_testtools.TestCase):
         match = self.swift._verify_checksum('"my-good-etag"', 'my-good-etag')
         self.assertTrue(match)
 
-    @patch('trove.guestagent.strategies.storage.swift.LOG')
+    @patch('trove.common.strategies.storage.swift.LOG')
     def test_verify_checksum_bad(self, mock_logging):
         self.assertRaises(SwiftDownloadIntegrityError,
                           self.swift._verify_checksum,
@@ -194,7 +194,7 @@ class SwiftStorageLoad(trove_testtools.TestCase):
             download_stream = storage_strategy.load(location, backup_checksum)
         self.assertIsNotNone(download_stream)
 
-    @patch('trove.guestagent.strategies.storage.swift.LOG')
+    @patch('trove.common.strategies.storage.swift.LOG')
     def test_run_verify_checksum_mismatch(self, mock_logging):
         """This tests that SwiftDownloadIntegrityError is raised and swift
             download cmd does not run when original backup checksum
