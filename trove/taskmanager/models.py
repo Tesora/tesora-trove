@@ -13,6 +13,7 @@
 #    under the License.
 
 import os.path
+import time
 import traceback
 
 from cinderclient import exceptions as cinder_exceptions
@@ -53,6 +54,7 @@ from trove.common.remote import create_cinder_client
 from trove.common.remote import create_dns_client
 from trove.common.remote import create_heat_client
 from trove.common.strategies.cluster import strategy
+from trove.common.strategies.storage import get_storage_strategy
 from trove.common import template
 from trove.common import utils
 from trove.common.utils import try_recover
@@ -1428,7 +1430,10 @@ class BackupTasks(object):
 
     @classmethod
     def delete_files_from_swift(cls, context, filename):
-        container = CONF.backup_swift_container
+        storage = get_storage_strategy(
+            CONF.storage_strategy,
+            CONF.storage_namespace)(context)
+        container = storage.get_container_name()
         client = remote.create_swift_client(context)
         obj = client.head_object(container, filename)
         manifest = obj.get('x-object-manifest', '')
@@ -1677,6 +1682,9 @@ class ResizeVolumeAction(object):
         # some platforms (e.g. RHEL) auto-mount attached volumes
         # make sure to issue an explicit unmount
         # this will be a no-op if the volume is not mounted
+        # NOTE: this sleep was added because the unmount caused
+        #       a race condition on RHEL (DBAAS-1037)
+        time.sleep(2)
         self._unmount_volume(recover_func=self._fail)
         self._resize_fs(recover_func=self._fail)
         self._mount_volume(recover_func=self._fail)

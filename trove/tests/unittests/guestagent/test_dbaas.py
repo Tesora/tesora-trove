@@ -44,12 +44,9 @@ from trove.common import utils
 from trove.conductor import api as conductor_api
 from trove.guestagent.common.configuration import ImportOverrideStrategy
 from trove.guestagent.common import operating_system
-from trove.guestagent.common.operating_system import FileMode
 from trove.guestagent.common import sql_query
 from trove.guestagent.datastore.experimental.cassandra import (
     service as cass_service)
-from trove.guestagent.datastore.experimental.cassandra import (
-    system as cass_system)
 from trove.guestagent.datastore.experimental.couchbase import (
     service as couchservice)
 from trove.guestagent.datastore.experimental.couchdb import (
@@ -89,7 +86,6 @@ from trove.guestagent import pkg
 from trove.guestagent.volume import VolumeDevice
 from trove.instance.models import InstanceServiceStatus
 from trove.tests.unittests.util import util
-import yaml
 
 CONF = cfg.CONF
 
@@ -2463,7 +2459,11 @@ class CassandraDBAppTest(testtools.TestCase):
                                      status=rd_instance.ServiceStatuses.NEW)
         self.appStatus = FakeAppStatus(self.FAKE_ID,
                                        rd_instance.ServiceStatuses.NEW)
-        self.cassandra = cass_service.CassandraApp(self.appStatus)
+        with patch.object(cass_service.CassandraApp, '_init_overrides_dir',
+                          return_value=''):
+            self.cassandra = cass_service.CassandraApp()
+            self.cassandra.status = self.appStatus
+
         self.service_discovery_patch = patch.object(
             operating_system, 'service_discovery',
             return_value={'cmd_start': 'start',
@@ -2611,23 +2611,6 @@ class CassandraDBAppTest(testtools.TestCase):
                           ['cassandra=1.2.10'])
 
         self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
-
-    def test_cassandra_write_config(self):
-        conf_dict = {'key': 'some arbitrary configuration text'}
-        self._test_cassandra_write_config(conf_dict, False)
-        self._test_cassandra_write_config(yaml.dump(conf_dict), True)
-
-    @patch.multiple(operating_system, chmod=DEFAULT, chown=DEFAULT)
-    def _test_cassandra_write_config(self, data, is_raw, chmod, chown):
-        cassandra_conf = cass_system.CASSANDRA_CONF[operating_system.get_os()]
-        with patch('trove.guestagent.common.operating_system.%s'
-                   % ('write_file' if is_raw else 'write_yaml_file')) as write:
-            self.cassandra.write_config(data, is_raw=is_raw)
-            write.assert_called_once_with(cassandra_conf, data, as_root=True)
-            chown.assert_called_once_with(
-                cassandra_conf, 'cassandra', 'cassandra', as_root=True)
-            chmod.assert_called_with(cassandra_conf, FileMode.ADD_READ_ALL,
-                                     as_root=True)
 
 
 class CouchbaseAppTest(testtools.TestCase):

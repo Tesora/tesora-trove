@@ -16,33 +16,31 @@
 from trove.tests.scenario.helpers.sql_helper import SqlHelper
 
 
-class MysqlHelper(SqlHelper):
+class PostgresqlHelper(SqlHelper):
 
     def __init__(self, expected_override_name):
-        super(MysqlHelper, self).__init__(expected_override_name, 'mysql')
-
-    def get_helper_credentials(self):
-        return {'name': 'lite', 'password': 'litepass', 'database': 'firstdb'}
+        super(PostgresqlHelper, self).__init__(expected_override_name,
+                                               'postgresql')
 
     def get_valid_database_definitions(self):
         return [{'name': 'db1', 'character_set': 'latin2',
                  'collate': 'latin2_general_ci'},
-                {'name': 'db2'}, {"name": 'db3'}]
+                {'name': 'db2'}, {'name': 'db3'}]
 
     def get_valid_user_definitions(self):
-        return [{'name': 'user1', 'password': 'password1', 'databases': [],
-                 'host': '127.0.0.1'},
+        return [{'name': 'user1', 'password': 'password1', 'databases': []},
                 {'name': 'user2', 'password': 'password1',
-                 'databases': [{'name': 'db1'}], 'host': '0.0.0.0'},
+                 'databases': [{'name': 'db1'}]},
                 {'name': 'user3', 'password': 'password1',
                  'databases': [{'name': 'db1'}, {'name': 'db2'}]}]
 
     def get_dynamic_group(self):
-        return {'key_buffer_size': 10485760,
-                'join_buffer_size': 10485760}
+        return {'max_worker_processes': 11}
 
     def get_non_dynamic_group(self):
-        return {'innodb_buffer_pool_size': 10485760}
+        return {'max_connections': 113}
 
     def get_invalid_groups(self):
-        return [{'key_buffer_size': 4}, {"join_buffer_size": 'string_value'}]
+        return [{'timezone': 997},
+                {"max_worker_processes": 'string_value'},
+                {"standard_conforming_strings": 'string_value'}]

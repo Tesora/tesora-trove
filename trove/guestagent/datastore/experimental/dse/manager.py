@@ -1,4 +1,4 @@
-# Copyright 2013 Hewlett-Packard Development Company, L.P.
+# Copyright 2015 Tesora Inc.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -12,15 +12,19 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-#
 
-from oslo_log import log as logging
-
-from trove.common.strategies.strategy import Strategy
-
-LOG = logging.getLogger(__name__)
+from trove.guestagent.datastore.experimental.cassandra import (
+    manager as community_manager
+)
+from trove.guestagent.datastore.experimental.dse import service
 
 
-def get_backup_strategy(backup_driver, ns=__name__):
-    LOG.debug("Getting backup strategy: %s." % backup_driver)
-    return Strategy.get_strategy(backup_driver, ns)
+class Manager(community_manager.Manager):
+
+    def __init__(self):
+        super(Manager, self).__init__()
+        self._app = service.DSEApp()
+
+    @property
+    def app(self):
+        return self._app

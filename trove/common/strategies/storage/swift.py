@@ -20,8 +20,8 @@ from oslo_log import log as logging
 
 from trove.common import cfg
 from trove.common.i18n import _
-from trove.common.remote import create_swift_client
-from trove.guestagent.strategies.storage import base
+from trove.common import remote
+from trove.common.strategies.storage import base
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
@@ -42,10 +42,11 @@ class SwiftDownloadIntegrityError(Exception):
 class StreamReader(object):
     """Wrap the stream from the backup process and chunk it into segements."""
 
-    def __init__(self, stream, filename, max_file_size=MAX_FILE_SIZE):
+    def __init__(self, stream, filename, container,
+                 max_file_size=MAX_FILE_SIZE):
         self.stream = stream
         self.filename = filename
-        self.container = BACKUP_CONTAINER
+        self.container = container
         self.max_file_size = max_file_size
         self.segment_length = 0
         self.process = None
@@ -95,7 +96,7 @@ class SwiftStorage(base.Storage):
 
     def __init__(self, *args, **kwargs):
         super(SwiftStorage, self).__init__(*args, **kwargs)
-        self.connection = create_swift_client(self.context)
+        self.connection = remote.create_swift_client(self.context)
 
     def save(self, filename, stream):
         """Persist information from the stream to swift.
@@ -106,21 +107,22 @@ class SwiftStorage(base.Storage):
         """
 
         # Create the container if it doesn't already exist
-        self.connection.put_container(BACKUP_CONTAINER)
+        self.connection.put_container(self.get_container_name())
 
         # Swift Checksum is the checksum of the concatenated segment checksums
         swift_checksum = hashlib.md5()
 
         # Wrap the output of the backup process to segment it for swift
-        stream_reader = StreamReader(stream, filename)
+        stream_reader = StreamReader(stream, filename,
+                                     self.get_container_name())
 
         url = self.connection.url
         # Full location where the backup manifest is stored
-        location = "%s/%s/%s" % (url, BACKUP_CONTAINER, filename)
+        location = "%s/%s/%s" % (url, self.get_container_name(), filename)
 
         # Read from the stream and write to the container in swift
         while not stream_reader.end_of_file:
-            etag = self.connection.put_object(BACKUP_CONTAINER,
+            etag = self.connection.put_object(self.get_container_name(),
                                               stream_reader.segment,
                                               stream_reader)
 
@@ -144,12 +146,12 @@ class SwiftStorage(base.Storage):
         headers = {'X-Object-Manifest': stream_reader.prefix}
         # The etag returned from the manifest PUT is the checksum of the
         # manifest object (which is empty); this is not the checksum we want
-        self.connection.put_object(BACKUP_CONTAINER,
+        self.connection.put_object(self.get_container_name(),
                                    filename,
                                    contents='',
                                    headers=headers)
 
-        resp = self.connection.head_object(BACKUP_CONTAINER, filename)
+        resp = self.connection.head_object(self.get_container_name(), filename)
         # swift returns etag in double quotes
         # e.g. '"dc3b0827f276d8d78312992cc60c2c3f"'
         etag = resp['etag'].strip('"')
@@ -236,3 +238,7 @@ class SwiftStorage(base.Storage):
 
         LOG.info(_("Writing metadata: %s"), str(headers))
         self.connection.post_object(container, filename, headers=headers)
+
+    def get_container_name(self):
+        """Get the name of the container."""
+        return BACKUP_CONTAINER

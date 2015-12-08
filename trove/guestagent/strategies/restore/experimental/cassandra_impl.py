@@ -19,7 +19,6 @@ from oslo_log import log as logging
 
 from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.experimental.cassandra import service
-from trove.guestagent.datastore.experimental.cassandra import system
 from trove.guestagent.strategies.restore import base
 
 LOG = logging.getLogger(__name__)
@@ -33,8 +32,8 @@ class NodetoolSnapshot(base.RestoreRunner):
     __strategy_name__ = 'nodetoolsnapshot'
 
     def __init__(self, storage, **kwargs):
-        data_dir = service.CassandraApp(None).get_data_directory()
-        kwargs.update({'restore_location': data_dir})
+        self._app = service.CassandraApp()
+        kwargs.update({'restore_location': self._app.cassandra_data_dir})
         super(NodetoolSnapshot, self).__init__(storage, **kwargs)
 
     def pre_restore(self):
@@ -46,19 +45,20 @@ class NodetoolSnapshot(base.RestoreRunner):
         """
 
         LOG.debug('Initializing a data directory.')
-        operating_system.create_directory(self.restore_location,
-                                          user=system.CASSANDRA_OWNER,
-                                          group=system.CASSANDRA_OWNER,
-                                          force=True, as_root=True)
+        operating_system.create_directory(
+            self.restore_location,
+            user=self._app.cassandra_owner, group=self._app.cassandra_owner,
+            force=True, as_root=True)
 
     def post_restore(self):
         """Updated ownership on the restored files.
         """
 
         LOG.debug('Updating ownership of the restored files.')
-        operating_system.chown(self.restore_location,
-                               system.CASSANDRA_OWNER, system.CASSANDRA_OWNER,
-                               recursive=True, force=True, as_root=True)
+        operating_system.chown(
+            self.restore_location,
+            self._app.cassandra_owner, self._app.cassandra_owner,
+            recursive=True, force=True, as_root=True)
 
     @property
     def base_restore_cmd(self):

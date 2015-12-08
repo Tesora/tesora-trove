@@ -13,7 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import collections
 import os
 import stat
 
@@ -30,10 +29,13 @@ from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance as rd_instance
 from trove.common import pagination
+from trove.common.stream_codecs import IniCodec
+from trove.common.stream_codecs import SafeYamlCodec
 from trove.common import utils
+from trove.guestagent.common.configuration import ConfigurationManager
+from trove.guestagent.common.configuration import OneFileOverrideStrategy
+from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
-from trove.guestagent.common.operating_system import FileMode
-from trove.guestagent.datastore.experimental.cassandra import system
 from trove.guestagent.datastore import service
 from trove.guestagent.db import models
 from trove.guestagent import pkg
@@ -53,27 +55,92 @@ class CassandraApp(object):
     _CONF_PWD_KEY = 'password'
     _CONF_DIR_MODS = stat.S_IRWXU
     _CONF_FILE_MODS = stat.S_IRUSR
-    _CASSANDRA_CONF = system.CASSANDRA_CONF[operating_system.get_os()]
-    _CASSANDRA_CONF_BACKUP = system.CASSANDRA_CONF_BACKUP[
-        operating_system.get_os()]
 
-    def __init__(self, status):
-        """By default login with root no password for initial setup."""
+    CASSANDRA_KILL_CMD = "sudo killall java  || true"
+
+    def __init__(self):
         self.state_change_wait_time = CONF.state_change_wait_time
-        self.status = status
+        self.status = CassandraAppStatus(self.get_current_superuser())
+
+        revision_dir = self._init_overrides_dir()
+        self.configuration_manager = ConfigurationManager(
+            self.cassandra_conf,
+            self.cassandra_owner, self.cassandra_owner,
+            SafeYamlCodec(default_flow_style=False), requires_root=True,
+            override_strategy=OneFileOverrideStrategy(revision_dir))
+
+    def _init_overrides_dir(self):
+        """Initialize a directory for configuration overrides.
+        """
+        revision_dir = guestagent_utils.build_file_path(
+            os.path.dirname(self.cassandra_conf),
+            ConfigurationManager.DEFAULT_STRATEGY_OVERRIDES_SUB_DIR)
+
+        if not os.path.exists(revision_dir):
+            operating_system.create_directory(
+                revision_dir,
+                user=self.cassandra_owner, group=self.cassandra_owner,
+                force=True, as_root=True)
+
+        return revision_dir
+
+    @property
+    def service_candidates(self):
+        return ['cassandra']
+
+    @property
+    def cassandra_conf(self):
+        return {
+            operating_system.REDHAT:
+                "/etc/cassandra/default.conf/cassandra.yaml",
+            operating_system.DEBIAN:
+                "/etc/cassandra/cassandra.yaml",
+            operating_system.SUSE:
+                "/etc/cassandra/default.conf/cassandra.yaml"
+        }[operating_system.get_os()]
+
+    @property
+    def cassandra_owner(self):
+        return 'cassandra'
+
+    @property
+    def cassandra_data_dir(self):
+        return guestagent_utils.build_file_path(
+            self.cassandra_working_dir, 'data')
+
+    @property
+    def cassandra_working_dir(self):
+        return "/var/lib/cassandra"
+
+    @property
+    def default_superuser_name(self):
+        return "cassandra"
+
+    @property
+    def default_superuser_password(self):
+        return "cassandra"
+
+    @property
+    def default_superuser_pwd_hash(self):
+        # Default 'salted_hash' value for 'cassandra' user on Cassandra 2.1.
+        return "$2a$10$wPEVuXBU7WE2Uwzqq3t19ObRJyoKztzC/Doyfr0VtDmVXC4GDAV3e"
+
+    @property
+    def cqlsh_conf_path(self):
+        return "~/.cassandra/cqlshrc"
 
     def install_if_needed(self, packages):
-        """Prepare the guest machine with a cassandra server installation."""
+        """Prepare the guest machine with a Cassandra server installation."""
         LOG.info(_("Preparing Guest as a Cassandra Server"))
         if not packager.pkg_is_installed(packages):
             self._install_db(packages)
         LOG.debug("Cassandra install_if_needed complete")
 
     def _enable_db_on_boot(self):
-        operating_system.enable_service_on_boot(system.SERVICE_CANDIDATES)
+        operating_system.enable_service_on_boot(self.service_candidates)
 
     def _disable_db_on_boot(self):
-        operating_system.disable_service_on_boot(system.SERVICE_CANDIDATES)
+        operating_system.disable_service_on_boot(self.service_candidates)
 
     def init_storage_structure(self, mount_point):
         try:
@@ -85,7 +152,7 @@ class CassandraApp(object):
         LOG.info(_("Starting Cassandra server."))
         self._enable_db_on_boot()
         try:
-            operating_system.start_service(system.SERVICE_CANDIDATES)
+            operating_system.start_service(self.service_candidates)
         except exception.ProcessExecutionError:
             LOG.exception(_("Error starting Cassandra"))
             pass
@@ -96,7 +163,7 @@ class CassandraApp(object):
                 self.state_change_wait_time,
                 update_db)):
             try:
-                utils.execute_with_timeout(system.CASSANDRA_KILL,
+                utils.execute_with_timeout(self.CASSANDRA_KILL_CMD,
                                            shell=True)
             except exception.ProcessExecutionError:
                 LOG.exception(_("Error killing Cassandra start command."))
@@ -106,7 +173,7 @@ class CassandraApp(object):
     def stop_db(self, update_db=False, do_not_start_on_reboot=False):
         if do_not_start_on_reboot:
             self._disable_db_on_boot()
-        operating_system.stop_service(system.SERVICE_CANDIDATES)
+        operating_system.stop_service(self.service_candidates)
 
         if not (self.status.wait_for_real_status_to_change_to(
                 rd_instance.ServiceStatuses.SHUTDOWN,
@@ -125,9 +192,9 @@ class CassandraApp(object):
             self.status.end_restart()
 
     def _install_db(self, packages):
-        """Install cassandra server"""
+        """Install Cassandra server"""
         LOG.debug("Installing Cassandra server.")
-        packager.pkg_install(packages, None, system.INSTALL_TIMEOUT)
+        packager.pkg_install(packages, None, 10000)
         LOG.debug("Finished installing Cassandra server")
 
     def _remove_system_tables(self):
@@ -139,6 +206,8 @@ class CassandraApp(object):
         that cannot be easily changed once afterwards.
         The system keyspace needs to be cleaned up first. The
         tables will be regenerated on the next startup.
+        Make sure to also cleanup the commitlog and caches to avoid
+        startup errors due to inconsistencies.
 
         The service should not be running at this point.
         """
@@ -147,10 +216,19 @@ class CassandraApp(object):
                                  "The service is still running."))
 
         LOG.info(_('Removing existing system tables.'))
-        system_keyspace_dir = '%s/%s/' % (system.CASSANDRA_DATA_DIR,
-                                          system.CASSANDRA_SYSTEM_KEYSPACE)
-        utils.execute_with_timeout('rm', '-r', '-f', system_keyspace_dir,
-                                   run_as_root=True, root_helper='sudo')
+        system_keyspace_dir = guestagent_utils.build_file_path(
+            self.cassandra_data_dir, 'system')
+        commitlog_file = guestagent_utils.build_file_path(
+            self.cassandra_working_dir, 'commitlog')
+        chaches_dir = guestagent_utils.build_file_path(
+            self.cassandra_working_dir, 'saved_caches')
+
+        operating_system.remove(system_keyspace_dir,
+                                force=True, recursive=True, as_root=True)
+        operating_system.remove(commitlog_file,
+                                force=True, recursive=True, as_root=True)
+        operating_system.remove(chaches_dir,
+                                force=True, recursive=True, as_root=True)
 
     def _apply_post_restore_updates(self, backup_info):
         """The service should not be running at this point.
@@ -204,8 +282,8 @@ class CassandraApp(object):
 
     def configure_superuser_access(self):
         LOG.info(_('Configuring Cassandra superuser.'))
-        current_superuser = CassandraApp.get_current_superuser()
-        cassandra = models.CassandraUser(system.DEFAULT_SUPERUSER_NAME,
+        current_superuser = self.get_current_superuser()
+        cassandra = models.CassandraUser(self.default_superuser_name,
                                          utils.generate_random_password())
         self.__create_cqlsh_config({self._CONF_AUTH_SEC:
                                     {self._CONF_USR_KEY: cassandra.name,
@@ -231,7 +309,7 @@ class CassandraApp(object):
                                  "The service is still running."))
 
         LOG.debug("Resetting the superuser password to '%s'."
-                  % system.DEFAULT_SUPERUSER_PASSWORD)
+                  % self.default_superuser_password)
 
         try:
             # Disable automatic startup in case the node goes down before
@@ -265,12 +343,12 @@ class CassandraApp(object):
         self._enable_db_on_boot()
 
     def __reset_superuser_password(self):
-        current_superuser = CassandraApp.get_current_superuser()
+        current_superuser = self.get_current_superuser()
         with CassandraLocalhostConnection(current_superuser) as client:
             client.execute(
                 "UPDATE system_auth.credentials SET salted_hash=%s "
                 "WHERE username='{}';", (current_superuser.name,),
-                (system.DEFAULT_SUPERUSER_PWD_HASH,))
+                (self.default_superuser_pwd_hash,))
 
     def change_cluster_name(self, cluster_name):
         """Change the 'cluster_name' property of an exesting running instance.
@@ -294,7 +372,7 @@ class CassandraApp(object):
 
     def __reset_cluster_name(self, cluster_name):
         # Reset the in-database value stored locally on this node.
-        current_superuser = CassandraApp.get_current_superuser()
+        current_superuser = self.get_current_superuser()
         with CassandraLocalhostConnection(current_superuser) as client:
             client.execute(
                 "UPDATE system.local SET cluster_name = '{}' "
@@ -311,23 +389,21 @@ class CassandraApp(object):
             os.mkdir(config_dir, self._CONF_DIR_MODS)
         else:
             os.chmod(config_dir, self._CONF_DIR_MODS)
-        operating_system.write_config_file(config_path, sections)
+        operating_system.write_file(config_path, sections, codec=IniCodec())
         os.chmod(config_path, self._CONF_FILE_MODS)
 
-    @classmethod
     def get_current_superuser(self):
         """
         Build the Trove superuser.
         Use the stored credentials.
         If not available fall back to the defaults.
         """
-        if CassandraApp.has_user_config():
-            return CassandraApp.__load_current_superuser()
+        if self.has_user_config():
+            return self.__load_current_superuser()
 
-        return models.CassandraUser(system.DEFAULT_SUPERUSER_NAME,
-                                    system.DEFAULT_SUPERUSER_PASSWORD)
+        return models.CassandraUser(self.default_superuser_name,
+                                    self.default_superuser_password)
 
-    @classmethod
     def has_user_config(self):
         """
         Return TRUE if there is a client configuration file available
@@ -335,9 +411,9 @@ class CassandraApp(object):
         """
         return os.path.exists(self._get_cqlsh_conf_path())
 
-    @classmethod
     def __load_current_superuser(self):
-        config = operating_system.read_config_file(self._get_cqlsh_conf_path())
+        config = operating_system.read_file(self._get_cqlsh_conf_path(),
+                                            codec=IniCodec())
         return models.CassandraUser(
             config[self._CONF_AUTH_SEC][self._CONF_USR_KEY],
             config[self._CONF_AUTH_SEC][self._CONF_PWD_KEY]
@@ -352,10 +428,12 @@ class CassandraApp(object):
                               Use the unique guest id by default.
         :type cluster_name:   string
         """
-        self.make_host_reachable()
+        self.configuration_manager.apply_system_override(
+            {'data_file_directories': [self.cassandra_data_dir]})
+        self._make_host_reachable()
         self._update_cluster_name_property(cluster_name or CONF.guest_id)
 
-    def make_host_reachable(self):
+    def _make_host_reachable(self):
         """
         Some of these settings may be overriden by user defined
         configuration groups.
@@ -384,7 +462,7 @@ class CassandraApp(object):
                               }
         }
 
-        self._update_config(updates)
+        self.configuration_manager.apply_system_override(updates)
 
     def __disable_remote_access(self):
         updates = {
@@ -395,7 +473,7 @@ class CassandraApp(object):
                               }
         }
 
-        self._update_config(updates)
+        self.configuration_manager.apply_system_override(updates)
 
     def __enable_authentication(self):
         updates = {
@@ -403,7 +481,7 @@ class CassandraApp(object):
             'authorizer': 'org.apache.cassandra.auth.CassandraAuthorizer'
         }
 
-        self._update_config(updates)
+        self.configuration_manager.apply_system_override(updates)
 
     def __disable_authentication(self):
         updates = {
@@ -411,92 +489,29 @@ class CassandraApp(object):
             'authorizer': 'org.apache.cassandra.auth.AllowAllAuthorizer'
         }
 
-        self._update_config(updates)
+        self.configuration_manager.apply_system_override(updates)
 
     def _update_cluster_name_property(self, name):
         """This 'cluster_name' property prevents nodes from one
         logical cluster from talking to another.
         All nodes in a cluster must have the same value.
         """
-        self._update_config({'cluster_name': name})
+        self.configuration_manager.apply_system_override({'cluster_name':
+                                                          name})
 
     def update_overrides(self, context, overrides, remove=False):
         if overrides:
-            if not os.path.exists(self._CASSANDRA_CONF_BACKUP):
-                utils.execute_with_timeout("cp", "-f", "-p",
-                                           self._CASSANDRA_CONF,
-                                           self._CASSANDRA_CONF_BACKUP,
-                                           run_as_root=True,
-                                           root_helper="sudo")
-                LOG.info(_("The old configuration has been saved to '%s'.")
-                         % self._CASSANDRA_CONF_BACKUP)
-                self._update_config(overrides)
-            else:
-                raise exception.TroveError(
-                    _("This instance already has a "
-                      "Configuration Group attached."))
+            self.configuration_manager.apply_user_override(overrides)
 
     def remove_overrides(self):
-        if os.path.exists(self._CASSANDRA_CONF_BACKUP):
-            LOG.info(_("Restoring previous configuration from '%s'.")
-                     % self._CASSANDRA_CONF_BACKUP)
-            utils.execute_with_timeout("mv", "-f",
-                                       self._CASSANDRA_CONF_BACKUP,
-                                       self._CASSANDRA_CONF,
-                                       run_as_root=True, root_helper="sudo")
-        else:
-            raise exception.TroveError(
-                _("This instance does not have a "
-                  "Configuration Group attached."))
-
-    def _update_config(self, options):
-        config = operating_system.read_yaml_file(self._CASSANDRA_CONF)
-        self.write_config(CassandraApp._update_dict(options, config))
-
-    @staticmethod
-    def _update_dict(updates, target):
-        """Recursively update a target dictionary with given updates.
-
-        Updates are provided as a dictionary of key-value pairs
-        where a value can also be a nested dictionary in which case
-        its key is treated as a sub-section of the outer key.
-        If a list value is encountered the update is applied
-        iteratively on all its items.
-        """
-        if isinstance(target, list):
-            for index, item in enumerate(target):
-                target[index] = CassandraApp._update_dict(updates, item)
-            return target
-
-        for k, v in updates.iteritems():
-            if isinstance(v, collections.Mapping):
-                target[k] = CassandraApp._update_dict(v, target.get(k, {}))
-            else:
-                target[k] = updates[k]
-        return target
-
-    def write_config(self, config, is_raw=False):
-        LOG.info(_('Saving Cassandra configuration.'))
-
-        if is_raw:
-            operating_system.write_file(self._CASSANDRA_CONF, config,
-                                        as_root=True)
-        else:
-            operating_system.write_yaml_file(self._CASSANDRA_CONF, config,
-                                             as_root=True)
-
-        operating_system.chown(self._CASSANDRA_CONF,
-                               system.CASSANDRA_OWNER, system.CASSANDRA_OWNER,
-                               as_root=True)
-        operating_system.chmod(self._CASSANDRA_CONF, FileMode.ADD_READ_ALL,
-                               as_root=True)
+        self.configuration_manager.remove_user_override()
 
     def start_db_with_conf_changes(self, config_contents):
         LOG.debug("Starting database with configuration changes.")
         if self.status.is_running:
             raise RuntimeError(_("The service is still running."))
 
-        self.write_config(config_contents, is_raw=True)
+        self.configuration_manager.save_configuration(config_contents)
         # The configuration template has to be updated with
         # guestagent-controlled settings.
         self.apply_initial_guestagent_configuration()
@@ -504,17 +519,11 @@ class CassandraApp(object):
 
     def reset_configuration(self, configuration):
         LOG.debug("Resetting configuration.")
-        self.write_config(configuration['config_contents'], is_raw=True)
+        config_contents = configuration['config_contents']
+        self.configuration_manager.save_configuration(config_contents)
 
-    @classmethod
     def _get_cqlsh_conf_path(self):
-        return os.path.expanduser(system.CQLSH_CONF_PATH)
-
-    def get_data_directory(self):
-        """Return current data directory.
-        """
-        config = operating_system.read_yaml_file(self._CASSANDRA_CONF)
-        return config['data_file_directories'][0]
+        return os.path.expanduser(self.cqlsh_conf_path)
 
     def flush_tables(self, keyspace, *tables):
         """Flushes one or more tables from the memtable.
@@ -615,20 +624,17 @@ class CassandraAdmin(object):
 
     def get_user(self, context, username, hostname):
         with CassandraLocalhostConnection(self.__admin_user) as client:
-            return self._find_user(client, username).serialize()
+            user = self._find_user(client, username)
+            return user.serialize() if user is not None else None
 
     def _find_user(self, client, username):
         """
         Lookup a user with a given username.
         Search only in non-superuser accounts.
-        Return a new Cassandra user instance or raise if no match is found.
+        Return a new Cassandra user instance or None if no match is found.
         """
-        found = next((user for user in self._get_non_system_users(client)
-                      if user.name == username), None)
-        if found:
-            return found
-
-        raise exception.UserNotFound()
+        return next((user for user in self._get_non_system_users(client)
+                     if user.name == username), None)
 
     def list_users(self, context, limit=None, marker=None,
                    include_marker=False):
@@ -651,7 +657,10 @@ class CassandraAdmin(object):
                 for user in client.execute("LIST USERS;")
                 if not user.super and user.name not in cfg.get_ignored_users()}
 
-    def _build_user(self, client, username):
+    def _build_user(self, client, username, check_reserved=True):
+        if check_reserved:
+            self._check_reserved_user_name(username)
+
         user = models.CassandraUser(username)
         for keyspace in self._get_available_keyspaces(client):
             found = self._get_permissions_on_keyspace(client, keyspace, user)
@@ -685,10 +694,15 @@ class CassandraAdmin(object):
             self._revoke_all_access_on_keyspace(
                 client, models.CassandraSchema(database), user)
 
-    def _grant_full_access_on_keyspace(self, client, keyspace, user):
+    def _grant_full_access_on_keyspace(self, client, keyspace, user,
+                                       check_reserved=True):
         """
         Grant all non-superuser permissions on a keyspace to a given user.
         """
+        if check_reserved:
+            self._check_reserved_user_name(user.name)
+            self._check_reserved_keyspace_name(keyspace.name)
+
         for access in self.__NO_SUPERUSER_MODIFIERS:
             self._grant_permission_on_keyspace(client, access, keyspace, user)
 
@@ -707,7 +721,12 @@ class CassandraAdmin(object):
                 "Invalid permission modifier (%s). Allowed values are: '%s'"
                 % (modifier, ', '.join(self.__NO_SUPERUSER_MODIFIERS)))
 
-    def _revoke_all_access_on_keyspace(self, client, keyspace, user):
+    def _revoke_all_access_on_keyspace(self, client, keyspace, user,
+                                       check_reserved=True):
+        if check_reserved:
+            self._check_reserved_user_name(user.name)
+            self._check_reserved_keyspace_name(keyspace.name)
+
         LOG.debug("Revoking all permissions on '%s' from user '%s'."
                   % (keyspace.name, user.name))
         client.execute("REVOKE ALL PERMISSIONS ON KEYSPACE \"{}\" FROM '{}';",
@@ -826,19 +845,52 @@ class CassandraAdmin(object):
 
     def list_access(self, context, username, hostname):
         with CassandraLocalhostConnection(self.__admin_user) as client:
-            return self._find_user(client, username).databases
+            user = self._find_user(client, username)
+            if user:
+                return user.databases
 
-    def _deserialize_keyspace(self, keyspace_dict):
+        raise exception.UserNotFound(username)
+
+    def _deserialize_keyspace(self, keyspace_dict, check_reserved=True):
         if keyspace_dict:
-            return models.CassandraSchema.deserialize_schema(keyspace_dict)
+            db = models.CassandraSchema.deserialize_schema(keyspace_dict)
+            if check_reserved:
+                self._check_reserved_keyspace_name(db.name)
+
+            return db
 
         return None
 
-    def _deserialize_user(self, user_dict):
+    def _check_reserved_keyspace_name(self, name):
+        if name in self.ignore_dbs:
+            raise ValueError(_("This keyspace-name is reserved: %s") % name)
+
+    def _deserialize_user(self, user_dict, check_reserved=True):
         if user_dict:
-            return models.CassandraUser.deserialize_user(user_dict)
+            user = models.CassandraUser.deserialize_user(user_dict)
+            if check_reserved:
+                self._check_reserved_user_name(user.name)
+
+            return user
 
         return None
+
+    def _check_reserved_user_name(self, name):
+        if name in self.ignore_users:
+            raise ValueError(_("This user-name is reserved: %s") % name)
+
+    @property
+    def ignore_users(self):
+        return self.get_configuration_property('ignore_users')
+
+    @property
+    def ignore_dbs(self):
+        return self.get_configuration_property('ignore_dbs')
+
+    @staticmethod
+    def get_configuration_property(property_name):
+        manager = CONF.datastore_manager or "cassandra"
+        return CONF.get(manager).get(property_name)
 
 
 class CassandraConnection(object):

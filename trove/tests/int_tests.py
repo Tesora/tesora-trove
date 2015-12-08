@@ -160,7 +160,8 @@ register(["replication"], replication_groups)
 
 # Datastore based groups - these should contain all functionality
 # currently supported by the datastore
-register(["cassandra_supported"], backup_groups, instance_actions_groups)
+register(["cassandra_supported"], backup_groups, instance_actions_groups,
+         user_actions_groups, database_actions_group)
 register(["couchbase_supported"], instance_actions_groups)
 register(["postgresql_supported"], backup_groups, database_actions_groups,
          instance_actions_groups, user_actions_groups)

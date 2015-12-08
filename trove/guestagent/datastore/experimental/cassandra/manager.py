@@ -38,15 +38,21 @@ LOG = logging.getLogger(__name__)
 class Manager(manager.Manager):
 
     def __init__(self):
-        self.appStatus = service.CassandraAppStatus(
-            service.CassandraApp.get_current_superuser())
-        self.app = service.CassandraApp(self.appStatus)
+        self._app = service.CassandraApp()
         self.__admin = CassandraAdmin(self.app.get_current_superuser())
         super(Manager, self).__init__('cassandra')
 
     @property
     def status(self):
-        return self.appStatus
+        return self.app.status
+
+    @property
+    def app(self):
+        return self._app
+
+    @property
+    def admin(self):
+        return self.__admin
 
     @property
     def configuration_manager(self):
@@ -71,6 +77,7 @@ class Manager(manager.Manager):
         """This is called from prepare in the base class."""
         self.app.install_if_needed(packages)
         self.app.init_storage_structure(mount_point)
+
         if config_contents or device_path or backup_info:
 
             # FIXME(pmalik) Once the cassandra bug
@@ -88,7 +95,7 @@ class Manager(manager.Manager):
             # we assume it is not going to and proceed with configuration
             # right away.
             LOG.debug("Waiting for database first boot.")
-            if (self.appStatus.wait_for_real_status_to_change_to(
+            if (self.app.status.wait_for_real_status_to_change_to(
                     trove_instance.ServiceStatuses.RUNNING,
                     CONF.state_change_wait_time,
                     False)):
@@ -99,8 +106,8 @@ class Manager(manager.Manager):
             LOG.debug("Starting initial configuration.")
             if config_contents:
                 LOG.debug("Applying configuration.")
-                self.app.write_config(config_contents, is_raw=True)
-                # Instance nodes use the unique guest id by default.
+                self.app.configuration_manager.save_configuration(
+                    config_contents)
                 self.app.apply_initial_guestagent_configuration()
 
             if device_path:
@@ -123,58 +130,58 @@ class Manager(manager.Manager):
             LOG.debug("Starting database with configuration changes.")
             self.app.start_db(update_db=False)
 
-            if not service.CassandraApp.has_user_config():
+            if not self.app.has_user_config():
                 LOG.debug("Securing superuser access.")
                 self.app.configure_superuser_access()
                 self.app.restart()
 
-        self.__admin = CassandraAdmin(self.app.get_current_superuser())
+            self.__admin = CassandraAdmin(self.app.get_current_superuser())
 
     def change_passwords(self, context, users):
         with EndNotification(context):
-            self.__admin.change_passwords(context, users)
+            self.admin.change_passwords(context, users)
 
     def update_attributes(self, context, username, hostname, user_attrs):
         with EndNotification(context):
-            self.__admin.update_attributes(context, username, hostname,
-                                           user_attrs)
+            self.admin.update_attributes(context, username, hostname,
+                                         user_attrs)
 
     def create_database(self, context, databases):
         with EndNotification(context):
-            self.__admin.create_database(context, databases)
+            self.admin.create_database(context, databases)
 
     def create_user(self, context, users):
         with EndNotification(context):
-            self.__admin.create_user(context, users)
+            self.admin.create_user(context, users)
 
     def delete_database(self, context, database):
         with EndNotification(context):
-            self.__admin.delete_database(context, database)
+            self.admin.delete_database(context, database)
 
     def delete_user(self, context, user):
         with EndNotification(context):
-            self.__admin.delete_user(context, user)
+            self.admin.delete_user(context, user)
 
     def get_user(self, context, username, hostname):
-        return self.__admin.get_user(context, username, hostname)
+        return self.admin.get_user(context, username, hostname)
 
     def grant_access(self, context, username, hostname, databases):
-        self.__admin.grant_access(context, username, hostname, databases)
+        self.admin.grant_access(context, username, hostname, databases)
 
     def revoke_access(self, context, username, hostname, database):
-        self.__admin.revoke_access(context, username, hostname, database)
+        self.admin.revoke_access(context, username, hostname, database)
 
     def list_access(self, context, username, hostname):
-        return self.__admin.list_access(context, username, hostname)
+        return self.admin.list_access(context, username, hostname)
 
     def list_databases(self, context, limit=None, marker=None,
                        include_marker=False):
-        return self.__admin.list_databases(context, limit, marker,
-                                           include_marker)
+        return self.admin.list_databases(context, limit, marker,
+                                         include_marker)
 
     def list_users(self, context, limit=None, marker=None,
                    include_marker=False):
-        return self.__admin.list_users(context, limit, marker, include_marker)
+        return self.admin.list_users(context, limit, marker, include_marker)
 
     def _perform_restore(self, backup_info, context, restore_location):
         LOG.info(_("Restoring database from backup %s.") % backup_info['id'])
@@ -205,7 +212,8 @@ class Manager(manager.Manager):
         LOG.debug("Updating overrides.")
         if remove:
             self.app.remove_overrides()
-        self.app.update_overrides(context, overrides, remove)
+        else:
+            self.app.update_overrides(context, overrides, remove)
 
     def apply_overrides(self, context, overrides):
         """Configuration changes are made in the config YAML file and
