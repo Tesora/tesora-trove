@@ -86,9 +86,11 @@ class GuestAgentManagerTest(testtools.TestCase):
         schema = models.ValidatedMySQLDatabase()
         schema.name = 'testdb'
         with mock.patch.object(self.manager, 'admin'), \
-             mock.patch.object(self.manager, 'app'):
+             mock.patch.object(self.manager, 'app'),   \
+             mock.patch.object(self.manager, 'refresh_guest_log_defs'):
             self.manager.do_prepare(
                 self.context, None, None, None, None
             )
+            self.manager.refresh_guest_log_defs.assert_any_call()
             self.manager.app.prep_pfile_management.assert_any_call()
             self.manager.admin.create_database.assert_called_with([schema.serialize()])

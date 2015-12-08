@@ -246,7 +246,7 @@ class OracleApp(object):
 
     def apply_overrides(self, overrides):
         ora_admin = OracleAdmin()
-        ora_admin.set_initialization_paramaters(overrides)
+        ora_admin.set_initialization_parameters(overrides)
 
     def update_spfile(self):
         """Checks if there is a new SPFILE and replaces the old.
@@ -662,11 +662,25 @@ class OracleAdmin(object):
             with LocalOracleClient(self.database_name, service=True) as client:
                 client.execute(q)
 
-    def set_initialization_paramaters(self, set_parameters):
+    def set_initialization_parameters(self, set_parameters):
         LOG.debug("Setting initialization parameters.")
         q = sql_query.AlterSystem.set_parameters(set_parameters)
         with LocalOracleClient(self.database_name, service=True) as client:
             client.execute(str(q))
+
+    def get_parameter(self, parameter):
+        """Get the value of the given intialization parameter."""
+        parameter = parameter.lower()
+        LOG.debug('Getting current value of initialization parameter %s'
+                  % parameter)
+        q = sql_query.Query(columns=['value'],
+                            tables=['v$parameter'],
+                            where=["name = '%s'" % parameter])
+        with LocalOracleClient(self.database_name, service=True) as client:
+            client.execute(str(q))
+            value = client.fetchone()[0]
+        LOG.debug('Found parameter %s = %s' % (parameter, value))
+        return value
 
 
 class OracleRootAccess(object):
