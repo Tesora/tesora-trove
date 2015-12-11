@@ -60,6 +60,7 @@ from trove.common import cfg
 from trove.common import exception
 from trove.common import instance as rd_instance
 from trove.common import pagination
+from trove.common import stream_codecs
 from trove.common import utils as utils
 from trove.common.i18n import _
 from trove.guestagent.common import operating_system
@@ -89,16 +90,11 @@ class OracleApp(object):
 
     def change_ownership(self, mount_point):
         LOG.debug("Changing ownership of the Oracle data directory.")
-        try:
-            utils.execute_with_timeout(
-                system.CHANGE_DB_DIR_OWNER % {'datadir': mount_point},
-                shell=True)
-            utils.execute_with_timeout(
-                system.CHANGE_DB_DIR_GROUP_OWNER % {'datadir': mount_point},
-                shell=True)
-        except exception.ProcessExecutionError:
-            raise RuntimeError(_(
-                "Command to change ownership of Oracle data directory failed."))
+        operating_system.chown(mount_point,
+                               system.ORACLE_INSTANCE_OWNER,
+                               system.ORACLE_GROUP_OWNER,
+                               force=True,
+                               as_root=True)
 
     def start_db_with_conf_changes(self, config_contents):
         LOG.info(_("Starting Oracle with conf changes."))
@@ -203,7 +199,6 @@ def run_command(command, superuser=system.ORACLE_INSTANCE_OWNER,
 class OracleConfig(object):
 
     _CONF_FILE = CONF.get(MANAGER).conf_file
-    _CONF_FILE_TMP = "/tmp/oracle.cnf"
     _CONF_ORA_SEC = 'ORACLE'
     _CONF_ADMIN_KEY = 'os_admin_pwd'
     _CONF_ROOT_ENABLED = 'root_enabled'
@@ -211,18 +206,18 @@ class OracleConfig(object):
     def __init__(self):
         self._admin_pwd = None
         self._sys_pwd = None
+        self.codec = stream_codecs.IniCodec()
         if not os.path.isfile(self._CONF_FILE):
-            command = ("sudo mkdir -p %s" %
-                       os.path.dirname(self._CONF_FILE))
-            utils.execute_with_timeout(command, shell=True)
+            operating_system.create_directory(os.path.dirname(self._CONF_FILE),
+                                              as_root=True)
             section = {self._CONF_ORA_SEC: {}}
-            operating_system.write_config_file(self._CONF_FILE_TMP,
-                                               section)
-            utils.execute_with_timeout("sudo", "mv", "-f",
-                                       self._CONF_FILE_TMP,
-                                       self._CONF_FILE)
+            operating_system.write_file(self._CONF_FILE, section,
+                                        codec=self.codec,
+                                        as_root=True)
         else:
-            config = operating_system.read_config_file(self._CONF_FILE)
+            config = operating_system.read_file(self._CONF_FILE,
+                                                codec=self.codec,
+                                                as_root=True)
             try:
                 if self._CONF_ADMIN_KEY in config[self._CONF_ORA_SEC]:
                     self._admin_pwd = config[self._CONF_ORA_SEC][self._CONF_ADMIN_KEY]
@@ -233,9 +228,11 @@ class OracleConfig(object):
                 pass
 
     def _save_value_in_file(self, param, value):
-        config = operating_system.read_config_file(self._CONF_FILE)
+        config = operating_system.read_file(self._CONF_FILE, codec=self.codec,
+                                            as_root=True)
         config[self._CONF_ORA_SEC][param] = value
-        operating_system.write_config_file(self._CONF_FILE, config)
+        operating_system.write_file(self._CONF_FILE, config, codec=self.codec,
+                                    as_root=True)
 
     @property
     def admin_password(self):
