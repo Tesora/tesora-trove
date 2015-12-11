@@ -63,6 +63,8 @@ from trove.common import pagination
 from trove.common import stream_codecs
 from trove.common import utils as utils
 from trove.common.i18n import _
+from trove.guestagent.common import configuration
+from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.oracle import sql_query
 from trove.guestagent.datastore.oracle import system
@@ -79,6 +81,39 @@ class OracleApp(object):
     Handles Oracle installation and configuration
     on a Trove instance.
     """
+    @classmethod
+    def _init_overrides_dir(cls):
+        """Initialize a directory for configuration overrides.
+        """
+        revision_dir = cls._param_file_path(configuration.ConfigurationManager.
+                                            DEFAULT_STRATEGY_OVERRIDES_SUB_DIR)
+        if not os.path.exists(revision_dir):
+            operating_system.create_directory(
+                revision_dir,
+                user=system.ORACLE_INSTANCE_OWNER,
+                group=system.ORACLE_GROUP_OWNER,
+                force=True, as_root=True)
+        return revision_dir
+
+    def _init_configuration_manager(self):
+        revision_dir = self._init_overrides_dir()
+        self.configuration_manager = configuration.ConfigurationManager(
+            self.pfile,
+            system.ORACLE_INSTANCE_OWNER,
+            system.ORACLE_GROUP_OWNER,
+            stream_codecs.PropertiesCodec(delimiter='=',
+                                          comment_markers=('#')),
+            requires_root=True,
+            override_strategy=configuration.OneFileOverrideStrategy(
+                revision_dir)
+        )
+
+    @classmethod
+    def _param_file_path(cls, name):
+        param_dir = guestagent_utils.build_file_path(
+            CONF.get(MANAGER).oracle_home, 'dbs')
+        return guestagent_utils.build_file_path(param_dir, name)
+
     def __init__(self, status, state_change_wait_time=None):
         LOG.debug("Initialize OracleApp.")
         if state_change_wait_time:
@@ -86,6 +121,13 @@ class OracleApp(object):
         else:
             self.state_change_wait_time = CONF.state_change_wait_time
         LOG.debug("state_change_wait_time = %s." % self.state_change_wait_time)
+
+        self.pfile = self._param_file_path(system.PFILE_NAME)
+        self.spfile = self._param_file_path(system.SPFILE_NAME)
+        self.new_spfile = self._param_file_path(system.NEW_SPFILE_NAME)
+        self.configuration_manager = None
+        if operating_system.exists(self.pfile):
+            self._init_configuration_manager()
         self.status = status
 
     def change_ownership(self, mount_point):
@@ -121,12 +163,13 @@ class OracleApp(object):
             os.environ["ORACLE_SID"] = oradb.name
             connection = cx_Oracle.connect(user=ADMIN_USER_NAME,
                                            password=OracleConfig().admin_password,
-                                           mode = cx_Oracle.SYSDBA |
-                                           cx_Oracle.PRELIM_AUTH)
+                                           mode=(cx_Oracle.SYSDBA |
+                                                 cx_Oracle.PRELIM_AUTH))
+            self.update_spfile()
             connection.startup()
             connection = cx_Oracle.connect(user=ADMIN_USER_NAME,
                                            password=OracleConfig().admin_password,
-                                           mode = cx_Oracle.SYSDBA)
+                                           mode=cx_Oracle.SYSDBA)
             cursor = connection.cursor()
             cursor.execute("alter database mount")
             cursor.execute("alter database open")
@@ -167,6 +210,50 @@ class OracleApp(object):
             self.start_db()
         finally:
             self.status.end_restart()
+
+    def prep_pfile_management(self):
+        """Generate the base PFILE from the original SPFILE and
+        initialize the configuration manager to use it.
+        """
+        ora_admin = OracleAdmin()
+        ora_admin.create_parameter_file(target=self.pfile)
+        self._init_configuration_manager()
+
+    def generate_spfile(self):
+        LOG.debug("Generating a new SPFILE.")
+        ora_admin = OracleAdmin()
+        ora_admin.create_parameter_file(
+            source=self.pfile,
+            target=self.new_spfile,
+            create_system=True
+        )
+
+    def remove_overrides(self):
+        LOG.debug("Removing overrides.")
+        self.configuration_manager.remove_user_override()
+        self.generate_spfile()
+
+    def update_overrides(self, overrides):
+        if overrides:
+            LOG.debug("Updating PFILE.")
+            self.configuration_manager.apply_user_override(overrides)
+            self.generate_spfile()
+
+    def apply_overrides(self, overrides):
+        ora_admin = OracleAdmin()
+        ora_admin.set_initialization_paramaters(overrides)
+
+    def update_spfile(self):
+        """Checks if there is a new SPFILE and replaces the old.
+        The database must be shutdown before running this.
+        """
+        if operating_system.exists(self.new_spfile, as_root=True):
+            LOG.debug('Found a new SPFILE.')
+            operating_system.move(
+                self.new_spfile,
+                self.spfile,
+                force=True
+            )
 
 
 class OracleAppStatus(service.BaseDbStatus):
@@ -528,6 +615,54 @@ class OracleAdmin(object):
             if password:
                 self.change_passwords([{'name': username,
                                         'password': password}])
+
+    def create_parameter_file(self, source=None, target=None,
+                              create_system=False, client=None):
+        """Create a parameter file.
+        :param source:          source file path, if None then default
+        :param target:          target file path, if None then default
+        :param create_system:   if True, creates an SPFILE, else a PFILE
+        :param client:          cx_Oracle connection to use, else created
+        """
+        source_type = 'SPFILE'
+        source_clause = ''
+        source_log_msg = 'default location'
+        if source:
+            source_clause = "='%s'" % source
+            source_log_msg = source
+        target_type = 'PFILE'
+        target_clause = ''
+        target_log_msg = 'default location'
+        if target:
+            target_clause = "='%s'" % target
+            target_log_msg = target
+        if create_system:
+            source_type = 'PFILE'
+            target_type = 'SPFILE'
+        LOG.debug("Creating %(target_type)s at %(target)s from "
+                  "%(source_type)s at %(source)s."
+                  % {'target_type': target_type,
+                     'target': target_log_msg,
+                     'source_type': source_type,
+                     'source': source_log_msg})
+        q = ("CREATE %(target_type)s%(target)s FROM "
+             "%(source_type)s%(source)s"
+             % {'target_type': target_type,
+                'target': target_clause,
+                'source_type': source_type,
+                'source': source_clause})
+
+        if client:
+            client.execute(q)
+        else:
+            with LocalOracleClient(self.database_name, service=True) as client:
+                client.execute(q)
+
+    def set_initialization_paramaters(self, set_parameters):
+        LOG.debug("Setting initialization parameters.")
+        q = sql_query.AlterSystem.set_parameters(set_parameters)
+        with LocalOracleClient(self.database_name, service=True) as client:
+            client.execute(str(q))
 
 
 class OracleRootAccess(object):

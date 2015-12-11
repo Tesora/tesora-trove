@@ -1,0 +1,1131 @@
+{
+    "configuration-parameters": [
+        {
+            "name": "ARCHIVE_LAG_TARGET",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0,
+            "max": 7200
+        },
+        {
+            "name": "AUDIT_SYS_OPERATIONS",
+            "restart_required": true,
+            "type": "boolean"
+        },
+        {
+            "name": "AUDIT_SYSLOG_LEVEL",
+            "restart_required": true,
+            "type": "string"
+        },
+        {
+            "name": "BACKGROUND_CORE_DUMP",
+            "restart_required": true,
+            "type": "string"
+        },
+        {
+            "name": "BITMAP_MERGE_AREA_SIZE",
+            "restart_required": true,
+            "type": "integer"
+        },
+        {
+            "name": "BLANK_TRIMMING",
+            "restart_required": true,
+            "type": "boolean"
+        },
+        {
+            "name": "COMMIT_LOGGING",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "COMMIT_WAIT",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "COMMIT_WRITE",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "COMPATIBLE",
+            "restart_required": true,
+            "type": "string"
+        },
+        {
+            "name": "CONTROL_FILE_RECORD_KEEP_TIME",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0,
+            "max": 365
+        },
+        {
+            "name": "CPU_COUNT",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "CREATE_BITMAP_AREA_SIZE",
+            "restart_required": false,
+            "type": "integer"
+        },
+        {
+            "name": "CREATE_STORED_OUTLINES",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "CURSOR_BIND_CAPTURE_DESTINATION",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "CURSOR_SHARING",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "CURSOR_SPACE_FOR_TIME",
+            "restart_required": true,
+            "type": "boolean"
+        },
+        {
+            "name": "DB_2K_CACHE_SIZE",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "DB_4K_CACHE_SIZE",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "DB_8K_CACHE_SIZE",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "DB_16K_CACHE_SIZE",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "DB_32K_CACHE_SIZE",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "DB_BIG_TABLE_CACHE_PERCENT_TARGET",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "DB_BLOCK_BUFFERS",
+            "restart_required": true,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "DB_BLOCK_CHECKING",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "DB_BLOCK_CHECKSUM",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "DB_BLOCK_SIZE",
+            "restart_required": true,
+            "type": "integer",
+            "min": 2048,
+            "max": 32768
+        },
+        {
+            "name": "DB_CACHE_ADVICE",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "DB_CACHE_SIZE",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "DB_FILE_MULTIBLOCK_READ_COUNT",
+            "restart_required": false,
+            "type": "integer",
+            "min": 1
+        },
+        {
+            "name": "DB_FLASH_CACHE_SIZE",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "DB_FLASHBACK_RETENTION_TARGET",
+            "restart_required": true,
+            "type": "integer",
+            "min": 0,
+            "max": 2147483647
+        },
+        {
+            "name": "DB_INDEX_COMPRESSION_INHERITANCE",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "DB_KEEP_CACHE_SIZE",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "DB_LOST_WRITE_PROTECT",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "DB_RECOVERY_FILE_DEST_SIZE",
+            "restart_required": true,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "DB_RECYCLE_CACHE_SIZE",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "DB_SECUREFILE",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "DB_ULTRA_SAFE",
+            "restart_required": true,
+            "type": "string"
+        },
+        {
+            "name": "DB_UNIQUE_NAME",
+            "restart_required": true,
+            "type": "string"
+        },
+        {
+            "name": "DB_UNRECOVERABLE_SCN_TRACKING",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "DB_WRITER_PROCESSES",
+            "restart_required": true,
+            "type": "integer",
+            "min": 1,
+            "max": 100
+        },
+        {
+            "name": "DBFIPS_140",
+            "restart_required": true,
+            "type": "boolean"
+        },
+        {
+            "name": "DBWR_IO_SLAVES",
+            "restart_required": true,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "DDL_LOCK_TIMEOUT",
+            "restart_required": true,
+            "type": "integer",
+            "min": 0,
+            "max": 1000000
+        },
+        {
+            "name": "DEFERRED_SEGMENT_CREATION",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "DG_BROKER_START",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "DISK_ASYNCH_IO",
+            "restart_required": true,
+            "type": "boolean"
+        },
+        {
+            "name": "DISPATCHERS",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "DISTRIBUTED_LOCK_TIMEOUT",
+            "restart_required": true,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "DML_LOCKS",
+            "restart_required": true,
+            "type": "integer",
+            "min": 20
+        },
+        {
+            "name": "DNFS_BATCH_SIZE",
+            "restart_required": true,
+            "type": "integer",
+            "min": 0,
+            "max": 4096
+        },
+        {
+            "name": "DST_UPGRADE_INSERT_CONV",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "ENABLE_DDL_LOGGING",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "EVENT",
+            "restart_required": true,
+            "type": "string"
+        },
+        {
+            "name": "FAL_CLIENT",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "FAL_SERVER",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "FAST_START_MTTR_TARGET",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0,
+            "max": 3600
+        },
+        {
+            "name": "FAST_START_PARALLEL_ROLLBACK",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "FILESYSTEMIO_OPTIONS",
+            "restart_required": true,
+            "type": "string"
+        },
+        {
+            "name": "FIXED_DATE",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "GCS_SERVER_PROCESSES",
+            "restart_required": true,
+            "type": "integer",
+            "min": 1,
+            "max": 36
+        },
+        {
+            "name": "GLOBAL_CONTEXT_POOL_SIZE",
+            "restart_required": true,
+            "type": "string"
+        },
+        {
+            "name": "GLOBAL_NAMES",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "HASH_AREA_SIZE",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "HEAT_MAP",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "HI_SHARED_MEMORY_ADDRESS",
+            "restart_required": true,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "HS_AUTOREGISTER",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "INMEMORY_CLAUSE_DEFAULT",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "INMEMORY_FORCE",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "INMEMORY_MAX_POPULATE_SERVERS",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "INMEMORY_QUERY",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "INMEMORY_SIZE",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "INMEMORY_TRICKLE_REPOPULATE_SERVERS_PERCENT",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0,
+            "max": 50
+        },
+        {
+            "name": "JOB_QUEUE_PROCESSES",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0,
+            "max": 1000
+        },
+        {
+            "name": "LARGE_POOL_SIZE",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "LDAP_DIRECTORY_ACCESS",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "LDAP_DIRECTORY_SYSAUTH",
+            "restart_required": true,
+            "type": "string"
+        },
+        {
+            "name": "LICENSE_MAX_SESSIONS",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "LICENSE_MAX_USERS",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "LICENSE_SESSIONS_WARNING",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "LISTENER_NETWORKS",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "LOCK_NAME_SPACE",
+            "restart_required": true,
+            "type": "string"
+        },
+        {
+            "name": "LOCK_SGA",
+            "restart_required": true,
+            "type": "boolean"
+        },
+        {
+            "name": "LOG_ARCHIVE_CONFIG",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "LOG_ARCHIVE_MAX_PROCESSES",
+            "restart_required": false,
+            "type": "integer",
+            "min": 1,
+            "max": 30
+        },
+        {
+            "name": "LOG_ARCHIVE_TRACE",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0,
+            "max": 32768
+        },
+        {
+            "name": "LOG_BUFFER",
+            "restart_required": true,
+            "type": "integer",
+            "min": 2097152
+        },
+        {
+            "name": "LOG_CHECKPOINT_INTERVAL",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0,
+            "max": 2147483647
+        },
+        {
+            "name": "LOG_CHECKPOINT_TIMEOUT",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0,
+            "max": 2147483647
+        },
+        {
+            "name": "LOG_CHECKPOINTS_TO_ALERT",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "MAX_DUMP_FILE_SIZE",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "MAX_ENABLED_ROLES",
+            "restart_required": true,
+            "type": "integer",
+            "min": 1,
+            "max": 148
+        },
+        {
+            "name": "MAX_SHARED_SERVERS",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "MAX_STRING_SIZE",
+            "restart_required": true,
+            "type": "string"
+        },
+        {
+            "name": "MEMORY_MAX_TARGET",
+            "restart_required": true,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "MEMORY_TARGET",
+            "restart_required": false,
+            "type": "integer",
+            "min": 159383552
+        },
+        {
+            "name": "NLS_CALENDAR",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "NLS_COMP",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "NLS_CURRENCY",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "NLS_DATE_FORMAT",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "NLS_DATE_LANGUAGE",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "NLS_DUAL_CURRENCY",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "NLS_ISO_CURRENCY",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "NLS_LANGUAGE",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "NLS_LENGTH_SEMANTICS",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "NLS_NCHAR_CONV_EXCP",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "NLS_NUMERIC_CHARACTERS",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "NLS_SORT",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "NLS_TERRITORY",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "NLS_TIMESTAMP_FORMAT",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "NLS_TIMESTAMP_TZ_FORMAT",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "O7_DICTIONARY_ACCESSIBILITY",
+            "restart_required": true,
+            "type": "boolean"
+        },
+        {
+            "name": "OBJECT_CACHE_MAX_SIZE_PERCENT",
+            "restart_required": true,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "OBJECT_CACHE_OPTIMAL_SIZE",
+            "restart_required": true,
+            "type": "integer",
+            "min": 10240
+        },
+        {
+            "name": "OLAP_PAGE_POOL_SIZE",
+            "restart_required": true,
+            "type": "integer",
+            "min": 0,
+            "max": 2147483648
+        },
+        {
+            "name": "OPEN_CURSORS",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0,
+            "max": 65535
+        },
+        {
+            "name": "OPEN_LINKS",
+            "restart_required": true,
+            "type": "integer",
+            "min": 0,
+            "max": 255
+        },
+        {
+            "name": "OPEN_LINKS_PER_INSTANCE",
+            "restart_required": true,
+            "type": "integer",
+            "min": 0,
+            "max": 4294967295
+        },
+        {
+            "name": "OPTIMIZER_ADAPTIVE_FEATURES",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "OPTIMIZER_ADAPTIVE_REPORTING_ONLY",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "OPTIMIZER_CAPTURE_SQL_PLAN_BASELINES",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "OPTIMIZER_DYNAMIC_SAMPLING",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0,
+            "max": 11
+        },
+        {
+            "name": "OPTIMIZER_FEATURES_ENABLE",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "OPTIMIZER_INDEX_CACHING",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0,
+            "max": 100
+        },
+        {
+            "name": "OPTIMIZER_INDEX_COST_ADJ",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0,
+            "max": 10000
+        },
+        {
+            "name": "OPTIMIZER_INMEMORY_AWARE",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "OPTIMIZER_MODE",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "OPTIMIZER_SECURE_VIEW_MERGING",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "OPTIMIZER_USE_INVISIBLE_INDEXES",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "OPTIMIZER_USE_PENDING_STATISTICS",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "OPTIMIZER_USE_SQL_PLAN_BASELINES",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "OS_AUTHENT_PREFIX",
+            "restart_required": true,
+            "type": "string"
+        },
+        {
+            "name": "OS_ROLES",
+            "restart_required": true,
+            "type": "boolean"
+        },
+        {
+            "name": "PERMIT_92_WRAP_FORMAT",
+            "restart_required": true,
+            "type": "boolean"
+        },
+        {
+            "name": "PGA_AGGREGATE_LIMIT",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "PGA_AGGREGATE_TARGET",
+            "restart_required": false,
+            "type": "integer",
+            "min": 10485760,
+            "max": 4294967295
+        },
+        {
+            "name": "PLSCOPE_SETTINGS",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "PLSQL_CCFLAGS",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "PLSQL_CODE_TYPE",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "PLSQL_DEBUG",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "PLSQL_OPTIMIZE_LEVEL",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0,
+            "max": 3
+        },
+        {
+            "name": "PLSQL_V2_COMPATIBILITY",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "PLSQL_WARNINGS",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "PRE_PAGE_SGA",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "PROCESSES",
+            "restart_required": true,
+            "type": "integer",
+            "min": 6
+        },
+        {
+            "name": "QUERY_REWRITE_ENABLED",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "QUERY_REWRITE_INTEGRITY",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "RDBMS_SERVER_DN",
+            "restart_required": true,
+            "type": "string"
+        },
+        {
+            "name": "READ_ONLY_OPEN_DELAYED",
+            "restart_required": true,
+            "type": "boolean"
+        },
+        {
+            "name": "RECOVERY_PARALLELISM",
+            "restart_required": true,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "RECYCLEBIN",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "REMOTE_DEPENDENCIES_MODE",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "REMOTE_LOGIN_PASSWORDFILE",
+            "restart_required": true,
+            "type": "string"
+        },
+        {
+            "name": "REMOTE_OS_AUTHENT",
+            "restart_required": true,
+            "type": "boolean"
+        },
+        {
+            "name": "REMOTE_OS_ROLES",
+            "restart_required": true,
+            "type": "boolean"
+        },
+        {
+            "name": "RESULT_CACHE_MAX_RESULT",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0,
+            "max": 100
+        },
+        {
+            "name": "RESULT_CACHE_MAX_SIZE",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "RESULT_CACHE_MODE",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "RESULT_CACHE_REMOTE_EXPIRATION",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "RESUMABLE_TIMEOUT",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0,
+            "max": 2147483647
+        },
+        {
+            "name": "SEC_CASE_SENSITIVE_LOGON",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "SEC_MAX_FAILED_LOGIN_ATTEMPTS",
+            "restart_required": true,
+            "type": "integer",
+            "min": 1
+        },
+        {
+            "name": "SEC_PROTOCOL_ERROR_FURTHER_ACTION",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "SEC_PROTOCOL_ERROR_TRACE_ACTION",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "SEC_RETURN_SERVER_RELEASE_BANNER",
+            "restart_required": true,
+            "type": "boolean"
+        },
+        {
+            "name": "SERIAL_REUSE",
+            "restart_required": true,
+            "type": "string"
+        },
+        {
+            "name": "SERVICE_NAMES",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "SESSION_MAX_OPEN_FILES",
+            "restart_required": true,
+            "type": "integer",
+            "min": 1,
+            "max": 50
+        },
+        {
+            "name": "SESSIONS",
+            "restart_required": false,
+            "type": "integer",
+            "min": 1,
+            "max": 65536
+        },
+        {
+            "name": "SGA_MAX_SIZE",
+            "restart_required": true,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "SGA_TARGET",
+            "restart_required": false,
+            "type": "integer",
+            "min": 67108864
+        },
+        {
+            "name": "SHADOW_CORE_DUMP",
+            "restart_required": true,
+            "type": "string"
+        },
+        {
+            "name": "SHARED_MEMORY_ADDRESS",
+            "restart_required": true,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "SHARED_POOL_RESERVED_SIZE",
+            "restart_required": true,
+            "type": "integer",
+            "min": 5000
+        },
+        {
+            "name": "SHARED_POOL_SIZE",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "SHARED_SERVER_SESSIONS",
+            "restart_required": false,
+            "type": "integer",
+            "min": 1
+        },
+        {
+            "name": "SHARED_SERVERS",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "SKIP_UNUSABLE_INDEXES",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "SMTP_OUT_SERVER",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "SORT_AREA_RETAINED_SIZE",
+            "restart_required": true,
+            "type": "integer",
+            "min": 1
+        },
+        {
+            "name": "SORT_AREA_SIZE",
+            "restart_required": true,
+            "type": "integer",
+            "min": 1
+        },
+        {
+            "name": "SPATIAL_VECTOR_ACCELERATION",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "SQL_TRACE",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "SQL92_SECURITY",
+            "restart_required": true,
+            "type": "boolean"
+        },
+        {
+            "name": "SQLTUNE_CATEGORY",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "STANDBY_FILE_MANAGEMENT",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "STAR_TRANSFORMATION_ENABLED",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "STATISTICS_LEVEL",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "STREAMS_POOL_SIZE",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "TEMP_UNDO_ENABLED",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "TIMED_OS_STATISTICS",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0
+        },
+        {
+            "name": "TIMED_STATISTICS",
+            "restart_required": false,
+            "type": "boolean"
+        },
+        {
+            "name": "TRANSACTIONS",
+            "restart_required": true,
+            "type": "integer",
+            "min": 4,
+            "max": 4294967296
+        },
+        {
+            "name": "TRANSACTIONS_PER_ROLLBACK_SEGMENT",
+            "restart_required": true,
+            "type": "integer",
+            "min": 1
+        },
+        {
+            "name": "UNDO_MANAGEMENT",
+            "restart_required": true,
+            "type": "string"
+        },
+        {
+            "name": "UNDO_RETENTION",
+            "restart_required": false,
+            "type": "integer",
+            "min": 0,
+            "max": 2147483647
+        },
+        {
+            "name": "UNDO_TABLESPACE",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "UNIFIED_AUDIT_SGA_QUEUE_SIZE",
+            "restart_required": true,
+            "type": "integer",
+            "min": 1048576,
+            "max": 31457280
+        },
+        {
+            "name": "USE_INDIRECT_DATA_BUFFERS",
+            "restart_required": true,
+            "type": "boolean"
+        },
+        {
+            "name": "USE_LARGE_PAGES",
+            "restart_required": true,
+            "type": "string"
+        },
+        {
+            "name": "WORKAREA_SIZE_POLICY",
+            "restart_required": false,
+            "type": "string"
+        },
+        {
+            "name": "XML_DB_EVENTS",
+            "restart_required": false,
+            "type": "string"
+        }
+    ]
+}

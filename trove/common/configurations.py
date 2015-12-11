@@ -73,3 +73,14 @@ class CassandraConfParser(object):
 
     def parse(self):
         return self.CODEC.deserialize(self.config).items()
+
+
+class OracleConfParser(object):
+
+    CODEC = stream_codecs.IniCodec(comment_markers='#')
+
+    def __init__(self, config):
+        self.config = config
+
+    def parse(self):
+        return self.CODEC.deserialize(self.config).items()

@@ -54,7 +54,6 @@ CONF = cfg.CONF
 
 
 TIMEOUT = 1200
-DB2_INSTANCE_OWNER = "oracle.oinstall"
 ORACLE_INSTANCE_OWNER = "oracle"
 ORACLE_GROUP_OWNER = "oinstall"
 ORACLE_STATUS = ("ps -ef | grep " + ORACLE_INSTANCE_OWNER +
@@ -76,3 +75,8 @@ CREATE_DB_COMMAND = ("dbca -silent -createDatabase "
 DELETE_DB_COMMAND = ("dbca -silent -deleteDatabase -sourceDB %(db)s "
                      "-sysDBAUserName %(sys_user)s "
                      "-sysDBAPassword %(sys_pswd)s")
+
+PARAMETER_DIR_NAME = "dbs"
+PFILE_NAME = "os_pfile.ora"
+SPFILE_NAME = "os_spfile.ora"
+NEW_SPFILE_NAME = "new_os_spfile.ora"
