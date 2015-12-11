@@ -137,12 +137,15 @@ class Manager(periodic_task.PeriodicTasks):
             },
         }
 
+    def refresh_guest_log_defs(self):
+        self._guest_log_defs = dict(self.datastore_log_defs)
+        self._guest_log_defs.update(self.guestagent_log_defs)
+
     @property
     def guest_log_defs(self):
         """Return all the guest log defs."""
         if not self._guest_log_defs:
-            self._guest_log_defs = dict(self.datastore_log_defs)
-            self._guest_log_defs.update(self.guestagent_log_defs)
+            self.refresh_guest_log_defs()
         return self._guest_log_defs
 
     @property
@@ -373,35 +376,40 @@ class Manager(periodic_task.PeriodicTasks):
             for name in gl_cache.keys():
                 gl_cache[name].status = status
 
-    def build_log_file_name(self, log_name, owner, datastore_dir=None):
+    def build_log_file_name(self, log_name, owner, group=None,
+                            datastore_dir=None):
         """Build a log file name based on the log_name and make sure the
         directories exist and are accessible by owner.
         """
+        if not group:
+            group = owner
         if datastore_dir is None:
             base_dir = self.GUEST_LOG_BASE_DIR
             if not operating_system.exists(base_dir, is_directory=True):
                 operating_system.create_directory(
-                    base_dir, user=owner, group=owner, force=True,
+                    base_dir, user=owner, group=group, force=True,
                     as_root=True)
             datastore_dir = guestagent_utils.build_file_path(
                 base_dir, self.GUEST_LOG_DATASTORE_DIRNAME)
 
         if not operating_system.exists(datastore_dir, is_directory=True):
             operating_system.create_directory(
-                datastore_dir, user=owner, group=owner, force=True,
+                datastore_dir, user=owner, group=group, force=True,
                 as_root=True)
         log_file_name = guestagent_utils.build_file_path(
             datastore_dir, '%s-%s.log' % (self.manager, log_name))
 
         return self.validate_log_file(log_file_name, owner)
 
-    def validate_log_file(self, log_file, owner):
+    def validate_log_file(self, log_file, owner, group=None):
         """Make sure the log file exists and is accessible by owner.
         """
+        if not group:
+            group = owner
         if not operating_system.exists(log_file, as_root=True):
             operating_system.write_file(log_file, '', as_root=True)
 
-        operating_system.chown(log_file, user=owner, group=owner,
+        operating_system.chown(log_file, user=owner, group=group,
                                as_root=True)
         operating_system.chmod(log_file, FileMode.ADD_USR_RW_GRP_RW_OTH_R,
                                as_root=True)

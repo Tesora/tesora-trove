@@ -48,16 +48,21 @@
 # Tesora or display the words "Initial Development by Tesora" if the display of
 # the logo is not reasonably feasible for technical reasons.
 
+from os import path
+
 from oslo_log import log as logging
 from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance as ds_instance
 from trove.guestagent import backup
+from trove.guestagent.common import guestagent_utils
 from trove.guestagent.datastore import manager
 from trove.guestagent.datastore.oracle import service
+from trove.guestagent.datastore.oracle import system
 from trove.guestagent import dbaas
 from trove.guestagent.db import models
+from trove.guestagent import guest_log
 from trove.guestagent import volume
 
 LOG = logging.getLogger(__name__)
@@ -104,6 +109,8 @@ class Manager(manager.Manager):
             db = models.ValidatedMySQLDatabase()
             db.name = CONF.guest_name
             self.admin.create_database([db.serialize()])
+
+        self.refresh_guest_log_defs()
 
         self.app.prep_pfile_management()
 
@@ -201,6 +208,33 @@ class Manager(manager.Manager):
         """
         LOG.debug("Resetting Oracle configuration.")
         pass
+
+    @property
+    def datastore_log_defs(self):
+        if not self.status.prepare_completed:
+            # do nothing if unprepared as path unknown until after db creation
+            return {}
+        owner = system.ORACLE_INSTANCE_OWNER
+        group = system.ORACLE_GROUP_OWNER
+        sid = self.admin.database_name
+        diag_dest = self.admin.get_parameter('diagnostic_dest')
+        dbname = sid.lower()
+        # alert log path:
+        # <diagnostic_dest>/diag/rdbms/<dbname>/<instname>/alert/log.xml
+        alert_log_file = self.validate_log_file(
+            guestagent_utils.build_file_path(
+                path.join(diag_dest, 'diag', 'rdbms', dbname, sid, 'alert'),
+                'log', 'xml'
+            ), owner, group=group
+        )
+
+        return {
+            'alert': {
+                self.GUEST_LOG_TYPE_LABEL: guest_log.LogType.SYS,
+                self.GUEST_LOG_USER_LABEL: owner,
+                self.GUEST_LOG_FILE_LABEL: alert_log_file,
+            },
+        }
 
     def change_passwords(self, context, users):
         LOG.debug("Changing password.")

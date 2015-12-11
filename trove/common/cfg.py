@@ -662,7 +662,7 @@ oracle_opts = [
     cfg.IntOpt('db_ram_size', default=500,
                help='Default memory size (MB) of each Oracle database '
                     'instance.'),
-    cfg.StrOpt('guest_log_exposed_logs', default='',
+    cfg.StrOpt('guest_log_exposed_logs', default='alert',
                help='List of Guest Logs to expose for publishing.'),
     cfg.StrOpt('template', default='General_Purpose_ArchiveLog.dbc',
                help='Template file name used by dbca.'),
