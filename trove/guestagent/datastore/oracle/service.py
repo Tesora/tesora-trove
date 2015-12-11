@@ -287,8 +287,6 @@ class OracleAdmin(object):
     """
     Handles administrative tasks on the Oracle instance.
     """
-    _DBNAME = CONF.guest_name
-    _DBNAME_REGEX = re.compile(r'^([a-zA-Z0-9]+):*:')
 
     def create_database(self, databases):
         """Create the given database(s)."""
@@ -377,15 +375,26 @@ class OracleAdmin(object):
         except cx_Oracle.DatabaseError:
             return False
 
+    def _get_database_names(self):
+        oratab_items = operating_system.read_file(
+            '/etc/oratab', stream_codecs.PropertiesCodec(delimiter=':')
+        )
+        return oratab_items.keys()
+
     def list_databases(self, limit=None, marker=None, include_marker=False):
-        with open('/etc/oratab') as oratab:
-            dblist = [ self._DBNAME_REGEX.search(line)
-                      for line in oratab if self._DBNAME_REGEX.search(line) ]
-            dblist = [ db.group(1) for db in dblist ]
-        dblist_page, next_marker = pagination.paginate_list(dblist, limit, marker,
-                                                            include_marker)
-        result = [ models.OracleSchema(name).serialize() for name in dblist_page ]
+        dblist_page, next_marker = pagination.paginate_list(
+            self._get_database_names(), limit, marker, include_marker)
+        result = [models.OracleSchema(name).serialize() for name in dblist_page]
         return result, next_marker
+
+    @property
+    def database_name(self):
+        databases = self._get_database_names()
+        if len(databases) == 0:
+            raise exception.GuestError('No database found on guest.')
+        elif len(databases) > 1:
+            raise exception.GuestError('Multiple databases found on guest.')
+        return databases[0]
 
     def create_cloud_user_role(self, database):
         LOG.debug("Creating database cloud user role")
@@ -405,18 +414,18 @@ class OracleAdmin(object):
         LOG.debug("Creating database users")
         for item in users:
             user = models.OracleUser.deserialize_user(item)
-            if self._database_is_up(self._DBNAME):
-                with LocalOracleClient(self._DBNAME, service=True) as client:
+            if self._database_is_up(self.database_name):
+                with LocalOracleClient(self.database_name, service=True) as client:
                     q = sql_query.CreateUser(user.name, user.password)
                     client.execute(str(q))
                     # TO-DO: Refactor GRANT query into the sql_query module
                     client.execute('GRANT cloud_user_role to %s' % user.name)
                     client.execute('GRANT UNLIMITED TABLESPACE to %s' % user.name)
                 LOG.debug(_("Created user %(user)s on %(db)s") %
-                          {'user': user.name, 'db': self._DBNAME})
+                          {'user': user.name, 'db': self.database_name})
             else:
                 LOG.debug(_("Failed to create user %(user)s on %(db)s") %
-                          {'user': user.name, 'db': self._DBNAME})
+                          {'user': user.name, 'db': self.database_name})
         LOG.debug("Finished creating database users")
 
     def delete_user(self, user):
@@ -502,7 +511,7 @@ class OracleAdmin(object):
     def change_passwords(self, users):
         """Change the passwords of one or more existing users."""
         LOG.debug("Changing the password of some users.")
-        with LocalOracleClient(self._DBNAME, service=True) as client:
+        with LocalOracleClient(self.database_name, service=True) as client:
             for item in users:
                 LOG.debug("Changing password for user %s." % item)
                 user = models.OracleUser(item['name'],
