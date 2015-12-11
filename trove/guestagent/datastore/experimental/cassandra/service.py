@@ -230,6 +230,19 @@ class CassandraApp(object):
         operating_system.remove(chaches_dir,
                                 force=True, recursive=True, as_root=True)
 
+        operating_system.create_directory(
+            system_keyspace_dir,
+            user=self.cassandra_owner, group=self.cassandra_owner,
+            force=True, as_root=True)
+        operating_system.create_directory(
+            commitlog_file,
+            user=self.cassandra_owner, group=self.cassandra_owner,
+            force=True, as_root=True)
+        operating_system.create_directory(
+            chaches_dir,
+            user=self.cassandra_owner, group=self.cassandra_owner,
+            force=True, as_root=True)
+
     def _apply_post_restore_updates(self, backup_info):
         """The service should not be running at this point.
 
