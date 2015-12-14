@@ -23,7 +23,6 @@ from .service.database import PgSqlDatabase
 from .service.install import PgSqlInstall
 from .service.root import PgSqlRoot
 from .service.status import PgSqlAppStatus
-from .service.users import PgSqlUsers
 import pgutil
 from trove.common import exception
 from trove.common.i18n import _
@@ -49,7 +48,6 @@ REPLICATION_STRATEGY_CLASS = get_replication_strategy(REPLICATION_STRATEGY,
 
 class Manager(
         manager.Manager,
-        PgSqlUsers,
         PgSqlDatabase,
         PgSqlRoot,
         PgSqlConfig,
@@ -117,6 +115,9 @@ class Manager(
         if backup_info:
             pgutil.PG_ADMIN = self.ADMIN_USER
             backup.restore(context, backup_info, '/tmp')
+            pgutil.PG_ADMIN = self.ADMIN_USER
+        else:
+            self._secure(context)
 
         if snapshot:
             LOG.info("Found snapshot info: " + str(snapshot))
