@@ -774,3 +774,14 @@ class DBaaSConfigurationEdit(DBaaSAPINotification):
     @abc.abstractmethod
     def required_start_traits(self):
         return ['configuration_id']
+
+
+class DBaaSInstanceUpgrade(DBaaSAPINotification):
+
+    @abc.abstractmethod
+    def event_type(self):
+        return 'upgrade'
+
+    @abc.abstractmethod
+    def required_start_traits(self):
+        return ['instance_id', 'datastore_version_id']

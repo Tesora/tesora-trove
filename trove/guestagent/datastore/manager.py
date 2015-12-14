@@ -252,9 +252,22 @@ class Manager(periodic_task.PeriodicTasks):
         """
         pass
 
-    #########################
-    # Cluster related methods
-    #########################
+    def pre_upgrade(self, context):
+        """Prepares the guest for upgrade, returning a dict to be passed
+        to post_upgrade
+        """
+        return {}
+
+    def post_upgrade(self, context, upgrade_info):
+        """Recovers the guest after the image is upgraded using infomation
+        from the pre_upgrade step
+        """
+        pass
+
+    #################
+    # Cluster related
+    #################
+
     def cluster_complete(self, context):
         LOG.debug("Cluster creation complete, starting status checks.")
         self.status.end_install()
