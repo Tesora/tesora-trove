@@ -28,7 +28,8 @@ CONFIG_CANDIDATES = ["/etc/mongodb.conf", "/etc/mongod.conf"]
 MONGO_ADMIN_NAME = 'os_admin'
 MONGO_ADMIN_ROLES = [{'db': 'admin', 'role': 'userAdminAnyDatabase'},
                      {'db': 'admin', 'role': 'dbAdminAnyDatabase'},
-                     {'db': 'admin', 'role': 'clusterAdmin'}]
+                     {'db': 'admin', 'role': 'clusterAdmin'},
+                     {'db': 'admin', 'role': 'readWriteAnyDatabase'}]
 MONGO_ADMIN_CREDS_FILE = path.join(path.expanduser('~'),
                                    '.os_mongo_admin_creds.json')
 MONGO_KEY_FILE = '/etc/mongo_key'

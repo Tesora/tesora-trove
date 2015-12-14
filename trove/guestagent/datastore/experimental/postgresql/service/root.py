@@ -32,8 +32,7 @@ class PgSqlRoot(PgSqlUsers):
         """Return True if there is a superuser account enabled.
         """
         results = pgutil.query(
-            pgutil.UserQuery.list_root(ignore=cfg.get_ignored_users(
-                manager='postgresql')),
+            pgutil.UserQuery.list_root(),
             timeout=30,
         )
 
