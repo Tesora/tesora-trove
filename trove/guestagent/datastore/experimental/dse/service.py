@@ -32,9 +32,9 @@ class DSEApp(community_service.CassandraApp):
     def cassandra_conf(self):
         return {
             operating_system.REDHAT:
-                "/etc/dse/cassandra/default.conf/cassandra.yaml",
+                "/etc/dse/cassandra/cassandra.yaml",
             operating_system.DEBIAN:
                 "/etc/dse/cassandra/cassandra.yaml",
             operating_system.SUSE:
-                "/etc/dse/cassandra/default.conf/cassandra.yaml"
+                "/etc/dse/cassandra/cassandra.yaml"
         }[operating_system.get_os()]
