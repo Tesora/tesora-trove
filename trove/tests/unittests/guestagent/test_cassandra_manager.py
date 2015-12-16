@@ -146,7 +146,7 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
 
     @patch.object(cass_service.CassandraApp, '_init_overrides_dir',
                   return_value='')
-    def test_superuser_password_reset(self, _):
+    def test_admin_password_reset(self, _):
         fake_status = MagicMock()
         fake_status.is_running = False
 
@@ -163,10 +163,10 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
                 _CassandraApp__enable_remote_access=DEFAULT,
                 _CassandraApp__disable_authentication=DEFAULT,
                 _CassandraApp__enable_authentication=DEFAULT,
-                _CassandraApp__reset_superuser_password=DEFAULT,
-                configure_superuser_access=DEFAULT) as calls:
+                _CassandraApp__reset_user_password_to_default=DEFAULT,
+                secure=DEFAULT) as calls:
 
-            test_app._reset_superuser_password()
+            test_app._reset_admin_password()
 
             calls['_disable_db_on_boot'].assert_called_once_with()
             calls[
@@ -179,11 +179,14 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
             calls[
                 '_CassandraApp__enable_authentication'
             ].assert_called_once_with()
-            calls[
-                '_CassandraApp__reset_superuser_password'
-            ].assert_called_once_with()
-            calls['configure_superuser_access'].assert_called_once_with()
-            self.assertEqual(2, calls['restart'].call_count)
+
+            pw_reset_mock = calls[
+                '_CassandraApp__reset_user_password_to_default'
+            ]
+            pw_reset_mock.assert_called_once_with(test_app._ADMIN_USER)
+            calls['secure'].assert_called_once_with(
+                update_user=pw_reset_mock.return_value)
+            calls['restart'].assert_called_once_with()
             calls['stop_db'].assert_called_once_with()
             calls[
                 '_CassandraApp__enable_remote_access'
@@ -228,14 +231,14 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
                 start_db=DEFAULT,
                 stop_db=DEFAULT,
                 _update_cluster_name_property=DEFAULT,
-                _reset_superuser_password=DEFAULT,
+                _reset_admin_password=DEFAULT,
                 change_cluster_name=DEFAULT) as calls:
             backup_info = {'instance_id': 'old_id'}
             conf_mock.guest_id = 'new_id'
             test_app._apply_post_restore_updates(backup_info)
             calls['_update_cluster_name_property'].assert_called_once_with(
                 'old_id')
-            calls['_reset_superuser_password'].assert_called_once_with()
+            calls['_reset_admin_password'].assert_called_once_with()
             calls['start_db'].assert_called_once_with(update_db=False)
             calls['change_cluster_name'].assert_called_once_with('new_id')
             calls['stop_db'].assert_called_once_with()
