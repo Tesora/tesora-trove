@@ -38,7 +38,7 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
     __MOUNT_POINT = '/var/lib/cassandra'
 
     __N_GAK = '_get_available_keyspaces'
-    __N_GSU = '_get_non_system_users'
+    __N_GLU = '_get_listed_users'
     __N_BU = '_build_user'
     __N_RU = '_rename_user'
     __N_AUP = '_alter_user_password'
@@ -451,7 +451,7 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
             self.assertEqual(([], None), found)
 
     @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
-    def test_get_non_system_users(self, conn):
+    def test_get_listed_users(self, conn):
         usr = models.CassandraUser(self._get_random_name(1025), 'password')
         db1 = models.CassandraSchema('db1')
         db2 = models.CassandraSchema('db2')
@@ -486,7 +486,7 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
         usr3.databases.append(db1)
         usr3.databases.append(db2)
 
-        with patch.object(self.admin, self.__N_GSU, return_value={usr1, usr2,
+        with patch.object(self.admin, self.__N_GLU, return_value={usr1, usr2,
                                                                   usr3}):
             usr1_dbs = self.manager.list_access(self.context, usr1.name, None)
             usr2_dbs = self.manager.list_access(self.context, usr2.name, None)
@@ -495,7 +495,7 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
             self.assertEqual([db1], usr2_dbs)
             self.assertEqual([db1, db2], usr3_dbs)
 
-        with patch.object(self.admin, self.__N_GSU, return_value=set()):
+        with patch.object(self.admin, self.__N_GLU, return_value=set()):
             with ExpectedException(exception.UserNotFound):
                 self.manager.list_access(self.context, usr3.name, None)
 
@@ -505,7 +505,7 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
         usr2 = models.CassandraUser('usr2')
         usr3 = models.CassandraUser(self._get_random_name(1025), 'password')
 
-        with patch.object(self.admin, self.__N_GSU, return_value={usr1, usr2,
+        with patch.object(self.admin, self.__N_GLU, return_value={usr1, usr2,
                                                                   usr3}):
             found = self.manager.list_users(self.context)
             self.assertEqual(2, len(found))
@@ -515,7 +515,7 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
             self.assertIn(usr2.serialize(), found[0])
             self.assertIn(usr3.serialize(), found[0])
 
-        with patch.object(self.admin, self.__N_GSU, return_value=set()):
+        with patch.object(self.admin, self.__N_GLU, return_value=set()):
             self.assertEqual(([], None), self.manager.list_users(self.context))
 
     @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
@@ -524,12 +524,12 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
         usr2 = models.CassandraUser('usr2')
         usr3 = models.CassandraUser(self._get_random_name(1025), 'password')
 
-        with patch.object(self.admin, self.__N_GSU, return_value={usr1, usr2,
+        with patch.object(self.admin, self.__N_GLU, return_value={usr1, usr2,
                                                                   usr3}):
             found = self.manager.get_user(self.context, usr2.name, None)
             self.assertEqual(usr2.serialize(), found)
 
-        with patch.object(self.admin, self.__N_GSU, return_value=set()):
+        with patch.object(self.admin, self.__N_GLU, return_value=set()):
             self.assertIsNone(
                 self.manager.get_user(self.context, usr2.name, None))
 

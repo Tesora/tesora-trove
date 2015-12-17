@@ -1085,3 +1085,13 @@ class PostgreSQLRootUser(PostgreSQLUser):
             password = utils.generate_random_password()
         super(PostgreSQLRootUser, self).__init__("postgres", password=password,
                                                  *args, **kwargs)
+
+
+class CassandraRootUser(CassandraUser):
+    """Represents the Cassandra default superuser."""
+
+    def __init__(self, password=None, *args, **kwargs):
+        if password is None:
+            password = utils.generate_random_password()
+        super(CassandraRootUser, self).__init__("cassandra", password=password,
+                                                *args, **kwargs)

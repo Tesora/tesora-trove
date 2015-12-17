@@ -581,6 +581,28 @@ class CassandraApp(object):
                              '-u', cassandra.name,
                              '-pw', cassandra.password, cmd, *args, **kwargs)
 
+    def enable_root(self, root_password=None):
+        """Cassandra's 'root' user is called 'cassandra'.
+        Create a new superuser if it does not exist and grant it full
+        superuser-level access to all keyspaces.
+        """
+        cassandra = models.CassandraRootUser(password=root_password)
+        admin = CassandraAdmin(self.get_current_superuser())
+        if self.is_root_enabled():
+            admin.alter_user_password(cassandra)
+        else:
+            admin._create_superuser(cassandra)
+
+        return cassandra.serialize()
+
+    def is_root_enabled(self):
+        """The Trove administrative user ('os_admin') should normally be the
+        only superuser in the system.
+        """
+        found = CassandraAdmin(self.get_current_superuser()).list_superusers()
+        return len([user for user in found
+                    if user.name != self._ADMIN_USER]) > 0
+
 
 class CassandraAppStatus(service.BaseDbStatus):
 
@@ -615,7 +637,6 @@ class CassandraAdmin(object):
     The users it creates are all 'normal' (NOSUPERUSER) accounts.
     The permissions it can grant are also limited to non-superuser operations.
     This is to prevent anybody from creating a new superuser via the Trove API.
-    Similarly, all list operations include only non-superuser accounts.
     """
 
     # Non-superuser grant modifiers.
@@ -680,32 +701,40 @@ class CassandraAdmin(object):
     def _find_user(self, client, username):
         """
         Lookup a user with a given username.
-        Search only in non-superuser accounts.
+        Omit user names on the ignore list.
         Return a new Cassandra user instance or None if no match is found.
         """
-        return next((user for user in self._get_non_system_users(client)
+        return next((user for user in self._get_listed_users(client)
                      if user.name == username), None)
 
     def list_users(self, context, limit=None, marker=None,
                    include_marker=False):
         """
-        List all non-superuser accounts.
+        List all non-superuser accounts. Omit names on the ignored list.
         Return an empty set if None.
         """
         with CassandraLocalhostConnection(self.__admin_user) as client:
             users = [user.serialize() for user in
-                     self._get_non_system_users(client)]
+                     self._get_listed_users(client)]
             return pagination.paginate_list(users, limit, marker,
                                             include_marker)
 
-    def _get_non_system_users(self, client):
+    def _get_listed_users(self, client):
         """
         Return a set of unique user instances.
-        Return only non-superuser accounts. Omit user names on the ignore list.
+        Omit user names on the ignore list.
+        """
+        return self._get_users(
+            client, lambda user: user not in self.ignore_users)
+
+    def _get_users(self, client, matcher=None):
+        """
+        :param matcher                Filter expression.
+        :type matcher                 callable
         """
         return {self._build_user(client, user.name)
                 for user in client.execute("LIST USERS;")
-                if not user.super and user.name not in self.ignore_users}
+                if not matcher or matcher(user)}
 
     def _build_user(self, client, username, check_reserved=True):
         if check_reserved:
@@ -718,6 +747,11 @@ class CassandraAdmin(object):
                 user.databases.append(keyspace.serialize())
 
         return user
+
+    def list_superusers(self):
+        """List all system users existing in the database."""
+        with CassandraLocalhostConnection(self.__admin_user) as client:
+            return self._get_users(client, lambda user: user.super)
 
     def _get_permissions_on_keyspace(self, client, keyspace, user):
         return {item.permission for item in
