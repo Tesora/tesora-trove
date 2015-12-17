@@ -211,8 +211,8 @@ class Manager(manager.Manager):
 
     @property
     def datastore_log_defs(self):
-        if not self.status.prepare_completed:
-            # do nothing if unprepared as path unknown until after db creation
+        if not self.appStatus.is_running:
+            # do nothing if Oracle is not running
             return {}
         owner = system.ORACLE_INSTANCE_OWNER
         group = system.ORACLE_GROUP_OWNER
