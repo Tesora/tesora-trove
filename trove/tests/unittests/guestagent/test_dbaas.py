@@ -1320,16 +1320,17 @@ class MySqlAppTest(testtools.TestCase):
         self.mysql_starts_successfully()
         sqlalchemy.create_engine = Mock()
 
-        self.mySqlApp.secure('contents', 'overrides')
+        self.mySqlApp.secure('contents')
 
         self.assertTrue(self.mySqlApp.stop_db.called)
         reset_config_calls = [call('contents', auth_pwd_mock.return_value),
                               call('contents', auth_pwd_mock.return_value)]
         self.mySqlApp._reset_configuration.has_calls(reset_config_calls)
 
-        apply_overrides_calls = [call('overrides'),
-                                 call('overrides')]
-        self.mySqlApp._reset_configuration.has_calls(apply_overrides_calls)
+        self.assertTrue(self.mySqlApp.stop_db.called)
+        self.mySqlApp._reset_configuration.assert_has_calls(
+            [call('contents', auth_pwd_mock.return_value)])
+
         self.assertTrue(self.mySqlApp.start_mysql.called)
         self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
 
@@ -1422,7 +1423,7 @@ class MySqlAppTest(testtools.TestCase):
         self.mysql_starts_successfully()
         sqlalchemy.create_engine = Mock()
 
-        self.assertRaises(IOError, self.mySqlApp.secure, "foo", None)
+        self.assertRaises(IOError, self.mySqlApp.secure, "foo")
 
         self.assertTrue(self.mySqlApp.stop_db.called)
         self.assertFalse(self.mySqlApp.start_mysql.called)
@@ -1496,7 +1497,7 @@ class MySqlAppMockTest(testtools.TestCase):
                 app._wait_for_mysql_to_be_really_alive = MagicMock(
                     return_value=True)
                 app.stop_db = MagicMock(return_value=None)
-                app.secure('foo', None)
+                app.secure('foo')
                 reset_config_calls = [call('foo', auth_pwd_mock.return_value)]
                 app._reset_configuration.assert_has_calls(reset_config_calls)
                 self.assertTrue(mock_conn.execute.called)
@@ -1523,7 +1524,7 @@ class MySqlAppMockTest(testtools.TestCase):
                     app = MySqlApp(mock_status)
                     dbaas_base.clear_expired_password = \
                         MagicMock(return_value=None)
-                    self.assertRaises(RuntimeError, app.secure, None, None)
+                    self.assertRaises(RuntimeError, app.secure, None)
                     self.assertTrue(mock_conn.execute.called)
                     # At least called twice
                     self.assertTrue(mock_conn.execute.call_count >= 2)

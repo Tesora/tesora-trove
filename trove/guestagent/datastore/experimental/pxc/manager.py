@@ -93,7 +93,7 @@ class Manager(manager_base.BaseMySqlManager):
             self._perform_restore(backup_info, context,
                                   mount_point + "/data", app)
         LOG.debug("Securing MySQL now.")
-        app.secure(config_contents, overrides)
+        app.secure(config_contents)
         enable_root_on_restore = (backup_info and
                                   self.mysql_admin().is_root_enabled())
         if root_password and not backup_info:

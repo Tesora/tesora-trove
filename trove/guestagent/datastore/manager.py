@@ -242,6 +242,10 @@ class Manager(periodic_task.PeriodicTasks):
                     backup_info=backup_info, config_contents=config_contents,
                     root_password=root_password, overrides=overrides,
                     cluster_config=cluster_config, snapshot=snapshot)
+                if overrides:
+                    LOG.info(_("Applying user-specified configuration "
+                               "(called from 'prepare')."))
+                    self.apply_overrides_on_prepare(context, overrides)
             except Exception:
                 self.prepare_error = True
                 LOG.exception("An error occurred preparing datastore")
@@ -251,6 +255,10 @@ class Manager(periodic_task.PeriodicTasks):
                 self.status.end_install(error_occurred=self.prepare_error,
                                         post_processing=post_processing)
         LOG.info(_('Completed setup of datastore successfully.'))
+
+    def apply_overrides_on_prepare(self, context, overrides):
+        self.update_overrides(context, overrides)
+        self.restart(context)
 
     @abc.abstractmethod
     def do_prepare(self, context, packages, databases, memory_mb, users,
@@ -274,6 +282,14 @@ class Manager(periodic_task.PeriodicTasks):
         """Recovers the guest after the image is upgraded using infomation
         from the pre_upgrade step
         """
+        pass
+
+    #################
+    # Service related
+    #################
+    @abc.abstractmethod
+    def restart(self, context):
+        """Restart the database service."""
         pass
 
     #################
