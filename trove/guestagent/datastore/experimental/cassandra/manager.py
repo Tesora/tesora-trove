@@ -149,6 +149,9 @@ class Manager(manager.Manager):
 
             self.__admin = CassandraAdmin(self.app.get_current_superuser())
 
+        if self.is_root_enabled(context):
+            self.status.report_root(context, self.app.default_superuser_name)
+
         if databases:
             self.create_database(context, databases)
 
@@ -202,22 +205,16 @@ class Manager(manager.Manager):
         return self.admin.list_users(context, limit, marker, include_marker)
 
     def enable_root(self, context):
-        raise exception.DatastoreOperationNotSupported(
-            operation='enable_root', datastore=MANAGER)
+        return self.app.enable_root()
 
     def enable_root_with_password(self, context, root_password=None):
-        LOG.debug("Enabling root with password.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='enable_root_with_password', datastore=MANAGER)
+        return self.app.enable_root(root_password=root_password)
 
     def disable_root(self, context):
-        LOG.debug("Disabling root.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='disable_root', datastore=MANAGER)
+        self.app.enable_root(root_password=None)
 
     def is_root_enabled(self, context):
-        raise exception.DatastoreOperationNotSupported(
-            operation='is_root_enabled', datastore=MANAGER)
+        return self.app.is_root_enabled()
 
     def _perform_restore(self, backup_info, context, restore_location):
         LOG.info(_("Restoring database from backup %s.") % backup_info['id'])

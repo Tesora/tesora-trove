@@ -940,8 +940,9 @@ cassandra_opts = [
                                        'system_traces'],
                 help='Databases to exclude when listing databases.'),
     cfg.StrOpt('root_controller',
-               default='trove.extensions.common.service.DefaultRootController',
-               help='Root controller implementation for cassandra.'),
+               default='trove.extensions.cassandra.service'
+               '.CassandraRootController',
+               help='Root controller implementation for Cassandra.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
 ]
