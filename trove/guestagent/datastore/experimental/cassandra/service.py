@@ -50,6 +50,8 @@ packager = pkg.Package()
 class CassandraApp(object):
     """Prepares DBaaS on a Guest container."""
 
+    _ADMIN_USER = 'os_admin'
+
     _CONF_AUTH_SEC = 'authentication'
     _CONF_USR_KEY = 'username'
     _CONF_PWD_KEY = 'password'
@@ -268,7 +270,7 @@ class CassandraApp(object):
             - change the cluster name
             - restart the service
 
-        :seealso: _reset_superuser_password
+        :seealso: _reset_admin_password
         :seealso: change_cluster_name
         """
 
@@ -284,7 +286,7 @@ class CassandraApp(object):
             self._update_cluster_name_property(backup_info['instance_id'])
 
             # Reset the superuser password so that we can log-in.
-            self._reset_superuser_password()
+            self._reset_admin_password()
 
             # Start the database and update the 'cluster_name' to the
             # new value.
@@ -293,21 +295,41 @@ class CassandraApp(object):
         finally:
             self.stop_db()  # Always restore the initial state of the service.
 
-    def configure_superuser_access(self):
-        LOG.info(_('Configuring Cassandra superuser.'))
-        current_superuser = self.get_current_superuser()
-        cassandra = models.CassandraUser(self.default_superuser_name,
-                                         utils.generate_random_password())
-        self.__create_cqlsh_config({self._CONF_AUTH_SEC:
-                                    {self._CONF_USR_KEY: cassandra.name,
-                                     self._CONF_PWD_KEY: cassandra.password}})
-        CassandraAdmin(current_superuser).alter_user_password(cassandra)
-        self.status.set_superuser(cassandra)
-
-        return cassandra
-
-    def _reset_superuser_password(self):
+    def secure(self, update_user=None):
+        """Configure the Trove administrative user.
+        Update an existing user if given.
+        Create a new one using the default database credentials
+        otherwise and drop the built-in user when finished.
         """
+        LOG.info(_('Configuring Trove superuser.'))
+
+        current_superuser = update_user or models.CassandraUser(
+            self.default_superuser_name,
+            self.default_superuser_password)
+
+        if update_user:
+            os_admin = models.CassandraUser(update_user.name,
+                                            utils.generate_random_password())
+            CassandraAdmin(current_superuser).alter_user_password(os_admin)
+        else:
+            os_admin = models.CassandraUser(self._ADMIN_USER,
+                                            utils.generate_random_password())
+            CassandraAdmin(current_superuser)._create_superuser(os_admin)
+            CassandraAdmin(os_admin).drop_user(current_superuser)
+
+        self.__create_cqlsh_config({self._CONF_AUTH_SEC:
+                                    {self._CONF_USR_KEY: os_admin.name,
+                                     self._CONF_PWD_KEY: os_admin.password}})
+
+        # Update the internal status with the new user.
+        self.status = CassandraAppStatus(os_admin)
+
+        return os_admin
+
+    def _reset_admin_password(self):
+        """
+        Reset the password of the Trove's administrative superuser.
+
         The service should not be running at this point.
 
         A general password reset procedure is:
@@ -318,11 +340,8 @@ class CassandraApp(object):
             - restart the service
         """
         if self.status.is_running:
-            raise RuntimeError(_("Cannot reset the superuser password. "
+            raise RuntimeError(_("Cannot reset the administrative password. "
                                  "The service is still running."))
-
-        LOG.debug("Resetting the superuser password to '%s'."
-                  % self.default_superuser_password)
 
         try:
             # Disable automatic startup in case the node goes down before
@@ -339,13 +358,12 @@ class CassandraApp(object):
             # and restart the service to get user functions back.
             self.start_db(update_db=False)
             self.__enable_authentication()
-            self.__reset_superuser_password()
+            os_admin = self.__reset_user_password_to_default(self._ADMIN_USER)
+            self.status = CassandraAppStatus(os_admin)
             self.restart()
 
-            # Now we configure the superuser access the same way as during
-            # normal provisioning and restart to apply the changes.
-            self.configure_superuser_access()
-            self.restart()
+            # Now change the administrative password to a new secret value.
+            self.secure(update_user=os_admin)
         finally:
             self.stop_db()  # Always restore the initial state of the service.
 
@@ -355,13 +373,18 @@ class CassandraApp(object):
         self.__enable_remote_access()
         self._enable_db_on_boot()
 
-    def __reset_superuser_password(self):
-        current_superuser = self.get_current_superuser()
-        with CassandraLocalhostConnection(current_superuser) as client:
+    def __reset_user_password_to_default(self, username):
+        LOG.debug("Resetting the password of user '%s' to '%s'."
+                  % (username, self.default_superuser_password))
+
+        user = models.CassandraUser(username, self.default_superuser_password)
+        with CassandraLocalhostConnection(user) as client:
             client.execute(
                 "UPDATE system_auth.credentials SET salted_hash=%s "
-                "WHERE username='{}';", (current_superuser.name,),
+                "WHERE username='{}';", (user.name,),
                 (self.default_superuser_pwd_hash,))
+
+            return user
 
     def change_cluster_name(self, cluster_name):
         """Change the 'cluster_name' property of an exesting running instance.
@@ -414,6 +437,9 @@ class CassandraApp(object):
         if self.has_user_config():
             return self.__load_current_superuser()
 
+        LOG.warn(_("Trove administrative user has not been configured yet. "
+                   "Using the built-in default: %s")
+                 % self.default_superuser_name)
         return models.CassandraUser(self.default_superuser_name,
                                     self.default_superuser_password)
 
@@ -567,9 +593,6 @@ class CassandraAppStatus(service.BaseDbStatus):
         super(CassandraAppStatus, self).__init__()
         self.__user = superuser
 
-    def set_superuser(self, user):
-        self.__user = user
-
     def _get_actual_db_status(self):
         try:
             with CassandraLocalhostConnection(self.__user):
@@ -627,9 +650,23 @@ class CassandraAdmin(object):
         client.execute("CREATE USER '{}' WITH PASSWORD %s NOSUPERUSER;",
                        (user.name,), (user.password,))
 
-    def delete_user(self, context, user):
+    def _create_superuser(self, user):
+        """Create a new superuser account and grant it full superuser-level
+        access to all keyspaces.
+        """
+        LOG.debug("Creating a new superuser '%s'." % user.name)
         with CassandraLocalhostConnection(self.__admin_user) as client:
-            self._drop_user(client, self._deserialize_user(user))
+            client.execute("CREATE USER '{}' WITH PASSWORD %s SUPERUSER;",
+                           (user.name,), (user.password,))
+            client.execute("GRANT ALL PERMISSIONS ON ALL KEYSPACES TO '{}';",
+                           (user.name,))
+
+    def delete_user(self, context, user):
+        self.drop_user(self._deserialize_user(user))
+
+    def drop_user(self, user):
+        with CassandraLocalhostConnection(self.__admin_user) as client:
+            self._drop_user(client, user)
 
     def _drop_user(self, client, user):
         LOG.debug("Deleting user '%s'." % user.name)
