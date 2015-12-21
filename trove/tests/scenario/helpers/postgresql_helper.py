@@ -22,10 +22,11 @@ class PostgresqlHelper(SqlHelper):
         super(PostgresqlHelper, self).__init__(expected_override_name,
                                                'postgresql')
 
+    def get_helper_credentials(self):
+        return {'name': 'lite', 'password': 'litepass', 'database': 'firstdb'}
+
     def get_valid_database_definitions(self):
-        return [{'name': 'db1', 'character_set': 'latin2',
-                 'collate': 'latin2_general_ci'},
-                {'name': 'db2'}, {'name': 'db3'}]
+        return [{'name': 'db1'}, {'name': 'db2'}, {'name': 'db3'}]
 
     def get_valid_user_definitions(self):
         return [{'name': 'user1', 'password': 'password1', 'databases': []},
