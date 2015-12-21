@@ -106,6 +106,7 @@ class InstanceTasks(object):
     EJECTION_ERROR = InstanceTask(0x56, 'EJECTING',
                                         'Replica Source Ejection Error.',
                                         is_error=True)
+    UPGRADING = InstanceTask(0x57, 'UPGRADING', 'Upgrading the instance.')
 
 # Dissuade further additions at run-time.
 InstanceTask.__init__ = None

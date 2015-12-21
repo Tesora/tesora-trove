@@ -18,6 +18,7 @@
 from __builtin__ import setattr
 from datetime import datetime
 from datetime import timedelta
+import os.path
 import re
 
 from novaclient import exceptions as nova_exceptions
@@ -99,6 +100,7 @@ class InstanceStatus(object):
     RESTART_REQUIRED = "RESTART_REQUIRED"
     PROMOTE = "PROMOTE"
     EJECT = "EJECT"
+    UPGRADE = "UPGRADE"
 
 
 def validate_volume_size(size):
@@ -129,7 +131,8 @@ def load_simple_instance_server_status(context, db_info):
 
 
 # Invalid states to contact the agent
-AGENT_INVALID_STATUSES = ["BUILD", "REBOOT", "RESIZE", "PROMOTE", "EJECT"]
+AGENT_INVALID_STATUSES = ["BUILD", "REBOOT", "RESIZE", "PROMOTE", "EJECT",
+                          "UPGRADE"]
 
 
 class SimpleInstance(object):
@@ -171,6 +174,9 @@ class SimpleInstance(object):
                        load(self.ds_version.datastore_id))
 
         self.slave_list = None
+
+    def __repr__(self, *args, **kwargs):
+        return "%s(%s)" % (self.name, self.id)
 
     @property
     def addresses(self):
@@ -305,6 +311,8 @@ class SimpleInstance(object):
             return InstanceStatus.REBOOT
         if 'RESIZING' == action:
             return InstanceStatus.RESIZE
+        if 'UPGRADING' == action:
+            return InstanceStatus.UPGRADE
         if 'RESTART_REQUIRED' == action:
             return InstanceStatus.RESTART_REQUIRED
         if InstanceTasks.PROMOTING.action == action:
@@ -648,6 +656,33 @@ class BaseInstance(SimpleInstance):
         LOG.info(_LI("Resetting task status to NONE on instance %s."),
                  self.id)
         self.update_db(task_status=InstanceTasks.NONE)
+
+    def get_injected_files(self, datastore_manager):
+        injected_config_location = CONF.get('injected_config_location')
+        guest_info = CONF.get('guest_info')
+
+        if ('/' in guest_info):
+            # Set guest_info_file to exactly guest_info from the conf file.
+            # This should be /etc/guest_info for pre-Kilo compatibility.
+            guest_info_file = guest_info
+        else:
+            guest_info_file = os.path.join(injected_config_location,
+                                           guest_info)
+
+        files = {guest_info_file: (
+            "[DEFAULT]\n"
+            "guest_id=%s\n"
+            "guest_name=%s\n"
+            "datastore_manager=%s\n"
+            "tenant_id=%s\n"
+            % (self.id, self.name, datastore_manager, self.tenant_id))}
+
+        if os.path.isfile(CONF.get('guest_config')):
+            with open(CONF.get('guest_config'), "r") as f:
+                files[os.path.join(injected_config_location,
+                                   "trove-guestagent.conf")] = f.read()
+
+        return files
 
 
 class FreshInstance(BaseInstance):
@@ -1167,6 +1202,12 @@ class Instance(BuiltInstance):
         config = template.SingleInstanceConfigTemplate(
             self.datastore_version, flavor, self.id)
         return dict(config.render_dict())
+
+    def upgrade(self, datastore_version):
+        self.update_db(datastore_version_id=datastore_version.id,
+                       task_status=InstanceTasks.UPGRADING)
+        task_api.API(self.context).upgrade(self.id,
+                                           datastore_version.id)
 
 
 def create_server_list_matcher(server_list):

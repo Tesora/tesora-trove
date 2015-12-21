@@ -314,6 +314,15 @@ class InstanceController(wsgi.Controller):
                                                                   request=req))
                 with StartNotification(context, instance_id=instance.id):
                     instance.unassign_configuration()
+        if 'datastore_version' in kwargs:
+            datastore_version = datastore_models.DatastoreVersion.load(
+                instance.datastore, kwargs['datastore_version'])
+            context.notification = (
+                notification.DBaaSInstanceUpgrade(context, request=req))
+            with StartNotification(context, instance_id=instance.id,
+                                   datastore_version_id=datastore_version.id):
+                instance.unassign_configuration()
+                instance.upgrade(datastore_version)
         if kwargs:
             instance.update_db(**kwargs)
 
@@ -353,6 +362,10 @@ class InstanceController(wsgi.Controller):
             args['name'] = body['instance']['name']
         if 'configuration' in body['instance']:
             args['configuration_id'] = self._configuration_parse(context, body)
+        if 'datastore_version' in body['instance']:
+            args['datastore_version'] = body['instance'].get(
+                'datastore_version')
+
         self._modify_instance(context, req, instance, **args)
         return wsgi.Result(None, 202)
 

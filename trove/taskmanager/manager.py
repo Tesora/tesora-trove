@@ -30,6 +30,7 @@ from trove.common.i18n import _
 from trove.common.notification import EndNotification
 import trove.common.rpc.version as rpc_version
 from trove.common.strategies.cluster import strategy
+from trove.datastore.models import DatastoreVersion
 import trove.extensions.mgmt.instances.models as mgmtmodels
 from trove.instance.tasks import InstanceTasks
 from trove.taskmanager import models
@@ -365,6 +366,12 @@ class Manager(periodic_task.PeriodicTasks):
                                   backup_id, availability_zone,
                                   root_password, nics, overrides, slave_of_id,
                                   cluster_config, volume_type)
+
+    def upgrade(self, context, instance_id, datastore_version_id):
+        instance_tasks = models.BuiltInstanceTasks.load(context, instance_id)
+        datastore_version = DatastoreVersion.load_by_uuid(datastore_version_id)
+        with EndNotification(context):
+            instance_tasks.upgrade(datastore_version)
 
     def update_overrides(self, context, instance_id, overrides):
         instance_tasks = models.BuiltInstanceTasks.load(context, instance_id)
