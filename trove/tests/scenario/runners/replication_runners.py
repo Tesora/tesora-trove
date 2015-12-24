@@ -31,6 +31,9 @@ class ReplicationRunner(TestRunner):
         self.master_host = self.get_instance_host(self.master_id)
         self.replica_1_host = None
         self.master_backup_count = None
+        self.non_affinity_master_id = None
+        self.non_affinity_repl_id = None
+        self.locality = 'affinity'
 
     def run_add_data_for_replication(self, data_type=DataType.small):
         self.assert_add_replication_data(data_type, self.master_host)
@@ -50,6 +53,16 @@ class ReplicationRunner(TestRunner):
         """
         self.test_helper.verify_data(data_type, host)
 
+    def run_create_non_affinity_master(self, expected_http_code=200):
+        self.non_affinity_master_id = self.auth_client.instances.create(
+            self.instance_info.name + 'non-affinity',
+            self.instance_info.dbaas_flavor_href,
+            self.instance_info.volume,
+            datastore=self.instance_info.dbaas_datastore,
+            datastore_version=self.instance_info.dbaas_datastore_version,
+            locality='anti-affinity').id
+        self.assert_client_code(expected_http_code)
+
     def run_create_single_replica(self, expected_states=['BUILD', 'ACTIVE'],
                                   expected_http_code=200):
         master_id = self.instance_info.id
@@ -65,7 +78,10 @@ class ReplicationRunner(TestRunner):
         replica = self.auth_client.instances.create(
             self.instance_info.name + replica_name,
             self.instance_info.dbaas_flavor_href,
-            self.instance_info.volume, slave_of=master_id,
+            self.instance_info.volume,
+            datastore=self.instance_info.dbaas_datastore,
+            datastore_version=self.instance_info.dbaas_datastore_version,
+            slave_of=master_id,
             replica_count=replica_count)
         replica_id = replica.id
 
@@ -73,6 +89,7 @@ class ReplicationRunner(TestRunner):
                                     expected_http_code)
         self._assert_is_master(master_id, [replica_id])
         self._assert_is_replica(replica_id, master_id)
+        self._assert_locality(master_id)
         return replica_id
 
     def _assert_is_master(self, instance_id, replica_ids):
@@ -93,11 +110,71 @@ class ReplicationRunner(TestRunner):
         self.assert_equal(master_id, instance._info['replica_of']['id'],
                           'Unexpected replication master ID')
 
+    def _assert_locality(self, instance_id):
+        replica_ids = self._get_replica_set(instance_id)
+        instance = self.get_instance(instance_id)
+        self.assert_equal(self.locality, instance.locality,
+                          "Unexpected locality for instance '%s'" %
+                          instance_id)
+        for replica_id in replica_ids:
+            replica = self.get_instance(replica_id)
+            self.assert_equal(self.locality, replica.locality,
+                              "Unexpected locality for instance '%s'" %
+                              replica_id)
+
+    def run_wait_for_non_affinity_master(self,
+                                         expected_states=['BUILD', 'ACTIVE']):
+        self._assert_instance_states(self.non_affinity_master_id,
+                                     expected_states)
+
+    def run_create_non_affinity_replica(self, expected_http_code=200):
+        self.non_affinity_repl_id = self.auth_client.instances.create(
+            self.instance_info.name + 'non-affinity-repl',
+            self.instance_info.dbaas_flavor_href,
+            self.instance_info.volume,
+            datastore=self.instance_info.dbaas_datastore,
+            datastore_version=self.instance_info.dbaas_datastore_version,
+            slave_of=self.non_affinity_master_id,
+            replica_count=1).id
+        self.assert_client_code(expected_http_code)
+
     def run_create_multiple_replicas(self, expected_states=['BUILD', 'ACTIVE'],
                                      expected_http_code=200):
         master_id = self.instance_info.id
         self.replica_2_id = self.assert_replica_create(
             master_id, 'replica2', 2, expected_states, expected_http_code)
+
+    def run_wait_for_non_affinity_replica_fail(
+            self, expected_states=['BUILD', 'FAILED']):
+        self._assert_instance_states(self.non_affinity_repl_id,
+                                     expected_states,
+                                     fast_fail_status=['ACTIVE'])
+
+    def run_delete_non_affinity_repl(self,
+                                     expected_last_state=['SHUTDOWN'],
+                                     expected_http_code=202):
+        self.assert_delete_instances(
+            self.non_affinity_repl_id,
+            expected_last_state=expected_last_state,
+            expected_http_code=expected_http_code)
+
+    def assert_delete_instances(
+            self, instance_ids, expected_last_state, expected_http_code):
+        instance_ids = (instance_ids if utils.is_collection(instance_ids)
+                        else [instance_ids])
+        for instance_id in instance_ids:
+            self.auth_client.instances.delete(instance_id)
+            self.assert_client_code(expected_http_code)
+
+        self.assert_all_gone(instance_ids, expected_last_state)
+
+    def run_delete_non_affinity_master(self,
+                                       expected_last_state=['SHUTDOWN'],
+                                       expected_http_code=202):
+        self.assert_delete_instances(
+            self.non_affinity_master_id,
+            expected_last_state=expected_last_state,
+            expected_http_code=expected_http_code)
 
     def run_add_data_to_replicate(self):
         self.assert_add_replication_data(DataType.tiny, self.master_host)
@@ -178,6 +255,12 @@ class ReplicationRunner(TestRunner):
         self.assert_instance_action(new_master_id, expected_states,
                                     expected_http_code)
 
+    def run_verify_replica_data_new_master(self):
+        self.assert_verify_replication_data(
+            DataType.small, self.replica_1_host)
+        self.assert_verify_replication_data(
+            DataType.tiny, self.replica_1_host)
+
     def run_add_data_to_replicate2(self):
         self.assert_add_replication_data(DataType.tiny2, self.replica_1_host)
 
@@ -246,16 +329,6 @@ class ReplicationRunner(TestRunner):
         self.assert_delete_instances(
             self.replica_1_id, expected_last_state=expected_last_state,
             expected_http_code=expected_http_code)
-
-    def assert_delete_instances(
-            self, instance_ids, expected_last_state, expected_http_code):
-        instance_ids = (instance_ids if utils.is_collection(instance_ids)
-                        else [instance_ids])
-        for instance_id in instance_ids:
-            self.auth_client.instances.delete(instance_id)
-            self.assert_client_code(expected_http_code)
-
-        self.assert_all_gone(instance_ids, expected_last_state)
 
     def run_delete_all_replicas(self, expected_last_state=['SHUTDOWN'],
                                 expected_http_code=202):

@@ -194,8 +194,8 @@ class InstanceController(wsgi.Controller):
         LOG.debug("req : '%s'\n\n", req)
 
         context = req.environ[wsgi.CONTEXT_KEY]
-        server = models.load_instance_with_guest(models.DetailInstance,
-                                                 context, id)
+        server = models.load_instance_with_info(models.DetailInstance,
+                                                context, id)
         return wsgi.Result(views.InstanceDetailView(server,
                                                     req=req).data(), 200)
 
@@ -264,6 +264,21 @@ class InstanceController(wsgi.Controller):
                                            # also check for older name
                                            body['instance'].get('slave_of'))
         replica_count = body['instance'].get('replica_count')
+        locality = body['instance'].get('locality')
+        if locality:
+            locality_domain = ['affinity', 'anti-affinity']
+            locality_domain_msg = ("Invalid locality '%s'. "
+                                   "Must be one of ['%s']" %
+                                   (locality,
+                                    "', '".join(locality_domain)))
+            if locality not in locality_domain:
+                raise exception.BadRequest(msg=locality_domain_msg)
+            if slave_of_id:
+                dupe_locality_msg = (
+                    'Cannot specify locality when adding replicas to existing '
+                    'master.')
+                raise exception.BadRequest(msg=dupe_locality_msg)
+
         instance = models.Instance.create(context, name, flavor_id,
                                           image_id, databases, users,
                                           datastore, datastore_version,
@@ -271,7 +286,8 @@ class InstanceController(wsgi.Controller):
                                           availability_zone, nics,
                                           configuration, slave_of_id,
                                           replica_count=replica_count,
-                                          volume_type=volume_type)
+                                          volume_type=volume_type,
+                                          locality=locality)
 
         view = views.InstanceDetailView(instance, req=req)
         return wsgi.Result(view.data(), 200)

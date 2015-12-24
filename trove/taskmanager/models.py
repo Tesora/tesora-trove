@@ -342,7 +342,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
     def create_instance(self, flavor, image_id, databases, users,
                         datastore_manager, packages, volume_size,
                         backup_id, availability_zone, root_password, nics,
-                        overrides, cluster_config, snapshot, volume_type):
+                        overrides, cluster_config, snapshot, volume_type,
+                        scheduler_hints):
         # It is the caller's responsibility to ensure that
         # FreshInstanceTasks.wait_for_instance is called after
         # create_instance to ensure that the proper usage event gets sent
@@ -388,7 +389,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                 volume_size,
                 availability_zone,
                 nics,
-                files)
+                files,
+                scheduler_hints)
         else:
             volume_info = self._create_server_volume_individually(
                 flavor['id'],
@@ -399,7 +401,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                 availability_zone,
                 nics,
                 files,
-                cinder_volume_type)
+                cinder_volume_type,
+                scheduler_hints)
 
         config = self._render_config(flavor)
 
@@ -601,7 +604,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
 
     def _create_server_volume(self, flavor_id, image_id, security_groups,
                               datastore_manager, volume_size,
-                              availability_zone, nics, files):
+                              availability_zone, nics, files,
+                              scheduler_hints):
         LOG.debug("Begin _create_server_volume for id: %s" % self.id)
         try:
             userdata = self._prepare_userdata(datastore_manager)
@@ -619,7 +623,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                 security_groups=security_groups,
                 availability_zone=availability_zone,
                 nics=nics, config_drive=config_drive,
-                key_name=key_name, userdata=userdata)
+                key_name=key_name, userdata=userdata,
+                scheduler_hints=scheduler_hints)
             LOG.debug("Created new compute instance %(server_id)s "
                       "for id: %(id)s" %
                       {'server_id': server.id, 'id': self.id})
@@ -755,7 +760,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
     def _create_server_volume_individually(self, flavor_id, image_id,
                                            security_groups, datastore_manager,
                                            volume_size, availability_zone,
-                                           nics, files, volume_type):
+                                           nics, files, volume_type,
+                                           scheduler_hints):
         LOG.debug("Begin _create_server_volume_individually for id: %s" %
                   self.id)
         server = None
@@ -767,7 +773,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             server = self._create_server(flavor_id, image_id, security_groups,
                                          datastore_manager,
                                          block_device_mapping,
-                                         availability_zone, nics, files)
+                                         availability_zone, nics, files,
+                                         scheduler_hints)
             server_id = server.id
             # Save server ID.
             self.update_db(compute_instance_id=server_id)
@@ -871,7 +878,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
 
     def _create_server(self, flavor_id, image_id, security_groups,
                        datastore_manager, block_device_mapping,
-                       availability_zone, nics, files={}):
+                       availability_zone, nics, files={},
+                       scheduler_hints=None):
         userdata = self._prepare_userdata(datastore_manager)
         name = self.hostname or self.name
         bdmap = block_device_mapping
@@ -882,7 +890,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             name, image_id, flavor_id, files=files, userdata=userdata,
             security_groups=security_groups, block_device_mapping=bdmap,
             availability_zone=availability_zone, nics=nics,
-            config_drive=config_drive, key_name=key_name)
+            config_drive=config_drive, key_name=key_name,
+            scheduler_hints=scheduler_hints)
         LOG.debug("Created new compute instance %(server_id)s "
                   "for instance %(id)s" %
                   {'server_id': server.id, 'id': self.id})
@@ -982,6 +991,15 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             except (ValueError, TroveError):
                 set_error_and_raise([from_, to_])
 
+    def create_server_group(self, locality):
+        server_group_name = "%s_%s" % ('locality', self.id)
+        server_group = self.nova_client.server_groups.create(
+            name=server_group_name, policies=[locality])
+        LOG.debug("Created '%s' server group for instance %s (id: %s)." %
+                  (locality, self.id, server_group.id))
+
+        return server_group
+
     def _build_heat_nics(self, nics):
         ifaces = []
         ports = []
@@ -1052,6 +1070,11 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         except Exception as ex:
             LOG.exception(_("Error during dns entry of instance %(id)s: "
                             "%(ex)s") % {'id': self.db_info.id, 'ex': ex})
+        try:
+            self._delete_server_group()
+        except Exception:
+            LOG.exception(_("Error during delete server group %s")
+                          % self.server_group_name)
 
         # Poll until the server is gone.
         def server_is_finished():
@@ -1094,6 +1117,18 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
 #                                deleted_at=timeutils.isotime(deleted_at),
 #                                server=old_server)
         LOG.debug("End _delete_resources for instance %s" % self.id)
+
+    def _delete_server_group(self):
+        server_group = self.server_group
+        # Only delete the server group if we're the last member in it
+        if server_group:
+            if len(server_group.members) == 1:
+                self.nova_client.server_groups.delete(server_group.id)
+                LOG.debug("Deleted server group for instance %s (id: %s)." %
+                          (self.id, server_group.id))
+            else:
+                LOG.debug("Skipping delete of server group %s (members: %s)." %
+                          (server_group.id, server_group.members))
 
     def server_status_matches(self, expected_status, server=None):
         if not server:
