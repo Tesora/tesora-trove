@@ -1008,7 +1008,8 @@ class MySqlAppTest(testtools.TestCase):
         save_cfg_mock.assert_called_once_with('some junk')
         apply_mock.assert_called_once_with(
             {'client': {'user': dbaas_base.ADMIN_USER_NAME,
-                        'password': auth_pwd_mock.return_value}})
+                        'password': auth_pwd_mock.return_value,
+                        'host': dbaas_base.LOOPBACK_IP}})
         wipe_ib_mock.assert_called_once_with()
 
     @patch.object(utils, 'execute_with_timeout', return_value=('0', ''))

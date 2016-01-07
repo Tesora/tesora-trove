@@ -47,6 +47,7 @@ from trove.guestagent.db import models
 from trove.guestagent import pkg
 
 ADMIN_USER_NAME = "os_admin"
+LOOPBACK_IP = "127.0.0.1"
 LOG = logging.getLogger(__name__)
 FLUSH = text(sql_query.FLUSH)
 ENGINE = None
@@ -699,7 +700,9 @@ class BaseMySqlApp(object):
 
     def _save_authentication_properties(self, admin_password):
         self.configuration_manager.apply_system_override(
-            {'client': {'user': ADMIN_USER_NAME, 'password': admin_password}})
+            {'client': {'user': ADMIN_USER_NAME,
+                        'password': admin_password,
+                        'host': LOOPBACK_IP}})
 
     def secure_root(self, secure_remote_root=True):
         with self.local_sql_client(self.get_engine()) as client:
