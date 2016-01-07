@@ -362,6 +362,10 @@ class DBaaSAPINotification(object):
     def server_type(self, server_type):
         self.payload['server_type'] = server_type
 
+    @property
+    def request_id(self):
+        return self.payload['request_id']
+
     def __init__(self, context, **kwargs):
         self.context = context
         self.needs_end_notification = True

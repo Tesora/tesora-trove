@@ -39,6 +39,7 @@ from trove.tests.scenario.groups import database_actions_group
 from trove.tests.scenario.groups import instance_actions_group
 from trove.tests.scenario.groups import instance_create_group
 from trove.tests.scenario.groups import instance_delete_group
+from trove.tests.scenario.groups import instance_upgrade_group
 from trove.tests.scenario.groups import negative_cluster_actions_group
 from trove.tests.scenario.groups import replication_group
 from trove.tests.scenario.groups import root_actions_group
@@ -133,6 +134,9 @@ instance_create_groups = list(base_groups)
 instance_create_groups.extend([instance_create_group.GROUP,
                                instance_delete_group.GROUP])
 
+instance_upgrade_groups = list(instance_create_groups)
+instance_upgrade_groups.extend([instance_upgrade_group.GROUP])
+
 backup_groups = list(instance_create_groups)
 backup_groups.extend([backup_group.GROUP])
 
@@ -161,6 +165,7 @@ register(["cluster"], cluster_actions_groups)
 register(["database"], database_actions_groups)
 register(["instance_actions"], instance_actions_groups)
 register(["instance_create"], instance_create_groups)
+register(["instance_upgrade"], instance_upgrade_groups)
 register(["user"], user_actions_groups)
 register(["replication"], replication_groups)
 register(["root"], root_actions_groups)
@@ -175,9 +180,9 @@ register(["postgresql_supported"], backup_groups, database_actions_groups,
 register(["mongodb_supported"], backup_groups, cluster_actions_groups,
          database_actions_groups, instance_actions_groups, user_actions_groups,
          root_actions_groups)
-register(["mysql_supported"], backup_groups, database_actions_groups,
-         instance_actions_groups, replication_groups, user_actions_groups,
-         root_actions_groups)
+register(["mysql_supported"], instance_upgrade_groups,
+         backup_groups, database_actions_groups,
+         instance_actions_groups, replication_groups, user_actions_groups)
 register(["redis_supported"], backup_groups, instance_actions_groups,
          replication_groups)
 register(["vertica_supported"], cluster_actions_groups,

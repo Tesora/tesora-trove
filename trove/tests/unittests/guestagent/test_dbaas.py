@@ -1474,9 +1474,11 @@ class MySqlAppMockTest(testtools.TestCase):
         super(MySqlAppMockTest, self).tearDown()
         utils.execute_with_timeout = self.orig_utils_execute_with_timeout
 
+    @patch('trove.guestagent.common.configuration.ConfigurationManager'
+           '.refresh_cache')
     @patch.object(utils, 'generate_random_password',
                   return_value='some_password')
-    def test_secure_keep_root(self, auth_pwd_mock):
+    def test_secure_keep_root(self, auth_pwd_mock, _):
         mock_conn = mock_sql_connection()
 
         with patch.object(mock_conn, 'execute', return_value=None):
@@ -1499,9 +1501,11 @@ class MySqlAppMockTest(testtools.TestCase):
                 app._reset_configuration.assert_has_calls(reset_config_calls)
                 self.assertTrue(mock_conn.execute.called)
 
+    @patch('trove.guestagent.common.configuration.ConfigurationManager'
+           '.refresh_cache')
     @patch('trove.guestagent.datastore.mysql.service.MySqlApp'
            '.get_auth_password', return_value='some_password')
-    def test_secure_with_mycnf_error(self, auth_pwd_mock):
+    def test_secure_with_mycnf_error(self, auth_pwd_mock, _):
         mock_conn = mock_sql_connection()
 
         with patch.object(mock_conn, 'execute', return_value=None):

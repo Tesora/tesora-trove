@@ -610,6 +610,7 @@ class BaseMySqlApp(object):
         """Clear the cache used by get_engine()."""
         global ENGINE
         ENGINE = None
+        self.configuration_manager.refresh_cache()
 
     @classmethod
     def get_auth_password(cls):
@@ -953,6 +954,7 @@ class BaseMySqlApp(object):
         else:
             self._enable_mysql_on_boot()
 
+        self.clear_engine_cache()
         try:
             mysql_service = operating_system.service_discovery(
                 MYSQL_SERVICE_CANDIDATES)
