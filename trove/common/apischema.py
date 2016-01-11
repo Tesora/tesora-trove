@@ -342,7 +342,8 @@ instance = {
                             "version": non_empty_string
                         }
                     },
-                    "nics": nics
+                    "nics": nics,
+                    "locality": non_empty_string
                 }
             }
         }

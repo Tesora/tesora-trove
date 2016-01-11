@@ -289,6 +289,11 @@ class Manager(periodic_task.PeriodicTasks):
         replica_backup_created = False
         replicas = []
 
+        master_instance_tasks = BuiltInstanceTasks.load(context, slave_of_id)
+        server_group = master_instance_tasks.server_group
+        scheduler_hints = self._convert_server_group_to_hint(server_group)
+        LOG.debug("Using scheduler hints for locality: %s" % scheduler_hints)
+
         try:
             for replica_index in range(0, len(ids)):
                 try:
@@ -306,7 +311,8 @@ class Manager(periodic_task.PeriodicTasks):
                         flavor, image_id, databases, users, datastore_manager,
                         packages, volume_size, replica_backup_id,
                         availability_zone, root_passwords[replica_index],
-                        nics, overrides, None, snapshot, volume_type)
+                        nics, overrides, None, snapshot, volume_type,
+                        scheduler_hints)
                     replicas.append(instance_tasks)
                 except Exception:
                     # if it's the first replica, then we shouldn't continue
@@ -327,7 +333,7 @@ class Manager(periodic_task.PeriodicTasks):
                          image_id, databases, users, datastore_manager,
                          packages, volume_size, backup_id, availability_zone,
                          root_password, nics, overrides, slave_of_id,
-                         cluster_config, volume_type):
+                         cluster_config, volume_type, locality):
         if slave_of_id:
             self._create_replication_slave(context, instance_id, name,
                                            flavor, image_id, databases, users,
@@ -341,21 +347,42 @@ class Manager(periodic_task.PeriodicTasks):
                 raise AttributeError(_(
                     "Cannot create multiple non-replica instances."))
             instance_tasks = FreshInstanceTasks.load(context, instance_id)
+
+            scheduler_hints = None
+            if locality:
+                try:
+                    server_group = instance_tasks.create_server_group(locality)
+                    scheduler_hints = self._convert_server_group_to_hint(
+                        server_group)
+                except Exception as e:
+                    msg = (_("Error creating '%(locality)s' server group for "
+                             "instance %(id)s: $(error)s") %
+                           {'locality': locality, 'id': instance_id,
+                            'error': e.message})
+                    LOG.exception(msg)
+                    raise
+
             instance_tasks.create_instance(flavor, image_id, databases, users,
                                            datastore_manager, packages,
                                            volume_size, backup_id,
                                            availability_zone, root_password,
                                            nics, overrides, cluster_config,
-                                           None, volume_type)
+                                           None, volume_type, scheduler_hints)
             timeout = (CONF.restore_usage_timeout if backup_id
                        else CONF.usage_timeout)
             instance_tasks.wait_for_instance(timeout, flavor)
+
+    def _convert_server_group_to_hint(self, server_group, hints=None):
+        if server_group:
+            hints = hints or {}
+            hints["group"] = server_group.id
+        return hints
 
     def create_instance(self, context, instance_id, name, flavor,
                         image_id, databases, users, datastore_manager,
                         packages, volume_size, backup_id, availability_zone,
                         root_password, nics, overrides, slave_of_id,
-                        cluster_config, volume_type):
+                        cluster_config, volume_type, locality):
         with EndNotification(context,
                              instance_id=(instance_id[0]
                                           if type(instance_id) is list
@@ -365,7 +392,7 @@ class Manager(periodic_task.PeriodicTasks):
                                   datastore_manager, packages, volume_size,
                                   backup_id, availability_zone,
                                   root_password, nics, overrides, slave_of_id,
-                                  cluster_config, volume_type)
+                                  cluster_config, volume_type, locality)
 
     def upgrade(self, context, instance_id, datastore_version_id):
         instance_tasks = models.BuiltInstanceTasks.load(context, instance_id)

@@ -231,7 +231,7 @@ class Cluster(object):
 
     @staticmethod
     def load_instance(context, cluster_id, instance_id):
-        return inst_models.load_instance_with_guest(
+        return inst_models.load_instance_with_info(
             inst_models.DetailInstance, context, instance_id, cluster_id)
 
     @staticmethod
