@@ -268,6 +268,7 @@ class API(object):
         finally:
             if server is not None:
                 server.stop()
+                server.wait()
 
     def pre_upgrade(self):
         """Prepare the guest for upgrade."""
