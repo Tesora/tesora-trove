@@ -283,20 +283,36 @@ class BaseMySqlManager(manager.Manager):
         app = self.mysql_app(self.mysql_app_status.get())
         data_dir = app.get_data_dir()
         mount_point, _data = os.path.split(data_dir)
-        save_dir = "%s/etc_mysql" % data_dir
+        save_dir = "%s/etc_mysql" % mount_point
+        home_save = "%s/trove_user" % mount_point
 
-        operating_system.create_directory(save_dir, as_root=True)
-        operating_system.copy("/etc/mysql", save_dir,
+        app.status.begin_restart()
+        app.stop_db()
+
+        operating_system.copy("/etc/mysql/.", save_dir,
                               preserve=True, as_root=True)
-        return {'mount_point': mount_point, 'save_dir': save_dir}
+
+        operating_system.copy("%s/." % os.path.expanduser('~'), home_save,
+                              preserve=True, as_root=True)
+
+        self.unmount_volume(context, mount_point=data_dir)
+        return {
+            'mount_point': mount_point,
+            'save_dir': save_dir,
+            'home_save': home_save
+        }
 
     def post_upgrade(self, context, upgrade_info):
         app = self.mysql_app(self.mysql_app_status.get())
         app.stop_db()
         if 'device' in upgrade_info:
-            device = volume.VolumeDevice(upgrade_info['device'])
-            device.mount(upgrade_info['mount_point'])
-        operating_system.copy("%s/mysql" % upgrade_info['save_dir'], "/etc",
+            self.mount_volume(context, mount_point=upgrade_info['mount_point'],
+                              device_path=upgrade_info['device'])
+
+        operating_system.copy("%s/." % upgrade_info['save_dir'], "/etc/mysql",
+                              preserve=True, as_root=True)
+        operating_system.copy("%s/." % upgrade_info['home_save'],
+                              os.path.expanduser('~'),
                               preserve=True, as_root=True)
         app.start_mysql()
 

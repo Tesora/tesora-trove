@@ -879,23 +879,27 @@ class BuiltInstanceTasksTest(trove_testtools.TestCase):
         self.instance_task.demote_replication_master()
         self.instance_task._guest.demote_replication_master.assert_any_call()
 
-    @patch.object(taskmanager_models.BuiltInstanceTasks, "get_injected_files",
-                  return_value="the-files")
+    @patch.multiple(taskmanager_models.BuiltInstanceTasks,
+                    get_injected_files=Mock(return_value="the-files"))
     def test_upgrade(self, *args):
         pre_rebuild_server = self.instance_task.server
         dsv = Mock(image_id='foo_image')
         mock_volume = Mock(attachments=[{'device': '/dev/mock_dev'}])
         with patch.object(self.instance_task._volume_client.volumes, "get",
                           Mock(return_value=mock_volume)):
-            with patch.object(self.instance_task._guest, "pre_upgrade",
-                              Mock(return_value={})):
-                self.instance_task.upgrade(dsv)
+            mock_server = Mock(status='ACTIVE')
+            with patch.object(self.instance_task._nova_client.servers,
+                              'get', Mock(return_value=mock_server)):
+                with patch.multiple(self.instance_task._guest,
+                                    pre_upgrade=Mock(return_value={}),
+                                    post_upgrade=Mock()):
+                    self.instance_task.upgrade(dsv)
 
-                self.instance_task._guest.pre_upgrade.assert_called_with()
-                pre_rebuild_server.rebuild.assert_called_with(
-                    dsv.image_id, files="the-files")
-                self.instance_task._guest.post_upgrade.assert_called_with(
-                    mock_volume.attachments[0])
+                    self.instance_task._guest.pre_upgrade.assert_called_with()
+                    pre_rebuild_server.rebuild.assert_called_with(
+                        dsv.image_id, files="the-files")
+                    self.instance_task._guest.post_upgrade.assert_called_with(
+                        mock_volume.attachments[0])
 
 
 class BackupTasksTest(trove_testtools.TestCase):
