@@ -328,3 +328,11 @@ class TestHelper(object):
         """Return a list of configuration groups with invalid values.
         """
         return []
+
+    ##############
+    # Root related
+    ##############
+    def get_valid_root_password(self):
+        """Return a valid password that can be used by a 'root' user.
+        """
+        return "RootTestPass"

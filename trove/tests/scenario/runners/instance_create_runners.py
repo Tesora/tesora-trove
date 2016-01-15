@@ -80,6 +80,12 @@ class InstanceCreateRunner(TestRunner):
             self, with_dbs=True, with_users=True, configuration_id=None,
             expected_states=['BUILD', 'ACTIVE'], expected_http_code=200,
             create_helper_user=True):
+        if self.is_using_existing_instance:
+            # The user requested to run the tests using an existing instance.
+            # We therefore skip any scenarios that involve creating new
+            # test instances.
+            raise SkipTest("Using an existing instance.")
+
         # TODO(pmalik): Instance create should return 202 Accepted (cast)
         # rather than 200 OK (call).
         name = self.instance_info.name
