@@ -628,8 +628,20 @@ oracle_opts = [
                help='Device path for volume if volume support is enabled.'),
     cfg.StrOpt('backup_strategy', default='RmanBackup',
                help='Default strategy to perform backups.'),
-    cfg.StrOpt('replication_strategy', default=None,
+    cfg.StrOpt('replication_strategy', default='OracleSyncReplication',
                help='Default strategy for replication.'),
+    cfg.StrOpt('replication_namespace',
+               default='trove.guestagent.strategies.replication.'
+                       'oracle_sync',
+               help='Namespace to load replication strategies from.'),
+    cfg.IntOpt('log_archive_max_process',
+               default=30,
+               help='The maximum number of ARCn processes that can be created.'
+               ' This is the LOG_ARCHIVE_MAX_PROCESSES value.'),
+    cfg.IntOpt('standby_log_count', default=4,
+               help='Number of standby log files to create for replication.'),
+    cfg.IntOpt('standby_log_size', default=50,
+               help='Size of standby log files in MB.'),
     cfg.BoolOpt('root_on_create', default=False,
                 help='Enable the automatic creation of the root user for the '
                 'service during instance-create. The generated password for '
@@ -649,6 +661,9 @@ oracle_opts = [
                 help='Incremental Backup Runner based on the default '
                 'strategy. For strategies that do not implement an '
                 'incremental, the runner will use the default full backup.'),
+    cfg.StrOpt('oracle_base',
+               default='/u01/app/oracle',
+               help='Default $ORACLE_BASE directory'),
     cfg.StrOpt('oracle_home',
                default='/u01/app/oracle/product/dbaas',
                help='Default $ORACLE_HOME directory'),
@@ -669,6 +684,11 @@ oracle_opts = [
     cfg.StrOpt('root_controller',
                default='trove.extensions.oracle.service.OracleRootController',
                help='Root controller implementation for Oracle.'),
+    cfg.StrOpt('guestagent_strategy',
+               default='trove.common.strategies.cluster.oracle.'
+                       'guestagent.OracleGuestAgentStrategy',
+               help='Class that implements datastore-specific Guest Agent API '
+                    'logic.'),
 ]
 
 # Percona

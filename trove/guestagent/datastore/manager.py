@@ -214,6 +214,15 @@ class Manager(periodic_task.PeriodicTasks):
     #########################
     # Prepare related methods
     #########################
+    def _require_post_processing(self, snapshot):
+        """Tests whether the given replication snapshot indicates
+        post processing is needed.
+        """
+        if snapshot:
+            return snapshot.get('master', {}).get('post_processing')
+        else:
+            return False
+
     def prepare(self, context, packages, databases, memory_mb, users,
                 device_path=None, mount_point=None, backup_info=None,
                 config_contents=None, root_password=None, overrides=None,
@@ -222,7 +231,10 @@ class Manager(periodic_task.PeriodicTasks):
         LOG.info(_("Starting datastore prepare."))
         with EndNotification(context):
             self.status.begin_install()
-            post_processing = True if cluster_config else False
+            if (cluster_config or self._require_post_processing(snapshot)):
+                post_processing = True
+            else:
+                post_processing = False
             try:
                 self.do_prepare(
                     context, packages, databases, memory_mb, users,
@@ -428,3 +440,10 @@ class Manager(periodic_task.PeriodicTasks):
                                as_root=True)
         LOG.debug("Set log file '%s' as readable" % log_file)
         return log_file
+
+    ##################################################################
+    # Methods that requires to maintain multiple versions for backward
+    # compatibility reasons.
+    ##################################################################
+    def enable_as_master(self, context, replica_source_config):
+        self.enable_as_master_s2(context, replica_source_config, False)

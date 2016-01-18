@@ -15,6 +15,7 @@
 
 import abc
 import ast
+import base64
 import csv
 import json
 import re
@@ -374,3 +375,12 @@ class JsonCodec(StreamCodec):
 
     def deserialize(self, stream):
         return json.load(StringIO.StringIO(stream))
+
+
+class Base64Codec(StreamCodec):
+
+    def serialize(self, data):
+        return base64.b64decode(data)
+
+    def deserialize(self, stream):
+        return base64.b64encode(stream)

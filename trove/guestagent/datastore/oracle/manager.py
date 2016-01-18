@@ -63,12 +63,16 @@ from trove.guestagent.datastore.oracle import system
 from trove.guestagent import dbaas
 from trove.guestagent.db import models
 from trove.guestagent import guest_log
+from trove.guestagent.strategies.replication import get_replication_strategy
 from trove.guestagent import volume
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
-MANAGER = CONF.datastore_manager or 'oracle'
-
+MANAGER = 'oracle'
+REPLICATION_STRATEGY = CONF.get(MANAGER).replication_strategy
+REPLICATION_NAMESPACE = CONF.get(MANAGER).replication_namespace
+REPLICATION_STRATEGY_CLASS = get_replication_strategy(REPLICATION_STRATEGY,
+                                                      REPLICATION_NAMESPACE)
 
 class Manager(manager.Manager):
     """
@@ -99,26 +103,30 @@ class Manager(manager.Manager):
 
         self.app.change_ownership(mount_point)
 
-        if backup_info:
-            self._perform_restore(backup_info, context,
-                                  mount_point, self.app)
+        if snapshot:
+            self.attach_replica(context, snapshot, snapshot['config'])
         else:
-            # using ValidatedMySQLDatabase here for to simulate the object
-            # that would normally be passed in via --databases, and to bookmark
-            # this for when per-datastore validation is added
-            db = models.ValidatedMySQLDatabase()
-            db.name = CONF.guest_name
-            self.admin.create_database([db.serialize()])
+            if backup_info:
+                self._perform_restore(backup_info, context,
+                                      mount_point, self.app)
+            else:
+                # using ValidatedMySQLDatabase here for to simulate the object
+                # that would normally be passed in via --databases, and to bookmark
+                # this for when per-datastore validation is added
+                db = models.ValidatedMySQLDatabase()
+                db.name = CONF.guest_name
+                self.admin.create_database([db.serialize()])
 
-        self.refresh_guest_log_defs()
+            self.refresh_guest_log_defs()
 
-        self.app.prep_pfile_management()
+            self.app.prep_pfile_management()
 
-        if users:
-            self.create_user(context, users)
+            if users:
+                self.create_user(context, users)
 
-        if root_password:
-            self.admin.enable_root(root_password)
+            if root_password:
+                self.admin.enable_root(root_password)
+
 
     def restart(self, context):
         LOG.debug("Restart an Oracle server instance.")
@@ -285,3 +293,151 @@ class Manager(manager.Manager):
         if overrides:
             LOG.debug("Applying overrides: %s" % overrides)
             self.app.apply_overrides(overrides)
+
+    def backup_required_for_replication(self, context):
+        replication = REPLICATION_STRATEGY_CLASS(context)
+        return replication.backup_required_for_replication()
+
+    def get_replication_snapshot(self, context, snapshot_info,
+                                 replica_source_config=None):
+        LOG.debug("Getting replication snapshot.")
+        replication = REPLICATION_STRATEGY_CLASS(context)
+        replication.enable_as_master(self.app, replica_source_config)
+
+        snapshot_id, log_position = (
+            replication.snapshot_for_replication(context, self.app, None,
+                                                 snapshot_info))
+
+        mount_point = CONF.get(MANAGER).mount_point
+        volume_stats = dbaas.get_filesystem_volume_stats(mount_point)
+
+        replication_snapshot = {
+            'dataset': {
+                'datastore_manager': MANAGER,
+                'dataset_size': volume_stats.get('used', 0.0),
+                'volume_size': volume_stats.get('total', 0.0),
+                'snapshot_id': snapshot_id
+            },
+            'replication_strategy': REPLICATION_STRATEGY,
+            'master': replication.get_master_ref(self.app, snapshot_info),
+            'log_position': log_position,
+            'replica_number': snapshot_info['replica_number']
+        }
+
+        return replication_snapshot
+
+    def enable_as_master_s2(self, context, replica_source_config,
+                            for_failover=False):
+        LOG.debug("Calling enable_as_master.")
+        replication = REPLICATION_STRATEGY_CLASS(context)
+        replication.enable_as_master(self.app, replica_source_config,
+                                     for_failover)
+
+    def get_replication_detail(self, context):
+        LOG.debug("Calling get_replication_detail.")
+        replication = REPLICATION_STRATEGY_CLASS(context)
+        return replication.get_replication_detail(self.app)
+
+    def complete_master_setup(self, context, slave_info):
+        LOG.debug("Calling complete_master_setup.")
+        replication = REPLICATION_STRATEGY_CLASS(context)
+        replication.complete_master_setup(self.app, slave_info)
+
+    def complete_slave_setup(self, context, master_info, slave_info):
+        LOG.debug("Calling complete_slave_setup.")
+        replication = REPLICATION_STRATEGY_CLASS(context)
+        replication.complete_slave_setup(self.app, master_info, slave_info)
+
+    def sync_data_to_slaves(self, context):
+        LOG.debug("Calling sync_data_to_slaves.")
+        replication = REPLICATION_STRATEGY_CLASS(context)
+        replication.sync_data_to_slaves(self.app)
+
+    def detach_replica(self, context, for_failover=False):
+        LOG.debug("Detaching replica.")
+        replication = REPLICATION_STRATEGY_CLASS(context)
+        replica_info = replication.detach_slave(self.app, for_failover)
+        return replica_info
+
+    def get_replica_context(self, context):
+        LOG.debug("Getting replica context.")
+        replication = REPLICATION_STRATEGY_CLASS(context)
+        replica_info = replication.get_replica_context(self.app)
+        return replica_info
+
+    def _validate_slave_for_replication(self, context, replica_info):
+        if (replica_info['replication_strategy'] != REPLICATION_STRATEGY):
+            raise exception.IncompatibleReplicationStrategy(
+                replica_info.update({
+                    'guest_strategy': REPLICATION_STRATEGY
+                }))
+
+    def attach_replica(self, context, replica_info, slave_config):
+        LOG.debug("Attaching replica.")
+        try:
+            if 'replication_strategy' in replica_info:
+                self._validate_slave_for_replication(context, replica_info)
+            replication = REPLICATION_STRATEGY_CLASS(context)
+            if 'is_master' in replica_info and replica_info['is_master']:
+                replication.enable_as_slave(self.app, replica_info,
+                                            slave_config)
+            else:
+                replication.prepare_slave(replica_info)
+        except Exception:
+            LOG.exception("Error enabling replication.")
+            self.app.status.set_status(ds_instance.ServiceStatuses.FAILED)
+            raise
+
+    def make_read_only(self, context, read_only):
+        LOG.debug("Executing make_read_only(%s)" % read_only)
+        self.app.make_read_only(read_only)
+
+    def _get_repl_info(self):
+        return self.app.admin.get_info('replication')
+
+    def _get_master_host(self):
+        slave_info = self._get_repl_info()
+        return slave_info and slave_info['master_host'] or None
+
+    def _get_repl_offset(self):
+        repl_info = self._get_repl_info()
+        LOG.debug("Got repl info: %s" % repl_info)
+        offset_key = '%s_repl_offset' % repl_info['role']
+        offset = repl_info[offset_key]
+        LOG.debug("Found offset %s for key %s." % (offset, offset_key))
+        return int(offset)
+
+    def get_last_txn(self, context):
+        #master_host = self._get_master_host()
+        #repl_offset = self._get_repl_offset()
+        return None, None
+
+    def get_latest_txn_id(self, context):
+        LOG.info(_("Retrieving latest repl offset."))
+        #return self._get_repl_offset()
+        return None
+
+    def wait_for_txn(self, context, txn):
+        pass
+
+    def cleanup_source_on_replica_detach(self, context, replica_info):
+        LOG.debug("Cleaning up the source on the detach of a replica.")
+        replication = REPLICATION_STRATEGY_CLASS(context)
+        replication.cleanup_source_on_replica_detach(self.app, replica_info)
+
+    def demote_replication_master(self, context):
+        LOG.debug("Demoting replica source.")
+        replication = REPLICATION_STRATEGY_CLASS(context)
+        replication.demote_master(self.app)
+
+    def get_node_ip(self, context):
+        LOG.debug("Retrieving cluster node ip address.")
+        return self.app.get_node_ip()
+
+    def get_node_id_for_removal(self, context):
+        LOG.debug("Validating removal of node from cluster.")
+        return self.app.get_node_id_for_removal()
+
+    def remove_nodes(self, context, node_ids):
+        LOG.debug("Removing nodes from cluster.")
+        self.app.remove_nodes(node_ids)

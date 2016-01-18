@@ -108,7 +108,7 @@ class MysqlReplicationBase(base.Replication):
         }
         return snapshot_id, log_position
 
-    def enable_as_master(self, service, master_config):
+    def enable_as_master(self, service, master_config, for_failover=False):
         if not service.exists_replication_source_overrides():
             service.write_replication_source_overrides(master_config)
             service.restart()

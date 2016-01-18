@@ -255,6 +255,31 @@ class OracleApp(object):
                 force=True
             )
 
+    def make_read_only(self, read_only):
+        if read_only:
+            ora_conf = OracleConfig()
+            db_name = ora_conf.db_name
+            admin_pswd = ora_conf.admin_password
+            os.environ["ORACLE_SID"] = db_name
+            os.environ["ORACLE_HOME"] = CONF.get(MANAGER).oracle_home
+            connection = cx_Oracle.connect(user=ADMIN_USER_NAME,
+                                           password=admin_pswd,
+                                           mode=cx_Oracle.SYSDBA)
+            cursor = connection.cursor()
+            cursor.execute('select open_mode from v$database')
+            row = cursor.fetchone()
+            if not row[0].startswith('READ ONLY'):
+                cursor.execute("ALTER DATABASE COMMIT TO SWITCHOVER TO "
+                               "STANDBY")
+                connection.startup()
+                connection = cx_Oracle.connect(user=ADMIN_USER_NAME,
+                                               password=admin_pswd,
+                                               mode=cx_Oracle.SYSDBA)
+                cursor = connection.cursor()
+                cursor.execute("ALTER DATABASE MOUNT STANDBY DATABASE")
+                cursor.execute("ALTER DATABASE OPEN READ ONLY")
+            del os.environ["ORACLE_SID"]
+
 
 class OracleAppStatus(service.BaseDbStatus):
     """
@@ -287,12 +312,17 @@ class OracleConfig(object):
 
     _CONF_FILE = CONF.get(MANAGER).conf_file
     _CONF_ORA_SEC = 'ORACLE'
+    _CONF_SYS_KEY = 'sys_pwd'
     _CONF_ADMIN_KEY = 'os_admin_pwd'
     _CONF_ROOT_ENABLED = 'root_enabled'
+    _CONF_DB_NAME = 'db_name'
+    _CONF_DB_UNIQUE_NAME = 'db_unique_name'
 
     def __init__(self):
         self._admin_pwd = None
         self._sys_pwd = None
+        self._db_name = None
+        self._db_unique_name = None
         self.codec = stream_codecs.IniCodec()
         if not os.path.isfile(self._CONF_FILE):
             operating_system.create_directory(os.path.dirname(self._CONF_FILE),
@@ -306,10 +336,16 @@ class OracleConfig(object):
                                                 codec=self.codec,
                                                 as_root=True)
             try:
+                if self._CONF_SYS_KEY in config[self._CONF_ORA_SEC]:
+                    self._sys_pwd = config[self._CONF_ORA_SEC][self._CONF_SYS_KEY]
                 if self._CONF_ADMIN_KEY in config[self._CONF_ORA_SEC]:
                     self._admin_pwd = config[self._CONF_ORA_SEC][self._CONF_ADMIN_KEY]
                 if self._CONF_ROOT_ENABLED in config[self._CONF_ORA_SEC]:
                     self._root_enabled = config[self._CONF_ORA_SEC][self._CONF_ROOT_ENABLED]
+                if self._CONF_DB_NAME in config[self._CONF_ORA_SEC]:
+                    self._db_name = config[self._CONF_ORA_SEC][self._CONF_DB_NAME]
+                if self._CONF_DB_UNIQUE_NAME in config[self._CONF_ORA_SEC]:
+                    self._db_unique_name = config[self._CONF_ORA_SEC][self._CONF_DB_UNIQUE_NAME]
             except KeyError:
                 # the ORACLE section does not exist, stop parsing
                 pass
@@ -322,6 +358,15 @@ class OracleConfig(object):
                                     as_root=True)
 
     @property
+    def sys_password(self):
+        return self._sys_pwd
+
+    @sys_password.setter
+    def sys_password(self, value):
+        self._save_value_in_file(self._CONF_SYS_KEY, value)
+        self._sys_pwd = value
+
+    @property
     def admin_password(self):
         return self._admin_pwd
 
@@ -330,13 +375,30 @@ class OracleConfig(object):
         self._save_value_in_file(self._CONF_ADMIN_KEY, value)
         self._admin_pwd = value
 
+    @property
+    def db_name(self):
+        return self._db_name
+
+    @db_name.setter
+    def db_name(self, value):
+        self._save_value_in_file(self._CONF_DB_NAME, value)
+        self._db_name = value
+
+    @property
+    def db_unique_name(self):
+        return self._db_unique_name
+
+    @db_unique_name.setter
+    def db_unique_name(self, value):
+        self._save_value_in_file(self._CONF_DB_UNIQUE_NAME, value)
+        self._db_unique_name = value
+
     def is_root_enabled(self):
         return bool(self._root_enabled)
 
     def enable_root(self):
         self._save_value_in_file(self._CONF_ROOT_ENABLED, 'true')
         self._root_enabled = 'true'
-
 
 class LocalOracleClient(object):
     """A wrapper to manage Oracle connection."""
@@ -370,6 +432,47 @@ class LocalOracleClient(object):
     def __exit__(self, type, value, traceback):
         self.conn.close()
 
+class OracleConnection(object):
+    """A wrapper to manage Oracle connection."""
+
+    def __init__(self, sid, service=False, user_id=None, password=None,
+                 mode=cx_Oracle.SYSDBA):
+        os.environ["ORACLE_HOME"] = CONF.get(MANAGER).oracle_home
+        self.sid = sid
+        self.service = service
+        self.mode = mode
+        if user_id:
+            self.user_id = user_id
+            self.password = password
+        else:
+            self.user_id = ADMIN_USER_NAME
+            self.password = OracleConfig().admin_password
+
+    def __enter__(self):
+        if self.service:
+            ora_dsn = cx_Oracle.makedsn('localhost',
+                                        CONF.get(MANAGER).listener_port,
+                                        service_name=self.sid)
+        else:
+            ora_dsn = cx_Oracle.makedsn('localhost',
+                                        CONF.get(MANAGER).listener_port,
+                                        self.sid)
+        self.conn = cx_Oracle.connect(user=self.user_id,
+                                      password=self.password,
+                                      dsn=ora_dsn, mode=self.mode)
+        return self.conn
+
+    def __exit__(self, type, value, traceback):
+        try:
+            self.conn.close()
+        except cx_Oracle.DatabaseError as e:
+            error, = e.args
+            if (error.code == 1012):
+                # ORA-01012: not logged on, connection already closed
+                pass
+            else:
+                raise e
+
 class OracleAdmin(object):
     """
     Handles administrative tasks on the Oracle instance.
@@ -380,12 +483,15 @@ class OracleAdmin(object):
         dbName = None
         db_create_failed = []
         LOG.debug("Creating Oracle databases.")
+        ora_conf = OracleConfig()
         for database in databases:
             oradb = models.OracleSchema.deserialize_schema(database)
             dbName = oradb.name
+            ora_conf.db_name = dbName
             LOG.debug("Creating Oracle database: %s." % dbName)
             try:
                 sys_pwd = utils.generate_random_password(password_length=30)
+                ora_conf.sys_password = sys_pwd
                 run_command(system.CREATE_DB_COMMAND %
                             {'gdbname': dbName, 'sid': dbName,
                              'pswd': sys_pwd, 'db_ram': CONF.get(MANAGER).db_ram_size,
@@ -429,7 +535,7 @@ class OracleAdmin(object):
                 oracnf.admin_password = utils.generate_random_password(password_length=30)
             q = sql_query.CreateUser(ADMIN_USER_NAME, oracnf.admin_password)
             client.execute(str(q))
-            q = ('grant sysdba to %s' % ADMIN_USER_NAME)
+            q = ('grant sysdba, sysoper to %s' % ADMIN_USER_NAME)
             client.execute(str(q))
 
     def is_root_enabled(self):
