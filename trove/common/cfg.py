@@ -1046,8 +1046,7 @@ couchbase_group = cfg.OptGroup(
     help="Oslo option group designed for Couchbase datastore")
 couchbase_opts = [
     cfg.ListOpt('tcp_ports',
-                default=["8091", "8092", "4369", "11209-11211",
-                         "21100-21199"],
+                default=["8091", "8092", "4369", "11209-11211", "21100-21299"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
                      'if trove_security_groups_support is True).'),
@@ -1096,6 +1095,11 @@ couchbase_opts = [
                help='Root controller implementation for couchbase.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.IntOpt('cluster_ramsize_pc', default=80, min=0, max=80,
+               help='Per node RAM quota in for the Data service expressed as a'
+               ' percentage of the available memory.'
+               ' Minimum of 256MB will be used if the given percentage amounts'
+               ' for less.'),
 ]
 
 # MongoDB
