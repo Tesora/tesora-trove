@@ -1583,7 +1583,9 @@ class MySqlRootStatusTest(testtools.TestCase):
             mock_conn.execute.assert_any_call(TextClauseMatcher(
                 'UPDATE mysql.user'))
 
-    def test_root_disable(self):
+    @patch.object(dbaas.MySqlApp, 'get_auth_password',
+                  return_value='some_password')
+    def test_root_disable(self, _):
         mock_conn = mock_sql_connection()
 
         with patch.object(mock_conn, 'execute', return_value=None):
