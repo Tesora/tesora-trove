@@ -121,3 +121,10 @@ class SwiftRemoteModelBase(RemoteModelBase):
     @classmethod
     def get_client(cls, context):
         return remote.create_swift_client(context)
+
+
+class CinderRemoteModelBase(RemoteModelBase):
+
+    @classmethod
+    def get_client(cls, context):
+        return remote.create_cinder_client(context)
