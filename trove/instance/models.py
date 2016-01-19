@@ -40,6 +40,7 @@ from trove.common import utils
 from trove.configuration.models import Configuration
 from trove.configuration.models import DBConfigurationParameter
 from trove.datastore import models as datastore_models
+from trove.datastore.models import DatastoreVersionMetadata as dvm
 from trove.datastore.models import DBDatastoreVersionMetadata
 from trove.db import get_db_api
 from trove.db import models as dbmodels
@@ -775,7 +776,9 @@ class Instance(BuiltInstance):
             valid_flavors = tuple(f.value for f in bound_flavors)
             if flavor_id not in valid_flavors:
                 raise exception.DatastoreFlavorAssociationNotFound(
-                    version_id=datastore_version.id, flavor_id=flavor_id)
+                    datastore=datastore.name,
+                    datastore_version=datastore_version.name,
+                    id=flavor_id)
 
         datastore_cfg = CONF.get(datastore_version.manager)
         client = create_nova_client(context)
@@ -787,6 +790,56 @@ class Instance(BuiltInstance):
         deltas = {'instances': 1}
         volume_support = datastore_cfg.volume_support
         if volume_support:
+            # if no volume type restrictions are specified for a given
+            # ds, dsv then we don't verify volume_type, just pass it
+            # along. It may be None, in which case cinder will do what
+            # it consideres default.
+            #
+            # if a volume type restriction is specified, then ensure
+            # that it is met. If a volume_type isn't specified by the
+            # user then raise an Error. Rely on the model method which
+            # will provide the proper list of allowed volume-types for
+            # this ds, dsv
+            #
+            # Are there any volume type restrictions?
+            if dvm.datastore_volume_type_associations_exist(
+                    datastore.name, datastore_version.name):
+                # not all defined volume types may in fact be valid.
+                # the allowed ones are the intersection with cinder
+                # volume types.
+                avt = dvm.allowed_datastore_version_volume_types
+                allowed_volume_types = avt(context, datastore.name,
+                                           datastore_version.name)
+
+                # restrictions are in force on volume type names. it is
+                # possible that none of them are valid.
+                if len(allowed_volume_types) == 0:
+                    raise exception.DatastoreVersionNoVolumeTypes(
+                        datastore=datastore.name,
+                        datastore_version=datastore_version.name)
+
+                # restrictions are in force, volume_type is required.
+                if volume_type is None:
+                    raise exception.DataStoreVersionVolumeTypeRequired(
+                        datastore=datastore.name,
+                        datastore_version=datastore_version.name)
+
+                allowed_volume_type_names = tuple(
+                    f.name
+                    for f in allowed_volume_types)
+
+                for n in allowed_volume_type_names:
+                    LOG.debug("Volume Type: %s is allowed for datastore "
+                              "%s, version %s." %
+                              (n, datastore.name, datastore_version.name))
+
+                # is the volume type specified allowed?
+                if volume_type not in allowed_volume_type_names:
+                    raise exception.DatastoreVolumeTypeAssociationNotFound(
+                        datastore=datastore.name,
+                        version_id=datastore_version.name,
+                        id=volume_type)
+
             call_args['volume_size'] = volume_size
             validate_volume_size(volume_size)
             deltas['volumes'] = volume_size

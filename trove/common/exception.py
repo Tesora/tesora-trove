@@ -121,14 +121,39 @@ class DatastoresNotFound(NotFound):
 
 class DatastoreFlavorAssociationNotFound(NotFound):
 
-    message = _("Datastore '%(datastore)s' version id %(version_id)s "
-                "and flavor %(flavor_id)s mapping not found.")
+    message = _("Flavor %(id)s is not supported for datastore "
+                "%(datastore)s version %(datastore_version)s")
 
 
 class DatastoreFlavorAssociationAlreadyExists(TroveError):
 
+    message = _("Flavor %(id)s is already associated with "
+                "datastore %(datastore)s version %(datastore_version)s")
+
+
+class DatastoreVolumeTypeAssociationNotFound(NotFound):
+
+    message = _("The volume type %(id)s is not valid for datastore "
+                "%(datastore)s and version %(version_id)s.")
+
+
+class DatastoreVolumeTypeAssociationAlreadyExists(TroveError):
+
     message = _("Datastore '%(datastore)s' version %(datastore_version)s "
-                "and flavor %(flavor_id)s mapping already exists.")
+                "and volume-type %(id)s mapping already exists.")
+
+
+class DataStoreVersionVolumeTypeRequired(TroveError):
+
+    message = _("Only specific volume types are allowed for a "
+                "datastore %(datastore)s version %(datastore_version)s. "
+                "You must specify a valid volume type.")
+
+
+class DatastoreVersionNoVolumeTypes(TroveError):
+
+    message = _("No valid volume types could be found for datastore "
+                "%(datastore)s and version %(datastore_version)s.")
 
 
 class DatastoreNoVersion(TroveError):

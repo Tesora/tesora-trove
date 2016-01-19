@@ -354,14 +354,14 @@ class TestReplication(trove_testtools.TestCase):
         self.master_status.save()
         self.assertRaises(exception.UnprocessableEntity,
                           Instance.create,
-                          None, 'name', 1, "UUID", [], [], None,
+                          None, 'name', 1, "UUID", [], [], self.datastore,
                           self.datastore_version, 1,
                           None, slave_of_id=self.master.id)
 
     def test_replica_with_invalid_slave_of_id(self):
         self.assertRaises(exception.NotFound,
                           Instance.create,
-                          None, 'name', 1, "UUID", [], [], None,
+                          None, 'name', 1, "UUID", [], [], self.datastore,
                           self.datastore_version, 1,
                           None, slave_of_id=str(uuid.uuid4()))
 
@@ -378,6 +378,6 @@ class TestReplication(trove_testtools.TestCase):
             slave_of_id=self.master.id)
         self.replica_info.save()
         self.assertRaises(exception.Forbidden, Instance.create,
-                          None, 'name', 2, "UUID", [], [], None,
+                          None, 'name', 2, "UUID", [], [], self.datastore,
                           self.datastore_version, 1,
                           None, slave_of_id=self.replica_info.id)

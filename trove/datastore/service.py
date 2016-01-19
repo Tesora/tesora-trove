@@ -19,6 +19,7 @@
 from trove.common import wsgi
 from trove.datastore import models, views
 from trove.flavor import views as flavor_views
+from trove.volume_types import views as volume_type_view
 
 
 class DatastoreController(wsgi.Controller):
@@ -75,3 +76,17 @@ class DatastoreController(wsgi.Controller):
                    list_datastore_version_flavor_associations(
                        context, datastore, version_id))
         return wsgi.Result(flavor_views.FlavorsView(flavors, req).data(), 200)
+
+    def list_associated_volume_types(self, req, tenant_id, datastore,
+                                     version_id):
+        """
+        Return all known volume types if no restrictions have been
+        established in datastore_version_metadata, otherwise return
+        that restricted set.
+        """
+        context = req.environ[wsgi.CONTEXT_KEY]
+        volume_types = (models.DatastoreVersionMetadata.
+                        allowed_datastore_version_volume_types(
+                            context, datastore, version_id))
+        return wsgi.Result(volume_type_view.VolumeTypesView(
+            volume_types, req).data(), 200)
