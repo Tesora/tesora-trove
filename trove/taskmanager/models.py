@@ -1458,6 +1458,10 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         try:
             upgrade_info = self.guest.pre_upgrade()
 
+            if self.volume_id:
+                volume = self.volume_client.volumes.get(self.volume_id)
+                volume_device = volume.attachments[0]['device']
+
             injected_files = self.get_injected_files(self.datastore.name)
             LOG.debug("Rebuilding instance %(instance)s with image %(image)s.",
                       {'instance': self, 'image': datastore_version.image_id})
@@ -1466,14 +1470,24 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
             utils.poll_until(
                 server_finished_rebuilding,
                 sleep_time=2, time_out=600)
+            if not self.server_status_matches(['ACTIVE']):
+                raise TroveError(_("Instance %(instance)s failed to "
+                                   "upgrade to %(datastore_version)s")
+                                 % {'instance': self,
+                                    'datastore_version': datastore_version})
 
-            volume = self.volume_client.volumes.get(self.volume_id)
-            if len(volume.attachments) > 0:
-                upgrade_info['device'] = volume.attachments[0]['device']
+            if volume:
+                upgrade_info['device'] = volume_device
+
             self.guest.post_upgrade(upgrade_info)
 
-        finally:
             self.reset_task_status()
+
+        except Exception as e:
+            LOG.exception(e)
+            err = inst_models.InstanceTasks.BUILDING_ERROR_SERVER
+            self.update_db(task_status=err)
+            raise e
 
 
 class BackupTasks(object):
