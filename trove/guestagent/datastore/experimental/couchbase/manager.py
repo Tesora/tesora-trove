@@ -68,6 +68,7 @@ class Manager(manager.Manager):
                    cluster_config=None, snapshot=None):
         """This is called from prepare in the base class."""
         self.app.install_if_needed(packages)
+        self.app.available_ram_mb = memory_mb
 
         if device_path:
             device = volume.VolumeDevice(device_path)
@@ -79,7 +80,7 @@ class Manager(manager.Manager):
             LOG.debug('Mounted the volume (%s).' % device_path)
 
         self.app.start_db(update_db=False)
-        self.app.apply_initial_guestagent_configuration(memory_mb)
+        self.app.apply_initial_guestagent_configuration(cluster_config)
 
         if root_password:
             LOG.debug('Enabling root user (with password).')
@@ -284,3 +285,18 @@ class Manager(manager.Manager):
         LOG.debug("Demoting replication slave.")
         raise exception.DatastoreOperationNotSupported(
             operation='demote_replication_master', datastore=MANAGER)
+
+    def initialize_cluster(self, context):
+        self.app.initialize_cluster()
+
+    def get_cluster_password(self, context):
+        return self.app.get_cluster_admin().password
+
+    def get_cluster_rebalance_status(self, context):
+        return self.app.get_cluster_rebalance_status()
+
+    def add_nodes(self, context, nodes):
+        self.app.rebalance_cluster(added_nodes=nodes)
+
+    def remove_nodes(self, context, nodes):
+        self.app.rebalance_cluster(removed_nodes=nodes)

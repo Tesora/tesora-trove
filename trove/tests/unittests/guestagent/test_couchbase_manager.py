@@ -21,6 +21,7 @@ from mock import DEFAULT
 from mock import MagicMock
 from mock import Mock
 from mock import patch
+from mock import PropertyMock
 from oslo_utils import netutils
 import testtools
 
@@ -93,20 +94,25 @@ class GuestAgentCouchbaseManagerTest(testtools.TestCase):
         instance_ram = 2048
         mount_point = '/var/lib/couchbase'
 
-        # invocation
-        self.manager.prepare(self.context, self.packages, None, instance_ram,
-                             None, device_path=device_path,
-                             mount_point=mount_point,
-                             backup_info=backup_info,
-                             overrides=None,
-                             cluster_config=None)
+        with patch.object(couch_service.CouchbaseApp, 'available_ram_mb',
+                          new_callable=PropertyMock) as available_ram_mock:
+            available_ram_mock.return_value = instance_ram
+
+            self.manager.prepare(self.context, self.packages, None,
+                                 instance_ram, None, device_path=device_path,
+                                 mount_point=mount_point,
+                                 backup_info=backup_info,
+                                 overrides=None,
+                                 cluster_config=None)
+
+            available_ram_mock.assert_called_once_with(instance_ram)
 
         # verification/assertion
         mock_status.begin_install.assert_any_call()
 
         storage_mock = kwmocks['init_storage_structure']
         init_mock = kwmocks['apply_initial_guestagent_configuration']
-        init_mock.assert_called_once_with(instance_ram)
+        init_mock.assert_called_once_with(None)
         storage_mock.assert_called_once_with(mount_point)
         kwmocks['install_if_needed'].assert_any_call(self.packages)
 

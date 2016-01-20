@@ -98,3 +98,9 @@ class PxcNegativeClusterActionsRunner(NegativeClusterActionsRunner):
 
     def run_create_constrained_size_cluster(self):
         raise SkipTest("No constraints apply to the number of cluster nodes.")
+
+
+class CouchbaseNegativeClusterActionsRunner(NegativeClusterActionsRunner):
+
+    def run_create_constrained_size_cluster(self):
+        raise SkipTest("No constraints apply to the number of cluster nodes.")

@@ -27,6 +27,7 @@ from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance as rd_instance
+from trove.common.stream_codecs import StringConverter
 from trove.common import utils as utils
 from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
@@ -67,6 +68,15 @@ class CouchbaseApp(object):
         else:
             self.state_change_wait_time = CONF.state_change_wait_time
         self.status = status
+        self._available_ram_mb = self.MIN_RAMSIZE_QUOTA_MB
+
+    @property
+    def available_ram_mb(self):
+        return self._available_ram_mb
+
+    @available_ram_mb.setter
+    def available_ram_mb(self, value):
+        self._available_ram_mb = value
 
     def install_if_needed(self, packages):
         """
@@ -77,27 +87,42 @@ class CouchbaseApp(object):
             LOG.debug('Installing Couchbase.')
             self._install_couchbase(packages)
 
-    def apply_initial_guestagent_configuration(self, available_ram_mb):
+    def apply_initial_guestagent_configuration(self, cluster_config=False):
+        """Configure this node.
+
+        Initialize the node as a single-server cluster if no cluster
+        configuration is provided.
+
+        If cluster configuration is provided retrieve the cluster password and
+        store it on the filesystem. Skip the cluster initialization as
+        it will be performed later from the task manager.
+        """
         self.ip_address = netutils.get_my_ipv4()
         mount_point = CONF.couchbase.mount_point
-        try:
-            LOG.info(_('Configuring node-specific parameters.'))
-            self.run_node_init(mount_point, mount_point, self.ip_address)
+        self.run_node_init(mount_point, mount_point, self.ip_address)
 
-            LOG.info(_('Configuring cluster parameters.'))
-            cluster_admin_password = CouchbaseRootAccess.get_password()
+        if not cluster_config:
+            self.initialize_cluster()
+        else:
+            CouchbaseRootAccess().write_password_to_file(
+                cluster_config['cluster_password'])
 
-            ramsize_quota_pc = CONF.couchbase.cluster_ramsize_pc / 100.0
-            ramsize_quota_mb = min(round(ramsize_quota_pc * available_ram_mb),
-                                   self.MIN_RAMSIZE_QUOTA_MB)
+    def initialize_cluster(self):
+        """Initialize this node as cluster.
+        """
+        admin = self.get_cluster_admin()
+        self.run_cluster_init(admin.name, admin.password,
+                              self.http_client_port, self.ramsize_quota_mb)
 
-            self.run_cluster_init(self._ADMIN_USER,
-                                  cluster_admin_password,
-                                  self.http_client_port, ramsize_quota_mb)
-            LOG.info(_('Couchbase Server initial setup finished.'))
-        except exception.ProcessExecutionError:
-            LOG.exception(_('Error performing initial Couchbase setup.'))
-            raise RuntimeError("Couchbase Server initial setup failed")
+    def get_cluster_admin(self):
+        cluster_password = CouchbaseRootAccess.get_password()
+        return models.CassandraUser(self._ADMIN_USER, cluster_password)
+
+    @property
+    def ramsize_quota_mb(self):
+        ramsize_quota_pc = CONF.couchbase.cluster_ramsize_pc / 100.0
+        return min(round(ramsize_quota_pc * self.available_ram_mb),
+                   self.MIN_RAMSIZE_QUOTA_MB)
 
     def init_storage_structure(self, mount_point):
         try:
@@ -108,20 +133,48 @@ class CouchbaseApp(object):
             LOG.exception(_("Error while initiating storage structure."))
 
     def run_node_init(self, data_path, index_path, hostname):
+        LOG.debug("Configuring node-specific parameters.")
         self._run_couchbase_command(
             'node-init', {'node-init-data-path': data_path,
                           'node-init-index-path': index_path,
                           'node-init-hostname': hostname})
 
-    def run_cluster_init(self, cluster_admin, cluster_admin_password,
+    def run_cluster_init(self, cluster_admin, cluster_password,
                          cluster_http_port, ramsize_quota_mb):
+        LOG.debug("Configuring cluster parameters.")
         self._run_couchbase_command(
             'cluster-init', {'cluster-init-username': cluster_admin,
-                             'cluster-init-password': cluster_admin_password,
+                             'cluster-init-password': cluster_password,
                              'cluster-init-port': cluster_http_port,
                              'cluster-ramsize': ramsize_quota_mb})
 
-    def _run_couchbase_command(self, cmd, options, **kwargs):
+    def run_rebalance(self, node_admin, node_password,
+                      added_nodes, removed_nodes):
+        """Rebalance the cluster by adding and/or removing nodes.
+        Rebalance moves the data around the cluster so that the data is
+        distributed across the entire cluster.
+        The rebalancing process can take place while the cluster is running and
+        servicing requests.
+        Clients using the cluster read and write to the existing structure
+        with the data being moved in the background among nodes.
+        """
+
+        LOG.debug("Rebalancing the cluster.")
+        options = {}
+        if added_nodes:
+            for ip in added_nodes:
+                options.update({'server-add': ip,
+                                'server-add-username': node_admin,
+                                'server-add-password': node_password})
+        if removed_nodes:
+            options.update({'server-remove': ip for ip in removed_nodes})
+
+        if options:
+            self._run_couchbase_command('rebalance', options)
+        else:
+            LOG.info(_("No changes to the topology, skipping rebalance."))
+
+    def _run_couchbase_command(self, cmd, options=None, **kwargs):
         """Execute a couchbase-cli command on this node.
         """
         # couchbase-cli COMMAND -c [host]:[port] -u user -p password [options]
@@ -136,7 +189,10 @@ class CouchbaseApp(object):
         return utils.execute(' '.join(cmd_tokens), shell=True, **kwargs)
 
     def _build_command_options(self, options):
-        return ['--%s=%s' % (name, value) for name, value in options.items()]
+        if options:
+            return ['--%s=%s' % (name, value)
+                    for name, value in options.items()]
+        return []
 
     @property
     def couchbase_cli_bin(self):
@@ -253,6 +309,20 @@ class CouchbaseApp(object):
 
     def reset_configuration(self, configuration):
         pass
+
+    def rebalance_cluster(self, added_nodes=None, removed_nodes=None):
+        admin = self.get_cluster_admin()
+        self.run_rebalance(admin.name, admin.password,
+                           added_nodes, removed_nodes)
+
+    def get_cluster_rebalance_status(self):
+        """Return whether rebalancing is currently running.
+        """
+        # Status message: "(u'<status name>', <status message>)\n"
+        status, _ = self._run_couchbase_command('rebalance-status')
+        status_tokens = StringConverter({}).to_objects(status)
+        LOG.debug("Current rebalance status: %s (%s)" % status_tokens)
+        return status_tokens[0] != 'none'
 
 
 class CouchbaseAppStatus(service.BaseDbStatus):
