@@ -188,7 +188,7 @@ register(["mysql_supported", "mariadb_supported", "percona_supported"],
          instance_actions_groups, replication_groups, user_actions_groups,
          root_actions_groups)
 register(["redis_supported"], backup_groups, instance_actions_groups,
-         replication_groups)
+         replication_groups, cluster_actions_groups)
 register(["vertica_supported"], cluster_actions_groups,
          instance_actions_groups, root_actions_groups)
 register(["pxc_supported"], instance_actions_groups, cluster_actions_groups)
