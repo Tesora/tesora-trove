@@ -597,7 +597,7 @@ class BaseMySqlApp(object):
             return ENGINE
 
         pwd = self.get_auth_password()
-        ENGINE = sqlalchemy.create_engine("mysql://%s:%s@localhost:3306" %
+        ENGINE = sqlalchemy.create_engine("mysql://%s:%s@127.0.0.1:3306" %
                                           (ADMIN_USER_NAME, pwd.strip()),
                                           pool_recycle=7200,
                                           echo=CONF.sql_query_logging,
