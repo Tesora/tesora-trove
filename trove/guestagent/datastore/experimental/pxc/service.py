@@ -49,7 +49,7 @@ class PXCApp(service_base.BaseMySqlApp):
                                      KeepAliveConnection)
 
     def _test_mysql(self):
-        engine = sqlalchemy.create_engine("mysql://root:@localhost:3306",
+        engine = sqlalchemy.create_engine("mysql://root:@127.0.0.1:3306",
                                           echo=True)
         try:
             with LocalSqlClient(engine) as client:
@@ -67,7 +67,7 @@ class PXCApp(service_base.BaseMySqlApp):
         LOG.info(_("Generating admin password."))
         admin_password = utils.generate_random_password()
         service_base.clear_expired_password()
-        engine = sqlalchemy.create_engine("mysql://root:@localhost:3306",
+        engine = sqlalchemy.create_engine("mysql://root:@127.0.0.1:3306",
                                           echo=True)
         with LocalSqlClient(engine) as client:
             self._remove_anonymous_user(client)
