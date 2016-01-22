@@ -857,8 +857,8 @@ class AfterInstanceCreation(unittest.TestCase):
     def test_root_create_root_user_after_create(self):
         assert_unprocessable(dbaas.root.create, instance_info.id)
 
-    def test_root_delete_root_user_after_create(self):
-        assert_unprocessable(dbaas.root.delete, instance_info.id)
+    # def test_root_delete_root_user_after_create(self):
+    #     assert_unprocessable(dbaas.root.delete, instance_info.id)
 
     def test_root_is_root_enabled_after_create(self):
         assert_unprocessable(dbaas.root.is_root_enabled, instance_info.id)
