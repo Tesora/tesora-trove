@@ -409,10 +409,32 @@ class API(object):
         self._call("make_read_only", AGENT_HIGH_TIMEOUT, self.version_cap,
                    read_only=read_only)
 
-    def enable_as_master(self, replica_source_config):
+    def enable_as_master(self, replica_source_config, for_failover=False):
         LOG.debug("Executing enable_as_master")
-        self._call("enable_as_master", AGENT_HIGH_TIMEOUT, self.version_cap,
-                   replica_source_config=replica_source_config)
+        self._call("enable_as_master_s2", AGENT_HIGH_TIMEOUT, self.version_cap,
+                   replica_source_config=replica_source_config,
+                   for_failover=for_failover)
+
+    def get_replication_detail(self):
+        LOG.debug("Executing get_replication_detail")
+        return self._call("get_replication_detail",
+                          AGENT_HIGH_TIMEOUT, self.version_cap)
+
+    def complete_master_setup(self, slave_info):
+        LOG.debug("Executing complete_master_setup")
+        self._call("complete_master_setup", AGENT_HIGH_TIMEOUT,
+                   self.version_cap, slave_info=slave_info)
+
+    def complete_slave_setup(self, master_info, slave_info):
+        LOG.debug("Executing complete_slave_setup")
+        self._call("complete_slave_setup", AGENT_SNAPSHOT_TIMEOUT,
+                   self.version_cap, master_info=master_info,
+                   slave_info=slave_info)
+
+    def sync_data_to_slaves(self):
+        LOG.debug("Executing sync_data_to_slaves")
+        self._call("sync_data_to_slaves", AGENT_HIGH_TIMEOUT,
+                   self.version_cap)
 
     # DEPRECATED: Maintain for API Compatibility
     def get_txn_count(self):

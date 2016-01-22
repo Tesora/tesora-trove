@@ -28,6 +28,7 @@ from trove.common.exception import ReplicationSlaveAttachError
 from trove.common.exception import TroveError
 from trove.common.i18n import _
 from trove.common.notification import EndNotification
+from trove.common import remote
 import trove.common.rpc.version as rpc_version
 from trove.common.strategies.cluster import strategy
 from trove.datastore.models import DatastoreVersion
@@ -195,7 +196,7 @@ class Manager(periodic_task.PeriodicTasks):
             master_ips = old_master.detach_public_ips()
             slave_ips = master_candidate.detach_public_ips()
             master_candidate.detach_replica(old_master, for_failover=True)
-            master_candidate.enable_as_master()
+            master_candidate.enable_as_master(for_failover=True)
             master_candidate.attach_public_ips(master_ips)
             master_candidate.make_read_only(False)
             old_master.attach_public_ips(slave_ips)
@@ -324,6 +325,39 @@ class Manager(periodic_task.PeriodicTasks):
 
             for replica in replicas:
                 replica.wait_for_instance(CONF.restore_usage_timeout, flavor)
+
+            # Some datastores requires completing configuration of replication
+            # nodes with information that is only available after all the
+            # instances has been started.
+            if snapshot and snapshot.get('master', {}).get('post_processing'):
+                slave_instances = [BuiltInstanceTasks.load(context, replica.id)
+                                   for replica in replicas]
+
+                # Collect info from each slave post instance launch
+                slave_detail = [slave_instance.get_replication_detail()
+                                for slave_instance in slave_instances]
+
+                # Pass info of all replication nodes to the master for
+                # replication setup completion
+                master_detail = master_instance_tasks.get_replication_detail()
+                master_instance_tasks.complete_master_setup(slave_detail)
+
+                # Pass info of all replication nodes to each slave for
+                # replication setup completion
+                for slave_instance in slave_instances:
+                    slave_instance.complete_slave_setup(master_detail,
+                                                        slave_detail)
+
+                # Push pending data/transactions from master to slaves
+                master_instance_tasks.sync_data_to_slaves()
+
+                # Set the status of all slave nodes to ACTIVE
+                for slave_instance in slave_instances:
+                    LOG.debug('Calling cluster_complete() on slave guest.')
+                    slave_guest = remote.create_guest_client(
+                        slave_instance.context, slave_instance.db_info.id,
+                        slave_instance.datastore_version.manager)
+                    slave_guest.cluster_complete()
 
         finally:
             if replica_backup_created:

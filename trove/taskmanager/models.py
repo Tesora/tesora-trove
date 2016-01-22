@@ -1239,13 +1239,26 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         for ip in ips:
             nova_instance.add_floating_ip(ip)
 
-    def enable_as_master(self):
+    def enable_as_master(self, for_failover=False):
         LOG.debug("Calling enable_as_master on %s" % self.id)
         flavor = self.nova_client.flavors.get(self.flavor_id)
         replica_source_config = self._render_replica_source_config(flavor)
         self.update_db(slave_of_id=None)
         self.slave_list = None
-        self.guest.enable_as_master(replica_source_config.config_contents)
+        self.guest.enable_as_master(replica_source_config.config_contents,
+                                    for_failover)
+
+    def complete_master_setup(self, slave_info):
+        self.guest.complete_master_setup(slave_info)
+
+    def complete_slave_setup(self, master_info, slave_info):
+        self.guest.complete_slave_setup(master_info, slave_info)
+
+    def sync_data_to_slaves(self):
+        self.guest.sync_data_to_slaves()
+
+    def get_replication_detail(self):
+        return self.guest.get_replication_detail()
 
     def get_last_txn(self):
         LOG.debug("Calling get_last_txn on %s" % self.id)
