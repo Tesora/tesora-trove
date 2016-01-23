@@ -349,7 +349,7 @@ class CassandraApp(object):
         self.status = CassandraAppStatus(user)
 
     def store_admin_credentials(self, admin_credentials):
-        user = self._deserialize_user(admin_credentials, False)
+        user = models.CassandraUser.deserialize_user(admin_credentials)
         self._update_admin_credentials(user)
 
     def get_admin_credentials(self):
