@@ -17,13 +17,17 @@ import stat
 import tempfile
 
 import mock
+from mock import DEFAULT
 from mock import MagicMock
 from mock import Mock
+from mock import patch
+from mock import PropertyMock
 from oslo_utils import netutils
 import testtools
 
 from trove.common import utils
 from trove.guestagent import backup
+from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.experimental.couchbase import (
     manager as couch_manager)
 from trove.guestagent.datastore.experimental.couchbase import (
@@ -39,26 +43,18 @@ class GuestAgentCouchbaseManagerTest(testtools.TestCase):
         self.context = trove_testtools.TroveTestContext(self)
         self.manager = couch_manager.Manager()
         self.packages = 'couchbase-server'
-        self.origin_CouchbaseAppStatus = couch_service.CouchbaseAppStatus
-        self.origin_format = volume.VolumeDevice.format
-        self.origin_mount = volume.VolumeDevice.mount
-        self.origin_mount_points = volume.VolumeDevice.mount_points
-        self.origin_stop_db = couch_service.CouchbaseApp.stop_db
-        self.origin_start_db = couch_service.CouchbaseApp.start_db
-        self.origin_restart = couch_service.CouchbaseApp.restart
-        self.origin_install_if = couch_service.CouchbaseApp.install_if_needed
-        netutils.get_my_ipv4 = MagicMock()
+        app_patcher = patch.multiple(
+            couch_service.CouchbaseApp,
+            stop_db=DEFAULT, start_db=DEFAULT, restart=DEFAULT)
+        self.addCleanup(app_patcher.stop)
+        app_patcher.start()
+
+        netutils_patcher = patch.object(netutils, 'get_my_ipv4')
+        self.addCleanup(netutils_patcher.stop)
+        netutils_patcher.start()
 
     def tearDown(self):
         super(GuestAgentCouchbaseManagerTest, self).tearDown()
-        couch_service.CouchbaseAppStatus = self.origin_CouchbaseAppStatus
-        volume.VolumeDevice.format = self.origin_format
-        volume.VolumeDevice.mount = self.origin_mount
-        volume.VolumeDevice.mount_points = self.origin_mount_points
-        couch_service.CouchbaseApp.stop_db = self.origin_stop_db
-        couch_service.CouchbaseApp.start_db = self.origin_start_db
-        couch_service.CouchbaseApp.restart = self.origin_restart
-        couch_service.CouchbaseApp.install_if_needed = self.origin_install_if
 
     def test_update_status(self):
         mock_status = MagicMock()
@@ -72,7 +68,18 @@ class GuestAgentCouchbaseManagerTest(testtools.TestCase):
     def test_prepare_from_backup(self):
         self._prepare_dynamic(backup_id='backup_id_123abc')
 
-    def _prepare_dynamic(self, device_path='/dev/vdb', backup_id=None):
+    @patch.multiple(couch_service.CouchbaseApp,
+                    install_if_needed=DEFAULT,
+                    start_db_with_conf_changes=DEFAULT,
+                    init_storage_structure=DEFAULT,
+                    apply_initial_guestagent_configuration=DEFAULT)
+    @patch.multiple(volume.VolumeDevice,
+                    format=DEFAULT,
+                    mount=DEFAULT,
+                    mount_points=Mock(return_value=[]))
+    @patch.object(backup, 'restore')
+    def _prepare_dynamic(self, device_path='/dev/vdb', backup_id=None,
+                         *mocks, **kwmocks):
 
         # covering all outcomes is starting to cause trouble here
         backup_info = {'id': backup_id,
@@ -81,35 +88,38 @@ class GuestAgentCouchbaseManagerTest(testtools.TestCase):
                        'checksum': 'fake-checksum'} if backup_id else None
 
         mock_status = MagicMock()
+        mock_status.begin_install = MagicMock(return_value=None)
         self.manager.appStatus = mock_status
 
-        mock_status.begin_install = MagicMock(return_value=None)
-        volume.VolumeDevice.format = MagicMock(return_value=None)
-        volume.VolumeDevice.mount = MagicMock(return_value=None)
-        volume.VolumeDevice.mount_points = MagicMock(return_value=[])
-        couch_service.CouchbaseApp.install_if_needed = MagicMock(
-            return_value=None)
-        couch_service.CouchbaseApp.start_db_with_conf_changes = MagicMock(
-            return_value=None)
-        couch_service.CouchbaseApp.initial_setup = MagicMock(
-            return_value=None)
-        backup.restore = MagicMock(return_value=None)
+        instance_ram = 2048
+        mount_point = '/var/lib/couchbase'
 
-        # invocation
-        self.manager.prepare(self.context, self.packages, None, 2048,
-                             None, device_path=device_path,
-                             mount_point='/var/lib/couchbase',
-                             backup_info=backup_info,
-                             overrides=None,
-                             cluster_config=None)
+        with patch.object(couch_service.CouchbaseApp, 'available_ram_mb',
+                          new_callable=PropertyMock) as available_ram_mock:
+            available_ram_mock.return_value = instance_ram
+
+            self.manager.prepare(self.context, self.packages, None,
+                                 instance_ram, None, device_path=device_path,
+                                 mount_point=mount_point,
+                                 backup_info=backup_info,
+                                 overrides=None,
+                                 cluster_config=None)
+
+            available_ram_mock.assert_called_once_with(instance_ram)
+
         # verification/assertion
         mock_status.begin_install.assert_any_call()
-        couch_service.CouchbaseApp.install_if_needed.assert_any_call(
-            self.packages)
+
+        storage_mock = kwmocks['init_storage_structure']
+        init_mock = kwmocks['apply_initial_guestagent_configuration']
+        init_mock.assert_called_once_with(None)
+        storage_mock.assert_called_once_with(mount_point)
+        kwmocks['install_if_needed'].assert_any_call(self.packages)
+
         if backup_info:
             backup.restore.assert_any_call(self.context,
                                            backup_info,
-                                           '/var/lib/couchbase')
+                                           mount_point)
 
     def test_restart(self):
         mock_status = MagicMock()
@@ -173,3 +183,12 @@ class GuestAgentCouchbaseManagerTest(testtools.TestCase):
             self.assertRaises(RuntimeError,
                               rootaccess.write_password_to_file,
                               'mypassword')
+
+    @mock.patch.object(operating_system, 'create_directory')
+    def test_init_storage_structure(self, mkdir_mock):
+        mount_point = Mock()
+        app = couch_service.CouchbaseApp(Mock())
+        app.init_storage_structure(mount_point)
+        mkdir_mock.assert_called_once_with(
+            mount_point, user=app.couchbase_owner, group=app.couchbase_owner,
+            as_root=True)

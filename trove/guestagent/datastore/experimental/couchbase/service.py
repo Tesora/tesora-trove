@@ -27,7 +27,9 @@ from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance as rd_instance
+from trove.common.stream_codecs import StringConverter
 from trove.common import utils as utils
+from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.experimental.couchbase import system
 from trove.guestagent.datastore import service
@@ -45,6 +47,18 @@ class CouchbaseApp(object):
     Handles installation and configuration of couchbase
     on a trove instance.
     """
+
+    MIN_RAMSIZE_QUOTA_MB = 256
+    _ADMIN_USER = 'root'  # TODO(pmalik): Should be 'os_admin'.
+
+    @property
+    def couchbase_owner(self):
+        return 'couchbase'
+
+    @property
+    def http_client_port(self):
+        return 8091
+
     def __init__(self, status, state_change_wait_time=None):
         """
         Sets default status and state_change_wait_time
@@ -54,6 +68,15 @@ class CouchbaseApp(object):
         else:
             self.state_change_wait_time = CONF.state_change_wait_time
         self.status = status
+        self._available_ram_mb = self.MIN_RAMSIZE_QUOTA_MB
+
+    @property
+    def available_ram_mb(self):
+        return self._available_ram_mb
+
+    @available_ram_mb.setter
+    def available_ram_mb(self, value):
+        self._available_ram_mb = value
 
     def install_if_needed(self, packages):
         """
@@ -64,33 +87,121 @@ class CouchbaseApp(object):
             LOG.debug('Installing Couchbase.')
             self._install_couchbase(packages)
 
-    def initial_setup(self):
+    def apply_initial_guestagent_configuration(self, cluster_config=False):
+        """Configure this node.
+
+        Initialize the node as a single-server cluster if no cluster
+        configuration is provided.
+
+        If cluster configuration is provided retrieve the cluster password and
+        store it on the filesystem. Skip the cluster initialization as
+        it will be performed later from the task manager.
+        """
         self.ip_address = netutils.get_my_ipv4()
         mount_point = CONF.couchbase.mount_point
+        self.run_node_init(mount_point, mount_point, self.ip_address)
+
+        if not cluster_config:
+            self.initialize_cluster()
+        else:
+            CouchbaseRootAccess().write_password_to_file(
+                cluster_config['cluster_password'])
+
+    def initialize_cluster(self):
+        """Initialize this node as cluster.
+        """
+        admin = self.get_cluster_admin()
+        self.run_cluster_init(admin.name, admin.password,
+                              self.http_client_port, self.ramsize_quota_mb)
+
+    def get_cluster_admin(self):
+        cluster_password = CouchbaseRootAccess.get_password()
+        return models.CassandraUser(self._ADMIN_USER, cluster_password)
+
+    @property
+    def ramsize_quota_mb(self):
+        ramsize_quota_pc = CONF.couchbase.cluster_ramsize_pc / 100.0
+        return min(round(ramsize_quota_pc * self.available_ram_mb),
+                   self.MIN_RAMSIZE_QUOTA_MB)
+
+    def init_storage_structure(self, mount_point):
         try:
-            LOG.info(_('Couchbase Server change data dir path.'))
-            operating_system.chown(mount_point, 'couchbase', 'couchbase',
-                                   as_root=True)
-            pwd = CouchbaseRootAccess.get_password()
-            utils.execute_with_timeout(
-                (system.cmd_node_init
-                 % {'data_path': mount_point,
-                    'IP': self.ip_address,
-                    'PWD': pwd}), shell=True)
-            operating_system.remove(system.INSTANCE_DATA_DIR, force=True,
-                                    as_root=True)
-            LOG.debug('Couchbase Server initialize cluster.')
-            utils.execute_with_timeout(
-                (system.cmd_cluster_init
-                 % {'IP': self.ip_address, 'PWD': pwd}),
-                shell=True)
-            utils.execute_with_timeout(system.cmd_set_swappiness, shell=True)
-            utils.execute_with_timeout(system.cmd_update_sysctl_conf,
-                                       shell=True)
-            LOG.info(_('Couchbase Server initial setup finished.'))
+            operating_system.create_directory(
+                mount_point, user=self.couchbase_owner,
+                group=self.couchbase_owner, as_root=True)
         except exception.ProcessExecutionError:
-            LOG.exception(_('Error performing initial Couchbase setup.'))
-            raise RuntimeError("Couchbase Server initial setup failed")
+            LOG.exception(_("Error while initiating storage structure."))
+
+    def run_node_init(self, data_path, index_path, hostname):
+        LOG.debug("Configuring node-specific parameters.")
+        self._run_couchbase_command(
+            'node-init', {'node-init-data-path': data_path,
+                          'node-init-index-path': index_path,
+                          'node-init-hostname': hostname})
+
+    def run_cluster_init(self, cluster_admin, cluster_password,
+                         cluster_http_port, ramsize_quota_mb):
+        LOG.debug("Configuring cluster parameters.")
+        self._run_couchbase_command(
+            'cluster-init', {'cluster-init-username': cluster_admin,
+                             'cluster-init-password': cluster_password,
+                             'cluster-init-port': cluster_http_port,
+                             'cluster-ramsize': ramsize_quota_mb})
+
+    def run_rebalance(self, node_admin, node_password,
+                      added_nodes, removed_nodes):
+        """Rebalance the cluster by adding and/or removing nodes.
+        Rebalance moves the data around the cluster so that the data is
+        distributed across the entire cluster.
+        The rebalancing process can take place while the cluster is running and
+        servicing requests.
+        Clients using the cluster read and write to the existing structure
+        with the data being moved in the background among nodes.
+        """
+
+        LOG.debug("Rebalancing the cluster.")
+        options = {}
+        if added_nodes:
+            for ip in added_nodes:
+                options.update({'server-add': ip,
+                                'server-add-username': node_admin,
+                                'server-add-password': node_password})
+        if removed_nodes:
+            options.update({'server-remove': ip for ip in removed_nodes})
+
+        if options:
+            self._run_couchbase_command('rebalance', options)
+        else:
+            LOG.info(_("No changes to the topology, skipping rebalance."))
+
+    def _run_couchbase_command(self, cmd, options=None, **kwargs):
+        """Execute a couchbase-cli command on this node.
+        """
+        # couchbase-cli COMMAND -c [host]:[port] -u user -p password [options]
+
+        host_and_port = 'localhost:%d' % self.http_client_port
+        password = CouchbaseRootAccess.get_password()
+        args = self._build_command_options(options)
+        cmd_tokens = [self.couchbase_cli_bin, cmd,
+                      '-c', host_and_port,
+                      '-u', self._ADMIN_USER,
+                      '-p', password] + args
+        return utils.execute(' '.join(cmd_tokens), shell=True, **kwargs)
+
+    def _build_command_options(self, options):
+        if options:
+            return ['--%s=%s' % (name, value)
+                    for name, value in options.items()]
+        return []
+
+    @property
+    def couchbase_cli_bin(self):
+        return guestagent_utils.build_file_path(self.couchbase_bin_dir,
+                                                'couchbase-cli')
+
+    @property
+    def couchbase_bin_dir(self):
+        return '/opt/couchbase/bin'
 
     def _install_couchbase(self, packages):
         """
@@ -101,7 +212,7 @@ class CouchbaseApp(object):
         operating_system.create_directory(system.COUCHBASE_CONF_DIR,
                                           as_root=True)
         pkg_opts = {}
-        packager.pkg_install(packages, pkg_opts, system.TIME_OUT)
+        packager.pkg_install(packages, pkg_opts, 1200)
         self.start_db()
         LOG.debug('Finished installing Couchbase Server.')
 
@@ -194,31 +305,31 @@ class CouchbaseApp(object):
         return CouchbaseRootAccess.enable_root(root_password)
 
     def start_db_with_conf_changes(self, config_contents):
-        LOG.info(_("Starting Couchbase with configuration changes."))
-        LOG.info(_("Configuration contents:\n %s.") % config_contents)
-        if self.status.is_running:
-            LOG.error(_("Cannot start Couchbase with configuration changes. "
-                        "Couchbase state == %s.") % self.status)
-            raise RuntimeError("Couchbase is not stopped.")
-        self._write_config(config_contents)
-        self.start_db(True)
+        self.start_db(update_db=True)
 
     def reset_configuration(self, configuration):
-        config_contents = configuration['config_contents']
-        LOG.debug("Resetting configuration.")
-        self._write_config(config_contents)
+        pass
 
-    def _write_config(self, config_contents):
+    def rebalance_cluster(self, added_nodes=None, removed_nodes=None):
+        admin = self.get_cluster_admin()
+        self.run_rebalance(admin.name, admin.password,
+                           added_nodes, removed_nodes)
+
+    def get_cluster_rebalance_status(self):
+        """Return whether rebalancing is currently running.
         """
-        Update contents of Couchbase configuration file
-        """
-        return
+        # Status message: "(u'<status name>', <status message>)\n"
+        status, _ = self._run_couchbase_command('rebalance-status')
+        status_tokens = StringConverter({}).to_objects(status)
+        LOG.debug("Current rebalance status: %s (%s)" % status_tokens)
+        return status_tokens[0] != 'none'
 
 
 class CouchbaseAppStatus(service.BaseDbStatus):
     """
     Handles all of the status updating for the couchbase guest agent.
     """
+
     def _get_actual_db_status(self):
         self.ip_address = netutils.get_my_ipv4()
         pwd = None
@@ -226,38 +337,9 @@ class CouchbaseAppStatus(service.BaseDbStatus):
             pwd = CouchbaseRootAccess.get_password()
             return self._get_status_from_couchbase(pwd)
         except exception.ProcessExecutionError:
-            # log the exception, but continue with native config approach
             LOG.exception(_("Error getting the Couchbase status."))
 
-        try:
-            out, err = utils.execute_with_timeout(
-                system.cmd_get_password_from_config, shell=True)
-        except exception.ProcessExecutionError:
-            LOG.exception(_("Error getting the root password from the "
-                            "native Couchbase config file."))
-            return rd_instance.ServiceStatuses.SHUTDOWN
-
-        config_pwd = out.strip() if out is not None else None
-        if not config_pwd or config_pwd == pwd:
-            LOG.debug("The root password from the native Couchbase config "
-                      "file is either empty or already matches the "
-                      "stored value.")
-            return rd_instance.ServiceStatuses.SHUTDOWN
-
-        try:
-            status = self._get_status_from_couchbase(config_pwd)
-        except exception.ProcessExecutionError:
-            LOG.exception(_("Error getting Couchbase status using the "
-                            "password parsed from the native Couchbase "
-                            "config file."))
-            return rd_instance.ServiceStatuses.SHUTDOWN
-
-        # if the parsed root password worked, update the stored value to
-        # avoid having to consult/parse the couchbase config file again.
-        LOG.debug("Updating the stored value for the Couchbase "
-                  "root password.")
-        CouchbaseRootAccess().write_password_to_file(config_pwd)
-        return status
+        return rd_instance.ServiceStatuses.SHUTDOWN
 
     def _get_status_from_couchbase(self, pwd):
         out, err = utils.execute_with_timeout(
@@ -273,18 +355,18 @@ class CouchbaseAppStatus(service.BaseDbStatus):
 
 class CouchbaseRootAccess(object):
 
+    # TODO(pmalik): This should be obtained from the CouchbaseRootUser model.
+    DEFAULT_ADMIN_NAME = 'root'
+    DEFAULT_ADMIN_PASSWORD = 'password'
+
     @classmethod
     def enable_root(cls, root_password=None):
-        user = models.RootUser()
-        user.name = "root"
-        user.host = "%"
-        user.password = root_password or utils.generate_random_password()
-
+        admin = models.CouchbaseRootUser()
         if root_password:
             CouchbaseRootAccess().write_password_to_file(root_password)
         else:
-            CouchbaseRootAccess().set_password(user.password)
-        return user.serialize()
+            CouchbaseRootAccess().set_password(admin.password)
+        return admin.serialize()
 
     def set_password(self, root_password):
         self.ip_address = netutils.get_my_ipv4()
@@ -325,9 +407,9 @@ class CouchbaseRootAccess(object):
 
         operating_system.move(tempname, system.pwd_file, as_root=True)
 
-    @staticmethod
-    def get_password():
-        pwd = "password"
+    @classmethod
+    def get_password(cls):
+        pwd = cls.DEFAULT_ADMIN_PASSWORD
         if os.path.exists(system.pwd_file):
             with open(system.pwd_file) as file:
                 pwd = file.readline().strip()

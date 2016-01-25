@@ -176,7 +176,7 @@ register(["cassandra_supported"], backup_groups, instance_actions_groups,
          user_actions_groups, database_actions_group, root_actions_groups,
          cluster_actions_groups)
 register(["couchbase_supported"], instance_actions_groups, root_actions_groups,
-         backup_groups)
+         backup_groups, cluster_actions_groups)
 register(["couchdb_supported"], instance_actions_groups)
 register(["postgresql_supported"], backup_groups, database_actions_groups,
          instance_actions_groups, user_actions_groups, root_actions_groups)
