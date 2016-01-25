@@ -118,3 +118,39 @@ class MysqlRootActionsRunner(RootActionsRunner):
 
     def run_enable_root_with_password(self):
         raise SkipTest("Operation is currently not supported.")
+
+
+class PerconaRootActionsRunner(RootActionsRunner):
+
+    def run_disable_root_before_enabled(self):
+        raise SkipTest("Operation is currently not supported.")
+
+    def run_enable_root_with_password(self):
+        raise SkipTest("Operation is currently not supported.")
+
+    def run_disable_root(self):
+        raise SkipTest("Operation is currently not supported.")
+
+
+class MariadbRootActionsRunner(RootActionsRunner):
+
+    def run_disable_root_before_enabled(self):
+        raise SkipTest("Operation is currently not supported.")
+
+    def run_enable_root_with_password(self):
+        raise SkipTest("Operation is currently not supported.")
+
+    def run_disable_root(self):
+        raise SkipTest("Operation is currently not supported.")
+
+
+class PostgresqlRootActionsRunner(RootActionsRunner):
+
+    def run_disable_root_before_enabled(self):
+        raise SkipTest("Operation is currently not supported.")
+
+    def run_enable_root_with_password(self):
+        raise SkipTest("Operation is currently not supported.")
+
+    def run_disable_root(self):
+        raise SkipTest("Operation is currently not supported.")
