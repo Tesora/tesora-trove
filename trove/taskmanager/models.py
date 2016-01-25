@@ -1475,7 +1475,8 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
                 volume = self.volume_client.volumes.get(self.volume_id)
                 volume_device = volume.attachments[0]['device']
 
-            injected_files = self.get_injected_files(self.datastore.name)
+            injected_files = self.get_injected_files(
+                datastore_version.manager)
             LOG.debug("Rebuilding instance %(instance)s with image %(image)s.",
                       {'instance': self, 'image': datastore_version.image_id})
             self.server.rebuild(datastore_version.image_id,
