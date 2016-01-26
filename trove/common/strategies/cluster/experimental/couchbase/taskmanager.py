@@ -182,26 +182,15 @@ class CouchbaseClusterTasks(task_models.ClusterTasks):
             removed_nodes = CouchbaseClusterTasks.load_cluster_nodes(
                 context, removal_ids)
 
+            remaining_nodes = [node for node in cluster_nodes
+                               if node['id'] not in removal_ids]
+
             LOG.debug("All nodes ready, proceeding with cluster setup.")
 
             # Rebalance the cluster via one of the remaining nodes.
             try:
-                LOG.debug("Decommissioning nodes and rebalacing the cluster.")
-                remaining_nodes = [node for node in cluster_nodes
-                                   if node['id'] not in removal_ids]
                 coordinator = remaining_nodes[0]
-                coordinator['guest'].remove_nodes({node['ip']
-                                                   for node in removed_nodes})
-
-                LOG.debug("Waiting for the rebalancing process to finish.")
-                self._wait_for_rebalance_to_finish(coordinator)
-
-                # Delete decommissioned instances only when the cluster is in a
-                # consistent state.
-                LOG.debug("Deleting decommissioned instances.")
-                for node in removed_nodes:
-                    Instance.delete(node['instance'])
-
+                self._remove_nodes(coordinator, removed_nodes)
                 LOG.debug("Cluster configuration finished successfully.")
             except Exception:
                 LOG.exception(_("Error shrinking cluster."))
@@ -220,6 +209,25 @@ class CouchbaseClusterTasks(task_models.ClusterTasks):
             timeout.cancel()
 
         LOG.debug("End shrink_cluster for id: %s." % cluster_id)
+
+    def _remove_nodes(self, coordinator, removed_nodes):
+        LOG.debug("Decommissioning nodes and rebalacing the cluster.")
+        coordinator['guest'].remove_nodes({node['ip']
+                                           for node in removed_nodes})
+
+        # Always remove decommissioned instances from the cluster,
+        # irrespective of the result of rebalancing.
+        for node in removed_nodes:
+            node['instance'].update_db(cluster_id=None)
+
+        LOG.debug("Waiting for the rebalancing process to finish.")
+        self._wait_for_rebalance_to_finish(coordinator)
+
+        # Delete decommissioned instances only when the cluster is in a
+        # consistent state.
+        LOG.debug("Deleting decommissioned instances.")
+        for node in removed_nodes:
+            Instance.delete(node['instance'])
 
 
 class CouchbaseTaskManagerAPI(task_api.API):
