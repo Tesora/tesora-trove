@@ -27,6 +27,7 @@ from trove.common import exception
 from trove.tests.api.instances import instance_info
 from trove.tests.config import CONFIG
 from trove.tests.util import create_dbaas_client
+from trove.tests.util import create_nova_client
 from trove.tests.util.users import Requirements
 
 CONF = cfg.CONF
@@ -79,7 +80,9 @@ class TestRunner(object):
 
         self.auth_client = create_dbaas_client(self.instance_info.user)
         self.unauth_client = None
+        self._nova_client = None
         self._test_helper = None
+        self._servers = {}
 
     @classmethod
     def fail(cls, message):
@@ -161,6 +164,12 @@ class TestRunner(object):
         other_user = CONFIG.users.find_user(
             requirements, black_list=[self.instance_info.user.auth_user])
         return create_dbaas_client(other_user)
+
+    @property
+    def nova_client(self):
+        if not self._nova_client:
+            self._nova_client = create_nova_client(self.instance_info.user)
+        return self._nova_client
 
     def assert_raises(self, expected_exception, expected_http_code,
                       client_cmd, *cmd_args, **cmd_kwargs):
@@ -330,6 +339,39 @@ class TestRunner(object):
             raise RuntimeError("Instance '%s' acquired a fast-fail status: %s"
                                % (instance_id, instance.status))
         return instance.status == status
+
+    def get_server(self, instance_id):
+        server = None
+        if instance_id in self._servers:
+            server = self._servers[instance_id]
+        else:
+            instance = self.get_instance(instance_id)
+            self.report.log("Getting server for instance: %s" % instance)
+            for nova_server in self.nova_client.servers.list():
+                if str(nova_server.name) == instance.name:
+                    server = nova_server
+                    break
+            if server:
+                self._servers[instance_id] = server
+        return server
+
+    def assert_server_group(self, instance_id, should_exist):
+        """Check that the Nova instance associated with instance_id
+        belongs to a server group, based on the 'should_exist' flag.
+        """
+        server = self.get_server(instance_id)
+        self.assert_is_not_none(server, "Could not find Nova server for '%s'" %
+                                instance_id)
+        server_group = None
+        server_groups = self.nova_client.server_groups.list()
+        for sg in server_groups:
+            if server.id in sg.members:
+                server_group = sg
+        if should_exist and server_group is None:
+            raise ("Could not find server group for Nova instance %s" %
+                   server.id)
+        if server_group and not should_exist:
+            raise ("Found left-over server group: %s" % server_group)
 
     def get_instance(self, instance_id):
         return self.auth_client.instances.get(instance_id)
