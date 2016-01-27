@@ -36,8 +36,6 @@ class InstanceCreateRunner(TestRunner):
 
     def run_empty_instance_create(
             self, expected_states=['BUILD', 'ACTIVE'], expected_http_code=200):
-        # TODO(pmalik): Instance create should return 202 Accepted (cast)
-        # rather than 200 OK (call).
         name = self.instance_info.name
         flavor = self._get_instance_flavor()
         trove_volume_size = CONFIG.get('trove_volume_size', 1)
@@ -57,6 +55,7 @@ class InstanceCreateRunner(TestRunner):
         self.instance_info.dbaas_flavor_href = info.dbaas_flavor_href
         self.instance_info.volume = info.volume
         self.instance_info.id = info.id
+        self.assert_server_group(self.instance_info.id, True)
 
     def run_initial_configuration_create(self, expected_http_code=200):
         dynamic_config = self.test_helper.get_dynamic_group()
@@ -86,8 +85,6 @@ class InstanceCreateRunner(TestRunner):
             # test instances.
             raise SkipTest("Using an existing instance.")
 
-        # TODO(pmalik): Instance create should return 202 Accepted (cast)
-        # rather than 200 OK (call).
         name = self.instance_info.name
         flavor = self._get_instance_flavor()
         trove_volume_size = CONFIG.get('trove_volume_size', 1)
@@ -137,7 +134,7 @@ class InstanceCreateRunner(TestRunner):
         nor it performs any other validations itself.
         It has been designed this way to increase test granularity
         (other tests may run while the instance is building) and also to allow
-        its reuse in other runners .
+        its reuse in other runners.
         """
         databases = database_definitions
         users = [{'name': item['name'], 'password': item['password']}
