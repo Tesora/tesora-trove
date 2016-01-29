@@ -993,7 +993,7 @@ cassandra_opts = [
                help='Namespace to load restore strategies from.',
                deprecated_name='restore_namespace',
                deprecated_group='DEFAULT'),
-    cfg.ListOpt('ignore_users', default=[],
+    cfg.ListOpt('ignore_users', default=['os_admin'],
                 help='Users to exclude when listing users.'),
     cfg.ListOpt('ignore_dbs', default=['system', 'system_auth',
                                        'system_traces'],

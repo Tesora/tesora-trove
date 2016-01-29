@@ -58,10 +58,8 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
     __DROP_USR_FORMAT = "DROP USER '{}';"
     __GRANT_FORMAT = "GRANT {} ON KEYSPACE \"{}\" TO '{}';"
     __REVOKE_FORMAT = "REVOKE ALL PERMISSIONS ON KEYSPACE \"{}\" FROM '{}';"
-    __LIST_PERMISSIONS = (
-        "LIST ALL PERMISSIONS ON KEYSPACE \"{}\" "
-        "OF '{}' NORECURSIVE;"
-    )
+    __LIST_PERMISSIONS_FORMAT = "LIST ALL PERMISSIONS NORECURSIVE;"
+    __LIST_PERMISSIONS_OF_FORMAT = "LIST ALL PERMISSIONS OF '{}' NORECURSIVE;"
     __LIST_DB_FORMAT = "SELECT * FROM system.schema_keyspaces;"
     __LIST_USR_FORMAT = "LIST USERS;"
 
@@ -451,30 +449,115 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
             found = self.manager.list_databases(self.context)
             self.assertEqual(([], None), found)
 
+    def test_get_acl(self):
+        r0 = NonCallableMagicMock(username='user1', resource='<all keyspaces>',
+                                  permission='SELECT')
+        r1 = NonCallableMagicMock(username='user2', resource='<keyspace ks1>',
+                                  permission='SELECT')
+        r2 = NonCallableMagicMock(username='user2', resource='<keyspace ks2>',
+                                  permission='SELECT')
+        r3 = NonCallableMagicMock(username='user2', resource='<keyspace ks2>',
+                                  permission='ALTER')
+        r4 = NonCallableMagicMock(username='user3', resource='<table ks2.t1>',
+                                  permission='SELECT')
+        r5 = NonCallableMagicMock(username='user3', resource='',
+                                  permission='ALTER')
+        r6 = NonCallableMagicMock(username='user3', resource='<keyspace ks2>',
+                                  permission='')
+        r7 = NonCallableMagicMock(username='user3', resource='',
+                                  permission='')
+        r8 = NonCallableMagicMock(username='user3', resource='<keyspace ks1>',
+                                  permission='DELETE')
+        r9 = NonCallableMagicMock(username='user4', resource='<all keyspaces>',
+                                  permission='UPDATE')
+        r10 = NonCallableMagicMock(username='user4', resource='<keyspace ks1>',
+                                   permission='DELETE')
+
+        available_ks = {models.CassandraSchema('ks1'),
+                        models.CassandraSchema('ks2'),
+                        models.CassandraSchema('ks3')}
+
+        mock_result_set = [r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r9, r9, r10]
+        execute_mock = MagicMock(return_value=mock_result_set)
+        mock_client = MagicMock(execute=execute_mock)
+
+        with patch.object(self.admin,
+                          self.__N_GAK, return_value=available_ks) as gak_mock:
+            acl = self.admin._get_acl(mock_client)
+            execute_mock.assert_called_once_with(
+                self.__LIST_PERMISSIONS_FORMAT)
+            gak_mock.assert_called_once_with(mock_client)
+
+            self.assertEqual({'user1': {'ks1': {'SELECT'},
+                                        'ks2': {'SELECT'},
+                                        'ks3': {'SELECT'}},
+                              'user2': {'ks1': {'SELECT'},
+                                        'ks2': {'SELECT', 'ALTER'}},
+                              'user3': {'ks1': {'DELETE'}},
+                              'user4': {'ks1': {'UPDATE', 'DELETE'},
+                                        'ks2': {'UPDATE'},
+                                        'ks3': {'UPDATE'}}
+                              },
+                             acl)
+
+        mock_result_set = [r1, r2, r3]
+        execute_mock = MagicMock(return_value=mock_result_set)
+        mock_client = MagicMock(execute=execute_mock)
+
+        with patch.object(self.admin,
+                          self.__N_GAK, return_value=available_ks) as gak_mock:
+            acl = self.admin._get_acl(mock_client, username='user2')
+            execute_mock.assert_called_once_with(
+                self.__LIST_PERMISSIONS_OF_FORMAT.format('user2'))
+            gak_mock.assert_not_called()
+
+            self.assertEqual({'user2': {'ks1': {'SELECT'},
+                                        'ks2': {'SELECT', 'ALTER'}}}, acl)
+
+        mock_result_set = []
+        execute_mock = MagicMock(return_value=mock_result_set)
+        mock_client = MagicMock(execute=execute_mock)
+
+        with patch.object(self.admin,
+                          self.__N_GAK, return_value=available_ks) as gak_mock:
+            acl = self.admin._get_acl(mock_client, username='nonexisting')
+            execute_mock.assert_called_once_with(
+                self.__LIST_PERMISSIONS_OF_FORMAT.format('nonexisting'))
+            gak_mock.assert_not_called()
+
+            self.assertEqual({}, acl)
+
     @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
     def test_get_listed_users(self, conn):
-        usr = models.CassandraUser(self._get_random_name(1025), 'password')
+        usr1 = models.CassandraUser(self._get_random_name(1025))
+        usr2 = models.CassandraUser(self._get_random_name(1025))
+        usr3 = models.CassandraUser(self._get_random_name(1025))
         db1 = models.CassandraSchema('db1')
         db2 = models.CassandraSchema('db2')
-        usr.databases.append(db1.serialize())
-        usr.databases.append(db2.serialize())
+        usr1.databases.append(db1.serialize())
+        usr3.databases.append(db2.serialize())
 
         rv_1 = NonCallableMagicMock()
-        rv_1.configure_mock(name=usr.name, super=False)
+        rv_1.configure_mock(name=usr1.name, super=False)
         rv_2 = NonCallableMagicMock()
-        rv_2.configure_mock(keyspace_name=db1.name)
+        rv_2.configure_mock(name=usr2.name, super=False)
         rv_3 = NonCallableMagicMock()
-        rv_3.configure_mock(keyspace_name=db2.name)
+        rv_3.configure_mock(name=usr3.name, super=True)
 
         with patch.object(conn.return_value, 'execute', return_value=iter(
                 [rv_1, rv_2, rv_3])):
-            self.manager.list_users(self.context)
-            conn.return_value.execute.assert_has_calls([
-                call(self.__LIST_USR_FORMAT),
-                call(self.__LIST_DB_FORMAT),
-                call(self.__LIST_PERMISSIONS, (db1.name, usr.name)),
-                call(self.__LIST_PERMISSIONS, (db2.name, usr.name))
-            ], any_order=True)
+            with patch.object(self.admin, '_get_acl',
+                              return_value={usr1.name: {db1.name: {'SELECT'},
+                                                        db2.name: {}},
+                                            usr3.name: {db2.name: {'SELECT'}}}
+                              ):
+                usrs = self.manager.list_users(self.context)
+                conn.return_value.execute.assert_has_calls([
+                    call(self.__LIST_USR_FORMAT),
+                ], any_order=True)
+                self.assertIn(usr1.serialize(), usrs[0])
+                self.assertIn(usr2.serialize(), usrs[0])
+                self.assertIn(usr3.serialize(), usrs[0])
 
     @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
     def test_list_access(self, conn):

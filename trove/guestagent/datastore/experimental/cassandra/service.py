@@ -14,6 +14,7 @@
 #    under the License.
 
 import os
+import re
 import stat
 
 from cassandra.auth import PlainTextAuthProvider
@@ -791,6 +792,8 @@ class CassandraAdmin(object):
     # Non-superuser grant modifiers.
     __NO_SUPERUSER_MODIFIERS = ('ALTER', 'CREATE', 'DROP', 'MODIFY', 'SELECT')
 
+    _KS_NAME_REGEX = re.compile('^<keyspace (.+)>$')
+
     def __init__(self, user):
         self.__admin_user = user
 
@@ -874,39 +877,102 @@ class CassandraAdmin(object):
         Omit user names on the ignore list.
         """
         return self._get_users(
-            client, lambda user: user not in self.ignore_users)
+            client, lambda user: user.name not in self.ignore_users)
 
     def _get_users(self, client, matcher=None):
         """
         :param matcher                Filter expression.
         :type matcher                 callable
         """
-        return {self._build_user(client, user.name)
+        acl = self._get_acl(client)
+        return {self._build_user(user.name, acl)
                 for user in client.execute("LIST USERS;")
                 if not matcher or matcher(user)}
 
-    def _build_user(self, client, username, check_reserved=True):
+    def _load_user(self, client, username, check_reserved=True):
         if check_reserved:
             self._check_reserved_user_name(username)
 
-        user = models.CassandraUser(username)
-        for keyspace in self._get_available_keyspaces(client):
-            found = self._get_permissions_on_keyspace(client, keyspace, user)
-            if found:
-                user.databases.append(keyspace.serialize())
+        acl = self._get_acl(client, username=username)
+        return self._build_user(username, acl)
 
+    def _build_user(self, username, acl):
+        user = models.CassandraUser(username)
+        for ks, permissions in acl.get(username, {}).items():
+            if permissions:
+                user.databases.append(models.CassandraSchema(ks).serialize())
         return user
+
+    def _get_acl(self, client, username=None):
+        """Return the ACL for a database user.
+        Return ACLs for all users if no particular username is specified.
+
+        The ACL has the following format:
+        {username #1:
+            {keyspace #1: {access mod(s)...},
+             keyspace #2: {...}},
+         username #2:
+            {keyspace #1: {...},
+             keyspace #3: {...}}
+        }
+        """
+
+        def build_list_query(username):
+            query_tokens = ["LIST ALL PERMISSIONS"]
+            if username:
+                query_tokens.extend(["OF", "'%s'" % username])
+            query_tokens.append("NORECURSIVE;")
+            return ' '.join(query_tokens)
+
+        def parse_keyspace_name(resource):
+            """Parse a keyspace name from a resource string.
+            The resource string has the following form:
+                <object name>
+            where 'object' is one of the database objects (keyspace, table...).
+            Return the name as a singleton set. Return an empty set if no match
+            is found.
+            """
+            match = self._KS_NAME_REGEX.match(resource)
+            if match:
+                return {match.group(1)}
+            return {}
+
+        def update_acl(username, keyspace, permission, acl):
+            permissions = acl.get(username, {}).get(keyspace)
+            if permissions is None:
+                guestagent_utils.update_dict({user: {keyspace: {permission}}},
+                                             acl)
+            else:
+                permissions.add(permission)
+
+        all_keyspace_names = None
+        acl = dict()
+        for item in client.execute(build_list_query(username)):
+            user = item.username
+            resource = item.resource
+            permission = item.permission
+            if user and resource and permission:
+                if resource == '<all keyspaces>':
+                    # Cache the full keyspace list to improve performance and
+                    # ensure consistent results for all users.
+                    if all_keyspace_names is None:
+                        all_keyspace_names = {
+                            item.name
+                            for item in self._get_available_keyspaces(client)
+                        }
+                    keyspaces = all_keyspace_names
+                else:
+                    keyspaces = parse_keyspace_name(resource)
+
+                for keyspace in keyspaces:
+                    update_acl(user, keyspace, permission, acl)
+
+        return acl
 
     def list_superusers(self):
         """List all system users existing in the database."""
         with CassandraLocalhostConnection(self.__admin_user) as client:
             return self._get_users(client, lambda user: user.super)
-
-    def _get_permissions_on_keyspace(self, client, keyspace, user):
-        return {item.permission for item in
-                client.execute("LIST ALL PERMISSIONS ON KEYSPACE \"{}\" "
-                               "OF '{}' NORECURSIVE;",
-                               (keyspace.name, user.name))}
 
     def grant_access(self, context, username, hostname, databases):
         """
@@ -967,7 +1033,7 @@ class CassandraAdmin(object):
 
     def update_attributes(self, context, username, hostname, user_attrs):
         with CassandraLocalhostConnection(self.__admin_user) as client:
-            user = self._build_user(client, username)
+            user = self._load_user(client, username)
             new_name = user_attrs.get('name')
             new_password = user_attrs.get('password')
             self._update_user(client, user, new_name, new_password)
