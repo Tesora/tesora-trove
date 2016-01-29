@@ -47,23 +47,34 @@ class TestPaginatedDataView(trove_testtools.TestCase):
         # start list
         li_1, marker_1 = self._do_paginate_list(limit=2)
         self.assertEqual(['a', 'b'], li_1)
-        self.assertEqual('c', marker_1)
+        self.assertEqual('b', marker_1)
 
         # continue list, do not include marker in result
         li_2, marker_2 = self._do_paginate_list(limit=2, marker=marker_1)
-        self.assertEqual(['d', 'e'], li_2)
-        self.assertEqual(None, marker_2)
+        self.assertEqual(['c', 'd'], li_2)
+        self.assertEqual('d', marker_2)
+        li_3, marker_3 = self._do_paginate_list(limit=2, marker=marker_2)
+        self.assertEqual(['e'], li_3)
+        self.assertIsNone(marker_3)
 
         # alternate continue list, include marker in result
-        li_3, marker_3 = self._do_paginate_list(limit=2, marker=marker_1,
+        li_4, marker_4 = self._do_paginate_list(limit=2, marker=marker_1,
                                                 include_marker=True)
-        self.assertEqual(['c', 'd'], li_3)
-        self.assertEqual('e', marker_3)
+        self.assertEqual(['b', 'c'], li_4)
+        self.assertEqual('c', marker_4)
+        li_5, marker_5 = self._do_paginate_list(limit=2, marker=marker_4,
+                                                include_marker=True)
+        self.assertEqual(['c', 'd'], li_5)
+        self.assertEqual('d', marker_5)
+        li_6, marker_6 = self._do_paginate_list(limit=2, marker=marker_5,
+                                                include_marker=True)
+        self.assertEqual(['d', 'e'], li_6)
+        self.assertIsNone(marker_6)
 
         # bad marker
         li_4, marker_4 = self._do_paginate_list(marker='f')
         self.assertEqual([], li_4)
-        self.assertEqual(None, marker_4)
+        self.assertIsNone(marker_4)
 
     def test_dict_paginate(self):
         li = [{'_collate': 'en_US.UTF-8',
@@ -88,4 +99,4 @@ class TestPaginatedDataView(trove_testtools.TestCase):
                                              marker='db1',
                                              include_marker=True)
         self.assertEqual(l[0], li[0])
-        self.assertEqual(m, 'db2')
+        self.assertEqual(m, 'db1')
