@@ -284,10 +284,16 @@ class BaseMySqlManager(manager.Manager):
         data_dir = app.get_data_dir()
         mount_point, _data = os.path.split(data_dir)
         save_dir = "%s/etc_mysql" % mount_point
+        save_etc_dir = "%s/etc" % mount_point
         home_save = "%s/trove_user" % mount_point
 
         app.status.begin_restart()
         app.stop_db()
+
+        if operating_system.exists("/etc/my.cnf", as_root=True):
+            operating_system.create_directory(save_etc_dir, as_root=True)
+            operating_system.copy("/etc/my.cnf", save_etc_dir,
+                                  preserve=True, as_root=True)
 
         operating_system.copy("/etc/mysql/.", save_dir,
                               preserve=True, as_root=True)
@@ -299,6 +305,7 @@ class BaseMySqlManager(manager.Manager):
         return {
             'mount_point': mount_point,
             'save_dir': save_dir,
+            'save_etc_dir': save_etc_dir,
             'home_save': home_save
         }
 
@@ -308,6 +315,11 @@ class BaseMySqlManager(manager.Manager):
         if 'device' in upgrade_info:
             self.mount_volume(context, mount_point=upgrade_info['mount_point'],
                               device_path=upgrade_info['device'])
+
+        if operating_system.exists("%s/." % upgrade_info['save_etc_dir'],
+                                   as_root=True):
+            operating_system.copy("%s/." % upgrade_info['save_etc_dir'],
+                                  "/etc", preserve=True, as_root=True)
 
         operating_system.copy("%s/." % upgrade_info['save_dir'], "/etc/mysql",
                               preserve=True, as_root=True)
