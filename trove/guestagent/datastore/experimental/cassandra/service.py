@@ -354,7 +354,7 @@ class CassandraApp(object):
         self._update_admin_credentials(user)
 
     def get_admin_credentials(self):
-        return self.app.get_current_superuser().serialize()
+        return self.get_current_superuser().serialize()
 
     def _reset_admin_password(self):
         """
