@@ -85,6 +85,12 @@ class CassandraNegativeClusterActionsRunner(NegativeClusterActionsRunner):
         raise SkipTest("No constraints apply to the size of cluster nodes.")
 
 
+class DseNegativeClusterActionsRunner(CassandraNegativeClusterActionsRunner):
+
+    def __init__(self):
+        super(DseNegativeClusterActionsRunner, self).__init__()
+
+
 class RedisNegativeClusterActionsRunner(NegativeClusterActionsRunner):
 
     def run_create_constrained_size_cluster(self):
