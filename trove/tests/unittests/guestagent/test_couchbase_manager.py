@@ -23,7 +23,6 @@ from mock import Mock
 from mock import patch
 from mock import PropertyMock
 from oslo_utils import netutils
-import testtools
 
 from trove.common import utils
 from trove.guestagent import backup
@@ -36,7 +35,7 @@ from trove.guestagent import volume
 from trove.tests.unittests import trove_testtools
 
 
-class GuestAgentCouchbaseManagerTest(testtools.TestCase):
+class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
 
     def setUp(self):
         super(GuestAgentCouchbaseManagerTest, self).setUp()
