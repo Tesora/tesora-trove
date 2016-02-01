@@ -1,5 +1,5 @@
 # flake8: noqa
- 
+
 # Copyright (c) 2015 Tesora, Inc.
 #
 # This file is part of the Tesora DBaas Platform Enterprise Edition.
@@ -56,12 +56,14 @@ import testtools.content as content
 import trove.common.cfg as cfg
 import trove.common.context as context
 import trove.common.exception as exception
-import trove.guestagent.db.models as models
+from trove.tests.unittests import trove_testtools
 
 
 CONF = cfg.CONF
 
-class GuestAgentManagerTest(testtools.TestCase):
+
+class GuestAgentManagerTest(trove_testtools.TestCase):
+
     def setUp(self):
         super(GuestAgentManagerTest, self).setUp()
         self.context = context.TroveContext()
