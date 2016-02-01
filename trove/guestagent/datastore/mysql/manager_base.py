@@ -316,8 +316,8 @@ class BaseMySqlManager(manager.Manager):
             self.mount_volume(context, mount_point=upgrade_info['mount_point'],
                               device_path=upgrade_info['device'])
 
-        if operating_system.exists("%s/." % upgrade_info['save_etc_dir'],
-                                   as_root=True):
+        if operating_system.exists(upgrade_info['save_etc_dir'],
+                                   is_directory=True, as_root=True):
             operating_system.copy("%s/." % upgrade_info['save_etc_dir'],
                                   "/etc", preserve=True, as_root=True)
 
