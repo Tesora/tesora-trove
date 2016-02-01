@@ -349,10 +349,13 @@ class Manager(manager.Manager):
         self.app.node_decommission()
 
     def cluster_secure(self, context, password):
-        return self.app.cluster_secure(password)
+        os_admin = self.app.cluster_secure(password)
+        self.__admin = CassandraAdmin(self.app.get_current_superuser())
+        return os_admin
 
     def get_admin_credentials(self, context):
         return self.app.get_admin_credentials()
 
     def store_admin_credentials(self, context, admin_credentials):
-        return self.app.store_admin_credentials(admin_credentials)
+        self.app.store_admin_credentials(admin_credentials)
+        self.__admin = CassandraAdmin(self.app.get_current_superuser())
