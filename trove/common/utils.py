@@ -18,7 +18,9 @@ import collections
 import datetime
 import inspect
 import os
+import random
 import shutil
+import string
 import time
 import types
 import uuid
@@ -277,6 +279,11 @@ def correct_id_with_req(id, request):
 
 def generate_random_password(password_length=CONF.default_password_length):
     return passlib_utils.generate_password(size=password_length)
+
+
+def generate_random_string(length,
+                           chars=string.ascii_uppercase + string.digits):
+    return ''.join(random.choice(chars) for _ in range(length))
 
 
 def try_recover(func):

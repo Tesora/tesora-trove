@@ -1248,11 +1248,11 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         self.guest.enable_as_master(replica_source_config.config_contents,
                                     for_failover)
 
-    def complete_master_setup(self, slave_info):
-        self.guest.complete_master_setup(slave_info)
+    def complete_master_setup(self, dbs):
+        self.guest.complete_master_setup(dbs)
 
-    def complete_slave_setup(self, master_info, slave_info):
-        self.guest.complete_slave_setup(master_info, slave_info)
+    def complete_slave_setup(self, master_detail, slave_detail):
+        self.guest.complete_slave_setup(master_detail, slave_detail)
 
     def sync_data_to_slaves(self):
         self.guest.sync_data_to_slaves()
