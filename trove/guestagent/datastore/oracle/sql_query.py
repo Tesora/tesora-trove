@@ -187,11 +187,9 @@ class AlterSystem(object):
         self.query = None
 
     @classmethod
-    def set_parameters(cls, params):
+    def set_parameter(cls, k, v):
         q = AlterSystem()
-        q.query = "SET " + ", ".join(
-            ['%s = %s' % (k, v) for k, v in params.items()]
-        )
+        q.query = "SET %s = %s" % (k, v)
         return q
 
     def __str__(self):

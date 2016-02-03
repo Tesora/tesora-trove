@@ -766,9 +766,16 @@ class OracleAdmin(object):
 
     def set_initialization_parameters(self, set_parameters):
         LOG.debug("Setting initialization parameters.")
-        q = sql_query.AlterSystem.set_parameters(set_parameters)
         with LocalOracleClient(self.database_name, service=True) as client:
-            client.execute(str(q))
+            for k, v in set_parameters.items():
+                try:
+                    LOG.debug("Setting initialization parameter %s = %s"
+                              % (k, v))
+                    q = sql_query.AlterSystem.set_parameter(k, v)
+                    client.execute(str(q))
+                except cx_Oracle.DatabaseError as e:
+                    LOG.exception(_("Error setting initialization parameter "
+                                    "%(k)s = %(v)s") % {'k': k, 'v': v})
 
     def get_parameter(self, parameter):
         """Get the value of the given intialization parameter."""
