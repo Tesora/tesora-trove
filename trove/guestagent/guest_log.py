@@ -16,6 +16,7 @@ from datetime import datetime
 import enum
 import hashlib
 import os
+from requests.exceptions import ConnectionError
 
 from oslo_log import log as logging
 from swiftclient.client import ClientException
@@ -196,6 +197,11 @@ class GuestLog(object):
                 self._published_header_digest = headers[self.XCM_LOG_HEAD]
             except ClientException:
                 self._published_size = 0
+            except ConnectionError as e:
+                # A bad endpoint will cause a ConnectionError
+                # This exception contains another exception that we want
+                exc = e.args[0]
+                raise exc
 
         self._update_details()
         LOG.debug("Log size for '%s' set to %d (published %d)" % (
