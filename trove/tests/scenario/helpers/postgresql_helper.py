@@ -13,8 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from proboscis import SkipTest
-
 from trove.tests.scenario.helpers.sql_helper import SqlHelper
 
 
@@ -43,17 +41,8 @@ class PostgresqlHelper(SqlHelper):
                 {'name': 'user3', 'password': 'password1',
                  'databases': [{'name': 'db1'}, {'name': 'db2'}]}]
 
-    def add_actual_data(self, *args, **kwargs):
-        raise SkipTest("Adding data to PostgreSQL is broken")
-
-    def verify_actual_data(self, *args, **kwargs):
-        raise SkipTest("Verifying data in PostgreSQL is broken")
-
-    def remove_actual_data(self, *args, **kwargs):
-        raise SkipTest("Removing data from PostgreSQL is broken")
-
     def get_dynamic_group(self):
-        return {'max_worker_processes': 11}
+        return {'effective_cache_size': '528MB'}
 
     def get_non_dynamic_group(self):
         return {'max_connections': 113}
