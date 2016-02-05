@@ -2396,6 +2396,7 @@ class CassandraDBAppTest(BaseAppTest.AppTestCase):
 
     def tearDown(self):
         super(CassandraDBAppTest, self).tearDown()
+        self.service_discovery_patch.stop()
         time.sleep = self.sleep
         time.time = self.orig_time_time
         cass_service.packager.pkg_version = self.pkg_version
