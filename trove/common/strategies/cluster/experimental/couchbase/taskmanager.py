@@ -231,8 +231,4 @@ class CouchbaseClusterTasks(task_models.ClusterTasks):
 
 
 class CouchbaseTaskManagerAPI(task_api.API):
-
-    def _cast(self, method_name, version, **kwargs):
-        LOG.debug("Casting %s" % method_name)
-        cctxt = self.client.prepare(version=version)
-        cctxt.cast(self.context, method_name, **kwargs)
+    pass
