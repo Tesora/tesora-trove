@@ -243,8 +243,8 @@ class Manager(manager.Manager):
         self._create_ra_status_file('OK')
 
     def restart(self, context):
-        app = OracleApp(OracleAppStatus.get())
-        app.restart()
+        raise exception.DatastoreOperationNotSupported(
+            operation='restart', datastore=MANAGER)
 
     def start_db_with_conf_changes(self, context, config_contents):
         raise exception.DatastoreOperationNotSupported(
