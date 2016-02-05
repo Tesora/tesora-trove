@@ -22,8 +22,14 @@ class PostgresqlHelper(SqlHelper):
         super(PostgresqlHelper, self).__init__(expected_override_name,
                                                'postgresql')
 
+    @property
+    def test_schema(self):
+        return 'public'
+
     def get_helper_credentials(self):
-        return {'name': 'lite', 'password': 'litepass', 'database': 'firstdb'}
+        # There must be a database with the same name as the user in order
+        # for the user to be able to login.
+        return {'name': 'lite', 'password': 'litepass', 'database': 'lite'}
 
     def get_valid_database_definitions(self):
         return [{'name': 'db1'}, {'name': 'db2'}, {'name': 'db3'}]
