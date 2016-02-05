@@ -13,7 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import itertools
 import os
 import re
 import stat
@@ -21,6 +20,7 @@ import tempfile
 
 from mock import call, patch
 from oslo_concurrency.processutils import UnknownArgumentError
+import six
 from testtools import ExpectedException
 
 from trove.common import exception
@@ -646,6 +646,74 @@ class TestOperatingSystem(trove_testtools.TestCase):
                               "Got unknown keyword args: {'_unknown_kw': 0}"),
             'path', 'usr', None, _unknown_kw=0)
 
+    def test_change_user_group(self):
+        self._assert_execute_call(
+            [['usermod', '-a', '-G', 'user', 'group']],
+            [{'run_as_root': True, 'root_helper': 'sudo'}],
+            operating_system.change_user_group, None, 'group', 'user',
+            as_root=True)
+
+        self._assert_execute_call(
+            [['usermod', '-a', '-G', 'user', 'group']],
+            [{'run_as_root': True, 'root_helper': 'sudo'}],
+            operating_system.change_user_group, None, 'group', 'user',
+            append=True, add_group=True, as_root=True)
+
+        self._assert_execute_call(
+            [['usermod', '-a', '-G', 'user', 'group']],
+            [{'timeout': 100}],
+            operating_system.change_user_group, None, 'group', 'user',
+            timeout=100)
+
+        self._assert_execute_call(
+            [['usermod', '-a', '-G', 'user', 'group']],
+            [{'run_as_root': True, 'root_helper': "sudo", 'timeout': None}],
+            operating_system.change_user_group, None, 'group', 'user',
+            timeout=None, as_root=True)
+
+        self._assert_execute_call(
+            None, None,
+            operating_system.change_user_group,
+            ExpectedException(exception.UnprocessableEntity,
+                              "Missing user."), '', 'group')
+
+        self._assert_execute_call(
+            None, None,
+            operating_system.change_user_group,
+            ExpectedException(exception.UnprocessableEntity,
+                              "Missing user."), None, 'group')
+
+        self._assert_execute_call(
+            None, None,
+            operating_system.change_user_group,
+            ExpectedException(exception.UnprocessableEntity,
+                              "Missing group."), 'user', '')
+
+        self._assert_execute_call(
+            None, None,
+            operating_system.change_user_group,
+            ExpectedException(exception.UnprocessableEntity,
+                              "Missing group."), 'user', None)
+
+        self._assert_execute_call(
+            None, None,
+            operating_system.change_user_group,
+            ExpectedException(exception.UnprocessableEntity,
+                              "Missing user."), '', '')
+
+        self._assert_execute_call(
+            None, None,
+            operating_system.change_user_group,
+            ExpectedException(exception.UnprocessableEntity,
+                              "Missing user."), None, None)
+
+        self._assert_execute_call(
+            None, None,
+            operating_system.change_user_group,
+            ExpectedException(UnknownArgumentError,
+                              "Got unknown keyword args: {'_unknown_kw': 0}"),
+            'user', 'add_group', _unknown_kw=0)
+
     def test_create_directory(self):
         self._assert_execute_call(
             [['mkdir', '-p', 'path']],
@@ -758,7 +826,7 @@ class TestOperatingSystem(trove_testtools.TestCase):
             as_root=True)
 
     def _assert_execute_call(self, exec_args, exec_kwargs,
-                             fun, return_value, *args, **kwargs):
+                             func, return_value, *args, **kwargs):
         """
         Execute a function with given arguments.
         Assert a return value and appropriate sequence of calls to the
@@ -776,8 +844,8 @@ class TestOperatingSystem(trove_testtools.TestCase):
                                   'utils.execute_with_timeout'.
         :type exec_kwargs:        list-of-dicts
 
-        :param fun:               Tested function call.
-        :type fun:                callable
+        :param func:              Tested function call.
+        :type func:               callable
 
         :param return_value:      Expected return value or exception
                                   from the tested call if any.
@@ -794,14 +862,14 @@ class TestOperatingSystem(trove_testtools.TestCase):
                           return_value=('0', '')) as exec_call:
             if isinstance(return_value, ExpectedException):
                 with return_value:
-                    fun(*args, **kwargs)
+                    func(*args, **kwargs)
             else:
-                actual_value = fun(*args, **kwargs)
+                actual_value = func(*args, **kwargs)
                 if return_value is not None:
                     self.assertEqual(return_value, actual_value,
                                      "Return value mismatch.")
                 expected_calls = []
-                for arg, kw in itertools.izip(exec_args, exec_kwargs):
+                for arg, kw in six.moves.zip(exec_args, exec_kwargs):
                     expected_calls.append(call(*arg, **kw))
 
                 self.assertEqual(expected_calls, exec_call.mock_calls,

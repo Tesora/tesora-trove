@@ -284,7 +284,8 @@ class TestClusterControllerWithStrategy(TestCase):
                                       mock_cluster_create,
                                       mock_get_datastore_version):
 
-        cfg.CONF.set_override('cluster_support', False, group='mongodb')
+        cfg.CONF.set_override('cluster_support', False, group='mongodb',
+                              enforce_type=True)
 
         body = self.cluster
         tenant_id = Mock()
@@ -309,7 +310,8 @@ class TestClusterControllerWithStrategy(TestCase):
                                      mock_get_datastore_version,
                                      mock_cluster_view_data):
 
-        cfg.CONF.set_override('cluster_support', True, group='mongodb')
+        cfg.CONF.set_override('cluster_support', True, group='mongodb',
+                              enforce_type=True)
 
         body = self.cluster
         tenant_id = Mock()

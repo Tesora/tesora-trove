@@ -19,11 +19,8 @@ from troveclient.compat import exceptions
 
 from trove.common.utils import generate_uuid
 from trove.common.utils import poll_until
-from trove.tests.config import CONFIG
 from trove.tests.scenario.helpers.test_helper import DataType
 from trove.tests.scenario.runners.test_runners import TestRunner
-from trove.tests.util import create_dbaas_client
-from trove.tests.util.users import Requirements
 
 
 class BackupRunner(TestRunner):
@@ -41,12 +38,12 @@ class BackupRunner(TestRunner):
         self.backup_host = None
         self.backup_info = None
         self.backup_count_prior_to_create = 0
+        self.backup_count_for_ds_prior_to_create = 0
         self.backup_count_for_instance_prior_to_create = 0
 
         self.incremental_backup_info = None
         self.restore_instance_id = 0
         self.restore_host = None
-        self.other_client = None
 
     def run_backup_create_instance_invalid(
             self, expected_exception=exceptions.BadRequest,
@@ -91,6 +88,9 @@ class BackupRunner(TestRunner):
         # Necessary to test that the count increases.
         self.backup_count_prior_to_create = len(
             self.auth_client.backups.list())
+        self.backup_count_for_ds_prior_to_create = len(
+            self.auth_client.backups.list(
+                datastore=self.instance_info.dbaas_datastore))
         self.backup_count_for_instance_prior_to_create = len(
             self.auth_client.instances.backups(self.instance_info.id))
 
@@ -170,8 +170,8 @@ class BackupRunner(TestRunner):
 
     def run_backup_list(self):
         backup_list = self.auth_client.backups.list()
-        self.assert_backup_list(backup_list,
-                                self.backup_count_prior_to_create + 1)
+        self.assert_backup_list(
+            backup_list, self.backup_count_prior_to_create + 1)
 
     def assert_backup_list(self, backup_list, expected_count):
         self.assert_equal(expected_count, len(backup_list),
@@ -191,8 +191,8 @@ class BackupRunner(TestRunner):
     def run_backup_list_filter_datastore(self):
         backup_list = self.auth_client.backups.list(
             datastore=self.instance_info.dbaas_datastore)
-        self.assert_backup_list(backup_list,
-                                self.backup_count_prior_to_create + 1)
+        self.assert_backup_list(
+            backup_list, self.backup_count_for_ds_prior_to_create + 1)
 
     def run_backup_list_filter_different_datastore(self):
         backup_list = self.auth_client.backups.list(
@@ -210,8 +210,8 @@ class BackupRunner(TestRunner):
     def run_backup_list_for_instance(self):
         backup_list = self.auth_client.instances.backups(
             self.instance_info.id)
-        self.assert_backup_list(backup_list,
-                                self.backup_count_prior_to_create + 1)
+        self.assert_backup_list(
+            backup_list, self.backup_count_for_instance_prior_to_create + 1)
 
     def run_backup_get(self):
         backup = self.auth_client.backups.get(self.backup_info.id)
@@ -231,21 +231,13 @@ class BackupRunner(TestRunner):
     def run_backup_get_unauthorized_user(
             self, expected_exception=exceptions.NotFound,
             expected_http_code=404):
-        self._create_other_client()
         self.assert_raises(
             expected_exception, None,
-            self.other_client.backups.get, self.backup_info.id)
+            self.unauth_client.backups.get, self.backup_info.id)
         # we're using a different client, so we'll check the return code
         # on it explicitly, instead of depending on 'assert_raises'
         self.assert_client_code(expected_http_code=expected_http_code,
-                                client=self.other_client)
-
-    def _create_other_client(self):
-        if not self.other_client:
-            requirements = Requirements(is_admin=False)
-            other_user = CONFIG.users.find_user(
-                requirements, black_list=[self.instance_info.user.auth_user])
-            self.other_client = create_dbaas_client(other_user)
+                                client=self.unauth_client)
 
     def run_restore_from_backup(self):
         self.assert_restore_from_backup(self.backup_info.id)
@@ -264,7 +256,10 @@ class BackupRunner(TestRunner):
             self.instance_info.name + '_restore',
             self.instance_info.dbaas_flavor_href,
             self.instance_info.volume,
-            restorePoint=restore_point)
+            nics=self.instance_info.nics,
+            restorePoint=restore_point,
+            datastore=self.instance_info.dbaas_datastore,
+            datastore_version=self.instance_info.dbaas_datastore_version)
         return result
 
     def run_restore_from_backup_completed(
@@ -307,14 +302,13 @@ class BackupRunner(TestRunner):
     def run_delete_backup_unauthorized_user(
             self, expected_exception=exceptions.NotFound,
             expected_http_code=404):
-        self._create_other_client()
         self.assert_raises(
             expected_exception, None,
-            self.other_client.backups.delete, self.backup_info.id)
+            self.unauth_client.backups.delete, self.backup_info.id)
         # we're using a different client, so we'll check the return code
         # on it explicitly, instead of depending on 'assert_raises'
         self.assert_client_code(expected_http_code=expected_http_code,
-                                client=self.other_client)
+                                client=self.unauth_client)
 
     def run_delete_backup(self, expected_http_code=202):
         self.assert_delete_backup(self.backup_info.id, expected_http_code)

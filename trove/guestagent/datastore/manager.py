@@ -53,12 +53,13 @@ class Manager(periodic_task.PeriodicTasks):
 
     GUEST_LOG_BASE_DIR = '/var/log/trove'
     GUEST_LOG_DATASTORE_DIRNAME = 'datastore'
+
+    GUEST_LOG_DEFS_GUEST_LABEL = 'guest'
     GUEST_LOG_DEFS_GENERAL_LABEL = 'general'
     GUEST_LOG_DEFS_ERROR_LABEL = 'error'
     GUEST_LOG_DEFS_SLOW_QUERY_LABEL = 'slow_query'
 
     def __init__(self, manager_name):
-
         super(Manager, self).__init__(CONF)
 
         # Manager properties
@@ -124,6 +125,12 @@ class Manager(periodic_task.PeriodicTasks):
         """
         return None
 
+    def configuration_manager(self):
+        """If the datastore supports the new-style configuration manager,
+        it should override this to return it.
+        """
+        return None
+
     @property
     def datastore_log_defs(self):
         """Any datastore-specific log files should be overridden in this dict
@@ -157,7 +164,7 @@ class Manager(periodic_task.PeriodicTasks):
         log_file = CONF.get('log_file', 'trove-guestagent.log')
         guestagent_log = guestagent_utils.build_file_path(log_dir, log_file)
         return {
-            'guest': {
+            self.GUEST_LOG_DEFS_GUEST_LABEL: {
                 self.GUEST_LOG_TYPE_LABEL: guest_log.LogType.SYS,
                 self.GUEST_LOG_USER_LABEL: None,
                 self.GUEST_LOG_FILE_LABEL: guestagent_log,
@@ -202,9 +209,7 @@ class Manager(periodic_task.PeriodicTasks):
                     exposed_logs = CONF.get(self.manager).get(
                         'guest_log_exposed_logs')
                 except oslo_cfg.NoSuchOptError:
-                    pass
-                if not exposed_logs:
-                    exposed_logs = CONF.guest_log_exposed_logs
+                    exposed_logs = ''
                 LOG.debug("Available log defs: %s" % ",".join(gl_defs.keys()))
                 exposed_logs = exposed_logs.lower().replace(',', ' ').split()
                 LOG.debug("Exposing log defs: %s" % ",".join(exposed_logs))
@@ -223,12 +228,6 @@ class Manager(periodic_task.PeriodicTasks):
                         exposed)
 
         self._guest_log_loaded_context = self.guest_log_context
-
-    def configuration_manager(self):
-        """If the datastore supports the new-style configuration manager,
-        it should override this to return it.
-        """
-        return None
 
     ################
     # Status related
@@ -262,6 +261,10 @@ class Manager(periodic_task.PeriodicTasks):
                                 users, device_path, mount_point, backup_info,
                                 config_contents, root_password, overrides,
                                 cluster_config, snapshot)
+                if overrides:
+                    LOG.info(_("Applying user-specified configuration "
+                               "(called from 'prepare')."))
+                    self.apply_overrides_on_prepare(context, overrides)
             except Exception as ex:
                 self.prepare_error = True
                 LOG.exception(_("An error occurred preparing datastore: %s") %
@@ -310,6 +313,10 @@ class Manager(periodic_task.PeriodicTasks):
                           ex.message)
             raise
 
+    def apply_overrides_on_prepare(self, context, overrides):
+        self.update_overrides(context, overrides)
+        self.restart(context)
+
     @abc.abstractmethod
     def do_prepare(self, context, packages, databases, memory_mb, users,
                    device_path, mount_point, backup_info, config_contents,
@@ -337,6 +344,14 @@ class Manager(periodic_task.PeriodicTasks):
         informed of the error.
         """
         LOG.info(_('No post_prepare work has been defined.'))
+        pass
+
+    #################
+    # Service related
+    #################
+    @abc.abstractmethod
+    def restart(self, context):
+        """Restart the database service."""
         pass
 
     #####################
@@ -391,12 +406,13 @@ class Manager(periodic_task.PeriodicTasks):
     # Log related
     #############
     def guest_log_list(self, context):
-        LOG.debug("Getting list of guest logs.")
+        LOG.info(_("Getting list of guest logs."))
         self.guest_log_context = context
         gl_cache = self.guest_log_cache
         result = filter(None, [gl_cache[log_name].show()
+                        if gl_cache[log_name].exposed else None
                         for log_name in gl_cache.keys()])
-        LOG.debug("Returning list of logs: %s", result)
+        LOG.info(_("Returning list of logs: %s") % result)
         return result
 
     def guest_log_action(self, context, log_name, enable, disable,
@@ -407,12 +423,13 @@ class Manager(periodic_task.PeriodicTasks):
         # Enable if we are publishing, unless told to disable
         if publish and not disable:
             enable = True
-        LOG.debug("Processing guest log '%s' "
-                  "(enable=%s, disable=%s, publish=%s, discard=%s)." %
-                  (log_name, enable, disable, publish, discard))
+        LOG.info(_("Processing guest log '%(log)s' "
+                 "(enable=%(en)s, disable=%(dis)s, "
+                   "publish=%(pub)s, discard=%(disc)s).") %
+                 {'log': log_name, 'en': enable, 'dis': disable,
+                  'pub': publish, 'disc': discard})
         self.guest_log_context = context
         gl_cache = self.guest_log_cache
-        response = None
         if log_name in gl_cache:
             if ((gl_cache[log_name].type == guest_log.LogType.SYS) and
                     not publish):
@@ -428,21 +445,22 @@ class Manager(periodic_task.PeriodicTasks):
                     (gl_cache[log_name].enabled and disable) or
                     (not gl_cache[log_name].enabled and enable))
                 if requires_change:
-                    restart_required = self.guest_log_enable(context, log_name,
-                                                             disable)
+                    restart_required = self.guest_log_enable(
+                        context, log_name, disable)
                     if restart_required:
                         self.set_guest_log_status(
                             guest_log.LogStatus.Restart_Required, log_name)
                     gl_cache[log_name].enabled = enable
-                response = gl_cache[log_name].show()
+            log_details = gl_cache[log_name].show()
             if discard:
-                response = gl_cache[log_name].discard_log()
+                log_details = gl_cache[log_name].discard_log()
             if publish:
-                response = gl_cache[log_name].publish_log()
-        else:
-            raise exception.NotFound("Log '%s' is not defined." % log_name)
+                log_details = gl_cache[log_name].publish_log()
+            LOG.info(_("Details for log '%(log)s': %(det)s") %
+                     {'log': log_name, 'det': log_details})
+            return log_details
 
-        return response
+        raise exception.NotFound("Log '%s' is not defined." % log_name)
 
     def guest_log_enable(self, context, log_name, disable):
         """This method can be overridden by datastore implementations to
@@ -453,9 +471,9 @@ class Manager(periodic_task.PeriodicTasks):
         the logging to begin.
         """
         restart_required = False
+        verb = ("Disabling" if disable else "Enabling")
         if self.configuration_manager:
-            prefix = ("Dis" if disable else "En")
-            LOG.debug("%sabling log '%s'" % (prefix, log_name))
+            LOG.debug("%s log '%s'" % (verb, log_name))
             gl_def = self.guest_log_defs[log_name]
             enable_cfg_label = "%s_%s_log" % (self.GUEST_LOG_ENABLE_LABEL,
                                               log_name)
@@ -475,6 +493,13 @@ class Manager(periodic_task.PeriodicTasks):
                     gl_def.get(self.GUEST_LOG_ENABLE_LABEL),
                     gl_def.get(self.GUEST_LOG_SECTION_LABEL),
                     restart_required)
+        else:
+            msg = (_("%(verb)s log '%(log)s' not supported - "
+                     "no configuration manager defined!") %
+                   {'verb': verb, 'log': log_name})
+            LOG.error(msg)
+            raise exception.GuestError(msg)
+
         return restart_required
 
     def _apply_log_overrides(self, context, remove_label,
@@ -498,10 +523,17 @@ class Manager(periodic_task.PeriodicTasks):
         provided, sets the status on all logs.
         """
         gl_cache = self.guest_log_cache
-        if log_name and log_name in gl_cache:
-            gl_cache[log_name].status = status
-        else:
-            for name in gl_cache.keys():
+        names = [log_name]
+        if not log_name or log_name not in gl_cache:
+            names = gl_cache.keys()
+        for name in names:
+            # If we're already in restart mode and we're asked to set the
+            # status to restart, assume enable/disable has been flipped
+            # without a restart and set the status to restart done
+            if (gl_cache[name].status == guest_log.LogStatus.Restart_Required
+                    and status == guest_log.LogStatus.Restart_Required):
+                gl_cache[name].status = guest_log.LogStatus.Restart_Completed
+            else:
                 gl_cache[name].status = status
 
     def build_log_file_name(self, log_name, owner, datastore_dir=None):

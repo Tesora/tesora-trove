@@ -196,7 +196,7 @@ class PgBaseBackup(base.BackupRunner, PgSqlConfig, PgBaseBackupUtil,
 
     def _run_post_backup(self):
         """Get rid of WAL data we don't need any longer"""
-        arch_cleanup_bin = os.path.join(self.PGSQL_EXTRA_BIN_DIR,
+        arch_cleanup_bin = os.path.join(self.pgsql_extra_bin_dir,
                                         "pg_archivecleanup")
         f = os.path.basename(self.most_recent_backup_file())
         cmd_full = " ".join((arch_cleanup_bin, WAL_ARCHIVE_DIR, f))

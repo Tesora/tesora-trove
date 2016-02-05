@@ -99,7 +99,7 @@ class NotifyMixin(object):
             datastore_manager_id = id_map[datastore_manager]
         else:
             datastore_manager_id = cfg.UNKNOWN_SERVICE_ID
-            LOG.error("Datastore ID for Manager (%s) is not configured"
+            LOG.error(_("Datastore ID for Manager (%s) is not configured")
                       % datastore_manager)
         return datastore_manager_id
 
@@ -555,22 +555,22 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             service.set_status(ServiceStatuses.
                                FAILED_TIMEOUT_GUESTAGENT)
             service.save()
-            LOG.error(_("Service status: %(status)s") %
+            LOG.error(_("Service status: %(status)s\n"
+                        "Service error description: %(desc)s") %
                       {'status': ServiceStatuses.
-                       FAILED_TIMEOUT_GUESTAGENT.api_status})
-            LOG.error(_("Service error description: %(desc)s") %
-                      {'desc': ServiceStatuses.
+                       FAILED_TIMEOUT_GUESTAGENT.api_status,
+                       'desc': ServiceStatuses.
                        FAILED_TIMEOUT_GUESTAGENT.description})
             # Updating instance status
             db_info = DBInstance.find_by(id=self.id, deleted=False)
             db_info.set_task_status(InstanceTasks.
                                     BUILDING_ERROR_TIMEOUT_GA)
             db_info.save()
-            LOG.error(_("Trove instance status: %(action)s") %
+            LOG.error(_("Trove instance status: %(action)s\n"
+                        "Trove instance status description: %(text)s") %
                       {'action': InstanceTasks.
-                       BUILDING_ERROR_TIMEOUT_GA.action})
-            LOG.error(_("Trove instance status description: %(text)s") %
-                      {'text': InstanceTasks.
+                       BUILDING_ERROR_TIMEOUT_GA.action,
+                       'text': InstanceTasks.
                        BUILDING_ERROR_TIMEOUT_GA.db_text})
 
     def _service_is_active(self):
@@ -621,12 +621,12 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                 availability_zone=availability_zone,
                 nics=nics, config_drive=config_drive,
                 key_name=key_name, userdata=userdata)
-            LOG.debug("Created new compute instance %(server_id)s "
-                      "for id: %(id)s" %
-                      {'server_id': server.id, 'id': self.id})
-
             server_dict = server._info
-            LOG.debug("Server response: %s" % server_dict)
+            LOG.debug("Created new compute instance %(server_id)s "
+                      "for id: %(id)s\nServer response: %(response)s" %
+                      {'server_id': server.id, 'id': self.id,
+                       'response': server_dict})
+
             volume_id = None
             for volume in server_dict.get('os:volumes', []):
                 volume_id = volume.get('id')
@@ -796,8 +796,12 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                 err = inst_models.InstanceTasks.BUILDING_ERROR_VOLUME
                 self._log_and_raise(e, msg, err)
         else:
-            LOG.debug("device_path = %s" % device_path)
-            LOG.debug("mount_point = %s" % mount_point)
+            LOG.debug("device_path = %(path)s\n"
+                      "mount_point = %(point)s" %
+                      {
+                          "path": device_path,
+                          "point": mount_point
+                      })
             volume_info = {
                 'block_device': None,
                 'device_path': device_path,
@@ -807,9 +811,10 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
         return volume_info
 
     def _log_and_raise(self, exc, message, task_status):
-        LOG.error(message)
-        LOG.error(exc)
-        LOG.error(traceback.format_exc())
+        LOG.error(_("%(message)s\n%(exc)s\n%(trace)s") %
+                  {"message": message,
+                   "exc": exc,
+                   "trace": traceback.format_exc()})
         self.update_db(task_status=task_status)
         raise TroveError(message=message)
 
@@ -847,13 +852,18 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
         block_device = {bdm: mapping}
         created_volumes = [{'id': v_ref.id,
                             'size': v_ref.size}]
-        LOG.debug("block_device = %s" % block_device)
-        LOG.debug("volume = %s" % created_volumes)
 
         device_path = self.device_path
         mount_point = CONF.get(datastore_manager).mount_point
-        LOG.debug("device_path = %s" % device_path)
-        LOG.debug("mount_point = %s" % mount_point)
+
+        LOG.debug("block_device = %(device)s\n"
+                  "volume = %(volume)s\n"
+                  "device_path = %(path)s\n"
+                  "mount_point = %(point)s" %
+                  {"device": block_device,
+                   "volume": created_volumes,
+                   "path": device_path,
+                   "point": mount_point})
 
         volume_info = {'block_device': block_device,
                        'device_path': device_path,
@@ -938,7 +948,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             server = self.nova_client.servers.get(
                 self.db_info.compute_instance_id)
             self.db_info.addresses = server.addresses
-            LOG.debug(_("Creating dns entry..."))
+            LOG.debug("Creating dns entry...")
             ip = self.dns_ip_address
             if not ip:
                 raise TroveError("Failed to create DNS entry for instance %s. "
@@ -1312,84 +1322,6 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
                       % self.id)
         finally:
             self.reset_task_status()
-
-    def update_overrides(self, overrides, remove=False):
-        LOG.info(_("Initiating datastore configurations update on instance "
-                   "%s.") % self.id)
-        LOG.debug("overrides: %s" % overrides)
-        LOG.debug("self.ds_version: %s" % self.ds_version.__dict__)
-        LOG.debug("self.configuration.id: %s" % self.configuration.id)
-        # check if the configuration requires a restart of the instance
-        config = Configuration(self.context, self.configuration.id)
-        need_restart = config.does_configuration_need_restart()
-        LOG.debug("do we need a restart?: %s" % need_restart)
-        if need_restart:
-            status = inst_models.InstanceTasks.RESTART_REQUIRED
-            self.update_db(task_status=status)
-
-        flavor = self.nova_client.flavors.get(self.flavor_id)
-
-        config_overrides = self._render_override_config(
-            flavor,
-            overrides=overrides)
-        try:
-            self.guest.update_overrides(config_overrides.config_contents,
-                                        remove=remove)
-            self.guest.apply_overrides(overrides)
-        except GuestError:
-            LOG.error(_("Failed to initiate datastore configurations update "
-                      "on instance %s.") % self.id)
-
-    def unassign_configuration(self, flavor, configuration_id):
-        LOG.info(_("Initiating configuration group %(config_id)s removal from "
-                 "instance %(instance_id)s.")
-                 % {'config_id': configuration_id,
-                    'instance_id': self.id})
-
-        def _find_item(items, item_name):
-            LOG.debug("Searching for %(item_name)s in %(items)s" %
-                      {'item_name': item_name, 'items': items})
-            # find the item in the list
-            for i in items:
-                if i[0] == item_name:
-                    return i
-
-        def _convert_value(value):
-            # split the value and the size e.g. 512M=['512','M']
-            pattern = re.compile('(\d+)(\w+)')
-            split = pattern.findall(value)
-            if len(split) < 2:
-                return value
-            digits, size = split
-            conversions = {
-                'K': 1024,
-                'M': 1024 ** 2,
-                'G': 1024 ** 3,
-            }
-            return str(int(digits) * conversions[size])
-
-        default_config = self._render_config_dict(flavor)
-        args = {
-            "ds_manager": self.ds_version.manager,
-            "config": default_config,
-        }
-        LOG.debug("default %(ds_manager)s section: %(config)s" % args)
-        LOG.debug("self.configuration: %s" % self.configuration.__dict__)
-
-        overrides = {}
-        config_items = Configuration.load_items(self.context, configuration_id)
-        for item in config_items:
-            LOG.debug("finding item(%s)" % item.__dict__)
-            try:
-                key, val = _find_item(default_config, item.configuration_key)
-            except TypeError:
-                val = None
-                restart_required = inst_models.InstanceTasks.RESTART_REQUIRED
-                self.update_db(task_status=restart_required)
-            if val:
-                overrides[item.configuration_key] = _convert_value(val)
-        LOG.debug("setting the default variables in dict: %s" % overrides)
-        self.update_overrides(overrides, remove=True)
 
     def refresh_compute_server_info(self):
         """Refreshes the compute server field."""
@@ -1913,9 +1845,9 @@ class ResizeAction(ResizeActionBase):
         self.instance.server.resize(self.new_flavor_id)
 
     def _revert_nova_action(self):
-        LOG.debug("Instance %s calling Compute revert resize..."
+        LOG.debug("Instance %s calling Compute revert resize... "
+                  "Repairing config."
                   % self.instance.id)
-        LOG.debug("Repairing config.")
         try:
             config = self.instance._render_config(self.old_flavor)
             config = {'config_contents': config.config_contents}
@@ -1960,9 +1892,11 @@ class MigrateAction(ResizeActionBase):
         LOG.debug("Currently no assertions for a Migrate Action")
 
     def _initiate_nova_action(self):
-        LOG.debug("Migrating instance %s without flavor change ..."
-                  % self.instance.id)
-        LOG.debug("Forcing migration to host(%s)" % self.host)
+        LOG.debug("Migrating instance %(instance)s without flavor change ...\n"
+                  "Forcing migration to host(%(host)s)" %
+                  {"instance": self.instance.id,
+                   "host": self.host})
+
         self.instance.server.migrate(force_host=self.host)
 
     def _record_action_success(self):

@@ -52,35 +52,22 @@ class PgSqlConfig(PgSqlProcess):
         operating_system.SUSE: '/var/lib/pgsql/'}[OS]
     LISTEN_ADDRESSES = ['*']  # Listen on all available IP (v4/v6) interfaces.
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
+        super(PgSqlConfig, self).__init__(*args, **kwargs)
+
+        revision_dir = guestagent_utils.build_file_path(
+            os.path.dirname(self.pgsql_config),
+            ConfigurationManager.DEFAULT_STRATEGY_OVERRIDES_SUB_DIR)
         self._configuration_manager = ConfigurationManager(
-            self.PGSQL_CONFIG, self.PGSQL_OWNER, self.PGSQL_OWNER,
+            self.pgsql_config, self.PGSQL_OWNER, self.PGSQL_OWNER,
             PropertiesCodec(
                 delimiter='=',
                 string_mappings={'on': True, 'off': False, "''": None}),
             requires_root=True,
-            override_strategy=OneFileOverrideStrategy(
-                self._init_overrides_dir()))
-
-    # TODO(pmalik): To be removed when
-    # 'https://review.openstack.org/#/c/218382/' merges.
-    def _init_overrides_dir(self):
-        """Initialize a directory for configuration overrides.
-        """
-        revision_dir = guestagent_utils.build_file_path(
-            os.path.dirname(self.PGSQL_CONFIG),
-            ConfigurationManager.DEFAULT_STRATEGY_OVERRIDES_SUB_DIR)
-
-        if not os.path.exists(revision_dir):
-            operating_system.create_directory(
-                revision_dir,
-                user=self.PGSQL_OWNER, group=self.PGSQL_OWNER,
-                force=True, as_root=True)
-
-        return revision_dir
+            override_strategy=OneFileOverrideStrategy(revision_dir))
 
     @property
-    def PGSQL_EXTRA_BIN_DIR(self):
+    def pgsql_extra_bin_dir(self):
         """Redhat and Ubuntu packages for PgSql do not place 'extra' important
         binaries in /usr/bin, but rather in a directory like /usr/pgsql-9.4/bin
         in the case of PostgreSQL 9.4 for RHEL/CentOS
@@ -91,15 +78,15 @@ class PgSqlConfig(PgSqlProcess):
                 operating_system.SUSE: '/usr/bin'}[self.OS] % version
 
     @property
-    def PGSQL_CONFIG(self):
+    def pgsql_config(self):
         return self._find_config_file('postgresql.conf')
 
     @property
-    def PGSQL_HBA_CONFIG(self):
+    def pgsql_hba_config(self):
         return self._find_config_file('pg_hba.conf')
 
     @property
-    def PGSQL_IDENT_CONFIG(self):
+    def pgsql_ident_config(self):
         return self._find_config_file('pg_ident.conf')
 
     def _find_config_file(self, name_pattern):
@@ -147,9 +134,9 @@ class PgSqlConfig(PgSqlProcess):
         """
         LOG.debug("Applying initial guestagent configuration.")
         file_locations = {
-            'data_directory': self._quote(self.PGSQL_DATA_DIR),
-            'hba_file': self._quote(self.PGSQL_HBA_CONFIG),
-            'ident_file': self._quote(self.PGSQL_IDENT_CONFIG),
+            'data_directory': self._quote(self.pgsql_data_dir),
+            'hba_file': self._quote(self.pgsql_hba_config),
+            'ident_file': self._quote(self.pgsql_ident_config),
             'external_pid_file': self._quote(self.PID_FILE),
             'unix_socket_directories': self._quote(self.UNIX_SOCKET_DIR),
             'listen_addresses': self._quote(','.join(self.LISTEN_ADDRESSES)),
@@ -183,8 +170,8 @@ class PgSqlConfig(PgSqlProcess):
         # The OrderedDict is necessary to guarantee the iteration order.
         access_rules = OrderedDict(
             [('local', [['all', 'postgres,os_admin', None, 'trust'],
-                        ['all', 'all', None, 'md5'],
-                        ['replication', 'postgres,os_admin', None, 'trust']]),
+                        ['replication', 'postgres,os_admin', None, 'trust'],
+                        ['all', 'all', None, 'md5']]),
              ('host', [['all', 'postgres,os_admin', '127.0.0.1/32', 'trust'],
                        ['all', 'postgres,os_admin', '::1/128', 'trust'],
                        ['all', 'postgres,os_admin', 'localhost', 'trust'],
@@ -193,14 +180,14 @@ class PgSqlConfig(PgSqlProcess):
                        ['all', 'all', '0.0.0.0/0', 'md5'],
                        ['all', 'all', '::/0', 'md5']])
              ])
-        operating_system.write_file(self.PGSQL_HBA_CONFIG, access_rules,
+        operating_system.write_file(self.pgsql_hba_config, access_rules,
                                     PropertiesCodec(
                                         string_mappings={'\t': None}),
                                     as_root=True)
-        operating_system.chown(self.PGSQL_HBA_CONFIG,
+        operating_system.chown(self.pgsql_hba_config,
                                self.PGSQL_OWNER, self.PGSQL_OWNER,
                                as_root=True)
-        operating_system.chmod(self.PGSQL_HBA_CONFIG, FileMode.SET_USR_RO,
+        operating_system.chmod(self.pgsql_hba_config, FileMode.SET_USR_RO,
                                as_root=True)
 
     def disable_backups(self):

@@ -149,47 +149,18 @@ class CassandraApp(object):
             LOG.exception(_("Error while initiating storage structure."))
 
     def start_db(self, update_db=False):
-        LOG.info(_("Starting Cassandra server."))
-        self._enable_db_on_boot()
-        try:
-            operating_system.start_service(self.service_candidates)
-        except exception.ProcessExecutionError:
-            LOG.exception(_("Error starting Cassandra"))
-            pass
-
-        if not (self.status.
-                wait_for_real_status_to_change_to(
-                rd_instance.ServiceStatuses.RUNNING,
-                self.state_change_wait_time,
-                update_db)):
-            try:
-                utils.execute_with_timeout(self.CASSANDRA_KILL_CMD,
-                                           shell=True)
-            except exception.ProcessExecutionError:
-                LOG.exception(_("Error killing Cassandra start command."))
-            self.status.end_restart()
-            raise RuntimeError(_("Could not start Cassandra"))
+        self.status.start_db_service(
+            self.service_candidates, self.state_change_wait_time,
+            enable_on_boot=True, update_db=update_db)
 
     def stop_db(self, update_db=False, do_not_start_on_reboot=False):
-        if do_not_start_on_reboot:
-            self._disable_db_on_boot()
-        operating_system.stop_service(self.service_candidates)
-
-        if not (self.status.wait_for_real_status_to_change_to(
-                rd_instance.ServiceStatuses.SHUTDOWN,
-                self.state_change_wait_time, update_db)):
-            LOG.error(_("Could not stop Cassandra."))
-            self.status.end_restart()
-            raise RuntimeError(_("Could not stop Cassandra."))
+        self.status.stop_db_service(
+            self.service_candidates, self.state_change_wait_time,
+            disable_on_boot=do_not_start_on_reboot, update_db=update_db)
 
     def restart(self):
-        try:
-            self.status.begin_restart()
-            LOG.info(_("Restarting Cassandra server."))
-            self.stop_db()
-            self.start_db()
-        finally:
-            self.status.end_restart()
+        self.status.restart_db_service(
+            self.service_candidates, self.state_change_wait_time)
 
     def _install_db(self, packages):
         """Install Cassandra server"""
@@ -987,3 +958,6 @@ class CassandraLocalhostConnection(CassandraConnection):
 
     def __init__(self, user):
         super(CassandraLocalhostConnection, self).__init__(None, user)
+
+    def cleanup_stalled_db_services(self):
+        utils.execute_with_timeout(self.CASSANDRA_KILL_CMD, shell=True)

@@ -24,6 +24,7 @@ from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common.remote import create_swift_client
+from trove.common import stream_codecs
 from trove.guestagent.common import operating_system
 from trove.guestagent.common.operating_system import FileMode
 
@@ -64,7 +65,7 @@ class LogStatus(enum.Enum):
     # Logging is on and some data has been published
     Partial = 6
 
-    # Log file has been rotated, so next publish will delete container first
+    # Log file has been rotated, so next publish will discard log first
     Rotated = 7
 
     # Waiting for a datastore restart to begin logging
@@ -77,11 +78,12 @@ class LogStatus(enum.Enum):
 
 class GuestLog(object):
 
-    XCM_LOG_NAME = 'x-container-meta-log-name'
-    XCM_LOG_TYPE = 'x-container-meta-log-type'
-    XCM_LOG_FILE = 'x-container-meta-log-file'
-    XCM_LOG_SIZE = 'x-container-meta-log-size'
-    XCM_LOG_HEAD = 'x-container-meta-log-header-digest'
+    MF_FILE_SUFFIX = '_metafile'
+    MF_LABEL_LOG_NAME = 'log_name'
+    MF_LABEL_LOG_TYPE = 'log_type'
+    MF_LABEL_LOG_FILE = 'log_file'
+    MF_LABEL_LOG_SIZE = 'log_size'
+    MF_LABEL_LOG_HEADER = 'log_header_digest'
 
     def __init__(self, log_context, log_name, log_type, log_user, log_file,
                  log_exposed):
@@ -100,6 +102,8 @@ class GuestLog(object):
         self._cached_swift_client = None
         self._enabled = log_type == LogType.SYS
         self._file_readable = False
+        self._container_name = None
+        self._codec = stream_codecs.JsonCodec()
 
         self._set_status(self._type == LogType.USER,
                          LogStatus.Disabled, LogStatus.Enabled)
@@ -158,6 +162,24 @@ class GuestLog(object):
             LOG.debug("Log status for '%s' *not* set to %s (currently %s)" %
                       (self._name, status, self.status))
 
+    def get_container_name(self, force=False):
+        if not self._container_name or force:
+            container_name = CONF.guest_log_container_name
+            try:
+                self.swift_client.get_container(container_name, prefix='dummy')
+            except ClientException as ex:
+                if ex.http_status == 404:
+                    LOG.debug("Container '%s' not found; creating now" %
+                              container_name)
+                    self.swift_client.put_container(
+                        container_name, headers=self._get_headers())
+                else:
+                    LOG.exception(_("Could not retrieve container '%s'") %
+                                  container_name)
+                    raise
+            self._container_name = container_name
+        return self._container_name
+
     def _set_status(self, use_first, first_status, second_status):
         if use_first:
             self.status = first_status
@@ -165,37 +187,49 @@ class GuestLog(object):
             self.status = second_status
 
     def show(self):
-        show_details = None
         if self.exposed:
             self._refresh_details()
             container_name = 'None'
+            prefix = 'None'
             if self._published_size:
-                container_name = self._container_name()
+                container_name = self.get_container_name()
+                prefix = self._object_prefix()
             pending = self._size - self._published_size
             if self.status == LogStatus.Rotated:
                 pending = self._size
-            show_details = {
+            return {
                 'name': self._name,
                 'type': self._type.name,
                 'status': self.status.name.replace('_', ' '),
                 'published': self._published_size,
                 'pending': pending,
                 'container': container_name,
+                'prefix': prefix,
+                'metafile': self._metafile_name()
             }
-        return show_details
+        else:
+            raise exception.UnauthorizedRequest(_(
+                "Not authorized to show log '%s'.") % self._name)
 
     def _refresh_details(self):
 
-        headers = None
         if self._published_size is None:
             # Initializing, so get all the values
             try:
-                headers = self.swift_client.head_container(
-                    self._container_name())
-                self._published_size = int(headers[self.XCM_LOG_SIZE])
-                self._published_header_digest = headers[self.XCM_LOG_HEAD]
-            except ClientException:
-                self._published_size = 0
+                meta_details = self._get_meta_details()
+                self._published_size = int(
+                    meta_details[self.MF_LABEL_LOG_SIZE])
+                self._published_header_digest = (
+                    meta_details[self.MF_LABEL_LOG_HEADER])
+            except ClientException as ex:
+                if ex.http_status == 404:
+                    LOG.debug("No published metadata found for log '%s'" %
+                              self._name)
+                    self._published_size = 0
+                else:
+                    LOG.exception(_("Could not get meta details for log '%s'")
+                                  % self._name)
+                    raise
 
         self._update_details()
         LOG.debug("Log size for '%s' set to %d (published %d)" % (
@@ -253,19 +287,15 @@ class GuestLog(object):
         with open(log_file, 'r') as log:
             self._header_digest = hashlib.md5(log.readline()).hexdigest()
 
-    def _container_name(self):
-        return CONF.guest_log_container_name % {
-            'datastore': CONF.datastore_manager,
-            'log': self._name,
-            'instance_id': CONF.guest_id
-        }
+    def _get_headers(self):
+        return {'X-Delete-After': CONF.guest_log_expiry}
 
     def publish_log(self):
         if self.exposed:
             if self._log_rotated():
                 LOG.debug("Log file rotation detected for '%s' - "
                           "discarding old log" % self._name)
-                self._delete_container()
+                self._delete_log_components()
             if os.path.isfile(self._file):
                 self._publish_to_container(self._file)
             else:
@@ -274,23 +304,26 @@ class GuestLog(object):
                     self._file)
             return self.show()
         else:
-            raise exception.UnauthorizedRequest(
-                "Not authorized to publish log '%s'." % self._name)
+            raise exception.UnauthorizedRequest(_(
+                "Not authorized to publish log '%s'.") % self._name)
 
     def discard_log(self):
         if self.exposed:
-            self._delete_container()
+            self._delete_log_components()
             return self.show()
         else:
-            raise exception.UnauthorizedRequest(
-                "Not authorized to discard log '%s'." % self._name)
+            raise exception.UnauthorizedRequest(_(
+                "Not authorized to discard log '%s'.") % self._name)
 
-    def _delete_container(self):
-        c = self._container_name()
-        files = [f['name'] for f in self.swift_client.get_container(c)[1]]
-        for f in files:
-            self.swift_client.delete_object(c, f)
-        self.swift_client.delete_container(c)
+    def _delete_log_components(self):
+        container_name = self.get_container_name(force=True)
+        prefix = self._object_prefix()
+        swift_files = [swift_file['name']
+                       for swift_file in self.swift_client.get_container(
+                       container_name, prefix=prefix)[1]]
+        swift_files.append(self._metafile_name())
+        for swift_file in swift_files:
+            self.swift_client.delete_object(container_name, swift_file)
         self._set_status(self._type == LogType.USER,
                          LogStatus.Disabled, LogStatus.Enabled)
         self._published_size = 0
@@ -298,6 +331,7 @@ class GuestLog(object):
     def _publish_to_container(self, log_filename):
         log_component, log_lines = '', 0
         chunk_size = CONF.guest_log_limit
+        container_name = self.get_container_name(force=True)
 
         def _read_chunk(f):
             while True:
@@ -307,17 +341,19 @@ class GuestLog(object):
                 yield current_chunk
 
         def _write_log_component():
-            object_header.update({'X-Object-Meta-Lines': log_lines})
-            self.swift_client.put_object(self._container_name(),
-                                         self._object_name(), log_component,
-                                         headers=object_header)
+            object_headers.update({'x-object-meta-lines': log_lines})
+            component_name = '%s%s' % (self._object_prefix(),
+                                       self._object_name())
+            self.swift_client.put_object(container_name,
+                                         component_name, log_component,
+                                         headers=object_headers)
             self._published_size = (
                 self._published_size + len(log_component))
             self._published_header_digest = self._header_digest
 
         self._refresh_details()
-        self._set_container_details()
-        object_header = {'X-Delete-After': CONF.guest_log_expiry}
+        self._put_meta_details()
+        object_headers = self._get_headers()
         with open(log_filename, 'r') as log:
             LOG.debug("seeking to %s", self._published_size)
             log.seek(self._published_size)
@@ -330,25 +366,41 @@ class GuestLog(object):
                     log_lines += 1
         if log_lines > 0:
             _write_log_component()
-        self._set_container_details()
+        self._put_meta_details()
+
+    def _put_meta_details(self):
+        metafile_name = self._metafile_name()
+        metafile_details = {
+            self.MF_LABEL_LOG_NAME: self._name,
+            self.MF_LABEL_LOG_TYPE: self._type.name,
+            self.MF_LABEL_LOG_FILE: self._file,
+            self.MF_LABEL_LOG_SIZE: self._published_size,
+            self.MF_LABEL_LOG_HEADER: self._header_digest,
+        }
+        container_name = self.get_container_name()
+        self.swift_client.put_object(container_name, metafile_name,
+                                     self._codec.serialize(metafile_details),
+                                     headers=self._get_headers())
+        LOG.debug("_put_meta_details has published log size as %s",
+                  self._published_size)
+
+    def _metafile_name(self):
+        return self._object_prefix().rstrip('/') + '_metafile'
+
+    def _object_prefix(self):
+        return '%(instance_id)s/%(datastore)s-%(log)s/' % {
+            'instance_id': CONF.guest_id,
+            'datastore': CONF.datastore_manager,
+            'log': self._name}
 
     def _object_name(self):
-        return CONF.guest_log_object_name % {
-            'timestamp': str(datetime.utcnow()).replace(' ', 'T'),
-            'datastore': CONF.datastore_manager,
-            'log': self._name,
-            'instance_id': CONF.guest_id
-        }
+        return 'log-%s' % str(datetime.utcnow()).replace(' ', 'T')
 
-    def _set_container_details(self):
-        container_header = {
-            self.XCM_LOG_NAME: self._name,
-            self.XCM_LOG_TYPE: self._type,
-            self.XCM_LOG_FILE: self._file,
-            self.XCM_LOG_SIZE: self._size,
-            self.XCM_LOG_HEAD: self._header_digest,
-        }
-        self.swift_client.put_container(self._container_name(),
-                                        headers=container_header)
-        LOG.debug("_set_container_details has saved log size as %s",
-                  self._published_size)
+    def _get_meta_details(self):
+        LOG.debug("Getting meta details for '%s'" % self._name)
+        metafile_name = self._metafile_name()
+        container_name = self.get_container_name()
+        headers, metafile_details = self.swift_client.get_object(
+            container_name, metafile_name)
+        LOG.debug("Found meta details for '%s'" % self._name)
+        return self._codec.deserialize(metafile_details)

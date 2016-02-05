@@ -77,7 +77,7 @@ class MySqlManager(manager.Manager):
         datastore_dir = self.mysql_app.get_data_dir()
         server_section = configurations.MySQLConfParser.SERVER_CONF_SECTION
         long_query_time = CONF.get(self.manager).get(
-            'guest_log_long_query_time')
+            'guest_log_long_query_time') / 1000
         general_log_file = self.build_log_file_name(
             self.GUEST_LOG_DEFS_GENERAL_LABEL, owner,
             datastore_dir=datastore_dir)
@@ -232,7 +232,7 @@ class MySqlManager(manager.Manager):
             self._perform_restore(backup_info, context,
                                   mount_point + "/data", app)
         LOG.debug("Securing MySQL now.")
-        app.secure(config_contents, overrides)
+        app.secure(config_contents)
         enable_root_on_restore = (backup_info and
                                   self.mysql_admin().is_root_enabled())
         if root_password and not backup_info:

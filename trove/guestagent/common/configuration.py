@@ -372,7 +372,10 @@ class ImportOverrideStrategy(ConfigurationOverrideStrategy):
     def has_revisions(self):
         """Return True if there currently are any revision files.
         """
-        return len(self._collect_revision_files()) > 0
+        return (operating_system.exists(
+            self._revision_dir, is_directory=True,
+            as_root=self._requires_root) and
+            (len(self._collect_revision_files()) > 0))
 
     def _get_last_file_index(self, group_name):
         """Get the index of the most current file in a given group.

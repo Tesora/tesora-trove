@@ -140,7 +140,7 @@ class cached_property(object):
         self.__name__ = name or func.__name__
         self.__doc__ = doc or func.__doc__
 
-    def __get__(self, obj, type=None):
+    def __get__(self, obj, owner):
         if obj is None:
             return self
         value = self.func(obj)
@@ -200,7 +200,7 @@ def build_polling_task(retriever, condition=lambda value: value,
             raise exception.PollTimeOut
 
     return loopingcall.FixedIntervalLoopingCall(
-        f=poll_and_check).start(sleep_time, True)
+        f=poll_and_check).start(sleep_time, initial_delay=False)
 
 
 def poll_until(retriever, condition=lambda value: value,

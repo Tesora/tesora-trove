@@ -34,7 +34,7 @@ class MgmtClusterController(ClusterController):
 
     @classmethod
     def get_action_schema(cls, body, action_schema):
-        action_type = body.keys()[0]
+        action_type = list(body.keys())[0]
         return action_schema.get(action_type, {})
 
     @admin_context
@@ -56,9 +56,11 @@ class MgmtClusterController(ClusterController):
     @admin_context
     def show(self, req, tenant_id, id):
         """Return a single cluster."""
-        LOG.debug("Showing cluster for tenant '%s'." % tenant_id)
-        LOG.info(_("req : '%s'\n\n") % req)
-        LOG.info(_("id : '%s'\n\n") % id)
+        LOG.info(_("Showing cluster for tenant '%(tenant_id)s'.\n"
+                   "req : '%(req)s'\n"
+                   "id : '%(id)s'") % {
+                       "tenant_id": tenant_id, "req": req, "id": id})
+
         context = req.environ[wsgi.CONTEXT_KEY]
         cluster = models.MgmtCluster.load(context, id)
         return wsgi.Result(

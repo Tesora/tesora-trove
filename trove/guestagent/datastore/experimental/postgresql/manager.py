@@ -24,6 +24,7 @@ from .service.install import PgSqlInstall
 from .service.root import PgSqlRoot
 from .service.status import PgSqlAppStatus
 import pgutil
+from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common.notification import EndNotification
@@ -32,26 +33,19 @@ from trove.guestagent import backup
 from trove.guestagent.datastore import manager
 from trove.guestagent.db import models
 from trove.guestagent import guest_log
-from trove.guestagent.strategies.replication import get_replication_strategy
 from trove.guestagent import volume
 
 
 LOG = logging.getLogger(__name__)
-
-MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'postgresql'
-
-REPLICATION_STRATEGY = CONF.get(MANAGER).replication_strategy
-REPLICATION_NAMESPACE = CONF.get(MANAGER).replication_namespace
-REPLICATION_STRATEGY_CLASS = get_replication_strategy(REPLICATION_STRATEGY,
-                                                      REPLICATION_NAMESPACE)
+CONF = cfg.CONF
 
 
 class Manager(
-        manager.Manager,
         PgSqlDatabase,
         PgSqlRoot,
         PgSqlConfig,
         PgSqlInstall,
+        manager.Manager
 ):
 
     PG_BUILTIN_ADMIN = 'postgres'
@@ -69,24 +63,25 @@ class Manager(
 
     @property
     def datastore_log_defs(self):
+        owner = 'postgres'
         datastore_dir = '/var/log/postgresql/'
         long_query_time = CONF.get(self.manager).get(
             'guest_log_long_query_time')
         general_log_file = self.build_log_file_name(
-            self.GUEST_LOG_DEFS_GENERAL_LABEL, self.PGSQL_OWNER,
+            self.GUEST_LOG_DEFS_GENERAL_LABEL, owner,
             datastore_dir=datastore_dir)
         general_log_dir, general_log_filename = os.path.split(general_log_file)
         return {
             self.GUEST_LOG_DEFS_GENERAL_LABEL: {
                 self.GUEST_LOG_TYPE_LABEL: guest_log.LogType.USER,
-                self.GUEST_LOG_USER_LABEL: self.PGSQL_OWNER,
+                self.GUEST_LOG_USER_LABEL: owner,
                 self.GUEST_LOG_FILE_LABEL: general_log_file,
                 self.GUEST_LOG_ENABLE_LABEL: {
                     'logging_collector': 'on',
-                    'log_destination': self._quote('stderr'),
-                    'log_directory': self._quote(general_log_dir),
-                    'log_filename': self._quote(general_log_filename),
-                    'log_statement': self._quote('all'),
+                    'log_destination': self._quote_str('stderr'),
+                    'log_directory': self._quote_str(general_log_dir),
+                    'log_filename': self._quote_str(general_log_filename),
+                    'log_statement': self._quote_str('all'),
                     'debug_print_plan': 'on',
                     'log_min_duration_statement': long_query_time,
                 },
@@ -96,6 +91,9 @@ class Manager(
                 self.GUEST_LOG_RESTART_LABEL: True,
             },
         }
+
+    def _quote_str(self, value):
+        return "'%s'" % value
 
     def do_prepare(self, context, packages, databases, memory_mb, users,
                    device_path, mount_point, backup_info, config_contents,
@@ -147,22 +145,17 @@ class Manager(
             backup.backup(context, backup_info)
 
     def backup_required_for_replication(self, context):
-        # TODO(atomic77) Move this class into a single property
-        replication = REPLICATION_STRATEGY_CLASS(context)
         return replication.backup_required_for_replication()
 
     def attach_replica(self, context, replica_info, slave_config):
-        replication = REPLICATION_STRATEGY_CLASS(context)
         replication.enable_as_slave(self, replica_info, None)
 
     def detach_replica(self, context, for_failover=False):
-        replication = REPLICATION_STRATEGY_CLASS(context)
         replica_info = replication.detach_slave(self, for_failover)
         return replica_info
 
     def enable_as_master(self, context, replica_source_config):
         self.enable_backups()
-        replication = REPLICATION_STRATEGY_CLASS(context)
         replication.enable_as_master(self, None)
 
     def make_read_only(self, context, read_only):
@@ -176,7 +169,6 @@ class Manager(
 
     def get_replica_context(self, context):
         LOG.debug("Getting replica context.")
-        replication = REPLICATION_STRATEGY_CLASS(context)
         return replication.get_replica_context(None)
 
     def get_latest_txn_id(self, context):
@@ -209,12 +201,10 @@ class Manager(
 
     def cleanup_source_on_replica_detach(self, context, replica_info):
         LOG.debug("Calling cleanup_source_on_replica_detach")
-        replication = REPLICATION_STRATEGY_CLASS(context)
         replication.cleanup_source_on_replica_detach()
 
     def demote_replication_master(self, context):
         LOG.debug("Calling demote_replication_master")
-        replication = REPLICATION_STRATEGY_CLASS(context)
         replication.demote_master(self)
 
     def get_replication_snapshot(self, context, snapshot_info,
@@ -222,24 +212,23 @@ class Manager(
         LOG.debug("Getting replication snapshot.")
 
         self.enable_backups()
-        replication = REPLICATION_STRATEGY_CLASS(context)
         replication.enable_as_master(None, None)
 
         snapshot_id, log_position = (
             replication.snapshot_for_replication(context, None, None,
                                                  snapshot_info))
 
-        mount_point = CONF.get(MANAGER).mount_point
+        mount_point = CONF.get(self.manager).mount_point
         volume_stats = self.get_filesystem_volume_stats(mount_point)
 
         replication_snapshot = {
             'dataset': {
-                'datastore_manager': MANAGER,
+                'datastore_manager': self.manager,
                 'dataset_size': volume_stats.get('used', 0.0),
                 'volume_size': volume_stats.get('total', 0.0),
                 'snapshot_id': snapshot_id
             },
-            'replication_strategy': REPLICATION_STRATEGY,
+            'replication_strategy': replication_strategy,
             'master': replication.get_master_ref(None, snapshot_info),
             'log_position': log_position
         }
