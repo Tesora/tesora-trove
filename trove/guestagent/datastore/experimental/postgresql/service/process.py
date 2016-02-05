@@ -33,19 +33,19 @@ CONF = cfg.CONF
 class PgSqlProcess(object):
     """Mixin that manages the PgSql process."""
 
-    PGSQL_SERVICE_CANDIDATES = ["postgresql"]
+    SERVICE_CANDIDATES = ["postgresql"]
     PGSQL_OWNER = 'postgres'
     DATA_BASE = '/var/lib/postgresql/'
     PID_FILE = '/var/run/postgresql/postgresql.pid'
     UNIX_SOCKET_DIR = '/var/run/postgresql/'
 
     @property
-    def PGSQL_DATA_DIR(self):
-        return os.path.dirname(self.pg_version[0])
+    def pgsql_recovery_config(self):
+        return os.path.join(self.PGSQL_DATA_DIR, "recovery.conf")
 
     @property
-    def PGSQL_RECOVERY_CONFIG(self):
-        return os.path.join(self.PGSQL_DATA_DIR, "recovery.conf")
+    def pgsql_data_dir(self):
+        return os.path.dirname(self.pg_version[0])
 
     @property
     def pg_version(self):
@@ -62,17 +62,17 @@ class PgSqlProcess(object):
 
     def restart(self, context):
         PgSqlAppStatus.get().restart_db_service(
-            self.PGSQL_SERVICE_CANDIDATES, CONF.state_change_wait_time)
+            self.SERVICE_CANDIDATES, CONF.state_change_wait_time)
         self.set_guest_log_status(guest_log.LogStatus.Restart_Completed)
 
     def start_db(self, context, enable_on_boot=True, update_db=False):
         PgSqlAppStatus.get().start_db_service(
-            self.PGSQL_SERVICE_CANDIDATES, CONF.state_change_wait_time,
+            self.SERVICE_CANDIDATES, CONF.state_change_wait_time,
             enable_on_boot=enable_on_boot, update_db=update_db)
 
     def stop_db(self, context, do_not_start_on_reboot=False, update_db=False):
         PgSqlAppStatus.get().stop_db_service(
-            self.PGSQL_SERVICE_CANDIDATES, CONF.state_change_wait_time,
+            self.SERVICE_CANDIDATES, CONF.state_change_wait_time,
             disable_on_boot=do_not_start_on_reboot, update_db=update_db)
 
     def pg_current_xlog_location(self):
@@ -101,7 +101,7 @@ class PgSqlProcess(object):
         on a hot standby, so grab what we have written to the recovery
         file
         """
-        r = operating_system.read_file(self.PGSQL_RECOVERY_CONFIG,
+        r = operating_system.read_file(self.pgsql_recovery_config,
                                        as_root=True)
         regexp = re.compile("host=(\d+.\d+.\d+.\d+) ")
         m = regexp.search(r)

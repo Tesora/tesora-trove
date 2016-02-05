@@ -67,6 +67,15 @@ def slave_is_running(running=True):
     return check_slave_is_running
 
 
+def backup_count_matches(count):
+
+    def check_backup_count_matches():
+        backup = instance_info.dbaas.instances.backups(instance_info.id)
+        return count == len(backup)
+
+    return check_backup_count_matches
+
+
 def instance_is_active(id):
     instance = instance_info.dbaas.instances.get(id)
     if instance.status == "ACTIVE":
@@ -81,7 +90,10 @@ def create_slave():
         instance_info.name + "_slave",
         instance_info.dbaas_flavor_href,
         instance_info.volume,
-        slave_of=instance_info.id)
+        nics=instance_info.nics,
+        datastore=instance_info.dbaas_datastore,
+        datastore_version=instance_info.dbaas_datastore_version,
+        replica_of=instance_info.id)
     assert_equal(200, instance_info.dbaas.last_http_code)
     assert_equal("BUILD", result.status)
     return result.id
@@ -91,7 +103,7 @@ def validate_slave(master, slave):
     new_slave = instance_info.dbaas.instances.get(slave.id)
     assert_equal(200, instance_info.dbaas.last_http_code)
     ns_dict = new_slave._info
-    CheckInstance(ns_dict).slave_of()
+    CheckInstance(ns_dict).replica_of()
     assert_equal(master.id, ns_dict['replica_of']['id'])
 
 
@@ -116,7 +128,7 @@ class CreateReplicationSlave(object):
                       instance_info.name + "_slave",
                       instance_info.dbaas_flavor_href,
                       instance_info.volume,
-                      slave_of="Missing replica source")
+                      replica_of="Missing replica source")
         assert_equal(404, instance_info.dbaas.last_http_code)
 
     @test
@@ -129,6 +141,9 @@ class CreateReplicationSlave(object):
 
     @test(runs_after=['test_create_db_on_master'])
     def test_create_slave(self):
+        global backup_count
+        backup_count = len(
+            instance_info.dbaas.instances.backups(instance_info.id))
         slave_instance.id = create_slave()
         global backup_count
         backup_count = len(
@@ -163,6 +178,11 @@ class VerifySlave(object):
     @time_out(5 * 60)
     def test_correctly_started_replication(self):
         poll_until(slave_is_running())
+
+    @test(runs_after=[test_correctly_started_replication])
+    @time_out(60)
+    def test_backup_deleted(self):
+        poll_until(backup_count_matches(backup_count))
 
     @test(depends_on=[test_correctly_started_replication])
     def test_slave_is_read_only(self):

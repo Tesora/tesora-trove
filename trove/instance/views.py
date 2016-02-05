@@ -184,6 +184,8 @@ class GuestLogView(object):
             'published': self.guest_log.published,
             'pending': self.guest_log.pending,
             'container': self.guest_log.container,
+            'prefix': self.guest_log.prefix,
+            'metafile': self.guest_log.metafile,
         }
 
 

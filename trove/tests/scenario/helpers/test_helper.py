@@ -29,16 +29,20 @@ class DataType(Enum):
     _fn_data dictionary defined in TestHelper.
     """
 
+    # micro amount of data, useful for testing datastore logging, etc.
+    micro = 1
+    # another micro dataset (also for datastore logging)
+    micro2 = 2
     # very tiny amount of data, useful for testing replication
     # propagation, etc.
-    tiny = 1
+    tiny = 3
     # another tiny dataset (also for replication propagation)
-    tiny2 = 2
+    tiny2 = 4
     # small amount of data (this can be added to each instance
     # after creation, for example).
-    small = 3
+    small = 5
     # large data, enough to make creating a backup take 20s or more.
-    large = 4
+    large = 6
 
 
 class TestHelper(object):
@@ -83,9 +87,6 @@ class TestHelper(object):
 
         self._expected_override_name = expected_override_name
 
-        self._ds_client = None
-        self._current_host = None
-
         # For building data access functions
         # name/fn pairs for each action
         self._data_fns = {self.FN_ADD: {},
@@ -101,14 +102,20 @@ class TestHelper(object):
         self.DATA_START = 'start'
         self.DATA_SIZE = 'size'
         self._fn_data = {
+            DataType.micro.name: {
+                self.DATA_START: 100,
+                self.DATA_SIZE: 10},
+            DataType.micro2.name: {
+                self.DATA_START: 200,
+                self.DATA_SIZE: 10},
             DataType.tiny.name: {
-                self.DATA_START: 1,
+                self.DATA_START: 1000,
                 self.DATA_SIZE: 100},
             DataType.tiny2.name: {
-                self.DATA_START: 500,
+                self.DATA_START: 2000,
                 self.DATA_SIZE: 100},
             DataType.small.name: {
-                self.DATA_START: 1000,
+                self.DATA_START: 10000,
                 self.DATA_SIZE: 1000},
             DataType.large.name: {
                 self.DATA_START: 100000,
@@ -117,18 +124,32 @@ class TestHelper(object):
 
         self._build_data_fns()
 
+    #################
+    # Utility methods
+    #################
+    def get_class_name(self):
+        """Builds a string of the expected class name, plus the actual one
+        being used if it's not the same.
+        """
+        class_name_str = "'%s'" % self._expected_override_name
+        if self._expected_override_name != self.__class__.__name__:
+            class_name_str += ' (using %s)' % self.__class__.__name__
+        return class_name_str
+
     ################
     # Client related
     ################
     def get_client(self, host, *args, **kwargs):
-        """Gets the datastore client."""
-        if not self._ds_client or self._current_host != host:
-            self._ds_client = self.create_client(host, *args, **kwargs)
-            self._current_host = host
-        return self._ds_client
+        """Gets the datastore client. This isn't cached as the
+        database may be restarted in between calls, causing
+        lost connection errors.
+        """
+        return self.create_client(host, *args, **kwargs)
 
     def create_client(self, host, *args, **kwargs):
-        """Create a datastore client."""
+        """Create a datastore client.  This is datastore specific, so this
+        method should be overridden if datastore access is desired.
+        """
         raise SkipTest('No client defined')
 
     def get_helper_credentials(self):
@@ -210,11 +231,12 @@ class TestHelper(object):
             def data_fn(self, data_label, data_start, data_size, host,
                         *args, **kwargs):
                 # default action is to skip the test
-                using_str = ''
+                cls_str = ''
                 if self._expected_override_name != self.__class__.__name__:
-                    using_str = ' (using %s)' % self.__class__.__name__
+                    cls_str = (' (%s not loaded)' %
+                               self._expected_override_name)
                 raise SkipTest("Data function '%s' not found in '%s'%s" % (
-                    data_fn_name, self._expected_override_name, using_str))
+                    data_fn_name, self.__class__.__name__, cls_str))
         else:
             def data_fn(self, host, *args, **kwargs):
                 # call the corresponding 'actual' method
@@ -328,5 +350,72 @@ class TestHelper(object):
 
     def get_invalid_groups(self):
         """Return a list of configuration groups with invalid values.
+        An empty list indicates that no 'invalid' tests should be run.
         """
         return []
+
+    ###################
+    # Guest Log related
+    ###################
+    def get_exposed_log_list(self):
+        """Return the list of exposed logs for the datastore.  This
+        method shouldn't need to be overridden.
+        """
+        logs = []
+        try:
+            logs.extend(self.get_exposed_user_log_names())
+        except SkipTest:
+            pass
+        try:
+            logs.extend(self.get_exposed_sys_log_names())
+        except SkipTest:
+            pass
+
+        return logs
+
+    def get_full_log_list(self):
+        """Return the full list of all logs for the datastore.  This
+        method shouldn't need to be overridden.
+        """
+        logs = self.get_exposed_log_list()
+        try:
+            logs.extend(self.get_unexposed_user_log_names())
+        except SkipTest:
+            pass
+        try:
+            logs.extend(self.get_unexposed_sys_log_names())
+        except SkipTest:
+            pass
+
+        return logs
+
+    # Override these guest log methods if needed
+    def get_exposed_user_log_names(self):
+        """Return the names of the user logs that are visible to all users.
+        The first log name will be used for tests.
+        """
+        raise SkipTest("No exposed user log names defined.")
+
+    def get_unexposed_user_log_names(self):
+        """Return the names of the user logs that not visible to all users.
+        The first log name will be used for tests.
+        """
+        raise SkipTest("No unexposed user log names defined.")
+
+    def get_exposed_sys_log_names(self):
+        """Return the names of SYS logs that are visible to all users.
+        The first log name will be used for tests.
+        """
+        raise SkipTest("No exposed sys log names defined.")
+
+    def get_unexposed_sys_log_names(self):
+        """Return the names of the sys logs that not visible to all users.
+        The first log name will be used for tests.
+        """
+        return ['guest']
+
+    def log_enable_requires_restart(self):
+        """Returns whether enabling or disabling a USER log requires a
+        restart of the datastore.
+        """
+        return False

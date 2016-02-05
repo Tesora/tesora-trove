@@ -15,7 +15,6 @@
 #    under the License.
 
 """Model classes that form the core of instances functionality."""
-from __builtin__ import setattr
 from datetime import datetime
 from datetime import timedelta
 import re
@@ -472,7 +471,7 @@ def load_any_instance(context, id, load_server=True):
         return load_instance(BuiltInstance, context, id,
                              needs_server=load_server)
     except exception.UnprocessableEntity:
-        LOG.warn(_LW("Could not load instance %s."), id)
+        LOG.warning(_LW("Could not load instance %s."), id)
         return load_instance(FreshInstance, context, id, needs_server=False)
 
 
@@ -585,7 +584,7 @@ class BaseInstance(SimpleInstance):
 
             if self.slaves:
                 msg = _("Detach replicas before deleting replica source.")
-                LOG.warn(msg)
+                LOG.warning(msg)
                 raise exception.ReplicaSourceDeleteForbidden(msg)
 
             self.update_db(task_status=InstanceTasks.DELETING,
@@ -708,7 +707,9 @@ class Instance(BuiltInstance):
             valid_flavors = tuple(f.value for f in bound_flavors)
             if flavor_id not in valid_flavors:
                 raise exception.DatastoreFlavorAssociationNotFound(
-                    version_id=datastore_version.id, flavor_id=flavor_id)
+                    datastore=datastore.name,
+                    datastore_version=datastore_version.name,
+                    flavor_id=flavor_id)
 
         datastore_cfg = CONF.get(datastore_version.manager)
         client = create_nova_client(context)

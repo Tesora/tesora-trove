@@ -16,14 +16,15 @@
 import os
 import time as timer
 
+from oslo_config.cfg import NoSuchOptError
 from proboscis import asserts
+import swiftclient
 from troveclient.compat import exceptions
 
-from oslo_config.cfg import NoSuchOptError
 from trove.common import cfg
+from trove.common import exception
 from trove.common import utils
 from trove.common.utils import poll_until, build_polling_task
-from trove.common import exception
 from trove.tests.api.instances import instance_info
 from trove.tests.config import CONFIG
 from trove.tests.util import create_dbaas_client
@@ -68,9 +69,19 @@ class TestRunner(object):
     def __init__(self, sleep_time=10, timeout=1200):
         self.def_sleep_time = sleep_time
         self.def_timeout = timeout
+
         self.instance_info = instance_info
+        instance_info.dbaas_datastore = CONFIG.dbaas_datastore
+        instance_info.dbaas_datastore_version = CONFIG.dbaas_datastore_version
+        if self.VOLUME_SUPPORT:
+            instance_info.volume = {'size': CONFIG.get('trove_volume_size', 1)}
+        else:
+            instance_info.volume = None
+
         self.auth_client = create_dbaas_client(self.instance_info.user)
-        self.unauth_client = None
+        self._unauth_client = None
+        self._admin_client = None
+        self._swift_client = None
         self._test_helper = None
 
     @classmethod
@@ -140,12 +151,13 @@ class TestRunner(object):
     def test_helper(self, test_helper):
         self._test_helper = test_helper
 
-    def get_unauth_client(self):
-        if not self.unauth_client:
-            self.unauth_client = self._create_unauthorized_client()
-        return self.unauth_client
+    @property
+    def unauth_client(self):
+        if not self._unauth_client:
+            self._unauth_client = self._create_unauthorized_client()
+        return self._unauth_client
 
-    def _create_unauthorized_client(self, force=False):
+    def _create_unauthorized_client(self):
         """Create a client from a different 'unauthorized' user
         to facilitate negative testing.
         """
@@ -153,6 +165,37 @@ class TestRunner(object):
         other_user = CONFIG.users.find_user(
             requirements, black_list=[self.instance_info.user.auth_user])
         return create_dbaas_client(other_user)
+
+    @property
+    def admin_client(self):
+        if not self._admin_client:
+            self._admin_client = self._create_admin_client()
+        return self._admin_client
+
+    def _create_admin_client(self):
+        """Create a client from an admin user."""
+        requirements = Requirements(is_admin=True, services=["swift"])
+        admin_user = CONFIG.users.find_user(requirements)
+        return create_dbaas_client(admin_user)
+
+    @property
+    def swift_client(self):
+        if not self._swift_client:
+            self._swift_client = self._create_swift_client()
+        return self._swift_client
+
+    def _create_swift_client(self):
+        """Create a swift client from the admin user details."""
+        requirements = Requirements(is_admin=True, services=["swift"])
+        user = CONFIG.users.find_user(requirements)
+        os_options = {'region_name': os.getenv("OS_REGION_NAME")}
+        return swiftclient.client.Connection(
+            authurl=CONFIG.nova_client['auth_url'],
+            user=user.auth_user,
+            key=user.auth_key,
+            tenant_name=user.tenant,
+            auth_version='2.0',
+            os_options=os_options)
 
     def assert_raises(self, expected_exception, expected_http_code,
                       client_cmd, *cmd_args, **cmd_kwargs):
@@ -173,7 +216,12 @@ class TestRunner(object):
 
     @property
     def is_using_existing_instance(self):
-        return os.environ.get(self.USE_INSTANCE_ID_FLAG, None) is not None
+        return self.has_env_flag(self.USE_INSTANCE_ID_FLAG)
+
+    @staticmethod
+    def has_env_flag(flag_name):
+        """Return whether a given flag was set."""
+        return os.environ.get(flag_name, None) is not None
 
     def get_existing_instance(self):
         if self.is_using_existing_instance:
@@ -184,8 +232,7 @@ class TestRunner(object):
 
     @property
     def has_do_not_delete_instance(self):
-        return os.environ.get(
-            self.DO_NOT_DELETE_INSTANCE_FLAG, None) is not None
+        return self.has_env_flag(self.DO_NOT_DELETE_INSTANCE_FLAG)
 
     def assert_instance_action(
             self, instance_ids, expected_states, expected_http_code):

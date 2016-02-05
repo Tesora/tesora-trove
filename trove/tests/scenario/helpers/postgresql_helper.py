@@ -13,6 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from proboscis import SkipTest
+
 from trove.tests.scenario.helpers.sql_helper import SqlHelper
 
 
@@ -21,6 +23,9 @@ class PostgresqlHelper(SqlHelper):
     def __init__(self, expected_override_name):
         super(PostgresqlHelper, self).__init__(expected_override_name,
                                                'postgresql')
+
+    def get_helper_credentials(self):
+        return {'name': 'lite', 'password': 'litepass', 'database': 'lite'}
 
     def get_valid_database_definitions(self):
         return [{'name': 'db1', 'character_set': 'latin2',
@@ -34,6 +39,15 @@ class PostgresqlHelper(SqlHelper):
                 {'name': 'user3', 'password': 'password1',
                  'databases': [{'name': 'db1'}, {'name': 'db2'}]}]
 
+    def add_actual_data(self, *args, **kwargs):
+        raise SkipTest("Adding data to PostgreSQL is broken")
+
+    def verify_actual_data(self, *args, **kwargs):
+        raise SkipTest("Verifying data in PostgreSQL is broken")
+
+    def remove_actual_data(self, *args, **kwargs):
+        raise SkipTest("Removing data from PostgreSQL is broken")
+
     def get_dynamic_group(self):
         return {'max_worker_processes': 11}
 
@@ -44,3 +58,9 @@ class PostgresqlHelper(SqlHelper):
         return [{'timezone': 997},
                 {"max_worker_processes": 'string_value'},
                 {"standard_conforming_strings": 'string_value'}]
+
+    def get_exposed_user_log_names(self):
+        return ['general']
+
+    def log_enable_requires_restart(self):
+        return True

@@ -430,11 +430,8 @@ common_opts = [
                help='Maximum time (in seconds) to wait for a service to '
                     'become alive.'),
     cfg.StrOpt('guest_log_container_name',
-               default='log-%(datastore)s-%(log)s-%(instance_id)s',
-               help='Name of container which stores guest log components.'),
-    cfg.StrOpt('guest_log_object_name',
-               default='log-%(timestamp)s',
-               help='Name of guest log component in container.'),
+               default='database_logs',
+               help='Name of container that stores guest log components.'),
     cfg.IntOpt('guest_log_limit', default=1000000,
                help='Maximum size of a chunk saved in guest log container.'),
     cfg.IntOpt('guest_log_expiry', default=2592000,
@@ -470,7 +467,46 @@ database_opts = [
     cfg.BoolOpt('query_log',
                 default=False,
                 deprecated_name='sql_query_log',
-                deprecated_group='DEFAULT'),
+                deprecated_group='DEFAULT',
+                deprecated_for_removal=True),
+    cfg.BoolOpt('sqlite_synchronous',
+                default=True,
+                help='If True, SQLite uses synchronous mode.'),
+    cfg.StrOpt('slave_connection',
+               secret=True,
+               help='The SQLAlchemy connection string to use to connect to the'
+                    ' slave database.'),
+    cfg.StrOpt('mysql_sql_mode',
+               default='TRADITIONAL',
+               help='The SQL mode to be used for MySQL sessions. '
+                    'This option, including the default, overrides any '
+                    'server-set SQL mode. To use whatever SQL mode '
+                    'is set by the server configuration, '
+                    'set this to no value. Example: mysql_sql_mode='),
+    cfg.IntOpt('max_pool_size',
+               help='Maximum number of SQL connections to keep open in a '
+                    'pool.'),
+    cfg.IntOpt('max_retries',
+               default=10,
+               help='Maximum number of database connection retries '
+                    'during startup. Set to -1 to specify an infinite '
+                    'retry count.'),
+    cfg.IntOpt('retry_interval',
+               default=10,
+               help='Interval between retries of opening a SQL connection.'),
+    cfg.IntOpt('max_overflow',
+               help='If set, use this value for max_overflow with '
+                    'SQLAlchemy.'),
+    cfg.IntOpt('connection_debug',
+               default=0,
+               help='Verbosity of SQL debugging information: 0=None, '
+                    '100=Everything.'),
+    cfg.BoolOpt('connection_trace',
+                default=False,
+                help='Add Python stack traces to SQL as comment strings.'),
+    cfg.IntOpt('pool_timeout',
+               help='If set, use this value for pool_timeout with '
+                    'SQLAlchemy.'),
 ]
 
 
@@ -534,11 +570,6 @@ mysql_opts = [
     cfg.StrOpt('root_controller',
                default='trove.extensions.mysql.service.MySQLRootController',
                help='Root controller implementation for mysql.'),
-    cfg.StrOpt('guest_log_exposed_logs', default='general,slow_query',
-               help='List of Guest Logs to expose for publishing.'),
-    cfg.FloatOpt('guest_log_long_query_time', default=1,
-                 help='The time in seconds that a statement must take in '
-                      'in order to be logged in the slow_query log.'),
     cfg.ListOpt('ignore_users', default=['os_admin', 'root'],
                 help='Users to exclude when listing users.',
                 deprecated_name='ignore_users',
@@ -548,6 +579,11 @@ mysql_opts = [
                 help='Databases to exclude when listing databases.',
                 deprecated_name='ignore_dbs',
                 deprecated_group='DEFAULT'),
+    cfg.StrOpt('guest_log_exposed_logs', default='general,slow_query',
+               help='List of Guest Logs to expose for publishing.'),
+    cfg.IntOpt('guest_log_long_query_time', default=1000,
+               help='The time in milliseconds that a statement must take in '
+                    'in order to be logged in the slow_query log.'),
 ]
 
 # Oracle remote agent
@@ -748,11 +784,6 @@ percona_opts = [
     cfg.StrOpt('root_controller',
                default='trove.extensions.common.service.DefaultRootController',
                help='Root controller implementation for percona.'),
-    cfg.StrOpt('guest_log_exposed_logs', default='general,slow_query',
-               help='List of Guest Logs to expose for publishing.'),
-    cfg.FloatOpt('guest_log_long_query_time', default=1,
-                 help='The time in seconds that a statement must take in '
-                      'in order to be logged in the slow_query log.'),
     cfg.ListOpt('ignore_users', default=['os_admin', 'root'],
                 help='Users to exclude when listing users.',
                 deprecated_name='ignore_users',
@@ -762,6 +793,11 @@ percona_opts = [
                 help='Databases to exclude when listing databases.',
                 deprecated_name='ignore_dbs',
                 deprecated_group='DEFAULT'),
+    cfg.StrOpt('guest_log_exposed_logs', default='general,slow_query',
+               help='List of Guest Logs to expose for publishing.'),
+    cfg.IntOpt('guest_log_long_query_time', default=1000,
+               help='The time in milliseconds that a statement must take in '
+                    'in order to be logged in the slow_query log.'),
 ]
 
 # Percona XtraDB Cluster
@@ -841,9 +877,9 @@ pxc_opts = [
                help='Root controller implementation for pxc.'),
     cfg.StrOpt('guest_log_exposed_logs', default='general,slow_query',
                help='List of Guest Logs to expose for publishing.'),
-    cfg.FloatOpt('guest_log_long_query_time', default=1,
-                 help='The time in seconds that a statement must take in '
-                      'in order to be logged in the slow_query log.'),
+    cfg.IntOpt('guest_log_long_query_time', default=1000,
+               help='The time in milliseconds that a statement must take in '
+                    'in order to be logged in the slow_query log.'),
 ]
 
 # Redis
@@ -880,7 +916,7 @@ redis_opts = [
                "volumes if volume support is enabled."),
     cfg.BoolOpt('volume_support', default=True,
                 help='Whether to provision a Cinder volume for datadir.'),
-    cfg.StrOpt('device_path', default=None,
+    cfg.StrOpt('device_path', default='/dev/vdb',
                help='Device path for volume if volume support is enabled.'),
     cfg.StrOpt('backup_namespace',
                default="trove.guestagent.strategies.backup.experimental."
@@ -1139,8 +1175,8 @@ postgresql_opts = [
                 help='List of UDP ports and/or port ranges to open '
                      'in the security group (only applicable '
                      'if trove_security_groups_support is True).'),
-    cfg.IntOpt('postgresql_port', default=5432,
-               help='The TCP port the server listens on.'),
+    cfg.PortOpt('postgresql_port', default=5432,
+                help='The TCP port the server listens on.'),
     cfg.StrOpt('backup_strategy', default='PgBaseBackup',
                help='Default strategy to perform backups.'),
     cfg.DictOpt('backup_incremental_strategy',
@@ -1188,8 +1224,9 @@ postgresql_opts = [
                help='List of Guest Logs to expose for publishing.'),
     cfg.IntOpt('guest_log_long_query_time', default=0,
                help="The time in milliseconds that a statement must take in "
-                    "in order to be logged.  A value of '0' logs all "
-                    "statements, while '-1' turns off statement logging."),
+                    "in order to be logged in the 'general' log.  A value of "
+                    "'0' logs all statements, while '-1' turns off "
+                    "statement logging."),
 ]
 
 # Apache CouchDB
@@ -1362,10 +1399,11 @@ mariadb_opts = [
                help='Default strategy to perform backups.',
                deprecated_name='backup_strategy',
                deprecated_group='DEFAULT'),
-    cfg.StrOpt('replication_strategy', default='MysqlBinlogReplication',
+    cfg.StrOpt('replication_strategy', default='MariaDBGTIDReplication',
                help='Default strategy for replication.'),
     cfg.StrOpt('replication_namespace',
-               default='trove.guestagent.strategies.replication.mysql_binlog',
+               default='trove.guestagent.strategies.replication.experimental'
+               '.mariadb_gtid',
                help='Namespace to load replication strategies from.'),
     cfg.StrOpt('mount_point', default='/var/lib/mysql',
                help="Filesystem path for mounting "
@@ -1403,11 +1441,6 @@ mariadb_opts = [
     cfg.StrOpt('root_controller',
                default='trove.extensions.common.service.DefaultRootController',
                help='Root controller implementation for mysql.'),
-    cfg.StrOpt('guest_log_exposed_logs', default='general,slow_query',
-               help='List of Guest Logs to expose for publishing.'),
-    cfg.FloatOpt('guest_log_long_query_time', default=1,
-                 help='The time in seconds that a statement must take in '
-                      'in order to be logged in the slow_query log.'),
     cfg.ListOpt('ignore_users', default=['os_admin', 'root'],
                 help='Users to exclude when listing users.',
                 deprecated_name='ignore_users',
@@ -1417,6 +1450,11 @@ mariadb_opts = [
                 help='Databases to exclude when listing databases.',
                 deprecated_name='ignore_dbs',
                 deprecated_group='DEFAULT'),
+    cfg.StrOpt('guest_log_exposed_logs', default='general,slow_query',
+               help='List of Guest Logs to expose for publishing.'),
+    cfg.IntOpt('guest_log_long_query_time', default=1000,
+               help='The time in milliseconds that a statement must take in '
+                    'in order to be logged in the slow_query log.'),
 ]
 
 # RPC version groups

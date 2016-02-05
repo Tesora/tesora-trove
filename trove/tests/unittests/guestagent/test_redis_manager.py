@@ -45,7 +45,7 @@ class RedisGuestAgentManagerTest(trove_testtools.TestCase):
         self.manager = RedisManager()
         self.packages = 'redis-server'
         self.origin_RedisAppStatus = redis_service.RedisAppStatus
-        self.origin_start_redis = redis_service.RedisApp.start_redis
+        self.origin_start_redis = redis_service.RedisApp.start_db
         self.origin_stop_redis = redis_service.RedisApp.stop_db
         self.origin_install_redis = redis_service.RedisApp._install_redis
         self.origin_install_if_needed = \
@@ -67,7 +67,7 @@ class RedisGuestAgentManagerTest(trove_testtools.TestCase):
         super(RedisGuestAgentManagerTest, self).tearDown()
         redis_service.RedisAppStatus = self.origin_RedisAppStatus
         redis_service.RedisApp.stop_db = self.origin_stop_redis
-        redis_service.RedisApp.start_redis = self.origin_start_redis
+        redis_service.RedisApp.start_db = self.origin_start_redis
         redis_service.RedisApp._install_redis = self.origin_install_redis
         redis_service.RedisApp.install_if_needed = \
             self.origin_install_if_needed
@@ -123,7 +123,7 @@ class RedisGuestAgentManagerTest(trove_testtools.TestCase):
         self.manager._app.status = mock_status
         self.manager._build_admin_client = MagicMock(return_value=MagicMock())
         redis_service.RedisApp.stop_db = MagicMock(return_value=None)
-        redis_service.RedisApp.start_redis = MagicMock(return_value=None)
+        redis_service.RedisApp.start_db = MagicMock(return_value=None)
         mock_status.begin_install = MagicMock(return_value=None)
         VolumeDevice.format = MagicMock(return_value=None)
         VolumeDevice.mount = MagicMock(return_value=None)

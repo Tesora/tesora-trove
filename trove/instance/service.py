@@ -47,11 +47,11 @@ class InstanceController(wsgi.Controller):
 
     @classmethod
     def get_action_schema(cls, body, action_schema):
-        action_type = body.keys()[0]
+        action_type = list(body.keys())[0]
         action_schema = action_schema.get(action_type, {})
         if action_type == 'resize':
             # volume or flavorRef
-            resize_action = body[action_type].keys()[0]
+            resize_action = list(body[action_type].keys())[0]
             action_schema = action_schema.get(resize_action, {})
         return action_schema
 
@@ -260,9 +260,7 @@ class InstanceController(wsgi.Controller):
         availability_zone = body['instance'].get('availability_zone')
         nics = body['instance'].get('nics')
 
-        slave_of_id = body['instance'].get('replica_of',
-                                           # also check for older name
-                                           body['instance'].get('slave_of'))
+        slave_of_id = body['instance'].get('replica_of')
         replica_count = body['instance'].get('replica_count')
         instance = models.Instance.create(context, name, flavor_id,
                                           image_id, databases, users,
@@ -346,8 +344,7 @@ class InstanceController(wsgi.Controller):
         instance = models.Instance.load(context, id)
 
         args = {}
-        args['detach_replica'] = ('replica_of' in body['instance'] or
-                                  'slave_of' in body['instance'])
+        args['detach_replica'] = 'replica_of' in body['instance']
 
         if 'name' in body['instance']:
             args['name'] = body['instance']['name']
@@ -374,6 +371,9 @@ class InstanceController(wsgi.Controller):
         """Return all information about all logs for an instance."""
         LOG.debug("Listing logs for tenant %s" % tenant_id)
         context = req.environ[wsgi.CONTEXT_KEY]
+        instance = models.Instance.load(context, id)
+        if not instance:
+            raise exception.NotFound(uuid=id)
         client = create_guest_client(context, id)
         guest_log_list = client.guest_log_list()
         return wsgi.Result({'logs': guest_log_list}, 200)
@@ -382,6 +382,9 @@ class InstanceController(wsgi.Controller):
         """Processes a guest log."""
         LOG.info(_("Processing log for tenant %s"), tenant_id)
         context = req.environ[wsgi.CONTEXT_KEY]
+        instance = models.Instance.load(context, id)
+        if not instance:
+            raise exception.NotFound(uuid=id)
         log_name = body['name']
         enable = body.get('enable', None)
         disable = body.get('disable', None)
@@ -393,16 +396,3 @@ class InstanceController(wsgi.Controller):
         guest_log = client.guest_log_action(log_name, enable, disable,
                                             publish, discard)
         return wsgi.Result({'log': guest_log}, 200)
-
-    def guest_log_name(self, req, tenant_id, id, log):
-        """Return the container of a log for an instance."""
-        LOG.debug("Returning container name for log %s of %s", log, id)
-        context = req.environ[wsgi.CONTEXT_KEY]
-        instance = models.Instance.load(context, id)
-        container = CONF.guest_log_container_name % {
-            'datastore': instance.datastore.name,
-            'log': log,
-            'instance_id': id
-        }
-        LOG.debug("guest_log_name %s: %s", log, container)
-        return wsgi.Result({'log-name': container}, 200)
