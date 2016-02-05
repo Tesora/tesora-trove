@@ -235,24 +235,17 @@ class CassandraClusterTasks(task_models.ClusterTasks):
                 # to remove the keys that no longer belong to those nodes.
                 # Wait for cleanup to complete on one node before running
                 # it on the next node.
-                if CONF.cassandra.cleanup_on_grow:
-                    LOG.debug("Cleaning up orphan data on old cluster nodes.")
-                    for node in cluster_nodes:
-                        if node not in added_nodes:
-                            nid = node['id']
-                            node['guest'].node_cleanup_begin()
-                            node['guest'].node_cleanup()
-                            LOG.debug("Waiting for node to finish its "
-                                      "cleanup: %s" % nid)
-                            if not self._all_instances_running([nid],
-                                                               cluster_id):
-                                LOG.warning(
-                                    _("Node did not complete cleanup "
-                                      "successfully: %s") % nid)
-                else:
-                    LOG.warning(
-                        _("Skipping node cleanup after adding nodes to the "
-                          "cluster."))
+                LOG.debug("Cleaning up orphan data on old cluster nodes.")
+                for node in cluster_nodes:
+                    if node not in added_nodes:
+                        nid = node['id']
+                        node['guest'].node_cleanup_begin()
+                        node['guest'].node_cleanup()
+                        LOG.debug("Waiting for node to finish its "
+                                  "cleanup: %s" % nid)
+                        if not self._all_instances_running([nid], cluster_id):
+                            LOG.warning(_("Node did not complete cleanup "
+                                          "successfully: %s") % nid)
 
                 LOG.debug("Cluster configuration finished successfully.")
             except Exception:
@@ -355,8 +348,4 @@ class CassandraClusterTasks(task_models.ClusterTasks):
 
 
 class CassandraTaskManagerAPI(task_api.API):
-
-    def _cast(self, method_name, version, **kwargs):
-        LOG.debug("Casting %s" % method_name)
-        cctxt = self.client.prepare(version=version)
-        cctxt.cast(self.context, method_name, **kwargs)
+    pass

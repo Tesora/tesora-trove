@@ -1020,12 +1020,6 @@ cassandra_opts = [
                '.cassandra.guestagent.CassandraGuestAgentStrategy',
                help='Class that implements datastore-specific Guest Agent API '
                     'logic.'),
-    cfg.BoolOpt('cleanup_on_grow', default=False,
-                help='Whether to perform an automatic node cleanup after '
-                'adding nodes to an existing cluster.'
-                'The operation has to be run sequentially on all previously '
-                'existing nodes and can take an excessive amount of time.'
-                'Cleanup can be safely postponed for low-usage hours.'),
 ]
 
 # DSE (mostly uses same options as Cassandra community edition).
