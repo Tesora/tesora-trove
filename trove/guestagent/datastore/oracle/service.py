@@ -386,7 +386,7 @@ class OracleConfig(object):
 
     @property
     def db_unique_name(self):
-        return self._db_unique_name
+        return self._db_unique_name or self._db_name
 
     @db_unique_name.setter
     def db_unique_name(self, value):

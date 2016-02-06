@@ -330,8 +330,8 @@ class Manager(periodic_task.PeriodicTasks):
             # nodes with information that is only available after all the
             # instances has been started.
             if snapshot and snapshot.get('master', {}).get('post_processing'):
-                slave_instances = [BuiltInstanceTasks.load(context, replica.id)
-                                   for replica in replicas]
+                slave_instances = [BuiltInstanceTasks.load(context, slave.id)
+                                   for slave in master_instance_tasks.slaves]
 
                 # Collect info from each slave post instance launch
                 slave_detail = [slave_instance.get_replication_detail()

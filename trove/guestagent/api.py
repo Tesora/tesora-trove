@@ -420,16 +420,16 @@ class API(object):
         return self._call("get_replication_detail",
                           AGENT_HIGH_TIMEOUT, self.version_cap)
 
-    def complete_master_setup(self, slave_info):
+    def complete_master_setup(self, dbs):
         LOG.debug("Executing complete_master_setup")
         self._call("complete_master_setup", AGENT_HIGH_TIMEOUT,
-                   self.version_cap, slave_info=slave_info)
+                   self.version_cap, dbs=dbs)
 
-    def complete_slave_setup(self, master_info, slave_info):
+    def complete_slave_setup(self, master_detail, slave_detail):
         LOG.debug("Executing complete_slave_setup")
         self._call("complete_slave_setup", AGENT_SNAPSHOT_TIMEOUT,
-                   self.version_cap, master_info=master_info,
-                   slave_info=slave_info)
+                   self.version_cap, master_detail=master_detail,
+                   slave_detail=slave_detail)
 
     def sync_data_to_slaves(self):
         LOG.debug("Executing sync_data_to_slaves")

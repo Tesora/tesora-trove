@@ -302,12 +302,9 @@ class Manager(manager.Manager):
                                  replica_source_config=None):
         LOG.debug("Getting replication snapshot.")
         replication = REPLICATION_STRATEGY_CLASS(context)
-        replication.enable_as_master(self.app, replica_source_config)
-
         snapshot_id, log_position = (
             replication.snapshot_for_replication(context, self.app, None,
                                                  snapshot_info))
-
         mount_point = CONF.get(MANAGER).mount_point
         volume_stats = dbaas.get_filesystem_volume_stats(mount_point)
 
@@ -338,15 +335,15 @@ class Manager(manager.Manager):
         replication = REPLICATION_STRATEGY_CLASS(context)
         return replication.get_replication_detail(self.app)
 
-    def complete_master_setup(self, context, slave_info):
+    def complete_master_setup(self, context, dbs):
         LOG.debug("Calling complete_master_setup.")
         replication = REPLICATION_STRATEGY_CLASS(context)
-        replication.complete_master_setup(self.app, slave_info)
+        replication.complete_master_setup(self.app, dbs)
 
-    def complete_slave_setup(self, context, master_info, slave_info):
+    def complete_slave_setup(self, context, master_detail, slave_detail):
         LOG.debug("Calling complete_slave_setup.")
         replication = REPLICATION_STRATEGY_CLASS(context)
-        replication.complete_slave_setup(self.app, master_info, slave_info)
+        replication.complete_slave_setup(self.app, master_detail, slave_detail)
 
     def sync_data_to_slaves(self, context):
         LOG.debug("Calling sync_data_to_slaves.")
