@@ -16,13 +16,21 @@ import os
 import random
 import string
 
-from mock import ANY, call, DEFAULT, MagicMock, patch, NonCallableMagicMock
+from mock import ANY
+from mock import call
+from mock import DEFAULT
+from mock import MagicMock
+from mock import Mock
+from mock import NonCallableMagicMock
+from mock import patch
 from oslo_utils import netutils
 from testtools import ExpectedException
 
 from trove.common import exception
 from trove.common.instance import ServiceStatuses
 from trove.guestagent import backup
+from trove.guestagent.common.configuration import ImportOverrideStrategy
+from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.experimental.cassandra import (
     manager as cass_manager)
 from trove.guestagent.datastore.experimental.cassandra import (
@@ -38,7 +46,7 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
     __MOUNT_POINT = '/var/lib/cassandra'
 
     __N_GAK = '_get_available_keyspaces'
-    __N_GSU = '_get_non_system_users'
+    __N_GLU = '_get_listed_users'
     __N_BU = '_build_user'
     __N_RU = '_rename_user'
     __N_AUP = '_alter_user_password'
@@ -58,15 +66,12 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
     __DROP_USR_FORMAT = "DROP USER '{}';"
     __GRANT_FORMAT = "GRANT {} ON KEYSPACE \"{}\" TO '{}';"
     __REVOKE_FORMAT = "REVOKE ALL PERMISSIONS ON KEYSPACE \"{}\" FROM '{}';"
-    __LIST_PERMISSIONS = (
-        "LIST ALL PERMISSIONS ON KEYSPACE \"{}\" "
-        "OF '{}' NORECURSIVE;"
-    )
+    __LIST_PERMISSIONS_FORMAT = "LIST ALL PERMISSIONS NORECURSIVE;"
+    __LIST_PERMISSIONS_OF_FORMAT = "LIST ALL PERMISSIONS OF '{}' NORECURSIVE;"
     __LIST_DB_FORMAT = "SELECT * FROM system.schema_keyspaces;"
     __LIST_USR_FORMAT = "LIST USERS;"
 
-    @patch.object(cass_service.CassandraApp, '_init_overrides_dir',
-                  return_value='')
+    @patch.object(ImportOverrideStrategy, '_initialize_import_directory')
     def setUp(self, *args, **kwargs):
         super(GuestAgentCassandraDBManagerTest, self).setUp()
         self.real_status = cass_service.CassandraAppStatus.set_status
@@ -129,7 +134,8 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
         self._prepare_dynamic([], is_db_installed=False)
 
     def test_prepare_db_not_installed_no_package(self):
-        self._prepare_dynamic([], is_db_installed=True)
+        self._prepare_dynamic([],
+                              is_db_installed=True)
 
     @patch.object(backup, 'restore')
     def test_prepare_db_restore(self, restore):
@@ -144,9 +150,10 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
         restore.assert_called_once_with(
             self.context, backup_info, self.__MOUNT_POINT)
 
-    @patch.object(cass_service.CassandraApp, '_init_overrides_dir',
-                  return_value='')
-    def test_superuser_password_reset(self, _):
+    @patch.multiple(operating_system, enable_service_on_boot=DEFAULT,
+                    disable_service_on_boot=DEFAULT)
+    def test_superuser_password_reset(
+            self, enable_service_on_boot, disable_service_on_boot):
         fake_status = MagicMock()
         fake_status.is_running = False
 
@@ -157,42 +164,44 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
                 start_db=DEFAULT,
                 stop_db=DEFAULT,
                 restart=DEFAULT,
-                _disable_db_on_boot=DEFAULT,
-                _enable_db_on_boot=DEFAULT,
                 _CassandraApp__disable_remote_access=DEFAULT,
                 _CassandraApp__enable_remote_access=DEFAULT,
                 _CassandraApp__disable_authentication=DEFAULT,
                 _CassandraApp__enable_authentication=DEFAULT,
-                _CassandraApp__reset_superuser_password=DEFAULT,
-                configure_superuser_access=DEFAULT) as calls:
+                _CassandraApp__reset_user_password_to_default=DEFAULT,
+                secure=DEFAULT) as calls:
 
-            test_app._reset_superuser_password()
+            test_app._reset_admin_password()
 
-            calls['_disable_db_on_boot'].assert_called_once_with()
+            disable_service_on_boot.assert_called_once_with(
+                test_app.service_candidates)
             calls[
                 '_CassandraApp__disable_remote_access'
             ].assert_called_once_with()
             calls[
                 '_CassandraApp__disable_authentication'
             ].assert_called_once_with()
-            calls['start_db'].assert_called_once_with(update_db=False),
+            calls['start_db'].assert_called_once_with(update_db=False,
+                                                      enable_on_boot=False),
             calls[
                 '_CassandraApp__enable_authentication'
             ].assert_called_once_with()
-            calls[
-                '_CassandraApp__reset_superuser_password'
-            ].assert_called_once_with()
-            calls['configure_superuser_access'].assert_called_once_with()
-            self.assertEqual(2, calls['restart'].call_count)
+
+            pw_reset_mock = calls[
+                '_CassandraApp__reset_user_password_to_default'
+            ]
+            pw_reset_mock.assert_called_once_with(test_app._ADMIN_USER)
+            calls['secure'].assert_called_once_with(
+                update_user=pw_reset_mock.return_value)
+            calls['restart'].assert_called_once_with()
             calls['stop_db'].assert_called_once_with()
             calls[
                 '_CassandraApp__enable_remote_access'
             ].assert_called_once_with()
-            calls['_enable_db_on_boot'].assert_called_once_with()
+            enable_service_on_boot.assert_called_once_with(
+                test_app.service_candidates)
 
-    @patch.object(cass_service.CassandraApp, '_init_overrides_dir',
-                  return_value='')
-    def test_change_cluster_name(self, _):
+    def test_change_cluster_name(self):
         fake_status = MagicMock()
         fake_status.is_running = True
 
@@ -214,10 +223,8 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
                 sample_name)
             calls['restart'].assert_called_once_with()
 
-    @patch.object(cass_service.CassandraApp, '_init_overrides_dir',
-                  return_value='')
     @patch.object(cass_service, 'CONF', DEFAULT)
-    def test_apply_post_restore_updates(self, conf_mock, _):
+    def test_apply_post_restore_updates(self, conf_mock):
         fake_status = MagicMock()
         fake_status.is_running = False
 
@@ -228,14 +235,14 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
                 start_db=DEFAULT,
                 stop_db=DEFAULT,
                 _update_cluster_name_property=DEFAULT,
-                _reset_superuser_password=DEFAULT,
+                _reset_admin_password=DEFAULT,
                 change_cluster_name=DEFAULT) as calls:
             backup_info = {'instance_id': 'old_id'}
             conf_mock.guest_id = 'new_id'
             test_app._apply_post_restore_updates(backup_info)
             calls['_update_cluster_name_property'].assert_called_once_with(
                 'old_id')
-            calls['_reset_superuser_password'].assert_called_once_with()
+            calls['_reset_admin_password'].assert_called_once_with()
             calls['start_db'].assert_called_once_with(update_db=False)
             calls['change_cluster_name'].assert_called_once_with('new_id')
             calls['stop_db'].assert_called_once_with()
@@ -447,30 +454,115 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
             found = self.manager.list_databases(self.context)
             self.assertEqual(([], None), found)
 
+    def test_get_acl(self):
+        r0 = NonCallableMagicMock(username='user1', resource='<all keyspaces>',
+                                  permission='SELECT')
+        r1 = NonCallableMagicMock(username='user2', resource='<keyspace ks1>',
+                                  permission='SELECT')
+        r2 = NonCallableMagicMock(username='user2', resource='<keyspace ks2>',
+                                  permission='SELECT')
+        r3 = NonCallableMagicMock(username='user2', resource='<keyspace ks2>',
+                                  permission='ALTER')
+        r4 = NonCallableMagicMock(username='user3', resource='<table ks2.t1>',
+                                  permission='SELECT')
+        r5 = NonCallableMagicMock(username='user3', resource='',
+                                  permission='ALTER')
+        r6 = NonCallableMagicMock(username='user3', resource='<keyspace ks2>',
+                                  permission='')
+        r7 = NonCallableMagicMock(username='user3', resource='',
+                                  permission='')
+        r8 = NonCallableMagicMock(username='user3', resource='<keyspace ks1>',
+                                  permission='DELETE')
+        r9 = NonCallableMagicMock(username='user4', resource='<all keyspaces>',
+                                  permission='UPDATE')
+        r10 = NonCallableMagicMock(username='user4', resource='<keyspace ks1>',
+                                   permission='DELETE')
+
+        available_ks = {models.CassandraSchema('ks1'),
+                        models.CassandraSchema('ks2'),
+                        models.CassandraSchema('ks3')}
+
+        mock_result_set = [r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r9, r9, r10]
+        execute_mock = MagicMock(return_value=mock_result_set)
+        mock_client = MagicMock(execute=execute_mock)
+
+        with patch.object(self.admin,
+                          self.__N_GAK, return_value=available_ks) as gak_mock:
+            acl = self.admin._get_acl(mock_client)
+            execute_mock.assert_called_once_with(
+                self.__LIST_PERMISSIONS_FORMAT)
+            gak_mock.assert_called_once_with(mock_client)
+
+            self.assertEqual({'user1': {'ks1': {'SELECT'},
+                                        'ks2': {'SELECT'},
+                                        'ks3': {'SELECT'}},
+                              'user2': {'ks1': {'SELECT'},
+                                        'ks2': {'SELECT', 'ALTER'}},
+                              'user3': {'ks1': {'DELETE'}},
+                              'user4': {'ks1': {'UPDATE', 'DELETE'},
+                                        'ks2': {'UPDATE'},
+                                        'ks3': {'UPDATE'}}
+                              },
+                             acl)
+
+        mock_result_set = [r1, r2, r3]
+        execute_mock = MagicMock(return_value=mock_result_set)
+        mock_client = MagicMock(execute=execute_mock)
+
+        with patch.object(self.admin,
+                          self.__N_GAK, return_value=available_ks) as gak_mock:
+            acl = self.admin._get_acl(mock_client, username='user2')
+            execute_mock.assert_called_once_with(
+                self.__LIST_PERMISSIONS_OF_FORMAT.format('user2'))
+            gak_mock.assert_not_called()
+
+            self.assertEqual({'user2': {'ks1': {'SELECT'},
+                                        'ks2': {'SELECT', 'ALTER'}}}, acl)
+
+        mock_result_set = []
+        execute_mock = MagicMock(return_value=mock_result_set)
+        mock_client = MagicMock(execute=execute_mock)
+
+        with patch.object(self.admin,
+                          self.__N_GAK, return_value=available_ks) as gak_mock:
+            acl = self.admin._get_acl(mock_client, username='nonexisting')
+            execute_mock.assert_called_once_with(
+                self.__LIST_PERMISSIONS_OF_FORMAT.format('nonexisting'))
+            gak_mock.assert_not_called()
+
+            self.assertEqual({}, acl)
+
     @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
-    def test_get_non_system_users(self, conn):
-        usr = models.CassandraUser(self._get_random_name(1025), 'password')
+    def test_get_listed_users(self, conn):
+        usr1 = models.CassandraUser(self._get_random_name(1025))
+        usr2 = models.CassandraUser(self._get_random_name(1025))
+        usr3 = models.CassandraUser(self._get_random_name(1025))
         db1 = models.CassandraSchema('db1')
         db2 = models.CassandraSchema('db2')
-        usr.databases.append(db1.serialize())
-        usr.databases.append(db2.serialize())
+        usr1.databases.append(db1.serialize())
+        usr3.databases.append(db2.serialize())
 
         rv_1 = NonCallableMagicMock()
-        rv_1.configure_mock(name=usr.name, super=False)
+        rv_1.configure_mock(name=usr1.name, super=False)
         rv_2 = NonCallableMagicMock()
-        rv_2.configure_mock(keyspace_name=db1.name)
+        rv_2.configure_mock(name=usr2.name, super=False)
         rv_3 = NonCallableMagicMock()
-        rv_3.configure_mock(keyspace_name=db2.name)
+        rv_3.configure_mock(name=usr3.name, super=True)
 
         with patch.object(conn.return_value, 'execute', return_value=iter(
                 [rv_1, rv_2, rv_3])):
-            self.manager.list_users(self.context)
-            conn.return_value.execute.assert_has_calls([
-                call(self.__LIST_USR_FORMAT),
-                call(self.__LIST_DB_FORMAT),
-                call(self.__LIST_PERMISSIONS, (db1.name, usr.name)),
-                call(self.__LIST_PERMISSIONS, (db2.name, usr.name))
-            ], any_order=True)
+            with patch.object(self.admin, '_get_acl',
+                              return_value={usr1.name: {db1.name: {'SELECT'},
+                                                        db2.name: {}},
+                                            usr3.name: {db2.name: {'SELECT'}}}
+                              ):
+                usrs = self.manager.list_users(self.context)
+                conn.return_value.execute.assert_has_calls([
+                    call(self.__LIST_USR_FORMAT),
+                ], any_order=True)
+                self.assertIn(usr1.serialize(), usrs[0])
+                self.assertIn(usr2.serialize(), usrs[0])
+                self.assertIn(usr3.serialize(), usrs[0])
 
     @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
     def test_list_access(self, conn):
@@ -483,7 +575,7 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
         usr3.databases.append(db1)
         usr3.databases.append(db2)
 
-        with patch.object(self.admin, self.__N_GSU, return_value={usr1, usr2,
+        with patch.object(self.admin, self.__N_GLU, return_value={usr1, usr2,
                                                                   usr3}):
             usr1_dbs = self.manager.list_access(self.context, usr1.name, None)
             usr2_dbs = self.manager.list_access(self.context, usr2.name, None)
@@ -492,7 +584,7 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
             self.assertEqual([db1], usr2_dbs)
             self.assertEqual([db1, db2], usr3_dbs)
 
-        with patch.object(self.admin, self.__N_GSU, return_value=set()):
+        with patch.object(self.admin, self.__N_GLU, return_value=set()):
             with ExpectedException(exception.UserNotFound):
                 self.manager.list_access(self.context, usr3.name, None)
 
@@ -502,7 +594,7 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
         usr2 = models.CassandraUser('usr2')
         usr3 = models.CassandraUser(self._get_random_name(1025), 'password')
 
-        with patch.object(self.admin, self.__N_GSU, return_value={usr1, usr2,
+        with patch.object(self.admin, self.__N_GLU, return_value={usr1, usr2,
                                                                   usr3}):
             found = self.manager.list_users(self.context)
             self.assertEqual(2, len(found))
@@ -512,7 +604,7 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
             self.assertIn(usr2.serialize(), found[0])
             self.assertIn(usr3.serialize(), found[0])
 
-        with patch.object(self.admin, self.__N_GSU, return_value=set()):
+        with patch.object(self.admin, self.__N_GLU, return_value=set()):
             self.assertEqual(([], None), self.manager.list_users(self.context))
 
     @patch.object(cass_service.CassandraLocalhostConnection, '__enter__')
@@ -521,12 +613,12 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
         usr2 = models.CassandraUser('usr2')
         usr3 = models.CassandraUser(self._get_random_name(1025), 'password')
 
-        with patch.object(self.admin, self.__N_GSU, return_value={usr1, usr2,
+        with patch.object(self.admin, self.__N_GLU, return_value={usr1, usr2,
                                                                   usr3}):
             found = self.manager.get_user(self.context, usr2.name, None)
             self.assertEqual(usr2.serialize(), found)
 
-        with patch.object(self.admin, self.__N_GSU, return_value=set()):
+        with patch.object(self.admin, self.__N_GLU, return_value=set()):
             self.assertIsNone(
                 self.manager.get_user(self.context, usr2.name, None))
 
@@ -620,3 +712,22 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
                                                    None, usr_attrs)
                     alter.assert_called_once_with(ANY, usr)
                     self.assertEqual(0, rename.call_count)
+
+    def test_update_overrides(self):
+        cfg_mgr_mock = MagicMock()
+        self.manager._app.configuration_manager = cfg_mgr_mock
+        overrides = NonCallableMagicMock()
+        self.manager.update_overrides(Mock(), overrides)
+        cfg_mgr_mock.apply_user_override.assert_called_once_with(overrides)
+        cfg_mgr_mock.remove_user_override.assert_not_called()
+
+    def test_remove_overrides(self):
+        cfg_mgr_mock = MagicMock()
+        self.manager._app.configuration_manager = cfg_mgr_mock
+        self.manager.update_overrides(Mock(), {}, remove=True)
+        cfg_mgr_mock.remove_user_override.assert_called_once_with()
+        cfg_mgr_mock.apply_user_override.assert_not_called()
+
+    def test_apply_overrides(self):
+        self.assertIsNone(
+            self.manager.apply_overrides(Mock(), NonCallableMagicMock()))

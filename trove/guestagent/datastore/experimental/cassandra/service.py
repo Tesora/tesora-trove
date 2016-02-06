@@ -14,13 +14,13 @@
 #    under the License.
 
 import os
+import re
 import stat
 
 from cassandra.auth import PlainTextAuthProvider
 from cassandra.cluster import Cluster
 from cassandra.cluster import NoHostAvailable
 from cassandra import OperationTimedOut
-
 from oslo_log import log as logging
 from oslo_utils import netutils
 
@@ -43,12 +43,15 @@ from trove.guestagent import pkg
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
+MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'cassandra'
 
 packager = pkg.Package()
 
 
 class CassandraApp(object):
     """Prepares DBaaS on a Guest container."""
+
+    _ADMIN_USER = 'os_admin'
 
     _CONF_AUTH_SEC = 'authentication'
     _CONF_USR_KEY = 'username'
@@ -62,27 +65,14 @@ class CassandraApp(object):
         self.state_change_wait_time = CONF.state_change_wait_time
         self.status = CassandraAppStatus(self.get_current_superuser())
 
-        revision_dir = self._init_overrides_dir()
+        revision_dir = guestagent_utils.build_file_path(
+            os.path.dirname(self.cassandra_conf),
+            ConfigurationManager.DEFAULT_STRATEGY_OVERRIDES_SUB_DIR)
         self.configuration_manager = ConfigurationManager(
             self.cassandra_conf,
             self.cassandra_owner, self.cassandra_owner,
             SafeYamlCodec(default_flow_style=False), requires_root=True,
             override_strategy=OneFileOverrideStrategy(revision_dir))
-
-    def _init_overrides_dir(self):
-        """Initialize a directory for configuration overrides.
-        """
-        revision_dir = guestagent_utils.build_file_path(
-            os.path.dirname(self.cassandra_conf),
-            ConfigurationManager.DEFAULT_STRATEGY_OVERRIDES_SUB_DIR)
-
-        if not os.path.exists(revision_dir):
-            operating_system.create_directory(
-                revision_dir,
-                user=self.cassandra_owner, group=self.cassandra_owner,
-                force=True, as_root=True)
-
-        return revision_dir
 
     @property
     def service_candidates(self):
@@ -135,12 +125,6 @@ class CassandraApp(object):
         if not packager.pkg_is_installed(packages):
             self._install_db(packages)
         LOG.debug("Cassandra install_if_needed complete")
-
-    def _enable_db_on_boot(self):
-        operating_system.enable_service_on_boot(self.service_candidates)
-
-    def _disable_db_on_boot(self):
-        operating_system.disable_service_on_boot(self.service_candidates)
 
     def init_storage_structure(self, mount_point):
         try:
@@ -201,6 +185,19 @@ class CassandraApp(object):
         operating_system.remove(chaches_dir,
                                 force=True, recursive=True, as_root=True)
 
+        operating_system.create_directory(
+            system_keyspace_dir,
+            user=self.cassandra_owner, group=self.cassandra_owner,
+            force=True, as_root=True)
+        operating_system.create_directory(
+            commitlog_file,
+            user=self.cassandra_owner, group=self.cassandra_owner,
+            force=True, as_root=True)
+        operating_system.create_directory(
+            chaches_dir,
+            user=self.cassandra_owner, group=self.cassandra_owner,
+            force=True, as_root=True)
+
     def _apply_post_restore_updates(self, backup_info):
         """The service should not be running at this point.
 
@@ -226,7 +223,7 @@ class CassandraApp(object):
             - change the cluster name
             - restart the service
 
-        :seealso: _reset_superuser_password
+        :seealso: _reset_admin_password
         :seealso: change_cluster_name
         """
 
@@ -242,7 +239,7 @@ class CassandraApp(object):
             self._update_cluster_name_property(backup_info['instance_id'])
 
             # Reset the superuser password so that we can log-in.
-            self._reset_superuser_password()
+            self._reset_admin_password()
 
             # Start the database and update the 'cluster_name' to the
             # new value.
@@ -251,21 +248,41 @@ class CassandraApp(object):
         finally:
             self.stop_db()  # Always restore the initial state of the service.
 
-    def configure_superuser_access(self):
-        LOG.info(_('Configuring Cassandra superuser.'))
-        current_superuser = self.get_current_superuser()
-        cassandra = models.CassandraUser(self.default_superuser_name,
-                                         utils.generate_random_password())
-        self.__create_cqlsh_config({self._CONF_AUTH_SEC:
-                                    {self._CONF_USR_KEY: cassandra.name,
-                                     self._CONF_PWD_KEY: cassandra.password}})
-        CassandraAdmin(current_superuser).alter_user_password(cassandra)
-        self.status.set_superuser(cassandra)
-
-        return cassandra
-
-    def _reset_superuser_password(self):
+    def secure(self, update_user=None):
+        """Configure the Trove administrative user.
+        Update an existing user if given.
+        Create a new one using the default database credentials
+        otherwise and drop the built-in user when finished.
         """
+        LOG.info(_('Configuring Trove superuser.'))
+
+        current_superuser = update_user or models.CassandraUser(
+            self.default_superuser_name,
+            self.default_superuser_password)
+
+        if update_user:
+            os_admin = models.CassandraUser(update_user.name,
+                                            utils.generate_random_password())
+            CassandraAdmin(current_superuser).alter_user_password(os_admin)
+        else:
+            os_admin = models.CassandraUser(self._ADMIN_USER,
+                                            utils.generate_random_password())
+            CassandraAdmin(current_superuser)._create_superuser(os_admin)
+            CassandraAdmin(os_admin).drop_user(current_superuser)
+
+        self.__create_cqlsh_config({self._CONF_AUTH_SEC:
+                                    {self._CONF_USR_KEY: os_admin.name,
+                                     self._CONF_PWD_KEY: os_admin.password}})
+
+        # Update the internal status with the new user.
+        self.status = CassandraAppStatus(os_admin)
+
+        return os_admin
+
+    def _reset_admin_password(self):
+        """
+        Reset the password of the Trove's administrative superuser.
+
         The service should not be running at this point.
 
         A general password reset procedure is:
@@ -276,16 +293,13 @@ class CassandraApp(object):
             - restart the service
         """
         if self.status.is_running:
-            raise RuntimeError(_("Cannot reset the superuser password. "
+            raise RuntimeError(_("Cannot reset the administrative password. "
                                  "The service is still running."))
-
-        LOG.debug("Resetting the superuser password to '%s'."
-                  % self.default_superuser_password)
 
         try:
             # Disable automatic startup in case the node goes down before
             # we have the superuser secured.
-            self._disable_db_on_boot()
+            operating_system.disable_service_on_boot(self.service_candidates)
 
             self.__disable_remote_access()
             self.__disable_authentication()
@@ -295,15 +309,14 @@ class CassandraApp(object):
             # restart).
             # Then we reset the superuser password to its default value
             # and restart the service to get user functions back.
-            self.start_db(update_db=False)
+            self.start_db(update_db=False, enable_on_boot=False)
             self.__enable_authentication()
-            self.__reset_superuser_password()
+            os_admin = self.__reset_user_password_to_default(self._ADMIN_USER)
+            self.status = CassandraAppStatus(os_admin)
             self.restart()
 
-            # Now we configure the superuser access the same way as during
-            # normal provisioning and restart to apply the changes.
-            self.configure_superuser_access()
-            self.restart()
+            # Now change the administrative password to a new secret value.
+            self.secure(update_user=os_admin)
         finally:
             self.stop_db()  # Always restore the initial state of the service.
 
@@ -311,15 +324,20 @@ class CassandraApp(object):
         # superuser password.
         # Proceed to re-enable remote access and automatic startup.
         self.__enable_remote_access()
-        self._enable_db_on_boot()
+        operating_system.enable_service_on_boot(self.service_candidates)
 
-    def __reset_superuser_password(self):
-        current_superuser = self.get_current_superuser()
-        with CassandraLocalhostConnection(current_superuser) as client:
+    def __reset_user_password_to_default(self, username):
+        LOG.debug("Resetting the password of user '%s' to '%s'."
+                  % (username, self.default_superuser_password))
+
+        user = models.CassandraUser(username, self.default_superuser_password)
+        with CassandraLocalhostConnection(user) as client:
             client.execute(
                 "UPDATE system_auth.credentials SET salted_hash=%s "
-                "WHERE username='{}';", (current_superuser.name,),
+                "WHERE username='{}';", (user.name,),
                 (self.default_superuser_pwd_hash,))
+
+            return user
 
     def change_cluster_name(self, cluster_name):
         """Change the 'cluster_name' property of an exesting running instance.
@@ -370,8 +388,11 @@ class CassandraApp(object):
         If not available fall back to the defaults.
         """
         if self.has_user_config():
-            return self.__load_current_superuser()
+            return self._load_current_superuser()
 
+        LOG.warn(_("Trove administrative user has not been configured yet. "
+                   "Using the built-in default: %s")
+                 % self.default_superuser_name)
         return models.CassandraUser(self.default_superuser_name,
                                     self.default_superuser_password)
 
@@ -382,7 +403,7 @@ class CassandraApp(object):
         """
         return os.path.exists(self._get_cqlsh_conf_path())
 
-    def __load_current_superuser(self):
+    def _load_current_superuser(self):
         config = operating_system.read_file(self._get_cqlsh_conf_path(),
                                             codec=IniCodec())
         return models.CassandraUser(
@@ -525,9 +546,6 @@ class CassandraAppStatus(service.BaseDbStatus):
         super(CassandraAppStatus, self).__init__()
         self.__user = superuser
 
-    def set_superuser(self, user):
-        self.__user = user
-
     def _get_actual_db_status(self):
         try:
             with CassandraLocalhostConnection(self.__user):
@@ -538,6 +556,9 @@ class CassandraAppStatus(service.BaseDbStatus):
             LOG.exception(_("Error getting Cassandra status."))
 
         return rd_instance.ServiceStatuses.SHUTDOWN
+
+    def cleanup_stalled_db_services(self):
+        utils.execute_with_timeout(CassandraApp.CASSANDRA_KILL_CMD, shell=True)
 
 
 class CassandraAdmin(object):
@@ -550,11 +571,12 @@ class CassandraAdmin(object):
     The users it creates are all 'normal' (NOSUPERUSER) accounts.
     The permissions it can grant are also limited to non-superuser operations.
     This is to prevent anybody from creating a new superuser via the Trove API.
-    Similarly, all list operations include only non-superuser accounts.
     """
 
     # Non-superuser grant modifiers.
     __NO_SUPERUSER_MODIFIERS = ('ALTER', 'CREATE', 'DROP', 'MODIFY', 'SELECT')
+
+    _KS_NAME_REGEX = re.compile('^<keyspace (.+)>$')
 
     def __init__(self, user):
         self.__admin_user = user
@@ -585,9 +607,23 @@ class CassandraAdmin(object):
         client.execute("CREATE USER '{}' WITH PASSWORD %s NOSUPERUSER;",
                        (user.name,), (user.password,))
 
-    def delete_user(self, context, user):
+    def _create_superuser(self, user):
+        """Create a new superuser account and grant it full superuser-level
+        access to all keyspaces.
+        """
+        LOG.debug("Creating a new superuser '%s'." % user.name)
         with CassandraLocalhostConnection(self.__admin_user) as client:
-            self._drop_user(client, self._deserialize_user(user))
+            client.execute("CREATE USER '{}' WITH PASSWORD %s SUPERUSER;",
+                           (user.name,), (user.password,))
+            client.execute("GRANT ALL PERMISSIONS ON ALL KEYSPACES TO '{}';",
+                           (user.name,))
+
+    def delete_user(self, context, user):
+        self.drop_user(self._deserialize_user(user))
+
+    def drop_user(self, user):
+        with CassandraLocalhostConnection(self.__admin_user) as client:
+            self._drop_user(client, user)
 
     def _drop_user(self, client, user):
         LOG.debug("Deleting user '%s'." % user.name)
@@ -601,50 +637,126 @@ class CassandraAdmin(object):
     def _find_user(self, client, username):
         """
         Lookup a user with a given username.
-        Search only in non-superuser accounts.
+        Omit user names on the ignore list.
         Return a new Cassandra user instance or None if no match is found.
         """
-        return next((user for user in self._get_non_system_users(client)
+        return next((user for user in self._get_listed_users(client)
                      if user.name == username), None)
 
     def list_users(self, context, limit=None, marker=None,
                    include_marker=False):
         """
-        List all non-superuser accounts.
+        List all non-superuser accounts. Omit names on the ignored list.
         Return an empty set if None.
         """
         with CassandraLocalhostConnection(self.__admin_user) as client:
             users = [user.serialize() for user in
-                     self._get_non_system_users(client)]
+                     self._get_listed_users(client)]
             return pagination.paginate_list(users, limit, marker,
                                             include_marker)
 
-    def _get_non_system_users(self, client):
+    def _get_listed_users(self, client):
         """
         Return a set of unique user instances.
-        Return only non-superuser accounts. Omit user names on the ignore list.
+        Omit user names on the ignore list.
         """
-        return {self._build_user(client, user.name)
-                for user in client.execute("LIST USERS;")
-                if not user.super and user.name not in cfg.get_ignored_users()}
+        return self._get_users(
+            client, lambda user: user.name not in self.ignore_users)
 
-    def _build_user(self, client, username, check_reserved=True):
+    def _get_users(self, client, matcher=None):
+        """
+        :param matcher                Filter expression.
+        :type matcher                 callable
+        """
+        acl = self._get_acl(client)
+        return {self._build_user(user.name, acl)
+                for user in client.execute("LIST USERS;")
+                if not matcher or matcher(user)}
+
+    def _load_user(self, client, username, check_reserved=True):
         if check_reserved:
             self._check_reserved_user_name(username)
 
-        user = models.CassandraUser(username)
-        for keyspace in self._get_available_keyspaces(client):
-            found = self._get_permissions_on_keyspace(client, keyspace, user)
-            if found:
-                user.databases.append(keyspace.serialize())
+        acl = self._get_acl(client, username=username)
+        return self._build_user(username, acl)
 
+    def _build_user(self, username, acl):
+        user = models.CassandraUser(username)
+        for ks, permissions in acl.get(username, {}).items():
+            if permissions:
+                user.databases.append(models.CassandraSchema(ks).serialize())
         return user
 
-    def _get_permissions_on_keyspace(self, client, keyspace, user):
-        return {item.permission for item in
-                client.execute("LIST ALL PERMISSIONS ON KEYSPACE \"{}\" "
-                               "OF '{}' NORECURSIVE;",
-                               (keyspace.name, user.name))}
+    def _get_acl(self, client, username=None):
+        """Return the ACL for a database user.
+        Return ACLs for all users if no particular username is specified.
+
+        The ACL has the following format:
+        {username #1:
+            {keyspace #1: {access mod(s)...},
+             keyspace #2: {...}},
+         username #2:
+            {keyspace #1: {...},
+             keyspace #3: {...}}
+        }
+        """
+
+        def build_list_query(username):
+            query_tokens = ["LIST ALL PERMISSIONS"]
+            if username:
+                query_tokens.extend(["OF", "'%s'" % username])
+            query_tokens.append("NORECURSIVE;")
+            return ' '.join(query_tokens)
+
+        def parse_keyspace_name(resource):
+            """Parse a keyspace name from a resource string.
+            The resource string has the following form:
+                <object name>
+            where 'object' is one of the database objects (keyspace, table...).
+            Return the name as a singleton set. Return an empty set if no match
+            is found.
+            """
+            match = self._KS_NAME_REGEX.match(resource)
+            if match:
+                return {match.group(1)}
+            return {}
+
+        def update_acl(username, keyspace, permission, acl):
+            permissions = acl.get(username, {}).get(keyspace)
+            if permissions is None:
+                guestagent_utils.update_dict({user: {keyspace: {permission}}},
+                                             acl)
+            else:
+                permissions.add(permission)
+
+        all_keyspace_names = None
+        acl = dict()
+        for item in client.execute(build_list_query(username)):
+            user = item.username
+            resource = item.resource
+            permission = item.permission
+            if user and resource and permission:
+                if resource == '<all keyspaces>':
+                    # Cache the full keyspace list to improve performance and
+                    # ensure consistent results for all users.
+                    if all_keyspace_names is None:
+                        all_keyspace_names = {
+                            item.name
+                            for item in self._get_available_keyspaces(client)
+                        }
+                    keyspaces = all_keyspace_names
+                else:
+                    keyspaces = parse_keyspace_name(resource)
+
+                for keyspace in keyspaces:
+                    update_acl(user, keyspace, permission, acl)
+
+        return acl
+
+    def list_superusers(self):
+        """List all system users existing in the database."""
+        with CassandraLocalhostConnection(self.__admin_user) as client:
+            return self._get_users(client, lambda user: user.super)
 
     def grant_access(self, context, username, hostname, databases):
         """
@@ -705,7 +817,7 @@ class CassandraAdmin(object):
 
     def update_attributes(self, context, username, hostname, user_attrs):
         with CassandraLocalhostConnection(self.__admin_user) as client:
-            user = self._build_user(client, username)
+            user = self._load_user(client, username)
             new_name = user_attrs.get('name')
             new_password = user_attrs.get('password')
             self._update_user(client, user, new_name, new_password)
@@ -812,7 +924,7 @@ class CassandraAdmin(object):
         return {models.CassandraSchema(db.keyspace_name)
                 for db in client.execute("SELECT * FROM "
                                          "system.schema_keyspaces;")
-                if db.keyspace_name not in cfg.get_ignored_dbs()}
+                if db.keyspace_name not in self.ignore_dbs}
 
     def list_access(self, context, username, hostname):
         with CassandraLocalhostConnection(self.__admin_user) as client:
@@ -852,16 +964,11 @@ class CassandraAdmin(object):
 
     @property
     def ignore_users(self):
-        return self.get_configuration_property('ignore_users')
+        return cfg.get_ignored_users(manager=MANAGER)
 
     @property
     def ignore_dbs(self):
-        return self.get_configuration_property('ignore_dbs')
-
-    @staticmethod
-    def get_configuration_property(property_name):
-        manager = CONF.datastore_manager or "cassandra"
-        return CONF.get(manager).get(property_name)
+        return cfg.get_ignored_dbs(manager=MANAGER)
 
 
 class CassandraConnection(object):
@@ -958,6 +1065,3 @@ class CassandraLocalhostConnection(CassandraConnection):
 
     def __init__(self, user):
         super(CassandraLocalhostConnection, self).__init__(None, user)
-
-    def cleanup_stalled_db_services(self):
-        utils.execute_with_timeout(self.CASSANDRA_KILL_CMD, shell=True)

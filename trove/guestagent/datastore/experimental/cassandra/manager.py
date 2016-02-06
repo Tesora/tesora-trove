@@ -31,8 +31,8 @@ from trove.guestagent.datastore import manager
 from trove.guestagent import volume
 
 
-CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
+CONF = cfg.CONF
 
 
 class Manager(manager.Manager):
@@ -132,7 +132,7 @@ class Manager(manager.Manager):
 
             if not self.app.has_user_config():
                 LOG.debug("Securing superuser access.")
-                self.app.configure_superuser_access()
+                self.app.secure()
                 self.app.restart()
 
             self.__admin = CassandraAdmin(self.app.get_current_superuser())

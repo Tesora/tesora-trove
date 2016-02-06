@@ -15,13 +15,15 @@ import mock
 import os
 
 from mock import ANY, DEFAULT, Mock, patch, PropertyMock
-from oslo_utils import netutils
 from testtools.testcase import ExpectedException
 from trove.common import exception
 from trove.common import utils
 from trove.guestagent.common import configuration
 from trove.guestagent.common.configuration import ImportOverrideStrategy
 from trove.guestagent.common import operating_system
+from trove.guestagent.datastore.experimental.cassandra import (
+    service as cass_service
+)
 from trove.guestagent.strategies.backup import base as backupBase
 from trove.guestagent.strategies.backup.experimental.postgresql_impl \
     import PgBaseBackupUtil
@@ -29,10 +31,6 @@ from trove.guestagent.strategies.backup.mysql_impl import MySqlApp
 from trove.guestagent.strategies.restore import base as restoreBase
 from trove.guestagent.strategies.restore.mysql_impl import MySQLRestoreMixin
 from trove.tests.unittests import trove_testtools
-
-from trove.guestagent.datastore.experimental.cassandra import (
-    service as cass_service
-)
 
 BACKUP_XTRA_CLS = ("trove.guestagent.strategies.backup."
                    "mysql_impl.InnoBackupEx")
@@ -50,10 +48,6 @@ BACKUP_CBBACKUP_CLS = ("trove.guestagent.strategies.backup."
                        "experimental.couchbase_impl.CbBackup")
 RESTORE_CBBACKUP_CLS = ("trove.guestagent.strategies.restore."
                         "experimental.couchbase_impl.CbBackup")
-BACKUP_NODETOOLSNAPSHOT_CLS = ("trove.guestagent.strategies.backup."
-                               "experimental.cassandra_impl.NodetoolSnapshot")
-RESTORE_NODETOOLSNAPSHOT_CLS = ("trove.guestagent.strategies.restore."
-                                "experimental.cassandra_impl.NodetoolSnapshot")
 BACKUP_MONGODUMP_CLS = ("trove.guestagent.strategies.backup."
                         "experimental.mongo_impl.MongoDump")
 RESTORE_MONGODUMP_CLS = ("trove.guestagent.strategies.restore."
@@ -62,6 +56,10 @@ BACKUP_REDIS_CLS = ("trove.guestagent.strategies.backup."
                     "experimental.redis_impl.RedisBackup")
 RESTORE_REDIS_CLS = ("trove.guestagent.strategies.restore."
                      "experimental.redis_impl.RedisBackup")
+BACKUP_NODETOOLSNAPSHOT_CLS = ("trove.guestagent.strategies.backup."
+                               "experimental.cassandra_impl.NodetoolSnapshot")
+RESTORE_NODETOOLSNAPSHOT_CLS = ("trove.guestagent.strategies.restore."
+                                "experimental.cassandra_impl.NodetoolSnapshot")
 
 PIPE = " | "
 ZIP = "gzip"
@@ -442,15 +440,10 @@ class CassandraBackupTest(trove_testtools.TestCase):
     _DATA_DIR = 'data_dir'
     _SNAPSHOT_NAME = 'snapshot_name'
     _SNAPSHOT_FILES = {'foo.db', 'bar.db'}
-    _MOCK_IP = "1.1.1.1"
     _RESTORE_LOCATION = {'restore_location': '/var/lib/cassandra'}
 
     def setUp(self):
         super(CassandraBackupTest, self).setUp()
-        self.get_my_ipv4_patcher = patch.object(
-            netutils, 'get_my_ipv4', return_value=self._MOCK_IP)
-        self.addCleanup(self.get_my_ipv4_patcher.stop)
-        self.get_my_ipv4_patcher.start()
         self.app_status_patcher = patch(
             'trove.guestagent.datastore.experimental.cassandra.service.'
             'CassandraAppStatus')
@@ -517,8 +510,7 @@ class CassandraBackupTest(trove_testtools.TestCase):
         self.assertIn(".enc", bkp.manifest)
         self.assertNotIn(".gz", bkp.manifest)
 
-    @mock.patch.object(cass_service.CassandraApp, '_init_overrides_dir',
-                       return_value='')
+    @mock.patch.object(ImportOverrideStrategy, '_initialize_import_directory')
     def test_restore_encrypted_but_not_zipped_nodetoolsnapshot_command(
             self, _):
         restoreBase.RestoreRunner.is_zipped = False
@@ -531,8 +523,7 @@ class CassandraBackupTest(trove_testtools.TestCase):
         self.assertEqual(self._BASE_RESTORE_CMD % self._RESTORE_LOCATION,
                          rstr.base_restore_cmd % self._RESTORE_LOCATION)
 
-    @mock.patch.object(cass_service.CassandraApp, '_init_overrides_dir',
-                       return_value='')
+    @mock.patch.object(ImportOverrideStrategy, '_initialize_import_directory')
     def _build_backup_runner(self, is_encrypted, is_zipped, _):
         backupBase.BackupRunner.is_zipped = is_zipped
         backupBase.BackupRunner.is_encrypted = is_encrypted
@@ -541,6 +532,9 @@ class CassandraBackupTest(trove_testtools.TestCase):
         runner = RunnerClass(self._SNAPSHOT_NAME)
         runner._remove_snapshot = mock.MagicMock()
         runner._snapshot_all_keyspaces = mock.MagicMock()
+        runner._find_in_subdirectories = mock.MagicMock(
+            return_value=self._SNAPSHOT_FILES
+        )
 
         return runner
 

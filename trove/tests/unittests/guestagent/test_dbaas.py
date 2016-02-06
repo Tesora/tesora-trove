@@ -2349,34 +2349,18 @@ class TestRedisApp(BaseAppTest.AppTestCase):
 
 class CassandraDBAppTest(BaseAppTest.AppTestCase):
 
-    def setUp(self):
+    @patch.object(ImportOverrideStrategy, '_initialize_import_directory')
+    def setUp(self, _):
         super(CassandraDBAppTest, self).setUp(str(uuid4()))
-        self.exec_patch = patch.object(utils, 'execute_with_timeout')
-        self.addCleanup(self.exec_patch.stop)
-        self.exec_mock = self.exec_patch.start()
         self.sleep = time.sleep
         self.orig_time_time = time.time
         self.pkg_version = cass_service.packager.pkg_version
         self.pkg = cass_service.packager
         util.init_db()
+        self.cassandra = cass_service.CassandraApp()
+        self.cassandra.status = FakeAppStatus(self.FAKE_ID,
+                                              rd_instance.ServiceStatuses.NEW)
         self.orig_unlink = os.unlink
-        self.FAKE_ID = str(uuid4())
-        InstanceServiceStatus.create(instance_id=self.FAKE_ID,
-                                     status=rd_instance.ServiceStatuses.NEW)
-        appStatus = FakeAppStatus(self.FAKE_ID,
-                                  rd_instance.ServiceStatuses.NEW)
-        with patch.object(cass_service.CassandraApp, '_init_overrides_dir',
-                          return_value=''):
-            self.cassandra = cass_service.CassandraApp()
-            self.cassandra.status = appStatus
-
-        self.service_discovery_patch = patch.object(
-            operating_system, 'service_discovery',
-            return_value={'cmd_start': 'start',
-                          'cmd_stop': 'stop',
-                          'cmd_enable': 'enable',
-                          'cmd_disable': 'disable'})
-        self.service_discovery_patch.start()
 
     @property
     def app(self):
@@ -2395,17 +2379,22 @@ class CassandraDBAppTest(BaseAppTest.AppTestCase):
         return self.cassandra.service_candidates
 
     def tearDown(self):
-        super(CassandraDBAppTest, self).tearDown()
-        self.service_discovery_patch.stop()
         time.sleep = self.sleep
         time.time = self.orig_time_time
         cass_service.packager.pkg_version = self.pkg_version
         cass_service.packager = self.pkg
+        super(CassandraDBAppTest, self).tearDown()
 
     def assert_reported_status(self, expected_status):
         service_status = InstanceServiceStatus.find_by(
             instance_id=self.FAKE_ID)
         self.assertEqual(expected_status, service_status.status)
+
+    @patch.object(utils, 'execute_with_timeout')
+    def test_service_cleanup(self, exec_mock):
+        cass_service.CassandraAppStatus(Mock()).cleanup_stalled_db_services()
+        exec_mock.assert_called_once_with(self.cassandra.CASSANDRA_KILL_CMD,
+                                          shell=True)
 
     def test_install(self):
 
