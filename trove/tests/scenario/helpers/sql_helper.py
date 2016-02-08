@@ -33,10 +33,13 @@ class SqlHelper(TestHelper):
         self.protocol = protocol
         self.port = port
         self.credentials = self.get_helper_credentials()
-        self.test_schema = self.credentials['database']
 
         self._schema_metadata = MetaData()
         self._data_cache = dict()
+
+    @property
+    def test_schema(self):
+        return self.credentials['database']
 
     def create_client(self, host, *args, **kwargs):
         return sqlalchemy.create_engine(self._get_connection_string(host))
