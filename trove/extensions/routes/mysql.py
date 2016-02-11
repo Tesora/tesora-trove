@@ -72,10 +72,7 @@ class Mysql(extensions.ExtensionDescriptor):
             common_service.RootController(),
             parent={'member_name': 'instance',
                     'collection_name': '{tenant_id}/instances'},
-            custom_routes=[{'include_parent_path': True,
-                            'path': '/root',
-                            'action': 'delete',
-                            'method': 'DELETE'}])
+            collection_actions={'delete': 'DELETE'})
         resources.append(resource)
 
         resource = extensions.ResourceExtension(

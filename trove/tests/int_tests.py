@@ -43,6 +43,7 @@ from trove.tests.scenario.groups import instance_create_group
 from trove.tests.scenario.groups import instance_delete_group
 from trove.tests.scenario.groups import negative_cluster_actions_group
 from trove.tests.scenario.groups import replication_group
+from trove.tests.scenario.groups import root_actions_group
 from trove.tests.scenario.groups import user_actions_group
 
 
@@ -159,6 +160,9 @@ instance_actions_groups.extend([instance_actions_group.GROUP])
 replication_groups = list(instance_create_groups)
 replication_groups.extend([replication_group.GROUP])
 
+root_actions_groups = list(instance_create_groups)
+root_actions_groups.extend([root_actions_group.GROUP])
+
 user_actions_groups = list(instance_create_groups)
 user_actions_groups.extend([user_actions_group.GROUP])
 
@@ -175,6 +179,7 @@ register(["guest_log"], guest_log_groups)
 register(["instance", "instance_actions"], instance_actions_groups)
 register(["instance_create"], instance_create_groups)
 register(["replication"], replication_groups)
+register(["root"], root_actions_groups)
 register(["user"], user_actions_groups)
 
 # Register: Datastore based groups
@@ -183,21 +188,22 @@ register(["db2_supported"], common_groups,
          database_actions_groups, user_actions_groups)
 register(["cassandra_supported"], common_groups,
          backup_groups, configuration_groups)
-register(["couchbase_supported"], common_groups, backup_groups)
+register(["couchbase_supported"], common_groups, backup_groups,
+         root_actions_groups)
 register(["couchdb_supported"], common_groups)
 register(["postgresql_supported"], common_groups,
          backup_groups, database_actions_groups, configuration_groups,
-         user_actions_groups)
+         root_actions_groups, user_actions_groups)
 register(["mariadb_supported", "mysql_supported", "percona_supported"],
          common_groups,
          backup_groups, configuration_groups, database_actions_groups,
-         replication_groups, user_actions_groups)
+         replication_groups, root_actions_groups, user_actions_groups)
 register(["mongodb_supported"], common_groups,
          backup_groups, cluster_actions_groups, configuration_groups,
-         database_actions_groups, user_actions_groups)
+         database_actions_groups, root_actions_groups, user_actions_groups)
 register(["pxc_supported"], common_groups,
-         cluster_actions_groups)
+         cluster_actions_groups, root_actions_groups)
 register(["redis_supported"], common_groups,
          backup_groups, replication_groups)
 register(["vertica_supported"], common_groups,
-         cluster_actions_groups)
+         cluster_actions_groups, root_actions_groups)
