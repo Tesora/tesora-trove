@@ -20,6 +20,7 @@ import os.path
 from oslo_config import cfg
 from oslo_config.cfg import NoSuchOptError
 from oslo_log import log as logging
+from osprofiler import opts as profiler
 
 from trove.version import version_info as version
 
@@ -81,7 +82,7 @@ common_opts = [
                help='Service type to use when searching catalog.'),
     cfg.StrOpt('nova_compute_endpoint_type', default='publicURL',
                help='Service endpoint type to use when searching catalog.'),
-    cfg.IntOpt('nova_client_version', default=2,
+    cfg.StrOpt('nova_client_version', default='2.12',
                help="The version of of the compute service client."),
     cfg.StrOpt('neutron_url', help='URL without the tenant segment.'),
     cfg.StrOpt('neutron_service_type', default='network',
@@ -436,20 +437,6 @@ common_opts = [
                help='Maximum size of a chunk saved in guest log container.'),
     cfg.IntOpt('guest_log_expiry', default=2592000,
                help='Expiry (in seconds) of objects in guest log container.'),
-]
-
-# Profiling specific option groups
-
-profiler_group = cfg.OptGroup(
-    'profiler', title='Profiler options',
-    help="Oslo option group designed for profiler")
-profiler_opts = [
-    cfg.BoolOpt("enabled", default=False,
-                help="If False fully disable profiling feature."),
-    cfg.BoolOpt("trace_sqlalchemy", default=True,
-                help="If False doesn't trace SQL requests."),
-    cfg.StrOpt("hmac_keys", default="SECRET_KEY",
-               help="Secret key to use to sign tracing messages."),
 ]
 
 
@@ -1480,9 +1467,6 @@ CONF = cfg.CONF
 CONF.register_opts(path_opts)
 CONF.register_opts(common_opts)
 
-CONF.register_group(profiler_group)
-CONF.register_opts(profiler_opts, profiler_group)
-
 CONF.register_opts(database_opts, 'database')
 
 CONF.register_group(mysql_group)
@@ -1519,6 +1503,7 @@ CONF.register_opts(mariadb_opts, mariadb_group)
 
 CONF.register_opts(rpcapi_cap_opts, upgrade_levels)
 
+profiler.set_defaults(CONF)
 logging.register_options(CONF)
 
 
