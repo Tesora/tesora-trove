@@ -818,6 +818,7 @@ class OracleRootAccess(object):
 
         oracnf = OracleConfig()
         oracnf.enable_root()
+        oracnf.sys_password = sys_pwd
 
         user = models.RootUser()
         user.name = "sys"
