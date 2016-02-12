@@ -400,6 +400,10 @@ class OracleConfig(object):
         self._save_value_in_file(self._CONF_ROOT_ENABLED, 'true')
         self._root_enabled = 'true'
 
+    def disable_root(self):
+        self._save_value_in_file(self._CONF_ROOT_ENABLED, 'false')
+        self._root_enabled = 'false'
+
 class LocalOracleClient(object):
     """A wrapper to manage Oracle connection."""
 
@@ -819,6 +823,7 @@ class OracleRootAccess(object):
         oracnf = OracleConfig()
         oracnf.enable_root()
         oracnf.sys_password = sys_pwd
+        LOG.debug('enable_root completed')
 
         user = models.RootUser()
         user.name = "sys"
@@ -837,3 +842,7 @@ class OracleRootAccess(object):
             with LocalOracleClient(oradb.name, service=True) as client:
                 client.execute('alter user sys identified by "%s"' %
                                sys_pwd)
+        oracnf = OracleConfig()
+        oracnf.disable_root()
+        oracnf.sys_password = sys_pwd
+        LOG.debug('disable_root completed')
