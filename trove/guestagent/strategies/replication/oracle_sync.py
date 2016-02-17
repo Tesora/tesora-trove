@@ -196,6 +196,8 @@ class OracleSyncReplication(base.Replication):
                     cursor.execute("alter database mount")
                     cursor.execute("alter database open")
                     cursor.execute("ALTER SYSTEM SWITCH LOGFILE")
+                ora_status = ora_service.OracleAppStatus()
+                ora_status.update()
 
     def _create_tns_entry(self, dbname, host, service_name):
         return ('(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)'
