@@ -210,58 +210,84 @@ class ClusterTasks(Cluster):
 
     def _all_instances_ready(self, instance_ids, cluster_id,
                              shard_id=None):
+        """Wait for all instances to get READY."""
+        return self._all_instances_acquire_status(
+            instance_ids, cluster_id, shard_id, ServiceStatuses.INSTANCE_READY,
+            fast_fail_statuses=[ServiceStatuses.FAILED,
+                                ServiceStatuses.FAILED_TIMEOUT_GUESTAGENT])
 
-        def _all_status_ready(ids):
-            LOG.debug("Checking service status of instance ids: %s" % ids)
+    def _all_instances_shutdown(self, instance_ids, cluster_id,
+                                shard_id=None):
+        """Wait for all instances to go SHUTDOWN."""
+        return self._all_instances_acquire_status(
+            instance_ids, cluster_id, shard_id, ServiceStatuses.SHUTDOWN,
+            fast_fail_statuses=[ServiceStatuses.FAILED,
+                                ServiceStatuses.FAILED_TIMEOUT_GUESTAGENT])
+
+    def _all_instances_running(self, instance_ids, cluster_id, shard_id=None):
+        """Wait for all instances to become ACTIVE."""
+        return self._all_instances_acquire_status(
+            instance_ids, cluster_id, shard_id, ServiceStatuses.RUNNING,
+            fast_fail_statuses=[ServiceStatuses.FAILED,
+                                ServiceStatuses.FAILED_TIMEOUT_GUESTAGENT])
+
+    def _all_instances_acquire_status(
+            self, instance_ids, cluster_id, shard_id, expected_status,
+            fast_fail_statuses=None):
+
+        def _is_fast_fail_status(status):
+            return ((fast_fail_statuses is not None) and
+                    ((status == fast_fail_statuses) or
+                     (status in fast_fail_statuses)))
+
+        def _all_have_status(ids):
             for instance_id in ids:
                 status = InstanceServiceStatus.find_by(
                     instance_id=instance_id).get_status()
-                if (status == ServiceStatuses.FAILED or
-                   status == ServiceStatuses.FAILED_TIMEOUT_GUESTAGENT):
-                        # if one has failed, no need to continue polling
-                        LOG.debug("Instance %s in %s, exiting polling." % (
-                            instance_id, status))
-                        return True
-                if status != ServiceStatuses.INSTANCE_READY:
-                        # if one is not in a cluster-ready state,
-                        # continue polling
-                        LOG.debug("Instance %s in %s, continue polling." % (
-                            instance_id, status))
-                        return False
-            LOG.debug("Instances are ready, exiting polling for: %s" % ids)
+                if _is_fast_fail_status(status):
+                    # if one has failed, no need to continue polling
+                    LOG.debug("Instance %s has acquired a fast-fail status %s."
+                              % (instance_id, status))
+                    return True
+                if status != expected_status:
+                    # if one is not in the expected state, continue polling
+                    LOG.debug("Instance %s was %s." % (instance_id, status))
+                    return False
+
             return True
 
         def _instance_ids_with_failures(ids):
-            LOG.debug("Checking for service status failures for "
-                      "instance ids: %s" % ids)
+            LOG.debug("Checking for service failures on instances: %s"
+                      % ids)
             failed_instance_ids = []
             for instance_id in ids:
                 status = InstanceServiceStatus.find_by(
                     instance_id=instance_id).get_status()
-                if (status == ServiceStatuses.FAILED or
-                   status == ServiceStatuses.FAILED_TIMEOUT_GUESTAGENT):
-                        failed_instance_ids.append(instance_id)
+                if _is_fast_fail_status(status):
+                    failed_instance_ids.append(instance_id)
             return failed_instance_ids
 
-        LOG.debug("Polling until service status is ready for "
-                  "instance ids: %s" % instance_ids)
+        LOG.debug("Polling until all instances acquire %s status: %s"
+                  % (expected_status, instance_ids))
         try:
             utils.poll_until(lambda: instance_ids,
-                             lambda ids: _all_status_ready(ids),
+                             lambda ids: _all_have_status(ids),
                              sleep_time=USAGE_SLEEP_TIME,
                              time_out=CONF.usage_timeout)
         except PollTimeOut:
-            LOG.exception(_("Timeout for all instance service statuses "
-                            "to become ready."))
+            LOG.exception(_("Timed out while waiting for all instances "
+                            "to become %s.") % expected_status)
             self.update_statuses_on_failure(cluster_id, shard_id)
             return False
 
         failed_ids = _instance_ids_with_failures(instance_ids)
         if failed_ids:
-            LOG.error(_("Some instances failed to become ready: %s") %
-                      failed_ids)
+            LOG.error(_("Some instances failed: %s") % failed_ids)
             self.update_statuses_on_failure(cluster_id, shard_id)
             return False
+
+        LOG.debug("All instances have acquired the expected status %s."
+                  % expected_status)
 
         return True
 
@@ -293,33 +319,6 @@ class ClusterTasks(Cluster):
 
 class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
 
-    def _get_injected_files(self, datastore_manager):
-        injected_config_location = CONF.get('injected_config_location')
-        guest_info = CONF.get('guest_info')
-
-        if ('/' in guest_info):
-            # Set guest_info_file to exactly guest_info from the conf file.
-            # This should be /etc/guest_info for pre-Kilo compatibility.
-            guest_info_file = guest_info
-        else:
-            guest_info_file = os.path.join(injected_config_location,
-                                           guest_info)
-
-        files = {guest_info_file: (
-            "[DEFAULT]\n"
-            "guest_id=%s\n"
-            "guest_name=%s\n"
-            "datastore_manager=%s\n"
-            "tenant_id=%s\n"
-            % (self.id, self.name, datastore_manager, self.tenant_id))}
-
-        if os.path.isfile(CONF.get('guest_config')):
-            with open(CONF.get('guest_config'), "r") as f:
-                files[os.path.join(injected_config_location,
-                                   "trove-guestagent.conf")] = f.read()
-
-        return files
-
     def wait_for_instance(self, timeout, flavor):
         # Make sure the service becomes active before sending a usage
         # record to avoid over billing a customer for an instance that
@@ -344,7 +343,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
     def create_instance(self, flavor, image_id, databases, users,
                         datastore_manager, packages, volume_size,
                         backup_id, availability_zone, root_password, nics,
-                        overrides, cluster_config, snapshot, volume_type):
+                        overrides, cluster_config, snapshot, volume_type,
+                        scheduler_hints):
         # It is the caller's responsibility to ensure that
         # FreshInstanceTasks.wait_for_instance is called after
         # create_instance to ensure that the proper usage event gets sent
@@ -369,7 +369,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                 LOG.debug("Successfully created security group for "
                           "instance: %s" % self.id)
 
-        files = self._get_injected_files(datastore_manager)
+        files = self.get_injected_files(datastore_manager)
         cinder_volume_type = volume_type or CONF.cinder_volume_type
         if use_heat:
             volume_info = self._create_server_volume_heat(
@@ -390,7 +390,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                 volume_size,
                 availability_zone,
                 nics,
-                files)
+                files,
+                scheduler_hints)
         else:
             volume_info = self._create_server_volume_individually(
                 flavor['id'],
@@ -401,7 +402,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                 availability_zone,
                 nics,
                 files,
-                cinder_volume_type)
+                cinder_volume_type,
+                scheduler_hints)
 
         config = self._render_config(flavor)
 
@@ -603,7 +605,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
 
     def _create_server_volume(self, flavor_id, image_id, security_groups,
                               datastore_manager, volume_size,
-                              availability_zone, nics, files):
+                              availability_zone, nics, files,
+                              scheduler_hints):
         LOG.debug("Begin _create_server_volume for id: %s" % self.id)
         try:
             userdata = self._prepare_userdata(datastore_manager)
@@ -621,7 +624,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                 security_groups=security_groups,
                 availability_zone=availability_zone,
                 nics=nics, config_drive=config_drive,
-                key_name=key_name, userdata=userdata)
+                key_name=key_name, userdata=userdata,
+                scheduler_hints=scheduler_hints)
             server_dict = server._info
             LOG.debug("Created new compute instance %(server_id)s "
                       "for id: %(id)s\nServer response: %(response)s" %
@@ -757,7 +761,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
     def _create_server_volume_individually(self, flavor_id, image_id,
                                            security_groups, datastore_manager,
                                            volume_size, availability_zone,
-                                           nics, files, volume_type):
+                                           nics, files, volume_type,
+                                           scheduler_hints):
         LOG.debug("Begin _create_server_volume_individually for id: %s" %
                   self.id)
         server = None
@@ -769,7 +774,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             server = self._create_server(flavor_id, image_id, security_groups,
                                          datastore_manager,
                                          block_device_mapping,
-                                         availability_zone, nics, files)
+                                         availability_zone, nics, files,
+                                         scheduler_hints)
             server_id = server.id
             # Save server ID.
             self.update_db(compute_instance_id=server_id)
@@ -883,7 +889,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
 
     def _create_server(self, flavor_id, image_id, security_groups,
                        datastore_manager, block_device_mapping,
-                       availability_zone, nics, files={}):
+                       availability_zone, nics, files={},
+                       scheduler_hints=None):
         userdata = self._prepare_userdata(datastore_manager)
         name = self.hostname or self.name
         bdmap = block_device_mapping
@@ -894,7 +901,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             name, image_id, flavor_id, files=files, userdata=userdata,
             security_groups=security_groups, block_device_mapping=bdmap,
             availability_zone=availability_zone, nics=nics,
-            config_drive=config_drive, key_name=key_name)
+            config_drive=config_drive, key_name=key_name,
+            scheduler_hints=scheduler_hints)
         LOG.debug("Created new compute instance %(server_id)s "
                   "for instance %(id)s" %
                   {'server_id': server.id, 'id': self.id})
@@ -994,6 +1002,15 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             except (ValueError, TroveError):
                 set_error_and_raise([from_, to_])
 
+    def create_server_group(self, locality):
+        server_group_name = "%s_%s" % ('locality', self.id)
+        server_group = self.nova_client.server_groups.create(
+            name=server_group_name, policies=[locality])
+        LOG.debug("Created '%s' server group for instance %s (id: %s)." %
+                  (locality, self.id, server_group.id))
+
+        return server_group
+
     def _build_heat_nics(self, nics):
         ifaces = []
         ports = []
@@ -1064,6 +1081,11 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         except Exception as ex:
             LOG.exception(_("Error during dns entry of instance %(id)s: "
                             "%(ex)s") % {'id': self.db_info.id, 'ex': ex})
+        try:
+            self._delete_server_group()
+        except Exception:
+            LOG.exception(_("Error during delete server group %s")
+                          % self.server_group_name)
 
         # Poll until the server is gone.
         def server_is_finished():
@@ -1106,6 +1128,18 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
 #                                deleted_at=timeutils.isotime(deleted_at),
 #                                server=old_server)
         LOG.debug("End _delete_resources for instance %s" % self.id)
+
+    def _delete_server_group(self):
+        server_group = self.server_group
+        # Only delete the server group if we're the last member in it
+        if server_group:
+            if len(server_group.members) == 1:
+                self.nova_client.server_groups.delete(server_group.id)
+                LOG.debug("Deleted server group for instance %s (id: %s)." %
+                          (self.id, server_group.id))
+            else:
+                LOG.debug("Skipping delete of server group %s (members: %s)." %
+                          (server_group.id, server_group.members))
 
     def server_status_matches(self, expected_status, server=None):
         if not server:
@@ -1216,13 +1250,26 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         for ip in ips:
             nova_instance.add_floating_ip(ip)
 
-    def enable_as_master(self):
+    def enable_as_master(self, for_failover=False):
         LOG.debug("Calling enable_as_master on %s" % self.id)
         flavor = self.nova_client.flavors.get(self.flavor_id)
         replica_source_config = self._render_replica_source_config(flavor)
         self.update_db(slave_of_id=None)
         self.slave_list = None
-        self.guest.enable_as_master(replica_source_config.config_contents)
+        self.guest.enable_as_master(replica_source_config.config_contents,
+                                    for_failover)
+
+    def complete_master_setup(self, dbs):
+        self.guest.complete_master_setup(dbs)
+
+    def complete_slave_setup(self, master_detail, slave_detail):
+        self.guest.complete_slave_setup(master_detail, slave_detail)
+
+    def sync_data_to_slaves(self):
+        self.guest.sync_data_to_slaves()
+
+    def get_replication_detail(self):
+        return self.guest.get_replication_detail()
 
     def get_last_txn(self):
         LOG.debug("Calling get_last_txn on %s" % self.id)
@@ -1345,6 +1392,49 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         datastore_status = InstanceServiceStatus.find_by(instance_id=self.id)
         datastore_status.status = rd_instance.ServiceStatuses.PAUSED
         datastore_status.save()
+
+    def upgrade(self, datastore_version):
+        LOG.debug("Upgrading instance %s to new datastore version %s",
+                  self, datastore_version)
+
+        def server_finished_rebuilding():
+            self.refresh_compute_server_info()
+            return not self.server_status_matches(['REBUILD'])
+
+        try:
+            upgrade_info = self.guest.pre_upgrade()
+
+            if self.volume_id:
+                volume = self.volume_client.volumes.get(self.volume_id)
+                volume_device = volume.attachments[0]['device']
+
+            injected_files = self.get_injected_files(
+                datastore_version.manager)
+            LOG.debug("Rebuilding instance %(instance)s with image %(image)s.",
+                      {'instance': self, 'image': datastore_version.image_id})
+            self.server.rebuild(datastore_version.image_id,
+                                files=injected_files)
+            utils.poll_until(
+                server_finished_rebuilding,
+                sleep_time=2, time_out=600)
+            if not self.server_status_matches(['ACTIVE']):
+                raise TroveError(_("Instance %(instance)s failed to "
+                                   "upgrade to %(datastore_version)s")
+                                 % {'instance': self,
+                                    'datastore_version': datastore_version})
+
+            if volume:
+                upgrade_info['device'] = volume_device
+
+            self.guest.post_upgrade(upgrade_info)
+
+            self.reset_task_status()
+
+        except Exception as e:
+            LOG.exception(e)
+            err = inst_models.InstanceTasks.BUILDING_ERROR_SERVER
+            self.update_db(task_status=err)
+            raise e
 
 
 class BackupTasks(object):

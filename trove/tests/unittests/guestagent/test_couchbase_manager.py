@@ -21,10 +21,12 @@ from mock import DEFAULT
 from mock import MagicMock
 from mock import Mock
 from mock import patch
+from mock import PropertyMock
 from oslo_utils import netutils
 
 from trove.common import utils
 from trove.guestagent import backup
+from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.experimental.couchbase import (
     manager as couch_manager)
 from trove.guestagent.datastore.experimental.couchbase import (
@@ -68,7 +70,8 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
     @patch.multiple(couch_service.CouchbaseApp,
                     install_if_needed=DEFAULT,
                     start_db_with_conf_changes=DEFAULT,
-                    initial_setup=DEFAULT)
+                    init_storage_structure=DEFAULT,
+                    apply_initial_guestagent_configuration=DEFAULT)
     @patch.multiple(volume.VolumeDevice,
                     format=DEFAULT,
                     mount=DEFAULT,
@@ -90,16 +93,28 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
         instance_ram = 2048
         mount_point = '/var/lib/couchbase'
 
-        self.manager.prepare(self.context, self.packages, None,
-                             instance_ram, None, device_path=device_path,
-                             mount_point=mount_point,
-                             backup_info=backup_info,
-                             overrides=None,
-                             cluster_config=None)
+        with patch.object(couch_service.CouchbaseApp, 'available_ram_mb',
+                          new_callable=PropertyMock) as available_ram_mock:
+            available_ram_mock.return_value = instance_ram
+
+            self.manager.prepare(self.context, self.packages, None,
+                                 instance_ram, None, device_path=device_path,
+                                 mount_point=mount_point,
+                                 backup_info=backup_info,
+                                 overrides=None,
+                                 cluster_config=None)
+
+            available_ram_mock.assert_called_once_with(instance_ram)
 
         # verification/assertion
         mock_status.begin_install.assert_any_call()
+
+        storage_mock = kwmocks['init_storage_structure']
+        init_mock = kwmocks['apply_initial_guestagent_configuration']
+        init_mock.assert_called_once_with(None)
+        storage_mock.assert_called_once_with(mount_point)
         kwmocks['install_if_needed'].assert_any_call(self.packages)
+
         if backup_info:
             backup.restore.assert_any_call(self.context,
                                            backup_info,
@@ -169,3 +184,12 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
             self.assertRaises(RuntimeError,
                               rootaccess.write_password_to_file,
                               'mypassword')
+
+    @mock.patch.object(operating_system, 'create_directory')
+    def test_init_storage_structure(self, mkdir_mock):
+        mount_point = Mock()
+        app = couch_service.CouchbaseApp(Mock())
+        app.init_storage_structure(mount_point)
+        mkdir_mock.assert_called_once_with(
+            mount_point, user=app.couchbase_owner, group=app.couchbase_owner,
+            as_root=True)

@@ -323,3 +323,9 @@ class PxcClusterActionsRunner(ClusterActionsRunner):
             num_nodes=num_nodes, expected_task_name=expected_task_name,
             expected_instance_states=expected_instance_states,
             expected_http_code=expected_http_code)
+
+    def run_cluster_shrink(self):
+        raise SkipTest("Operation not supported by the datastore.")
+
+    def run_cluster_grow(self):
+        raise SkipTest("Operation not supported by the datastore.")

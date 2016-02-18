@@ -194,8 +194,8 @@ class InstanceController(wsgi.Controller):
         LOG.debug("req : '%s'\n\n", req)
 
         context = req.environ[wsgi.CONTEXT_KEY]
-        server = models.load_instance_with_guest(models.DetailInstance,
-                                                 context, id)
+        server = models.load_instance_with_info(models.DetailInstance,
+                                                context, id)
         return wsgi.Result(views.InstanceDetailView(server,
                                                     req=req).data(), 200)
 
@@ -262,6 +262,21 @@ class InstanceController(wsgi.Controller):
 
         slave_of_id = body['instance'].get('replica_of')
         replica_count = body['instance'].get('replica_count')
+        locality = body['instance'].get('locality')
+        if locality:
+            locality_domain = ['affinity', 'anti-affinity']
+            locality_domain_msg = ("Invalid locality '%s'. "
+                                   "Must be one of ['%s']" %
+                                   (locality,
+                                    "', '".join(locality_domain)))
+            if locality not in locality_domain:
+                raise exception.BadRequest(msg=locality_domain_msg)
+            if slave_of_id:
+                dupe_locality_msg = (
+                    'Cannot specify locality when adding replicas to existing '
+                    'master.')
+                raise exception.BadRequest(msg=dupe_locality_msg)
+
         instance = models.Instance.create(context, name, flavor_id,
                                           image_id, databases, users,
                                           datastore, datastore_version,
@@ -269,7 +284,8 @@ class InstanceController(wsgi.Controller):
                                           availability_zone, nics,
                                           configuration, slave_of_id,
                                           replica_count=replica_count,
-                                          volume_type=volume_type)
+                                          volume_type=volume_type,
+                                          locality=locality)
 
         view = views.InstanceDetailView(instance, req=req)
         return wsgi.Result(view.data(), 200)
@@ -312,6 +328,15 @@ class InstanceController(wsgi.Controller):
                                                                   request=req))
                 with StartNotification(context, instance_id=instance.id):
                     instance.unassign_configuration()
+        if 'datastore_version' in kwargs:
+            datastore_version = datastore_models.DatastoreVersion.load(
+                instance.datastore, kwargs['datastore_version'])
+            context.notification = (
+                notification.DBaaSInstanceUpgrade(context, request=req))
+            with StartNotification(context, instance_id=instance.id,
+                                   datastore_version_id=datastore_version.id):
+                instance.unassign_configuration()
+                instance.upgrade(datastore_version)
         if kwargs:
             instance.update_db(**kwargs)
 
@@ -350,6 +375,10 @@ class InstanceController(wsgi.Controller):
             args['name'] = body['instance']['name']
         if 'configuration' in body['instance']:
             args['configuration_id'] = self._configuration_parse(context, body)
+        if 'datastore_version' in body['instance']:
+            args['datastore_version'] = body['instance'].get(
+                'datastore_version')
+
         self._modify_instance(context, req, instance, **args)
         return wsgi.Result(None, 202)
 

@@ -17,6 +17,7 @@
 """Model classes that form the core of instances functionality."""
 from datetime import datetime
 from datetime import timedelta
+import os.path
 import re
 
 from novaclient import exceptions as nova_exceptions
@@ -98,6 +99,7 @@ class InstanceStatus(object):
     RESTART_REQUIRED = "RESTART_REQUIRED"
     PROMOTE = "PROMOTE"
     EJECT = "EJECT"
+    UPGRADE = "UPGRADE"
 
 
 def validate_volume_size(size):
@@ -128,7 +130,8 @@ def load_simple_instance_server_status(context, db_info):
 
 
 # Invalid states to contact the agent
-AGENT_INVALID_STATUSES = ["BUILD", "REBOOT", "RESIZE", "PROMOTE", "EJECT"]
+AGENT_INVALID_STATUSES = ["BUILD", "REBOOT", "RESIZE", "PROMOTE", "EJECT",
+                          "UPGRADE"]
 
 
 class SimpleInstance(object):
@@ -151,7 +154,7 @@ class SimpleInstance(object):
     """
 
     def __init__(self, context, db_info, datastore_status, root_password=None,
-                 ds_version=None, ds=None):
+                 ds_version=None, ds=None, locality=None):
         """
         :type context: trove.common.context.TroveContext
         :type db_info: trove.instance.models.DBInstance
@@ -168,8 +171,12 @@ class SimpleInstance(object):
         if ds is None:
             self.ds = (datastore_models.Datastore.
                        load(self.ds_version.datastore_id))
+        self.locality = locality
 
         self.slave_list = None
+
+    def __repr__(self, *args, **kwargs):
+        return "%s(%s)" % (self.name, self.id)
 
     @property
     def addresses(self):
@@ -304,6 +311,8 @@ class SimpleInstance(object):
             return InstanceStatus.REBOOT
         if 'RESIZING' == action:
             return InstanceStatus.RESIZE
+        if 'UPGRADING' == action:
+            return InstanceStatus.UPGRADE
         if 'RESTART_REQUIRED' == action:
             return InstanceStatus.RESTART_REQUIRED
         if InstanceTasks.PROMOTING.action == action:
@@ -503,7 +512,7 @@ def load_instance(cls, context, id, needs_server=False,
     return cls(context, db_info, server, service_status)
 
 
-def load_instance_with_guest(cls, context, id, cluster_id=None):
+def load_instance_with_info(cls, context, id, cluster_id=None):
     db_info = get_db_info(context, id, cluster_id)
     load_simple_instance_server_status(context, db_info)
     service_status = InstanceServiceStatus.find_by(instance_id=id)
@@ -511,6 +520,7 @@ def load_instance_with_guest(cls, context, id, cluster_id=None):
               {'instance_id': id, 'service_status': service_status.status})
     instance = cls(context, db_info, service_status)
     load_guest_info(instance, context, id)
+    load_server_group_info(instance, context, db_info.compute_instance_id)
     return instance
 
 
@@ -524,6 +534,25 @@ def load_guest_info(instance, context, id):
         except Exception as e:
             LOG.error(e)
     return instance
+
+
+def load_server_group_info(instance, context, compute_id):
+    server_group = load_server_group(context, compute_id)
+    if server_group:
+        instance.locality = server_group.policies[0]
+
+
+def load_server_group(context, compute_id):
+    client = create_nova_client(context)
+    server_group = None
+    try:
+        server_groups = client.server_groups.list()
+        for sg in server_groups:
+            if compute_id in sg.members:
+                server_group = sg
+    except Exception as e:
+        LOG.error(e)
+    return server_group
 
 
 class BaseInstance(SimpleInstance):
@@ -565,6 +594,8 @@ class BaseInstance(SimpleInstance):
         self._guest = None
         self._nova_client = None
         self._volume_client = None
+        self._server_group = None
+        self._server_group_loaded = False
 
     def get_guest(self):
         return create_guest_client(self.context, self.db_info.id)
@@ -648,6 +679,42 @@ class BaseInstance(SimpleInstance):
                  self.id)
         self.update_db(task_status=InstanceTasks.NONE)
 
+    def get_injected_files(self, datastore_manager):
+        injected_config_location = CONF.get('injected_config_location')
+        guest_info = CONF.get('guest_info')
+
+        if ('/' in guest_info):
+            # Set guest_info_file to exactly guest_info from the conf file.
+            # This should be /etc/guest_info for pre-Kilo compatibility.
+            guest_info_file = guest_info
+        else:
+            guest_info_file = os.path.join(injected_config_location,
+                                           guest_info)
+
+        files = {guest_info_file: (
+            "[DEFAULT]\n"
+            "guest_id=%s\n"
+            "guest_name=%s\n"
+            "datastore_manager=%s\n"
+            "tenant_id=%s\n"
+            % (self.id, self.name, datastore_manager, self.tenant_id))}
+
+        if os.path.isfile(CONF.get('guest_config')):
+            with open(CONF.get('guest_config'), "r") as f:
+                files[os.path.join(injected_config_location,
+                                   "trove-guestagent.conf")] = f.read()
+
+        return files
+
+    @property
+    def server_group(self):
+        # The server group could be empty, so we need a flag to cache it
+        if not self._server_group_loaded:
+            self._server_group = load_server_group(
+                self.context, self.db_info.compute_instance_id)
+            self._server_group_loaded = True
+        return self._server_group
+
 
 class FreshInstance(BaseInstance):
     @classmethod
@@ -685,7 +752,7 @@ class Instance(BuiltInstance):
                datastore, datastore_version, volume_size, backup_id,
                availability_zone=None, nics=None,
                configuration_id=None, slave_of_id=None, cluster_config=None,
-               replica_count=None, volume_type=None):
+               replica_count=None, volume_type=None, locality=None):
 
         call_args = {
             'name': name,
@@ -800,6 +867,8 @@ class Instance(BuiltInstance):
                 "create %(count)d instances.") % {'count': replica_count})
         multi_replica = slave_of_id and replica_count and replica_count > 1
         instance_count = replica_count if multi_replica else 1
+        if locality:
+            call_args['locality'] = locality
 
         if not nics:
             nics = []
@@ -879,10 +948,10 @@ class Instance(BuiltInstance):
                 datastore_version.manager, datastore_version.packages,
                 volume_size, backup_id, availability_zone, root_password,
                 nics, overrides, slave_of_id, cluster_config,
-                volume_type=volume_type)
+                volume_type=volume_type, locality=locality)
 
             return SimpleInstance(context, db_info, service_status,
-                                  root_password)
+                                  root_password, locality=locality)
 
         with StartNotification(context, **call_args):
             return run_with_quotas(context.tenant, deltas, _create_resources)
@@ -1168,6 +1237,12 @@ class Instance(BuiltInstance):
         config = template.SingleInstanceConfigTemplate(
             self.datastore_version, flavor, self.id)
         return dict(config.render_dict())
+
+    def upgrade(self, datastore_version):
+        self.update_db(datastore_version_id=datastore_version.id,
+                       task_status=InstanceTasks.UPGRADING)
+        task_api.API(self.context).upgrade(self.id,
+                                           datastore_version.id)
 
 
 def create_server_list_matcher(server_list):

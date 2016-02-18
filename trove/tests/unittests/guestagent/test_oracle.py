@@ -48,17 +48,20 @@
 # Tesora or display the words "Initial Development by Tesora" if the display of
 # the logo is not reasonably feasible for technical reasons.
 
-import testtools
 import mock
+from mock import DEFAULT
 
 import trove.common.cfg as cfg
 import trove.common.context as context
 import trove.guestagent.db.models as models
+from trove.tests.unittests import trove_testtools
 
 
 CONF = cfg.CONF
 
-class GuestAgentManagerTest(testtools.TestCase):
+
+class GuestAgentManagerTest(trove_testtools.TestCase):
+
     def setUp(self):
         super(GuestAgentManagerTest, self).setUp()
         self.context = context.TroveContext()
@@ -85,9 +88,13 @@ class GuestAgentManagerTest(testtools.TestCase):
         CONF.guest_name = 'testdb'
         schema = models.ValidatedMySQLDatabase()
         schema.name = 'testdb'
-        with mock.patch.object(self.manager, 'admin'), \
-             mock.patch.object(self.manager, 'app'):
+        with mock.patch.multiple(self.manager,
+                                 admin=DEFAULT,
+                                 app=DEFAULT,
+                                 refresh_guest_log_defs=DEFAULT):
             self.manager.do_prepare(
                 self.context, None, None, None, None
             )
+            self.manager.refresh_guest_log_defs.assert_any_call()
+            self.manager.app.prep_pfile_management.assert_any_call()
             self.manager.admin.create_database.assert_called_with([schema.serialize()])

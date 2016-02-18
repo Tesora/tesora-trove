@@ -152,7 +152,7 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
 
     @patch.multiple(operating_system, enable_service_on_boot=DEFAULT,
                     disable_service_on_boot=DEFAULT)
-    def test_superuser_password_reset(
+    def test_admin_password_reset(
             self, enable_service_on_boot, disable_service_on_boot):
         fake_status = MagicMock()
         fake_status.is_running = False
@@ -292,7 +292,8 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
         mock_app.install_if_needed.assert_any_call(packages)
         mock_app._remove_system_tables.assert_any_call()
         mock_app.init_storage_structure.assert_any_call('/var/lib/cassandra')
-        mock_app.apply_initial_guestagent_configuration.assert_any_call()
+        mock_app.apply_initial_guestagent_configuration.assert_any_call(
+            cluster_name=None)
         mock_app.start_db.assert_any_call(update_db=False)
         mock_app.stop_db.assert_any_call()
         if backup_info:

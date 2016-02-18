@@ -244,6 +244,31 @@ class PostgreSQLSchema(DatastoreSchema):
         return ['_name']
 
 
+class CouchbaseSchema(DatastoreSchema):
+    """Represents a Couchbase bucket and its associated properties.
+
+    The bucket name can only contain characters in range A-Z, a-z, 0-9
+    as well as underscore, period, dash and percent symbols and
+    can be a maximum of 100 characters in length.
+    """
+
+    name_regex = re.compile(ur'^[a-zA-Z0-9_\.\-%]+$')
+
+    def __init__(self, name, *args, **kwargs):
+        super(CouchbaseSchema, self).__init__(name, *args, **kwargs)
+
+    @property
+    def _max_schema_name_length(self):
+        return 100
+
+    def _is_valid_schema_name(self, value):
+        return self.name_regex.match(value) is not None
+
+    @classmethod
+    def _dict_requirements(cls):
+        return ['_name']
+
+
 class MySQLDatabase(Base):
     """Represents a Database and its properties."""
 
@@ -1053,6 +1078,34 @@ class PostgreSQLUser(DatastoreUser):
         return ['_name']
 
 
+class CouchbaseUser(DatastoreUser):
+    """Represents a Couchbase user and its associated properties."""
+
+    def __init__(self, name, password=None, *args, **kwargs):
+        super(CouchbaseUser, self).__init__(name, password, *args, **kwargs)
+
+    def _build_database_schema(self, name):
+        return CouchbaseSchema(name)
+
+    @property
+    def _max_username_length(self):
+        return 24
+
+    def _is_valid_name(self, value):
+        return True
+
+    def _is_valid_host_name(self, value):
+        return True
+
+    def _is_valid_password(self, value):
+        length = len(value)
+        return length > 5
+
+    @classmethod
+    def _dict_requirements(cls):
+        return ['_name']
+
+
 # TODO(pmalik): Datastores should be using their own user.
 # Not this one which is just a MySQL user.
 class RootUser(MySQLUser):
@@ -1085,3 +1138,25 @@ class PostgreSQLRootUser(PostgreSQLUser):
             password = utils.generate_random_password()
         super(PostgreSQLRootUser, self).__init__("postgres", password=password,
                                                  *args, **kwargs)
+
+
+class CassandraRootUser(CassandraUser):
+    """Represents the Cassandra default superuser."""
+
+    def __init__(self, password=None, *args, **kwargs):
+        if password is None:
+            password = utils.generate_random_password()
+        super(CassandraRootUser, self).__init__("cassandra", password=password,
+                                                *args, **kwargs)
+
+
+class CouchbaseRootUser(CouchbaseUser):
+    """Represents the Couchbase default superuser."""
+
+    def __init__(self, password=None, *args, **kwargs):
+        if password is None:
+            password = utils.generate_random_password()
+
+        # TODO(pmalik): Name should really be 'Administrator' instead.
+        super(CouchbaseRootUser, self).__init__("root", password=password,
+                                                *args, **kwargs)

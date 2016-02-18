@@ -189,7 +189,8 @@ class TestManager(trove_testtools.TestCase):
                                     self.context, 'some-inst-id')
 
     @patch.object(Backup, 'delete')
-    def test_create_replication_slave(self, mock_backup_delete):
+    @patch.object(models.BuiltInstanceTasks, 'load')
+    def test_create_replication_slave(self, bit_mock, mock_backup_delete):
         mock_tasks = Mock()
         mock_snapshot = {'dataset': {'snapshot_id': 'test-id'}}
         mock_tasks.get_replication_master_snapshot = Mock(
@@ -202,7 +203,7 @@ class TestManager(trove_testtools.TestCase):
                                          'mysql', 'mysql-server', 2,
                                          'temp-backup-id', None,
                                          'some_password', None, Mock(),
-                                         'some-master-id', None, None)
+                                         'some-master-id', None, None, None)
         mock_tasks.get_replication_master_snapshot.assert_called_with(
             self.context, 'some-master-id', mock_flavor, 'temp-backup-id',
             replica_number=1)
@@ -211,14 +212,15 @@ class TestManager(trove_testtools.TestCase):
     @patch.object(models.FreshInstanceTasks, 'load')
     @patch.object(Backup, 'delete')
     @patch('trove.taskmanager.manager.LOG')
-    def test_exception_create_replication_slave(self, mock_logging,
+    @patch.object(models.BuiltInstanceTasks, 'load')
+    def test_exception_create_replication_slave(self, bit_mock, mock_logging,
                                                 mock_delete, mock_load):
         mock_load.return_value.create_instance = Mock(side_effect=TroveError)
         self.assertRaises(TroveError, self.manager.create_instance,
                           self.context, ['id1', 'id2'], Mock(), Mock(),
                           Mock(), None, None, 'mysql', 'mysql-server', 2,
                           'temp-backup-id', None, 'some_password', None,
-                          Mock(), 'some-master-id', None, None)
+                          Mock(), 'some-master-id', None, None, None)
 
     def test_AttributeError_create_instance(self):
         self.assertRaisesRegexp(
@@ -226,19 +228,24 @@ class TestManager(trove_testtools.TestCase):
             self.manager.create_instance, self.context, ['id1', 'id2'],
             Mock(), Mock(), Mock(), None, None, 'mysql', 'mysql-server', 2,
             'temp-backup-id', None, 'some_password', None, Mock(), None, None,
-            None)
+            None, None)
 
     def test_create_instance(self):
         mock_tasks = Mock()
         mock_flavor = Mock()
         mock_override = Mock()
+        mock_csg = Mock()
+        type(mock_csg.return_value).id = PropertyMock(
+            return_value='sg-id')
+        mock_tasks.create_server_group = mock_csg
         with patch.object(models.FreshInstanceTasks, 'load',
                           return_value=mock_tasks):
-            self.manager.create_instance(self.context, 'id1', 'inst1',
-                                         mock_flavor, 'mysql-image-id', None,
-                                         None, 'mysql', 'mysql-server', 2,
-                                         'temp-backup-id', None, 'password',
-                                         None, mock_override, None, None, None)
+            self.manager.create_instance(
+                self.context, 'id1', 'inst1', mock_flavor,
+                'mysql-image-id', None, None, 'mysql',
+                'mysql-server', 2, 'temp-backup-id', None,
+                'password', None, mock_override, None, None,
+                None, 'affinity')
         mock_tasks.create_instance.assert_called_with(mock_flavor,
                                                       'mysql-image-id', None,
                                                       None, 'mysql',
@@ -246,7 +253,8 @@ class TestManager(trove_testtools.TestCase):
                                                       'temp-backup-id', None,
                                                       'password', None,
                                                       mock_override,
-                                                      None, None, None)
+                                                      None, None, None,
+                                                      {'group': 'sg-id'})
         mock_tasks.wait_for_instance.assert_called_with(36000, mock_flavor)
 
     def test_create_cluster(self):

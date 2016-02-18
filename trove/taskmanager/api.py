@@ -151,7 +151,8 @@ class API(object):
                         packages, volume_size, backup_id=None,
                         availability_zone=None, root_password=None,
                         nics=None, overrides=None, slave_of_id=None,
-                        cluster_config=None, volume_type=None):
+                        cluster_config=None, volume_type=None,
+                        locality=None):
 
         LOG.debug("Making async call to create instance %s " % instance_id)
 
@@ -171,7 +172,8 @@ class API(object):
                    overrides=overrides,
                    slave_of_id=slave_of_id,
                    cluster_config=cluster_config,
-                   volume_type=volume_type)
+                   volume_type=volume_type,
+                   locality=locality)
 
     def create_cluster(self, cluster_id):
         LOG.debug("Making async call to create cluster %s " % cluster_id)
@@ -196,6 +198,14 @@ class API(object):
         LOG.debug("Making async call to delete cluster %s " % cluster_id)
 
         self._cast("delete_cluster", self.version_cap, cluster_id=cluster_id)
+
+    def upgrade(self, instance_id, datastore_version_id):
+        LOG.debug("Making async call to upgrade guest to datastore "
+                  "version %s " % datastore_version_id)
+
+        cctxt = self.client.prepare(version=self.version_cap)
+        cctxt.cast(self.context, "upgrade", instance_id=instance_id,
+                   datastore_version_id=datastore_version_id)
 
 
 def load(context, manager=None):

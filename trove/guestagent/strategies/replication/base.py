@@ -44,7 +44,7 @@ class Replication(Strategy):
         """Capture snapshot of master db."""
 
     @abc.abstractmethod
-    def enable_as_master(self, service, master_config):
+    def enable_as_master(self, service, master_config, for_failover):
         """Configure underlying database to act as master for replication."""
 
     @abc.abstractmethod

@@ -35,6 +35,7 @@ class Manager(manager.Manager):
     This is Couchbase Manager class. It is dynamically loaded
     based off of the datastore of the trove instance
     """
+
     def __init__(self):
         self.appStatus = service.CouchbaseAppStatus()
         self.app = service.CouchbaseApp(self.appStatus)
@@ -53,23 +54,34 @@ class Manager(manager.Manager):
                    cluster_config, snapshot):
         """This is called from prepare in the base class."""
         self.app.install_if_needed(packages)
+        self.app.available_ram_mb = memory_mb
+
         if device_path:
             device = volume.VolumeDevice(device_path)
             # unmount if device is already mounted
             device.unmount_device(device_path)
             device.format()
             device.mount(mount_point)
+            self.app.init_storage_structure(mount_point)
             LOG.debug('Mounted the volume (%s).' % device_path)
-        self.app.start_db_with_conf_changes(config_contents)
-        LOG.debug('Securing couchbase now.')
+
+        self.app.start_db(update_db=False)
+        self.app.apply_initial_guestagent_configuration(cluster_config)
+
         if root_password:
+            LOG.debug('Enabling root user (with password).')
             self.app.enable_root(root_password)
-        self.app.initial_setup()
+
         if backup_info:
             LOG.debug('Now going to perform restore.')
             self._perform_restore(backup_info,
                                   context,
                                   mount_point)
+
+        if not cluster_config:
+            if self.is_root_enabled(context):
+                self.status.report_root(
+                    context, service.CouchbaseRootAccess.DEFAULT_ADMIN_NAME)
 
     def restart(self, context):
         """
@@ -121,3 +133,18 @@ class Manager(manager.Manager):
         """
         with EndNotification(context):
             backup.backup(context, backup_info)
+
+    def initialize_cluster(self, context):
+        self.app.initialize_cluster()
+
+    def get_cluster_password(self, context):
+        return self.app.get_cluster_admin().password
+
+    def get_cluster_rebalance_status(self, context):
+        return self.app.get_cluster_rebalance_status()
+
+    def add_nodes(self, context, nodes):
+        self.app.rebalance_cluster(added_nodes=nodes)
+
+    def remove_nodes(self, context, nodes):
+        self.app.rebalance_cluster(removed_nodes=nodes)

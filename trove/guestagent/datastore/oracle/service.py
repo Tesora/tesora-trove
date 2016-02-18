@@ -60,8 +60,11 @@ from trove.common import cfg
 from trove.common import exception
 from trove.common import instance as rd_instance
 from trove.common import pagination
+from trove.common import stream_codecs
 from trove.common import utils as utils
 from trove.common.i18n import _
+from trove.guestagent.common import configuration
+from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.oracle import sql_query
 from trove.guestagent.datastore.oracle import system
@@ -78,6 +81,39 @@ class OracleApp(object):
     Handles Oracle installation and configuration
     on a Trove instance.
     """
+    @classmethod
+    def _init_overrides_dir(cls):
+        """Initialize a directory for configuration overrides.
+        """
+        revision_dir = cls._param_file_path(configuration.ConfigurationManager.
+                                            DEFAULT_STRATEGY_OVERRIDES_SUB_DIR)
+        if not os.path.exists(revision_dir):
+            operating_system.create_directory(
+                revision_dir,
+                user=system.ORACLE_INSTANCE_OWNER,
+                group=system.ORACLE_GROUP_OWNER,
+                force=True, as_root=True)
+        return revision_dir
+
+    def _init_configuration_manager(self):
+        revision_dir = self._init_overrides_dir()
+        self.configuration_manager = configuration.ConfigurationManager(
+            self.pfile,
+            system.ORACLE_INSTANCE_OWNER,
+            system.ORACLE_GROUP_OWNER,
+            stream_codecs.PropertiesCodec(delimiter='=',
+                                          comment_markers=('#')),
+            requires_root=True,
+            override_strategy=configuration.OneFileOverrideStrategy(
+                revision_dir)
+        )
+
+    @classmethod
+    def _param_file_path(cls, name):
+        param_dir = guestagent_utils.build_file_path(
+            CONF.get(MANAGER).oracle_home, 'dbs')
+        return guestagent_utils.build_file_path(param_dir, name)
+
     def __init__(self, status, state_change_wait_time=None):
         LOG.debug("Initialize OracleApp.")
         if state_change_wait_time:
@@ -85,20 +121,22 @@ class OracleApp(object):
         else:
             self.state_change_wait_time = CONF.state_change_wait_time
         LOG.debug("state_change_wait_time = %s." % self.state_change_wait_time)
+
+        self.pfile = self._param_file_path(system.PFILE_NAME)
+        self.spfile = self._param_file_path(system.SPFILE_NAME)
+        self.new_spfile = self._param_file_path(system.NEW_SPFILE_NAME)
+        self.configuration_manager = None
+        if operating_system.exists(self.pfile):
+            self._init_configuration_manager()
         self.status = status
 
     def change_ownership(self, mount_point):
         LOG.debug("Changing ownership of the Oracle data directory.")
-        try:
-            utils.execute_with_timeout(
-                system.CHANGE_DB_DIR_OWNER % {'datadir': mount_point},
-                shell=True)
-            utils.execute_with_timeout(
-                system.CHANGE_DB_DIR_GROUP_OWNER % {'datadir': mount_point},
-                shell=True)
-        except exception.ProcessExecutionError:
-            raise RuntimeError(_(
-                "Command to change ownership of Oracle data directory failed."))
+        operating_system.chown(mount_point,
+                               system.ORACLE_INSTANCE_OWNER,
+                               system.ORACLE_GROUP_OWNER,
+                               force=True,
+                               as_root=True)
 
     def start_db_with_conf_changes(self, config_contents):
         LOG.info(_("Starting Oracle with conf changes."))
@@ -125,12 +163,13 @@ class OracleApp(object):
             os.environ["ORACLE_SID"] = oradb.name
             connection = cx_Oracle.connect(user=ADMIN_USER_NAME,
                                            password=OracleConfig().admin_password,
-                                           mode = cx_Oracle.SYSDBA |
-                                           cx_Oracle.PRELIM_AUTH)
+                                           mode=(cx_Oracle.SYSDBA |
+                                                 cx_Oracle.PRELIM_AUTH))
+            self.update_spfile()
             connection.startup()
             connection = cx_Oracle.connect(user=ADMIN_USER_NAME,
                                            password=OracleConfig().admin_password,
-                                           mode = cx_Oracle.SYSDBA)
+                                           mode=cx_Oracle.SYSDBA)
             cursor = connection.cursor()
             cursor.execute("alter database mount")
             cursor.execute("alter database open")
@@ -172,6 +211,75 @@ class OracleApp(object):
         finally:
             self.status.end_restart()
 
+    def prep_pfile_management(self):
+        """Generate the base PFILE from the original SPFILE and
+        initialize the configuration manager to use it.
+        """
+        ora_admin = OracleAdmin()
+        ora_admin.create_parameter_file(target=self.pfile)
+        self._init_configuration_manager()
+
+    def generate_spfile(self):
+        LOG.debug("Generating a new SPFILE.")
+        ora_admin = OracleAdmin()
+        ora_admin.create_parameter_file(
+            source=self.pfile,
+            target=self.new_spfile,
+            create_system=True
+        )
+
+    def remove_overrides(self):
+        LOG.debug("Removing overrides.")
+        self.configuration_manager.remove_user_override()
+        self.generate_spfile()
+
+    def update_overrides(self, overrides):
+        if overrides:
+            LOG.debug("Updating PFILE.")
+            self.configuration_manager.apply_user_override(overrides)
+            self.generate_spfile()
+
+    def apply_overrides(self, overrides):
+        ora_admin = OracleAdmin()
+        ora_admin.set_initialization_parameters(overrides)
+
+    def update_spfile(self):
+        """Checks if there is a new SPFILE and replaces the old.
+        The database must be shutdown before running this.
+        """
+        if operating_system.exists(self.new_spfile, as_root=True):
+            LOG.debug('Found a new SPFILE.')
+            operating_system.move(
+                self.new_spfile,
+                self.spfile,
+                force=True
+            )
+
+    def make_read_only(self, read_only):
+        if read_only:
+            ora_conf = OracleConfig()
+            db_name = ora_conf.db_name
+            admin_pswd = ora_conf.admin_password
+            os.environ["ORACLE_SID"] = db_name
+            os.environ["ORACLE_HOME"] = CONF.get(MANAGER).oracle_home
+            connection = cx_Oracle.connect(user=ADMIN_USER_NAME,
+                                           password=admin_pswd,
+                                           mode=cx_Oracle.SYSDBA)
+            cursor = connection.cursor()
+            cursor.execute('select open_mode from v$database')
+            row = cursor.fetchone()
+            if not row[0].startswith('READ ONLY'):
+                cursor.execute("ALTER DATABASE COMMIT TO SWITCHOVER TO "
+                               "STANDBY")
+                connection.startup()
+                connection = cx_Oracle.connect(user=ADMIN_USER_NAME,
+                                               password=admin_pswd,
+                                               mode=cx_Oracle.SYSDBA)
+                cursor = connection.cursor()
+                cursor.execute("ALTER DATABASE MOUNT STANDBY DATABASE")
+                cursor.execute("ALTER DATABASE OPEN READ ONLY")
+            del os.environ["ORACLE_SID"]
+
 
 class OracleAppStatus(service.BaseDbStatus):
     """
@@ -203,39 +311,60 @@ def run_command(command, superuser=system.ORACLE_INSTANCE_OWNER,
 class OracleConfig(object):
 
     _CONF_FILE = CONF.get(MANAGER).conf_file
-    _CONF_FILE_TMP = "/tmp/oracle.cnf"
     _CONF_ORA_SEC = 'ORACLE'
+    _CONF_SYS_KEY = 'sys_pwd'
     _CONF_ADMIN_KEY = 'os_admin_pwd'
     _CONF_ROOT_ENABLED = 'root_enabled'
+    _CONF_DB_NAME = 'db_name'
+    _CONF_DB_UNIQUE_NAME = 'db_unique_name'
 
     def __init__(self):
         self._admin_pwd = None
         self._sys_pwd = None
+        self._db_name = None
+        self._db_unique_name = None
+        self.codec = stream_codecs.IniCodec()
         if not os.path.isfile(self._CONF_FILE):
-            command = ("sudo mkdir -p %s" %
-                       os.path.dirname(self._CONF_FILE))
-            utils.execute_with_timeout(command, shell=True)
+            operating_system.create_directory(os.path.dirname(self._CONF_FILE),
+                                              as_root=True)
             section = {self._CONF_ORA_SEC: {}}
-            operating_system.write_config_file(self._CONF_FILE_TMP,
-                                               section)
-            utils.execute_with_timeout("sudo", "mv", "-f",
-                                       self._CONF_FILE_TMP,
-                                       self._CONF_FILE)
+            operating_system.write_file(self._CONF_FILE, section,
+                                        codec=self.codec,
+                                        as_root=True)
         else:
-            config = operating_system.read_config_file(self._CONF_FILE)
+            config = operating_system.read_file(self._CONF_FILE,
+                                                codec=self.codec,
+                                                as_root=True)
             try:
+                if self._CONF_SYS_KEY in config[self._CONF_ORA_SEC]:
+                    self._sys_pwd = config[self._CONF_ORA_SEC][self._CONF_SYS_KEY]
                 if self._CONF_ADMIN_KEY in config[self._CONF_ORA_SEC]:
                     self._admin_pwd = config[self._CONF_ORA_SEC][self._CONF_ADMIN_KEY]
                 if self._CONF_ROOT_ENABLED in config[self._CONF_ORA_SEC]:
                     self._root_enabled = config[self._CONF_ORA_SEC][self._CONF_ROOT_ENABLED]
+                if self._CONF_DB_NAME in config[self._CONF_ORA_SEC]:
+                    self._db_name = config[self._CONF_ORA_SEC][self._CONF_DB_NAME]
+                if self._CONF_DB_UNIQUE_NAME in config[self._CONF_ORA_SEC]:
+                    self._db_unique_name = config[self._CONF_ORA_SEC][self._CONF_DB_UNIQUE_NAME]
             except KeyError:
                 # the ORACLE section does not exist, stop parsing
                 pass
 
     def _save_value_in_file(self, param, value):
-        config = operating_system.read_config_file(self._CONF_FILE)
+        config = operating_system.read_file(self._CONF_FILE, codec=self.codec,
+                                            as_root=True)
         config[self._CONF_ORA_SEC][param] = value
-        operating_system.write_config_file(self._CONF_FILE, config)
+        operating_system.write_file(self._CONF_FILE, config, codec=self.codec,
+                                    as_root=True)
+
+    @property
+    def sys_password(self):
+        return self._sys_pwd
+
+    @sys_password.setter
+    def sys_password(self, value):
+        self._save_value_in_file(self._CONF_SYS_KEY, value)
+        self._sys_pwd = value
 
     @property
     def admin_password(self):
@@ -246,6 +375,24 @@ class OracleConfig(object):
         self._save_value_in_file(self._CONF_ADMIN_KEY, value)
         self._admin_pwd = value
 
+    @property
+    def db_name(self):
+        return self._db_name
+
+    @db_name.setter
+    def db_name(self, value):
+        self._save_value_in_file(self._CONF_DB_NAME, value)
+        self._db_name = value
+
+    @property
+    def db_unique_name(self):
+        return self._db_unique_name or self._db_name
+
+    @db_unique_name.setter
+    def db_unique_name(self, value):
+        self._save_value_in_file(self._CONF_DB_UNIQUE_NAME, value)
+        self._db_unique_name = value
+
     def is_root_enabled(self):
         return bool(self._root_enabled)
 
@@ -253,6 +400,9 @@ class OracleConfig(object):
         self._save_value_in_file(self._CONF_ROOT_ENABLED, 'true')
         self._root_enabled = 'true'
 
+    def disable_root(self):
+        self._save_value_in_file(self._CONF_ROOT_ENABLED, 'false')
+        self._root_enabled = 'false'
 
 class LocalOracleClient(object):
     """A wrapper to manage Oracle connection."""
@@ -286,24 +436,66 @@ class LocalOracleClient(object):
     def __exit__(self, type, value, traceback):
         self.conn.close()
 
+class OracleConnection(object):
+    """A wrapper to manage Oracle connection."""
+
+    def __init__(self, sid, service=False, user_id=None, password=None,
+                 mode=cx_Oracle.SYSDBA):
+        os.environ["ORACLE_HOME"] = CONF.get(MANAGER).oracle_home
+        self.sid = sid
+        self.service = service
+        self.mode = mode
+        if user_id:
+            self.user_id = user_id
+            self.password = password
+        else:
+            self.user_id = ADMIN_USER_NAME
+            self.password = OracleConfig().admin_password
+
+    def __enter__(self):
+        if self.service:
+            ora_dsn = cx_Oracle.makedsn('localhost',
+                                        CONF.get(MANAGER).listener_port,
+                                        service_name=self.sid)
+        else:
+            ora_dsn = cx_Oracle.makedsn('localhost',
+                                        CONF.get(MANAGER).listener_port,
+                                        self.sid)
+        self.conn = cx_Oracle.connect(user=self.user_id,
+                                      password=self.password,
+                                      dsn=ora_dsn, mode=self.mode)
+        return self.conn
+
+    def __exit__(self, type, value, traceback):
+        try:
+            self.conn.close()
+        except cx_Oracle.DatabaseError as e:
+            error, = e.args
+            if (error.code == 1012):
+                # ORA-01012: not logged on, connection already closed
+                pass
+            else:
+                raise e
+
 class OracleAdmin(object):
     """
     Handles administrative tasks on the Oracle instance.
     """
-    _DBNAME = CONF.guest_name
-    _DBNAME_REGEX = re.compile(r'^([a-zA-Z0-9]+):*:')
 
     def create_database(self, databases):
         """Create the given database(s)."""
         dbName = None
         db_create_failed = []
         LOG.debug("Creating Oracle databases.")
+        ora_conf = OracleConfig()
         for database in databases:
             oradb = models.OracleSchema.deserialize_schema(database)
             dbName = oradb.name
+            ora_conf.db_name = dbName
             LOG.debug("Creating Oracle database: %s." % dbName)
             try:
                 sys_pwd = utils.generate_random_password(password_length=30)
+                ora_conf.sys_password = sys_pwd
                 run_command(system.CREATE_DB_COMMAND %
                             {'gdbname': dbName, 'sid': dbName,
                              'pswd': sys_pwd, 'db_ram': CONF.get(MANAGER).db_ram_size,
@@ -347,7 +539,7 @@ class OracleAdmin(object):
                 oracnf.admin_password = utils.generate_random_password(password_length=30)
             q = sql_query.CreateUser(ADMIN_USER_NAME, oracnf.admin_password)
             client.execute(str(q))
-            q = ('grant sysdba to %s' % ADMIN_USER_NAME)
+            q = ('grant sysdba, sysoper to %s' % ADMIN_USER_NAME)
             client.execute(str(q))
 
     def is_root_enabled(self):
@@ -380,15 +572,26 @@ class OracleAdmin(object):
         except cx_Oracle.DatabaseError:
             return False
 
+    def _get_database_names(self):
+        oratab_items = operating_system.read_file(
+            '/etc/oratab', stream_codecs.PropertiesCodec(delimiter=':')
+        )
+        return oratab_items.keys()
+
     def list_databases(self, limit=None, marker=None, include_marker=False):
-        with open('/etc/oratab') as oratab:
-            dblist = [ self._DBNAME_REGEX.search(line)
-                      for line in oratab if self._DBNAME_REGEX.search(line) ]
-            dblist = [ db.group(1) for db in dblist ]
-        dblist_page, next_marker = pagination.paginate_list(dblist, limit, marker,
-                                                            include_marker)
-        result = [ models.OracleSchema(name).serialize() for name in dblist_page ]
+        dblist_page, next_marker = pagination.paginate_list(
+            self._get_database_names(), limit, marker, include_marker)
+        result = [models.OracleSchema(name).serialize() for name in dblist_page]
         return result, next_marker
+
+    @property
+    def database_name(self):
+        databases = self._get_database_names()
+        if len(databases) == 0:
+            raise exception.GuestError('No database found on guest.')
+        elif len(databases) > 1:
+            raise exception.GuestError('Multiple databases found on guest.')
+        return databases[0]
 
     def create_cloud_user_role(self, database):
         LOG.debug("Creating database cloud user role")
@@ -408,18 +611,18 @@ class OracleAdmin(object):
         LOG.debug("Creating database users")
         for item in users:
             user = models.OracleUser.deserialize_user(item)
-            if self._database_is_up(self._DBNAME):
-                with LocalOracleClient(self._DBNAME, service=True) as client:
+            if self._database_is_up(self.database_name):
+                with LocalOracleClient(self.database_name, service=True) as client:
                     q = sql_query.CreateUser(user.name, user.password)
                     client.execute(str(q))
                     # TO-DO: Refactor GRANT query into the sql_query module
                     client.execute('GRANT cloud_user_role to %s' % user.name)
                     client.execute('GRANT UNLIMITED TABLESPACE to %s' % user.name)
                 LOG.debug(_("Created user %(user)s on %(db)s") %
-                          {'user': user.name, 'db': self._DBNAME})
+                          {'user': user.name, 'db': self.database_name})
             else:
                 LOG.debug(_("Failed to create user %(user)s on %(db)s") %
-                          {'user': user.name, 'db': self._DBNAME})
+                          {'user': user.name, 'db': self.database_name})
         LOG.debug("Finished creating database users")
 
     def delete_user(self, user):
@@ -505,7 +708,7 @@ class OracleAdmin(object):
     def change_passwords(self, users):
         """Change the passwords of one or more existing users."""
         LOG.debug("Changing the password of some users.")
-        with LocalOracleClient(self._DBNAME, service=True) as client:
+        with LocalOracleClient(self.database_name, service=True) as client:
             for item in users:
                 LOG.debug("Changing password for user %s." % item)
                 user = models.OracleUser(item['name'],
@@ -522,6 +725,75 @@ class OracleAdmin(object):
             if password:
                 self.change_passwords([{'name': username,
                                         'password': password}])
+
+    def create_parameter_file(self, source=None, target=None,
+                              create_system=False, client=None):
+        """Create a parameter file.
+        :param source:          source file path, if None then default
+        :param target:          target file path, if None then default
+        :param create_system:   if True, creates an SPFILE, else a PFILE
+        :param client:          cx_Oracle connection to use, else created
+        """
+        source_type = 'SPFILE'
+        source_clause = ''
+        source_log_msg = 'default location'
+        if source:
+            source_clause = "='%s'" % source
+            source_log_msg = source
+        target_type = 'PFILE'
+        target_clause = ''
+        target_log_msg = 'default location'
+        if target:
+            target_clause = "='%s'" % target
+            target_log_msg = target
+        if create_system:
+            source_type = 'PFILE'
+            target_type = 'SPFILE'
+        LOG.debug("Creating %(target_type)s at %(target)s from "
+                  "%(source_type)s at %(source)s."
+                  % {'target_type': target_type,
+                     'target': target_log_msg,
+                     'source_type': source_type,
+                     'source': source_log_msg})
+        q = ("CREATE %(target_type)s%(target)s FROM "
+             "%(source_type)s%(source)s"
+             % {'target_type': target_type,
+                'target': target_clause,
+                'source_type': source_type,
+                'source': source_clause})
+
+        if client:
+            client.execute(q)
+        else:
+            with LocalOracleClient(self.database_name, service=True) as client:
+                client.execute(q)
+
+    def set_initialization_parameters(self, set_parameters):
+        LOG.debug("Setting initialization parameters.")
+        with LocalOracleClient(self.database_name, service=True) as client:
+            for k, v in set_parameters.items():
+                try:
+                    LOG.debug("Setting initialization parameter %s = %s"
+                              % (k, v))
+                    q = sql_query.AlterSystem.set_parameter(k, v)
+                    client.execute(str(q))
+                except cx_Oracle.DatabaseError as e:
+                    LOG.exception(_("Error setting initialization parameter "
+                                    "%(k)s = %(v)s") % {'k': k, 'v': v})
+
+    def get_parameter(self, parameter):
+        """Get the value of the given intialization parameter."""
+        parameter = parameter.lower()
+        LOG.debug('Getting current value of initialization parameter %s'
+                  % parameter)
+        q = sql_query.Query(columns=['value'],
+                            tables=['v$parameter'],
+                            where=["name = '%s'" % parameter])
+        with LocalOracleClient(self.database_name, service=True) as client:
+            client.execute(str(q))
+            value = client.fetchone()[0]
+        LOG.debug('Found parameter %s = %s' % (parameter, value))
+        return value
 
 
 class OracleRootAccess(object):
@@ -550,6 +822,8 @@ class OracleRootAccess(object):
 
         oracnf = OracleConfig()
         oracnf.enable_root()
+        oracnf.sys_password = sys_pwd
+        LOG.debug('enable_root completed')
 
         user = models.RootUser()
         user.name = "sys"
@@ -568,3 +842,7 @@ class OracleRootAccess(object):
             with LocalOracleClient(oradb.name, service=True) as client:
                 client.execute('alter user sys identified by "%s"' %
                                sys_pwd)
+        oracnf = OracleConfig()
+        oracnf.disable_root()
+        oracnf.sys_password = sys_pwd
+        LOG.debug('disable_root completed')

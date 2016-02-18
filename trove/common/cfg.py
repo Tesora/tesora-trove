@@ -666,8 +666,20 @@ oracle_opts = [
                help='Device path for volume if volume support is enabled.'),
     cfg.StrOpt('backup_strategy', default='RmanBackup',
                help='Default strategy to perform backups.'),
-    cfg.StrOpt('replication_strategy', default=None,
+    cfg.StrOpt('replication_strategy', default='OracleSyncReplication',
                help='Default strategy for replication.'),
+    cfg.StrOpt('replication_namespace',
+               default='trove.guestagent.strategies.replication.'
+                       'oracle_sync',
+               help='Namespace to load replication strategies from.'),
+    cfg.IntOpt('log_archive_max_process',
+               default=30,
+               help='The maximum number of ARCn processes that can be created.'
+               ' This is the LOG_ARCHIVE_MAX_PROCESSES value.'),
+    cfg.IntOpt('standby_log_count', default=4,
+               help='Number of standby log files to create for replication.'),
+    cfg.IntOpt('standby_log_size', default=50,
+               help='Size of standby log files in MB.'),
     cfg.BoolOpt('root_on_create', default=False,
                 help='Enable the automatic creation of the root user for the '
                 'service during instance-create. The generated password for '
@@ -687,6 +699,9 @@ oracle_opts = [
                 help='Incremental Backup Runner based on the default '
                 'strategy. For strategies that do not implement an '
                 'incremental, the runner will use the default full backup.'),
+    cfg.StrOpt('oracle_base',
+               default='/u01/app/oracle',
+               help='Default $ORACLE_BASE directory'),
     cfg.StrOpt('oracle_home',
                default='/u01/app/oracle/product/dbaas',
                help='Default $ORACLE_HOME directory'),
@@ -700,13 +715,18 @@ oracle_opts = [
     cfg.IntOpt('db_ram_size', default=500,
                help='Default memory size (MB) of each Oracle database '
                     'instance.'),
-    cfg.StrOpt('guest_log_exposed_logs', default='',
+    cfg.StrOpt('guest_log_exposed_logs', default='alert',
                help='List of Guest Logs to expose for publishing.'),
     cfg.StrOpt('template', default='General_Purpose_ArchiveLog.dbc',
                help='Template file name used by dbca.'),
     cfg.StrOpt('root_controller',
                default='trove.extensions.oracle.service.OracleRootController',
                help='Root controller implementation for Oracle.'),
+    cfg.StrOpt('guestagent_strategy',
+               default='trove.common.strategies.cluster.oracle.'
+                       'guestagent.OracleGuestAgentStrategy',
+               help='Class that implements datastore-specific Guest Agent API '
+                    'logic.'),
 ]
 
 # Percona
@@ -945,7 +965,7 @@ cassandra_group = cfg.OptGroup(
     'cassandra', title='Cassandra options',
     help="Oslo option group designed for Cassandra datastore")
 cassandra_opts = [
-    cfg.ListOpt('tcp_ports', default=["7000", "7001", "9042", "9160"],
+    cfg.ListOpt('tcp_ports', default=["7000", "7001", "7199", "9042", "9160"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
                      'if trove_security_groups_support is True).'),
@@ -984,16 +1004,33 @@ cassandra_opts = [
                help='Namespace to load restore strategies from.',
                deprecated_name='restore_namespace',
                deprecated_group='DEFAULT'),
-    cfg.ListOpt('ignore_users', default=[],
+    cfg.ListOpt('ignore_users', default=['os_admin'],
                 help='Users to exclude when listing users.'),
     cfg.ListOpt('ignore_dbs', default=['system', 'system_auth',
                                        'system_traces'],
                 help='Databases to exclude when listing databases.'),
     cfg.StrOpt('root_controller',
-               default='trove.extensions.common.service.DefaultRootController',
-               help='Root controller implementation for cassandra.'),
+               default='trove.extensions.cassandra.service'
+               '.CassandraRootController',
+               help='Root controller implementation for Cassandra.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.BoolOpt('cluster_support', default=True,
+                help='Enable clusters to be created and managed.'),
+    cfg.StrOpt('api_strategy',
+               default='trove.common.strategies.cluster.experimental.'
+               'cassandra.api.CassandraAPIStrategy',
+               help='Class that implements datastore-specific API logic.'),
+    cfg.StrOpt('taskmanager_strategy',
+               default='trove.common.strategies.cluster.experimental'
+               '.cassandra.taskmanager.CassandraTaskManagerStrategy',
+               help='Class that implements datastore-specific task manager '
+                    'logic.'),
+    cfg.StrOpt('guestagent_strategy',
+               default='trove.common.strategies.cluster.experimental'
+               '.cassandra.guestagent.CassandraGuestAgentStrategy',
+               help='Class that implements datastore-specific Guest Agent API '
+                    'logic.'),
 ]
 
 # DSE (mostly uses same options as Cassandra community edition).
@@ -1014,8 +1051,7 @@ couchbase_group = cfg.OptGroup(
     help="Oslo option group designed for Couchbase datastore")
 couchbase_opts = [
     cfg.ListOpt('tcp_ports',
-                default=["8091", "8092", "4369", "11209-11211",
-                         "21100-21199"],
+                default=["8091", "8092", "4369", "11209-11211", "21100-21299"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
                      'if trove_security_groups_support is True).'),
@@ -1064,6 +1100,27 @@ couchbase_opts = [
                help='Root controller implementation for couchbase.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.BoolOpt('cluster_support', default=True,
+                help='Enable clusters to be created and managed.'),
+    cfg.StrOpt('api_strategy',
+               default='trove.common.strategies.cluster.experimental.'
+               'couchbase.api.CouchbaseAPIStrategy',
+               help='Class that implements datastore-specific API logic.'),
+    cfg.StrOpt('taskmanager_strategy',
+               default='trove.common.strategies.cluster.experimental'
+               '.couchbase.taskmanager.CouchbaseTaskManagerStrategy',
+               help='Class that implements datastore-specific task manager '
+                    'logic.'),
+    cfg.StrOpt('guestagent_strategy',
+               default='trove.common.strategies.cluster.experimental'
+               '.couchbase.guestagent.CouchbaseGuestAgentStrategy',
+               help='Class that implements datastore-specific Guest Agent API '
+                    'logic.'),
+    cfg.IntOpt('cluster_ramsize_pc', default=80, min=0, max=80,
+               help='Per node RAM quota in for the Data service expressed as a'
+               ' percentage of the available memory.'
+               ' Minimum of 256MB will be used if the given percentage amounts'
+               ' for less.'),
 ]
 
 # MongoDB

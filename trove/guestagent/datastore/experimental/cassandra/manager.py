@@ -33,6 +33,7 @@ from trove.guestagent import volume
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
+MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'cassandra'
 
 
 class Manager(manager.Manager):
@@ -60,6 +61,11 @@ class Manager(manager.Manager):
 
     def restart(self, context):
         self.app.restart()
+
+    def get_filesystem_stats(self, context, fs_path):
+        """Gets the filesystem stats for the path given."""
+        mount_point = CONF.get(MANAGER).mount_point
+        return dbaas.get_filesystem_volume_stats(mount_point)
 
     def start_db_with_conf_changes(self, context, config_contents):
         self.app.start_db_with_conf_changes(config_contents)
@@ -108,7 +114,16 @@ class Manager(manager.Manager):
                 LOG.debug("Applying configuration.")
                 self.app.configuration_manager.save_configuration(
                     config_contents)
-                self.app.apply_initial_guestagent_configuration()
+                cluster_name = None
+                if cluster_config:
+                    cluster_name = cluster_config.get('id', None)
+                self.app.apply_initial_guestagent_configuration(
+                    cluster_name=cluster_name)
+
+            if cluster_config:
+                self.app.write_cluster_topology(
+                    cluster_config['dc'], cluster_config['rack'],
+                    prefer_local=True)
 
             if device_path:
                 LOG.debug("Preparing data volume.")
@@ -124,18 +139,28 @@ class Manager(manager.Manager):
                 LOG.debug("Mounting new volume.")
                 device.mount(mount_point)
 
-            if backup_info:
-                self._perform_restore(backup_info, context, mount_point)
+            if not cluster_config:
+                if backup_info:
+                    self._perform_restore(backup_info, context, mount_point)
 
-            LOG.debug("Starting database with configuration changes.")
-            self.app.start_db(update_db=False)
+                LOG.debug("Starting database with configuration changes.")
+                self.app.start_db(update_db=False)
 
-            if not self.app.has_user_config():
-                LOG.debug("Securing superuser access.")
-                self.app.secure()
-                self.app.restart()
+                if not self.app.has_user_config():
+                    LOG.debug("Securing superuser access.")
+                    self.app.secure()
+                    self.app.restart()
 
             self.__admin = CassandraAdmin(self.app.get_current_superuser())
+
+        if not cluster_config:
+            if databases:
+                self.create_database(context, databases)
+            if users:
+                self.create_user(context, users)
+            if self.is_root_enabled(context):
+                self.status.report_root(context,
+                                        self.app.default_superuser_name)
 
     def change_passwords(self, context, users):
         with EndNotification(context):
@@ -183,6 +208,18 @@ class Manager(manager.Manager):
                    include_marker=False):
         return self.admin.list_users(context, limit, marker, include_marker)
 
+    def enable_root(self, context):
+        return self.app.enable_root()
+
+    def enable_root_with_password(self, context, root_password=None):
+        return self.app.enable_root(root_password=root_password)
+
+    def disable_root(self, context):
+        self.app.enable_root(root_password=None)
+
+    def is_root_enabled(self, context):
+        return self.app.is_root_enabled()
+
     def _perform_restore(self, backup_info, context, restore_location):
         LOG.info(_("Restoring database from backup %s.") % backup_info['id'])
         try:
@@ -220,3 +257,39 @@ class Manager(manager.Manager):
         require restart, so this is a no-op.
         """
         pass
+
+    def get_data_center(self, context):
+        return self.app.get_data_center()
+
+    def get_rack(self, context):
+        return self.app.get_rack()
+
+    def set_seeds(self, context, seeds):
+        self.app.set_seeds(seeds)
+
+    def get_seeds(self, context):
+        return self.app.get_seeds()
+
+    def set_auto_bootstrap(self, context, enabled):
+        self.app.set_auto_bootstrap(enabled)
+
+    def node_cleanup_begin(self, context):
+        self.app.node_cleanup_begin()
+
+    def node_cleanup(self, context):
+        self.app.node_cleanup()
+
+    def node_decommission(self, context):
+        self.app.node_decommission()
+
+    def cluster_secure(self, context, password):
+        os_admin = self.app.cluster_secure(password)
+        self.__admin = CassandraAdmin(self.app.get_current_superuser())
+        return os_admin
+
+    def get_admin_credentials(self, context):
+        return self.app.get_admin_credentials()
+
+    def store_admin_credentials(self, context, admin_credentials):
+        self.app.store_admin_credentials(admin_credentials)
+        self.__admin = CassandraAdmin(self.app.get_current_superuser())

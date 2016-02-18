@@ -133,6 +133,7 @@ def load_mysqld_options():
 
 
 class BaseMySqlAppStatus(service.BaseDbStatus):
+
     @classmethod
     def get(cls):
         if not cls._instance:
@@ -488,6 +489,9 @@ class BaseMySqlAdmin(object):
         LIMIT :limit;
         '''
         LOG.debug("---Listing Users---")
+        ignored_user_names = "'%s'" % "', '".join(cfg.get_ignored_users())
+        LOG.debug("The following user names are on ignore list and will "
+                  "be omitted from the listing: %s" % ignored_user_names)
         users = []
         with self.local_sql_client(self.mysql_app.get_engine()) as client:
             mysql_user = models.MySQLUser()
@@ -500,7 +504,9 @@ class BaseMySqlAdmin(object):
             oq = sql_query.Query()  # Outer query.
             oq.columns = ['User', 'Host', 'Marker']
             oq.tables = ['(%s) as innerquery' % innerquery]
-            oq.where = ["Host != 'localhost'"]
+            oq.where = [
+                "Host != 'localhost'",
+                "User NOT IN (" + ignored_user_names + ")"]
             oq.order = ['Marker']
             if marker:
                 oq.where.append("Marker %s '%s'" %
@@ -572,6 +578,7 @@ class BaseMySqlApp(object):
     """Prepares DBaaS on a Guest container."""
 
     TIME_OUT = 1000
+    CFG_CODEC = IniCodec()
 
     @property
     def local_sql_client(self):
@@ -582,7 +589,7 @@ class BaseMySqlApp(object):
         return self._keep_alive_connection_cls
 
     configuration_manager = ConfigurationManager(
-        MYSQL_CONFIG, MYSQL_OWNER, MYSQL_OWNER, IniCodec(), requires_root=True,
+        MYSQL_CONFIG, MYSQL_OWNER, MYSQL_OWNER, CFG_CODEC, requires_root=True,
         override_strategy=ImportOverrideStrategy(CNF_INCLUDE_DIR, CNF_EXT))
 
     def get_engine(self):
@@ -595,7 +602,7 @@ class BaseMySqlApp(object):
             return ENGINE
 
         pwd = self.get_auth_password()
-        ENGINE = sqlalchemy.create_engine("mysql://%s:%s@localhost:3306" %
+        ENGINE = sqlalchemy.create_engine("mysql://%s:%s@127.0.0.1:3306" %
                                           (ADMIN_USER_NAME, pwd.strip()),
                                           pool_recycle=7200,
                                           echo=CONF.sql_query_logging,
@@ -608,10 +615,13 @@ class BaseMySqlApp(object):
         """Clear the cache used by get_engine()."""
         global ENGINE
         ENGINE = None
+        self.configuration_manager.refresh_cache()
 
     @classmethod
     def get_auth_password(cls):
-        return cls.configuration_manager.get_value('client').get('password')
+        auth_config = operating_system.read_file(
+            cls.get_client_auth_file(), codec=cls.CFG_CODEC)
+        return auth_config['client']['password']
 
     @classmethod
     def get_data_dir(cls):
@@ -622,6 +632,10 @@ class BaseMySqlApp(object):
     def set_data_dir(cls, value):
         cls.configuration_manager.apply_system_override(
             {MySQLConfParser.SERVER_CONF_SECTION: {'datadir': value}})
+
+    @classmethod
+    def get_client_auth_file(self):
+        return guestagent_utils.build_file_path("~", ".my.cnf")
 
     def __init__(self, status, local_sql_client, keep_alive_connection_cls):
         """By default login with root no password for initial setup."""
@@ -696,8 +710,11 @@ class BaseMySqlApp(object):
         self.wipe_ib_logfiles()
 
     def _save_authentication_properties(self, admin_password):
-        self.configuration_manager.apply_system_override(
-            {'client': {'user': ADMIN_USER_NAME, 'password': admin_password}})
+        client_sect = {'client': {'user': ADMIN_USER_NAME,
+                                  'password': admin_password,
+                                  'host': '127.0.0.1'}}
+        operating_system.write_file(self.get_client_auth_file(),
+                                    client_sect, codec=self.CFG_CODEC)
 
     def secure_root(self, secure_remote_root=True):
         with self.local_sql_client(self.get_engine()) as client:
@@ -941,6 +958,7 @@ class BaseMySqlApp(object):
         else:
             self._enable_mysql_on_boot()
 
+        self.clear_engine_cache()
         try:
             mysql_service = operating_system.service_discovery(
                 MYSQL_SERVICE_CANDIDATES)

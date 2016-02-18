@@ -15,6 +15,7 @@
 
 from oslo_log import log as logging
 
+from novaclient import exceptions as nova_exceptions
 from trove.cluster.tasks import ClusterTask
 from trove.cluster.tasks import ClusterTasks
 from trove.common import cfg
@@ -229,7 +230,7 @@ class Cluster(object):
 
     @staticmethod
     def load_instance(context, cluster_id, instance_id):
-        return inst_models.load_instance_with_guest(
+        return inst_models.load_instance_with_info(
             inst_models.DetailInstance, context, instance_id, cluster_id)
 
     @staticmethod
@@ -243,8 +244,81 @@ class Cluster(object):
 
 def is_cluster_deleting(context, cluster_id):
     cluster = Cluster.load(context, cluster_id)
-    return (cluster.db_info.task_status == ClusterTasks.DELETING
-            or cluster.db_info.task_status == ClusterTasks.SHRINKING_CLUSTER)
+    return (cluster.db_info.task_status == ClusterTasks.DELETING or
+            cluster.db_info.task_status == ClusterTasks.SHRINKING_CLUSTER)
+
+
+def get_flavors_from_instance_defs(context, instances,
+                                   volume_enabled, ephemeral_enabled):
+    """Load and validate flavors for given instance definitions."""
+    flavors = dict()
+    nova_client = remote.create_nova_client(context)
+    for instance in instances:
+        flavor_id = instance['flavor_id']
+        if flavor_id not in flavors:
+            try:
+                flavor = nova_client.flavors.get(flavor_id)
+                if (not volume_enabled and
+                        (ephemeral_enabled and flavor.ephemeral == 0)):
+                    raise exception.LocalStorageNotSpecified(
+                        flavor=flavor_id)
+                flavors[flavor_id] = flavor
+            except nova_exceptions.NotFound:
+                raise exception.FlavorNotFound(uuid=flavor_id)
+
+    return flavors
+
+
+def get_required_volume_size(instances, volume_enabled):
+    """Calculate the total Trove volume size for given instances."""
+    volume_sizes = [instance['volume_size'] for instance in instances
+                    if instance.get('volume_size', None)]
+
+    if volume_enabled:
+        if len(volume_sizes) != len(instances):
+            raise exception.ClusterVolumeSizeRequired()
+
+        total_volume_size = 0
+        for volume_size in volume_sizes:
+            validate_volume_size(volume_size)
+            total_volume_size += volume_size
+
+        return total_volume_size
+
+    if len(volume_sizes) > 0:
+        raise exception.VolumeNotSupported()
+
+    return None
+
+
+def assert_homogeneous_cluster(instances, required_flavor=None,
+                               required_volume_size=None):
+    """Verify that all instances have the same flavor and volume size
+    (volume size = 0 if there should be no Trove volumes).
+    """
+    assert_same_instance_flavors(instances, required_flavor=required_flavor)
+    assert_same_instance_volumes(instances, required_size=required_volume_size)
+
+
+def assert_same_instance_flavors(instances, required_flavor=None):
+    flavors = {instance['flavor_id'] for instance in instances}
+    if len(flavors) != 1 or (required_flavor is not None and
+                             required_flavor not in flavors):
+        raise exception.ClusterFlavorsNotEqual()
+
+
+def assert_same_instance_volumes(instances, required_size=None):
+    """Verify that all instances have the same volume size (size = 0 if there
+    is not a Trove volume for the instance).
+
+    :param required_size              Size in GB or 0 if there should be no
+                                      attached volumes.
+    :type required_size               int
+    """
+    sizes = {instance.get('volume_size', 0) for instance in instances}
+    if len(sizes) != 1 or (required_size is not None and
+                           required_size not in sizes):
+        raise exception.ClusterVolumeSizesNotEqual()
 
 
 def validate_volume_size(size):

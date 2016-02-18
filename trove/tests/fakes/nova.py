@@ -17,6 +17,7 @@ from novaclient import exceptions as nova_exceptions
 from oslo_log import log as logging
 
 from trove.common.exception import PollTimeOut
+from trove.common.i18n import _
 from trove.common import instance as rd_instance
 from trove.tests.fakes.common import authorize
 
@@ -269,7 +270,7 @@ class FakeServers(object):
     def create(self, name, image_id, flavor_ref, files=None, userdata=None,
                block_device_mapping=None, volume=None, security_groups=None,
                availability_zone=None, nics=None, key_name=None,
-               config_drive=False):
+               config_drive=False, scheduler_hints=None):
         id = "FAKE_%s" % uuid.uuid4()
         if volume:
             volume = self.volumes.create(volume['size'], volume['name'],
@@ -795,6 +796,43 @@ class FakeSecurityGroupRules(object):
             del self.securityGroupRules[id]
 
 
+class FakeServerGroup(object):
+
+    def __init__(self, name=None, policies=None, context=None):
+        self.name = name
+        self.description = description
+        self.id = "FAKE_SRVGRP_%s" % uuid.uuid4()
+        self.policies = policies or {}
+
+    def get_id(self):
+        return self.id
+
+    def data(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'policies': self.policies
+        }
+
+
+class FakeServerGroups(object):
+
+    def __init__(self, context=None):
+        self.context = context
+        self.server_groups = {}
+
+    def create(self, name=None, policies=None):
+        server_group = FakeServerGroup(name, policies, context=self.context)
+        self.server_groups[server_group.get_id()] = server_group
+        return server_group
+
+    def delete(self, group_id):
+        pass
+
+    def list(self):
+        return self.server_groups
+
+
 class FakeClient(object):
 
     def __init__(self, context):
@@ -809,6 +847,7 @@ class FakeClient(object):
         self.rdservers = FakeRdServers(self.servers)
         self.security_groups = FakeSecurityGroups(context)
         self.security_group_rules = FakeSecurityGroupRules(context)
+        self.server_groups = FakeServerGroups(context)
 
     def get_server_volumes(self, server_id):
         return self.servers.get_server_volumes(server_id)

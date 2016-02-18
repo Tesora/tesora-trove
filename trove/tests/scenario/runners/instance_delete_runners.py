@@ -32,8 +32,12 @@ class InstanceDeleteRunner(TestRunner):
             raise proboscis.SkipTest("TESTS_DO_NOT_DELETE_INSTANCE "
                                      "was specified.")
 
+        # make sure the server is cached before we delete it, or we
+        # can't check that the server group is gone
+        self.get_server(self.instance_info.id)
         self.assert_instance_delete(self.instance_info.id, expected_states,
                                     expected_http_code)
+        self.assert_server_group(self.instance_info.id, False)
 
     def assert_instance_delete(self, instance_id, expected_states,
                                expected_http_code):

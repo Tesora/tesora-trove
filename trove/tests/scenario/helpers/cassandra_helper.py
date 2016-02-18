@@ -102,9 +102,9 @@ class CassandraHelper(TestHelper):
     def _generate_dataset(self, data_size):
         return range(1, data_size + 1)
 
-    def remove_actual_data(self, data_label, data_start, host,
+    def remove_actual_data(self, data_label, data_start, data_size, host,
                            *args, **kwargs):
-        client = self.get_client(host)
+        client = self.get_client(host, *args, **kwargs)
         self._drop_table(client, data_label)
 
     def _drop_table(self, client, table_name):

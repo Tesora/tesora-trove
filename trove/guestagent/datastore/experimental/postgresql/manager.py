@@ -154,7 +154,8 @@ class Manager(
         replica_info = replication.detach_slave(self, for_failover)
         return replica_info
 
-    def enable_as_master(self, context, replica_source_config):
+    def enable_as_master_s2(self, context, replica_source_config,
+                            for_failover=False):
         self.enable_backups()
         replication.enable_as_master(self, None)
 

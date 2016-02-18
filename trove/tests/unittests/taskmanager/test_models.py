@@ -18,6 +18,7 @@ import uuid
 
 from cinderclient import exceptions as cinder_exceptions
 import cinderclient.v2.client as cinderclient
+from cinderclient.v2 import volumes as cinderclient_volumes
 from mock import Mock, MagicMock, patch, PropertyMock
 from novaclient import exceptions as nova_exceptions
 import novaclient.v2.flavors
@@ -81,7 +82,8 @@ class fake_Server:
 class fake_ServerManager:
     def create(self, name, image_id, flavor_id, files, userdata,
                security_groups, block_device_mapping, availability_zone=None,
-               nics=None, key_name=None, config_drive=False):
+               nics=None, key_name=None, config_drive=False,
+               scheduler_hints=None):
         server = fake_Server()
         server.id = "server_id"
         server.name = name
@@ -214,6 +216,9 @@ class FreshInstanceTasksTest(trove_testtools.TestCase):
         self.task_models_conf_patch = patch('trove.taskmanager.models.CONF')
         self.task_models_conf_mock = self.task_models_conf_patch.start()
         self.addCleanup(self.task_models_conf_patch.stop)
+        self.inst_models_conf_patch = patch('trove.instance.models.CONF')
+        self.inst_models_conf_mock = self.inst_models_conf_patch.start()
+        self.addCleanup(self.inst_models_conf_patch.stop)
 
     def tearDown(self):
         super(FreshInstanceTasksTest, self).tearDown()
@@ -249,9 +254,9 @@ class FreshInstanceTasksTest(trove_testtools.TestCase):
             else:
                 return ''
 
-        self.task_models_conf_mock.get.side_effect = fake_conf_getter
+        self.inst_models_conf_mock.get.side_effect = fake_conf_getter
         # execute
-        files = self.freshinstancetasks._get_injected_files("test")
+        files = self.freshinstancetasks.get_injected_files("test")
         # verify
         self.assertTrue(
             '/etc/trove/conf.d/guest_info.conf' in files)
@@ -272,9 +277,9 @@ class FreshInstanceTasksTest(trove_testtools.TestCase):
             else:
                 return ''
 
-        self.task_models_conf_mock.get.side_effect = fake_conf_getter
+        self.inst_models_conf_mock.get.side_effect = fake_conf_getter
         # execute
-        files = self.freshinstancetasks._get_injected_files("test")
+        files = self.freshinstancetasks.get_injected_files("test")
         # verify
         self.assertTrue(
             '/etc/guest_info' in files)
@@ -379,12 +384,12 @@ class FreshInstanceTasksTest(trove_testtools.TestCase):
             'Error creating security group for instance',
             self.freshinstancetasks.create_instance, mock_flavor,
             'mysql-image-id', None, None, 'mysql', 'mysql-server', 2,
-            None, None, None, None, Mock(), None, None, None)
+            None, None, None, None, Mock(), None, None, None, None)
 
     @patch.object(BaseInstance, 'update_db')
     @patch.object(backup_models.Backup, 'get_by_id')
     @patch.object(taskmanager_models.FreshInstanceTasks, 'report_root_enabled')
-    @patch.object(taskmanager_models.FreshInstanceTasks, '_get_injected_files')
+    @patch.object(taskmanager_models.FreshInstanceTasks, 'get_injected_files')
     @patch.object(taskmanager_models.FreshInstanceTasks, '_create_secgroup')
     @patch.object(taskmanager_models.FreshInstanceTasks, '_build_volume_info')
     @patch.object(taskmanager_models.FreshInstanceTasks, '_create_server')
@@ -401,11 +406,12 @@ class FreshInstanceTasksTest(trove_testtools.TestCase):
             'Error creating DNS entry for instance',
             self.freshinstancetasks.create_instance, mock_flavor,
             'mysql-image-id', None, None, 'mysql', 'mysql-server',
-            2, Mock(), None, 'root_password', None, Mock(), None, None, None)
+            2, Mock(), None, 'root_password', None, Mock(), None, None, None,
+            None)
 
     @patch.object(BaseInstance, 'update_db')
     @patch.object(taskmanager_models.FreshInstanceTasks, '_create_dns_entry')
-    @patch.object(taskmanager_models.FreshInstanceTasks, '_get_injected_files')
+    @patch.object(taskmanager_models.FreshInstanceTasks, 'get_injected_files')
     @patch.object(taskmanager_models.FreshInstanceTasks, '_create_server')
     @patch.object(taskmanager_models.FreshInstanceTasks, '_create_secgroup')
     @patch.object(taskmanager_models.FreshInstanceTasks, '_build_volume_info')
@@ -416,6 +422,8 @@ class FreshInstanceTasksTest(trove_testtools.TestCase):
                              mock_guest_prepare,
                              mock_build_volume_info,
                              mock_create_secgroup,
+                             mock_create_server,
+                             mock_get_injected_files,
                              *args):
         mock_flavor = {'id': 8, 'ram': 768, 'name': 'bigger_flavor'}
         config_content = {'config_contents': 'some junk'}
@@ -427,13 +435,18 @@ class FreshInstanceTasksTest(trove_testtools.TestCase):
                                                 'mysql-server', 2,
                                                 None, None, None, None,
                                                 overrides, None, None,
-                                                'volume_type')
+                                                'volume_type',
+                                                {'group': 'sg-id'})
         mock_create_secgroup.assert_called_with('mysql')
         mock_build_volume_info.assert_called_with('mysql', volume_size=2,
                                                   volume_type='volume_type')
         mock_guest_prepare.assert_called_with(
             768, mock_build_volume_info(), 'mysql-server', None, None, None,
             config_content, None, overrides, None, None)
+        mock_create_server.assert_called_with(
+            8, 'mysql-image-id', mock_create_secgroup(),
+            'mysql', mock_build_volume_info()['block_device'], None,
+            None, mock_get_injected_files(), {'group': 'sg-id'})
 
     @patch.object(trove.guestagent.api.API, 'attach_replication_slave')
     @patch.object(rpc, 'get_client')
@@ -672,6 +685,10 @@ class BuiltInstanceTasksTest(trove_testtools.TestCase):
                                                    True)
         stub_flavor_manager.get = MagicMock(return_value=nova_flavor)
 
+        self.instance_task._volume_client = MagicMock(spec=cinderclient)
+        self.instance_task._volume_client.volumes = Mock(
+            spec=cinderclient_volumes.VolumeManager)
+
         answers = (status for status in
                    self.get_inst_service_status('inst_stat-id',
                                                 [ServiceStatuses.SHUTDOWN,
@@ -849,7 +866,7 @@ class BuiltInstanceTasksTest(trove_testtools.TestCase):
                           return_value=replica_source_config):
             self.instance_task.enable_as_master()
         mock_update_db.assert_called_with(slave_of_id=None)
-        test_func.assert_called_with(config_content)
+        test_func.assert_called_with(config_content, False)
 
     def test_get_last_txn(self):
         self.instance_task.get_last_txn()
@@ -875,6 +892,28 @@ class BuiltInstanceTasksTest(trove_testtools.TestCase):
     def test_demote_replication_master(self):
         self.instance_task.demote_replication_master()
         self.instance_task._guest.demote_replication_master.assert_any_call()
+
+    @patch.multiple(taskmanager_models.BuiltInstanceTasks,
+                    get_injected_files=Mock(return_value="the-files"))
+    def test_upgrade(self, *args):
+        pre_rebuild_server = self.instance_task.server
+        dsv = Mock(image_id='foo_image')
+        mock_volume = Mock(attachments=[{'device': '/dev/mock_dev'}])
+        with patch.object(self.instance_task._volume_client.volumes, "get",
+                          Mock(return_value=mock_volume)):
+            mock_server = Mock(status='ACTIVE')
+            with patch.object(self.instance_task._nova_client.servers,
+                              'get', Mock(return_value=mock_server)):
+                with patch.multiple(self.instance_task._guest,
+                                    pre_upgrade=Mock(return_value={}),
+                                    post_upgrade=Mock()):
+                    self.instance_task.upgrade(dsv)
+
+                    self.instance_task._guest.pre_upgrade.assert_called_with()
+                    pre_rebuild_server.rebuild.assert_called_with(
+                        dsv.image_id, files="the-files")
+                    self.instance_task._guest.post_upgrade.assert_called_with(
+                        mock_volume.attachments[0])
 
 
 class BackupTasksTest(trove_testtools.TestCase):
