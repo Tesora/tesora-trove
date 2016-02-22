@@ -176,6 +176,8 @@ EOF\"
 
         operating_system.chown(ORA_BACKUP_PATH, 'oracle', 'oinstall',
                                recursive=True, force=True, as_root=True)
+        operating_system.chown(ORA_FAST_RECOVERY_PATH, 'oracle', 'oinstall',
+                               recursive=True, force=True, as_root=True)
 
         self._perform_restore()
         self._perform_recover()

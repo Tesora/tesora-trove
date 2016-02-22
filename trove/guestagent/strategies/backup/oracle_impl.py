@@ -67,6 +67,8 @@ CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 LARGE_TIMEOUT = 1200
 BACKUP_DIR = CONF.get('oracle').mount_point + '/backupset_files'
+REDO_LOGS_BKUP_DIR = (CONF.get('oracle').fast_recovery_area +
+                      '/%(db_name)s/backupset')
 ORACLE_HOME = CONF.get('oracle').oracle_home
 CONF_FILE = CONF.get('oracle').conf_file
 ADMIN_USER = 'os_admin'
@@ -117,7 +119,8 @@ class RmanBackup(base.BackupRunner):
             backup_cmd = ("""\"\
 rman target %(admin_user)s/%(admin_pswd)s@localhost/%(db_name)s <<EOF
 run {
-backup incremental level=%(backup_level)s as compressed backupset database format '%(backup_dir)s/%%I_%%u_%%s_%(backup_id)s.dat';
+configure backup optimization on;
+backup incremental level=%(backup_level)s as compressed backupset database format '%(backup_dir)s/%%I_%%u_%%s_%(backup_id)s.dat' plus archivelog;
 backup current controlfile format '%(backup_dir)s/%%I_%%u_%%s_%(backup_id)s.ctl';
 }
 EXIT;
@@ -148,8 +151,11 @@ EOF\"
     @property
     def cmd(self):
         """Tars and streams the backup data to the stdout"""
-        cmd = ('sudo tar cPf - %(backup_dir)s %(sp_pw_files)s %(conf_file)s' %
+        cmd = ('sudo tar cPf - %(backup_dir)s %(sp_pw_files)s %(conf_file)s '
+               '%(redo_logs_backup)s' %
                {'backup_dir': BACKUP_DIR,
+                'redo_logs_backup': REDO_LOGS_BKUP_DIR %
+                {'db_name': self.db_name.upper()},
                 'sp_pw_files': ' '.join(self._get_sp_pw_files()),
                 'conf_file': CONF_FILE})
 
@@ -158,6 +164,9 @@ EOF\"
     def cleanup(self):
         operating_system.remove(BACKUP_DIR, force=True, as_root=True,
                                 recursive=True)
+        operating_system.remove(REDO_LOGS_BKUP_DIR %
+                                {'db_name': self.db_name.upper()}, force=True,
+                                as_root=True, recursive=True)
 
     def _run_post_backup(self):
         self.cleanup()
