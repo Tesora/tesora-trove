@@ -12,11 +12,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from mock import MagicMock
+from mock import Mock
 from mock import patch
 
 from trove.guestagent.datastore.experimental.pxc.manager import Manager
 import trove.guestagent.datastore.experimental.pxc.service as dbaas
+import trove.guestagent.datastore.mysql_common.service as mysql_common
 from trove.tests.unittests import trove_testtools
 
 
@@ -31,7 +32,7 @@ class GuestAgentManagerTest(trove_testtools.TestCase):
         self.mock_rs_class = self.patcher_rs.start()
 
         status_patcher = patch.object(dbaas.PXCAppStatus, 'get',
-                                      return_value=MagicMock())
+                                      return_value=Mock())
         self.addCleanup(status_patcher.stop)
         self.status_get_mock = status_patcher.start()
 
@@ -71,3 +72,9 @@ class GuestAgentManagerTest(trove_testtools.TestCase):
             self.context, cluster_configuration)
         self.status_get_mock.assert_any_call()
         conf_overries.assert_called_with(cluster_configuration)
+
+    @patch.object(mysql_common.BaseMySqlAdmin, 'enable_root')
+    def test_enable_root_with_password(self, reset_admin_pwd):
+        admin_password = "password"
+        self.manager.enable_root_with_password(self.context, admin_password)
+        reset_admin_pwd.assert_called_with(admin_password)

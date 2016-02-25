@@ -83,3 +83,6 @@ class PgSqlRoot(PgSqlUsers):
         stay that way.
         """
         self.enable_root(context)
+
+    def enable_root_with_password(self, context, root_password=None):
+        self.enable_root(context, root_password)

@@ -148,7 +148,7 @@ class CassandraApp(object):
         except exception.ProcessExecutionError:
             LOG.exception(_("Error while initiating storage structure."))
 
-    def start_db(self, update_db=False):
+    def start_db(self, update_db=False, enable_on_boot=True):
         self.status.start_db_service(
             self.service_candidates, self.state_change_wait_time,
             enable_on_boot=True, update_db=update_db)

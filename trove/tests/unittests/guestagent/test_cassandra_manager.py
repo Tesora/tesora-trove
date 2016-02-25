@@ -152,7 +152,7 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
 
     @patch.multiple(operating_system, enable_service_on_boot=DEFAULT,
                     disable_service_on_boot=DEFAULT)
-    def test_admin_password_reset(
+    def test_superuser_password_reset(
             self, enable_service_on_boot, disable_service_on_boot):
         fake_status = MagicMock()
         fake_status.is_running = False

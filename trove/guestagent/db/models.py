@@ -1110,7 +1110,6 @@ class CouchbaseUser(DatastoreUser):
 # Not this one which is just a MySQL user.
 class RootUser(MySQLUser):
     """Overrides _ignore_users from the MySQLUser class."""
-#    _ignore_users = []
     def __init__(self):
         self._ignore_users = []
 

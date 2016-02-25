@@ -155,3 +155,15 @@ restore_namespace = trove.guestagent.strategies.restore.experimental.cassandra_i
 # backup_strategy = RedisBackup
 # backup_namespace = trove.guestagent.strategies.backup.experimental.redis_impl
 # restore_namespace = trove.guestagent.strategies.restore.experimental.redis_impl
+
+[percona]
+backup_namespace = trove.guestagent.strategies.backup.mysql_impl
+restore_namespace = trove.guestagent.strategies.restore.mysql_impl
+
+[couchbase]
+backup_namespace = trove.guestagent.strategies.backup.experimental.couchbase_impl
+restore_namespace = trove.guestagent.strategies.restore.experimental.couchbase_impl
+
+[cassandra]
+backup_namespace = trove.guestagent.strategies.backup.experimental.cassandra_impl
+restore_namespace = trove.guestagent.strategies.restore.experimental.cassandra_impl

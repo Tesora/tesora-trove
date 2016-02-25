@@ -880,7 +880,7 @@ pxc_opts = [
                help='Class that implements datastore-specific Guest Agent API '
                     'logic.'),
     cfg.StrOpt('root_controller',
-               default='trove.extensions.common.service.DefaultRootController',
+               default='trove.extensions.pxc.service.PxcRootController',
                help='Root controller implementation for pxc.'),
     cfg.StrOpt('guest_log_exposed_logs', default='general,slow_query',
                help='List of Guest Logs to expose for publishing.'),
@@ -1004,15 +1004,15 @@ cassandra_opts = [
                help='Namespace to load restore strategies from.',
                deprecated_name='restore_namespace',
                deprecated_group='DEFAULT'),
+    cfg.StrOpt('root_controller',
+               default='trove.extensions.cassandra.service'
+               '.CassandraRootController',
+               help='Root controller implementation for Cassandra.'),
     cfg.ListOpt('ignore_users', default=['os_admin'],
                 help='Users to exclude when listing users.'),
     cfg.ListOpt('ignore_dbs', default=['system', 'system_auth',
                                        'system_traces'],
                 help='Databases to exclude when listing databases.'),
-    cfg.StrOpt('root_controller',
-               default='trove.extensions.cassandra.service'
-               '.CassandraRootController',
-               help='Root controller implementation for Cassandra.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
     cfg.BoolOpt('cluster_support', default=True,
