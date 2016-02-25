@@ -106,6 +106,9 @@ class Manager(manager.Manager):
         LOG.debug("Enabling root.")
         return self.app.enable_root()
 
+    def enable_root_with_password(self, context, root_password=None):
+        return self.app.enable_root(root_password)
+
     def is_root_enabled(self, context):
         LOG.debug("Checking if root is enabled.")
         return os.path.exists(system.pwd_file)
