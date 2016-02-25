@@ -116,9 +116,6 @@ class Manager(manager.Manager):
 
             self.app.prep_pfile_management()
 
-            if users:
-                self.create_user(context, users)
-
             if root_password:
                 self.admin.enable_root(root_password)
 
