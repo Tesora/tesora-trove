@@ -34,7 +34,6 @@ class SqlHelper(TestHelper):
         self.port = port
         self.credentials = self.get_helper_credentials()
         self.credentials_root = self.get_helper_credentials_root()
-        self.test_schema = self.credentials['database']
 
         self._schema_metadata = MetaData()
         self._data_cache = dict()
