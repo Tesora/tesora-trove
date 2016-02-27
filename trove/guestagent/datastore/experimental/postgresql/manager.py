@@ -23,7 +23,9 @@ from .service.database import PgSqlDatabase
 from .service.install import PgSqlInstall
 from .service.root import PgSqlRoot
 from .service.status import PgSqlAppStatus
+
 import pgutil
+
 from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _

@@ -77,8 +77,8 @@ class Manager(manager.Manager):
             self.admin.create_database(databases)
 
     def delete_database(self, context, database):
+        LOG.debug("Deleting database %s." % database)
         with EndNotification(context):
-            LOG.debug("Deleting database %s." % database)
             return self.admin.delete_database(database)
 
     def list_databases(self, context, limit=None, marker=None,

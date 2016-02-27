@@ -389,6 +389,8 @@ class RebootTests(RebootTestBase):
         if FAKE_MODE:
             raise SkipTest("Cannot run this in fake mode.")
         """Restart MySQL via the REST API successfully."""
+        if FAKE_MODE:
+            raise SkipTest("Cannot run this in fake mode.")
         self.successful_restart()
 
 

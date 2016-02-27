@@ -264,6 +264,16 @@ class Manager(periodic_task.PeriodicTasks):
                 config_contents=None, root_password=None, overrides=None,
                 cluster_config=None, snapshot=None):
         """Set up datastore on a Guest Instance."""
+        with EndNotification(context, instance_id=CONF.guest_id):
+            self._prepare(context, packages, databases, memory_mb, users,
+                          device_path, mount_point, backup_info,
+                          config_contents, root_password, overrides,
+                          cluster_config, snapshot)
+
+    def _prepare(self, context, packages, databases, memory_mb, users,
+                 device_path=None, mount_point=None, backup_info=None,
+                 config_contents=None, root_password=None, overrides=None,
+                 cluster_config=None, snapshot=None):
         LOG.info(_("Starting datastore prepare for '%s'.") % self.manager)
         with EndNotification(context):
             self.status.begin_install()

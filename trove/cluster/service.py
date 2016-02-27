@@ -25,7 +25,6 @@ from trove.common.i18n import _
 from trove.common import notification
 from trove.common.notification import StartNotification
 from trove.common import pagination
-from trove.common.strategies.cluster import strategy
 from trove.common import utils
 from trove.common import wsgi
 from trove.datastore import models as datastore_models
@@ -60,38 +59,15 @@ class ClusterController(wsgi.Controller):
         if not body:
             raise exception.BadRequest(_("Invalid request body."))
 
+        if len(body) != 1:
+            raise exception.BadRequest(_("Action request should have exactly"
+                                         " one action specified in body"))
         context = req.environ[wsgi.CONTEXT_KEY]
         cluster = models.Cluster.load(context, id)
-        manager = cluster.datastore_version.manager
-        api_strategy = strategy.load_api_strategy(manager)
-        _actions = api_strategy.cluster_controller_actions
+        cluster.action(context, req, *body.items()[0])
 
-        def find_action_key():
-            for key in body:
-                if key in _actions:
-                    return key
-            else:
-                message = _("No action '%(action)s' supplied "
-                            "by strategy for manager '%(manager)s'") % (
-                                {'action': key, 'manager': manager})
-                raise exception.TroveError(message)
-
-        action_key = find_action_key()
-        if action_key == 'grow':
-            context.notification = notification.DBaaSClusterGrow(context,
-                                                                 request=req)
-        elif action_key == 'shrink':
-            context.notification = notification.DBaaSClusterShrink(context,
-                                                                   request=req)
-        with StartNotification(context, cluster_id=id):
-            selected_action = _actions[action_key]
-            cluster = selected_action(cluster, body)
-
-        if cluster:
-            view = views.load_view(cluster, req=req, load_servers=False)
-            wsgi_result = wsgi.Result(view.data(), 202)
-        else:
-            wsgi_result = wsgi.Result(None, 202)
+        view = views.load_view(cluster, req=req, load_servers=False)
+        wsgi_result = wsgi.Result(view.data(), 202)
 
         return wsgi_result
 
