@@ -48,20 +48,24 @@ class PgSqlDatabase(object):
         :param database:          Database to be created.
         :type database:           PostgreSQLSchema
         """
-        LOG.info(
-            _("{guest_id}: Creating database {name}.").format(
-                guest_id=CONF.guest_id,
-                name=database.name,
-            )
-        )
-        pgutil.psql(
-            pgutil.DatabaseQuery.create(
-                name=database.name,
-                encoding=database.character_set,
-                collation=database.collate,
-            ),
-            timeout=30,
-        )
+        with EndNotification(context):
+            for database in databases:
+                encoding = database.get('_character_set')
+                collate = database.get('_collate')
+                LOG.info(
+                    _("{guest_id}: Creating database {name}.").format(
+                        guest_id=CONF.guest_id,
+                        name=database['_name'],
+                    )
+                )
+                pgutil.psql(
+                    pgutil.DatabaseQuery.create(
+                        name=database['_name'],
+                        encoding=encoding,
+                        collation=collate,
+                    ),
+                    timeout=30,
+                )
 
     def delete_database(self, context, database):
         """Delete the specified database.
@@ -76,16 +80,17 @@ class PgSqlDatabase(object):
         :param database:          Database to be dropped.
         :type database:           PostgreSQLSchema
         """
-        LOG.info(
-            _("{guest_id}: Dropping database {name}.").format(
-                guest_id=CONF.guest_id,
-                name=database.name,
+        with EndNotification(context):
+            LOG.info(
+                _("{guest_id}: Dropping database {name}.").format(
+                    guest_id=CONF.guest_id,
+                    name=database['_name'],
+                )
             )
-        )
-        pgutil.psql(
-            pgutil.DatabaseQuery.drop(name=database.name),
-            timeout=30,
-        )
+            pgutil.psql(
+                pgutil.DatabaseQuery.drop(name=database['_name']),
+                timeout=30,
+            )
 
     def list_databases(
             self,

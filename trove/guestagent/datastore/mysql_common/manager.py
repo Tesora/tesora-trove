@@ -123,11 +123,11 @@ class MySqlManager(manager.Manager):
 
     def change_passwords(self, context, users):
         with EndNotification(context):
-            return self.mysql_admin().change_passwords(users)
+            self.mysql_admin().change_passwords(users)
 
     def update_attributes(self, context, username, hostname, user_attrs):
         with EndNotification(context):
-            return self.mysql_admin().update_attributes(
+            self.mysql_admin().update_attributes(
                 username, hostname, user_attrs)
 
     def reset_configuration(self, context, configuration):

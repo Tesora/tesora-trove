@@ -114,11 +114,14 @@ class Manager(manager.Manager):
 
     def change_passwords(self, context, users):
         LOG.debug("Changing password.")
-        return service.MongoDBAdmin().change_passwords(users)
+        with EndNotification(context):
+            return service.MongoDBAdmin().change_passwords(users)
 
     def update_attributes(self, context, username, hostname, user_attrs):
         LOG.debug("Updating database attributes.")
-        return service.MongoDBAdmin().update_attributes(username, user_attrs)
+        with EndNotification(context):
+            return service.MongoDBAdmin().update_attributes(username,
+                                                            user_attrs)
 
     def create_database(self, context, databases):
         LOG.debug("Creating database(s).")

@@ -330,7 +330,6 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             LOG.info(_("Created instance %s successfully.") % self.id)
             TroveInstanceCreate(instance=self,
                                 instance_size=flavor['ram']).notify()
-#            self.send_usage_event('create', instance_size=flavor['ram'])
         except PollTimeOut:
             LOG.error(_("Failed to create instance %s. "
                         "Timeout waiting for instance to become active. "
@@ -1124,9 +1123,6 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         TroveInstanceDelete(instance=self,
                             deleted_at=timeutils.isotime(deleted_at),
                             server=old_server).notify()
-#        self.send_usage_event('delete',
-#                                deleted_at=timeutils.isotime(deleted_at),
-#                                server=old_server)
         LOG.debug("End _delete_resources for instance %s" % self.id)
 
     def _delete_server_group(self):
@@ -1738,11 +1734,6 @@ class ResizeVolumeAction(object):
                                       modify_at=modified_time,
                                       volume_size=volume.size,
                                       ).notify()
-#             self.instance.send_usage_event('modify_volume',
-#                                            old_volume_size=self.old_size,
-#                                            launched_at=launched_time,
-#                                            modify_at=modified_time,
-#                                            volume_size=volume.size)
         else:
             self.instance.reset_task_status()
             msg = _("Failed to resize instance %(id)s volume for server "
@@ -1960,13 +1951,6 @@ class ResizeAction(ResizeActionBase):
                                   launched_at=update_time,
                                   modify_at=update_time,
                                   server=self.instance.server).notify()
-#         self.instance.send_usage_event(
-#              'modify_flavor',
-#              old_instance_size=self.old_flavor['ram'],
-#              instance_size=self.new_flavor['ram'],
-#              launched_at=timeutils.isotime(self.instance.updated),
-#              modify_at=timeutils.isotime(self.instance.updated),
-#              server=self.instance.server)
 
     def _start_datastore(self):
         config = self.instance._render_config(self.new_flavor)

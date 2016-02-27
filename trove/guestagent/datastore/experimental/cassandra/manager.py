@@ -62,11 +62,6 @@ class Manager(manager.Manager):
     def restart(self, context):
         self.app.restart()
 
-    def get_filesystem_stats(self, context, fs_path):
-        """Gets the filesystem stats for the path given."""
-        mount_point = CONF.get(MANAGER).mount_point
-        return dbaas.get_filesystem_volume_stats(mount_point)
-
     def start_db_with_conf_changes(self, context, config_contents):
         self.app.start_db_with_conf_changes(config_contents)
 

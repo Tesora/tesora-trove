@@ -22,6 +22,7 @@ from oslo_utils import timeutils
 
 from trove.common import cfg
 from trove.common.exception import TroveError
+from trove.common.i18n import _
 from trove.conductor import api as conductor_api
 from trove import rpc
 
@@ -135,6 +136,7 @@ class TroveBaseTraits(object):
     def deserialize(self, ctxt, payload):
         self.payload = payload
         self.context = ctxt
+        return self
 
     def notify(self, event_type, publisher_id=CONF.host):
         event_type = self.event_type_format % event_type
@@ -144,7 +146,6 @@ class TroveBaseTraits(object):
 
         notifier = rpc.get_notifier(
             service='taskmanager', publisher_id=publisher_id)
-
         notifier.info(self.context, event_type, event_payload)
 
 
@@ -180,32 +181,6 @@ class TroveCommonTraits(TroveBaseTraits):
                 })
 
         return TroveBaseTraits.serialize(self, ctxt)
-
-
-# class TroveInstanceExists(TroveBaseTraits):
-#
-#     '''
-#     Additional traits for trove.instance.exists notifications that describe
-#     instance action events
-#
-#     This class should correspond to trove_instance_exists in
-#     ceilometer/event_definitions.yaml
-#     '''
-#
-#     def __init__(self, **kwargs):
-#         audit_start = kwargs['audit_start'],
-#         audit_end = kwargs['audit_end'],
-#
-#         super(TroveInstanceExists, self).__init__(**kwargs)
-#
-#         self.payload.update({
-#             'audit_period_beginning': audit_start,
-#             'audit_period_ending': audit_end,
-#         })
-#
-#     def notify(self):
-#         self.context = None
-#         super(TroveInstanceExists, self).notify('exists', publisher_id=None)
 
 
 class TroveInstanceCreate(TroveCommonTraits):
@@ -285,13 +260,13 @@ class DBaaSQuotas(object):
     ceilometer/event_definitions.yaml
     '''
 
-    event_type = 'dbaas.quotas'
+    event_type = 'dbaas.quota'
 
-    def __init__(self, context, resource, quota, usage):
+    def __init__(self, context, quota, usage):
         self.context = context
 
         self.payload = {
-            'resource': resource,
+            'resource': quota.resource,
             'in_use': usage.in_use,
             'reserved': usage.reserved,
             'limit': quota.hard_limit,
@@ -382,8 +357,8 @@ class DBaaSAPINotification(object):
                                 'tenant_id': context.tenant,
                                 })
         elif 'request_id' not in kwargs:
-            raise TroveError("Notification %s must include 'request'"
-                             " property" % self.__class__.__name__)
+            raise TroveError(_("Notification %s must include 'request'"
+                             " property") % self.__class__.__name__)
 
         self.payload.update(kwargs)
 
@@ -394,14 +369,14 @@ class DBaaSAPINotification(object):
         required_keys = set(required_traits)
         provided_keys = set(self.payload.keys())
         if not required_keys.issubset(provided_keys):
-            raise TroveError("The following required keys not defined for"
-                             " notification %(name)s: %(keys)s"
+            raise TroveError(_("The following required keys not defined for"
+                               " notification %(name)s: %(keys)s")
                              % {'name': self.__class__.__name__,
                                 'keys': list(required_keys - provided_keys)})
         if 'server_type' not in self.payload:
-            raise TroveError("Notification %s must include a"
-                             "'server_type for correct routing" %
-                             self.__class__.__name__)
+            raise TroveError(_("Notification %s must include a"
+                             " 'server_type' for correct routing")
+                             % self.__class__.__name__)
 
     def _notify(self, event_qualifier, required_traits, optional_traits,
                 **kwargs):

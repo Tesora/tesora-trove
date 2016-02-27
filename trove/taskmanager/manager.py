@@ -27,7 +27,7 @@ from trove.common import exception
 from trove.common.exception import ReplicationSlaveAttachError
 from trove.common.exception import TroveError
 from trove.common.i18n import _
-from trove.common.notification import EndNotification
+from trove.common.notification import DBaaSQuotas, EndNotification
 from trove.common import remote
 import trove.common.rpc.version as rpc_version
 from trove.common.strategies.cluster import strategy
@@ -36,6 +36,7 @@ import trove.extensions.mgmt.instances.models as mgmtmodels
 from trove.instance.tasks import InstanceTasks
 from trove.taskmanager import models
 from trove.taskmanager.models import FreshInstanceTasks, BuiltInstanceTasks
+from trove.quota.quota import QUOTAS
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
@@ -470,6 +471,14 @@ class Manager(periodic_task.PeriodicTasks):
             """
             mgmtmodels.publish_exist_events(self.exists_transformer,
                                             self.admin_context)
+
+    @periodic_task.periodic_task(spacing=CONF.quota_notification_interval)
+    def publish_quota_notifications(self, context):
+        nova_client = remote.create_nova_client(self.admin_context)
+        for tenant in nova_client.tenants.list():
+            for quota in QUOTAS.get_all_quotas_by_tenant(tenant.id):
+                usage = QUOTAS.get_quota_usage(quota)
+                DBaaSQuotas(self.admin_context, quota, usage).notify()
 
     def __getattr__(self, name):
         """

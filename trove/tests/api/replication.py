@@ -147,9 +147,6 @@ class CreateReplicationSlave(object):
         backup_count = len(
             instance_info.dbaas.instances.backups(instance_info.id))
         slave_instance.id = create_slave()
-        global backup_count
-        backup_count = len(
-            instance_info.dbaas.instances.backups(instance_info.id))
 
 
 @test(groups=[GROUP])

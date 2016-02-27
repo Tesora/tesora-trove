@@ -763,6 +763,15 @@ class Instance(BuiltInstance):
             'availability_zone': availability_zone,
         }
 
+        call_args = {
+            'name': name,
+            'flavor_id': flavor_id,
+            'datastore': datastore.name if datastore else None,
+            'datastore_version': datastore_version.name,
+            'image_id': image_id,
+            'availability_zone': availability_zone,
+        }
+
         # All nova flavors are permitted for a datastore-version unless one
         # or more entries are found in datastore_version_metadata,
         # in which case only those are permitted.
