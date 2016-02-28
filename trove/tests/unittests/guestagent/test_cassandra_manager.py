@@ -17,6 +17,7 @@ import random
 import string
 
 from mock import ANY, call, DEFAULT, MagicMock, patch, NonCallableMagicMock
+from mock import Mock
 from oslo_utils import netutils
 from testtools import ExpectedException
 
@@ -707,3 +708,79 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
                                                    None, usr_attrs)
                     alter.assert_called_once_with(ANY, usr)
                     self.assertEqual(0, rename.call_count)
+
+    def test_update_overrides(self):
+        cfg_mgr_mock = MagicMock()
+        self.manager._app.configuration_manager = cfg_mgr_mock
+        overrides = NonCallableMagicMock()
+        self.manager.update_overrides(Mock(), overrides)
+        cfg_mgr_mock.apply_user_override.assert_called_once_with(overrides)
+        cfg_mgr_mock.remove_user_override.assert_not_called()
+
+    def test_remove_overrides(self):
+        cfg_mgr_mock = MagicMock()
+        self.manager._app.configuration_manager = cfg_mgr_mock
+        self.manager.update_overrides(Mock(), {}, remove=True)
+        cfg_mgr_mock.remove_user_override.assert_called_once_with()
+        cfg_mgr_mock.apply_user_override.assert_not_called()
+
+    def test_apply_overrides(self):
+        self.assertIsNone(
+            self.manager.apply_overrides(Mock(), NonCallableMagicMock()))
+
+    def test_enable_root(self):
+        with patch.object(self.manager._app, 'is_root_enabled',
+                          return_value=False):
+            with patch.object(cass_service.CassandraAdmin,
+                              '_create_superuser') as create_mock:
+                self.manager.enable_root(self.context)
+                create_mock.assert_called_once_with(ANY)
+
+        with patch.object(self.manager._app, 'is_root_enabled',
+                          return_value=True):
+            with patch.object(cass_service.CassandraAdmin,
+                              'alter_user_password') as alter_mock:
+                self.manager.enable_root(self.context)
+                alter_mock.assert_called_once_with(ANY)
+
+    def test_is_root_enabled(self):
+        trove_admin = Mock()
+        trove_admin.configure_mock(name=self.manager._app._ADMIN_USER)
+        other_admin = Mock()
+        other_admin.configure_mock(name='someuser')
+
+        with patch.object(cass_service.CassandraAdmin,
+                          'list_superusers', return_value=[]):
+            self.assertFalse(self.manager.is_root_enabled(self.context))
+
+        with patch.object(cass_service.CassandraAdmin,
+                          'list_superusers', return_value=[trove_admin]):
+            self.assertFalse(self.manager.is_root_enabled(self.context))
+
+        with patch.object(cass_service.CassandraAdmin,
+                          'list_superusers', return_value=[other_admin]):
+            self.assertTrue(self.manager.is_root_enabled(self.context))
+
+        with patch.object(cass_service.CassandraAdmin,
+                          'list_superusers',
+                          return_value=[trove_admin, other_admin]):
+            self.assertTrue(self.manager.is_root_enabled(self.context))
+
+    def test_guest_log_enable(self):
+        self._assert_guest_log_enable(False, 'INFO')
+        self._assert_guest_log_enable(True, 'OFF')
+
+    def _assert_guest_log_enable(self, disable, expected_level):
+        with patch.multiple(
+                self.manager._app,
+                logback_conf_manager=DEFAULT,
+                _run_nodetool_command=DEFAULT
+        ) as app_mocks:
+            self.assertFalse(self.manager.guest_log_enable(
+                Mock(), Mock(), disable))
+
+            (app_mocks['logback_conf_manager'].apply_system_override.
+             assert_called_once_with(
+                {'configuration': {'root': {'@level': expected_level}}}))
+            app_mocks['_run_nodetool_command'].assert_called_once_with(
+                'setlogginglevel', 'root', expected_level)
