@@ -25,6 +25,7 @@ from trove.common.notification import EndNotification
 from trove.guestagent import backup
 from trove.guestagent.datastore.experimental.cassandra import service
 from trove.guestagent.datastore import manager
+from trove.guestagent import guest_log
 from trove.guestagent import volume
 
 
@@ -34,6 +35,8 @@ MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'cassandra'
 
 
 class Manager(manager.Manager):
+
+    GUEST_LOG_DEFS_SYSTEM_LABEL = 'system'
 
     def __init__(self, manager_name='cassandra'):
         super(Manager, self).__init__(manager_name)
@@ -62,6 +65,27 @@ class Manager(manager.Manager):
     @property
     def configuration_manager(self):
         return self.app.configuration_manager
+
+    @property
+    def datastore_log_defs(self):
+        system_log_file = self.validate_log_file(
+            self.app.cassandra_system_log_file, self.app.cassandra_owner)
+        return {
+            self.GUEST_LOG_DEFS_SYSTEM_LABEL: {
+                self.GUEST_LOG_TYPE_LABEL: guest_log.LogType.USER,
+                self.GUEST_LOG_USER_LABEL: self.app.cassandra_owner,
+                self.GUEST_LOG_FILE_LABEL: system_log_file
+            }
+        }
+
+    def guest_log_enable(self, context, log_name, disable):
+        if disable:
+            self.app.set_logging_level('OFF')
+        else:
+            log_level = CONF.get(self.manager_name).get('system_log_level')
+            self.app.set_logging_level(log_level)
+
+        return False
 
     def restart(self, context):
         self.app.restart()
