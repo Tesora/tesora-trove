@@ -364,7 +364,7 @@ class Manager(manager.Manager):
                 self.replication.enable_as_slave(self.app, replica_info,
                                                  slave_config)
             else:
-                replication.prepare_slave(replica_info)
+                self.replication.prepare_slave(replica_info)
         except Exception:
             LOG.exception("Error enabling replication.")
             self.app.status.set_status(ds_instance.ServiceStatuses.FAILED)
