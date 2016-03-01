@@ -110,12 +110,19 @@ class Manager(manager.Manager):
                 self._perform_restore(backup_info, context,
                                       mount_point, self.app)
             else:
-                # using ValidatedMySQLDatabase here for to simulate the object
-                # that would normally be passed in via --databases, and to bookmark
-                # this for when per-datastore validation is added
-                db = models.ValidatedMySQLDatabase()
-                db.name = CONF.guest_name
-                self.admin.create_database([db.serialize()])
+                if databases:
+                    # only create 1 database
+                    self.admin.create_database(databases[:1])
+                else:
+                    # using ValidatedMySQLDatabase here for to simulate the
+                    # object that would normally be passed in via --databases,
+                    # and to bookmark this for when per-datastore validation is
+                    # added
+                    db = models.ValidatedMySQLDatabase()
+                    # no database name provided so default to first 8
+                    # characters of instance name
+                    db.name = CONF.guest_name[:8]
+                    self.admin.create_database([db.serialize()])
 
             self.refresh_guest_log_defs()
 
