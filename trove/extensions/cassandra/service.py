@@ -22,6 +22,7 @@ class CassandraRootController(DefaultRootController):
 
     def _find_root_user(self, context, instance_id):
         user = guest_models.CassandraRootUser()
-        # TODO(pmalik): This should be using Cassandra model extensions.
+        # TODO(pmalik): Using MySQL model until we have datastore specific
+        # extensions (bug/1498573).
         return models.User.load(
             context, instance_id, user.name, user.host, root_user=True)
