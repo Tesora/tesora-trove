@@ -148,10 +148,8 @@ class Manager(manager.Manager):
 
             self.__admin = CassandraAdmin(self.app.get_current_superuser())
 
-        if not cluster_config:
-            if self.is_root_enabled(context):
-                self.status.report_root(context,
-                                        self.app.default_superuser_name)
+        if not cluster_config and self.is_root_enabled(context):
+            self.status.report_root(context, self.app.default_superuser_name)
 
     def change_passwords(self, context, users):
         with EndNotification(context):
