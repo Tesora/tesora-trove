@@ -170,6 +170,12 @@ class TestRunner(object):
         return create_dbaas_client(other_user)
 
     @property
+    def nova_client(self):
+        if not self._nova_client:
+            self._nova_client = create_nova_client(self.instance_info.user)
+        return self._nova_client
+
+    @property
     def admin_client(self):
         if not self._admin_client:
             self._admin_client = self._create_admin_client()
@@ -191,7 +197,7 @@ class TestRunner(object):
         """Create a swift client from the admin user details."""
         requirements = Requirements(is_admin=True, services=["swift"])
         user = CONFIG.users.find_user(requirements)
-        os_options = {'region_name': os.getenv("OS_REGION_NAME")}
+        os_options = {'region_name': CONFIG.trove_client_region_name}
         return swiftclient.client.Connection(
             authurl=CONFIG.nova_client['auth_url'],
             user=user.auth_user,
@@ -200,11 +206,12 @@ class TestRunner(object):
             auth_version='2.0',
             os_options=os_options)
 
-    @property
-    def nova_client(self):
-        if not self._nova_client:
-            self._nova_client = create_nova_client(self.instance_info.user)
-        return self._nova_client
+    def get_client_tenant(self, client):
+        tenant_name = client.real_client.client.tenant
+        service_url = client.real_client.client.service_url
+        su_parts = service_url.split('/')
+        tenant_id = su_parts[-1]
+        return tenant_name, tenant_id
 
     def assert_raises(self, expected_exception, expected_http_code,
                       client_cmd, *cmd_args, **cmd_kwargs):
