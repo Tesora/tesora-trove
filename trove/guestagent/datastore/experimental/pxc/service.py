@@ -63,7 +63,7 @@ class PXCApp(service_base.BaseMySqlApp):
     def _wait_for_mysql_to_be_really_alive(self, max_time):
         utils.poll_until(self._test_mysql, sleep_time=3, time_out=max_time)
 
-    def secure(self, config_contents, overrides):
+    def secure(self, config_contents):
         LOG.info(_("Generating admin password."))
         admin_password = utils.generate_random_password()
         service_base.clear_expired_password()
@@ -74,7 +74,6 @@ class PXCApp(service_base.BaseMySqlApp):
             self._create_admin_user(client, admin_password)
         self.stop_db()
         self._reset_configuration(config_contents, admin_password)
-        self._apply_user_overrides(overrides)
         self.start_mysql()
         # TODO(cp16net) figure out reason for PXC not updating the password
         try:
@@ -93,7 +92,6 @@ class PXCApp(service_base.BaseMySqlApp):
         self.stop_db()
 
         self._reset_configuration(config_contents, admin_password)
-        self._apply_user_overrides(overrides)
         self.start_mysql()
         self._wait_for_mysql_to_be_really_alive(
             CONF.timeout_wait_for_service)
