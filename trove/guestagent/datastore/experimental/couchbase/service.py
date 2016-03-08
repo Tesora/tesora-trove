@@ -116,7 +116,7 @@ class CouchbaseApp(object):
 
     def get_cluster_admin(self):
         cluster_password = CouchbaseRootAccess.get_password()
-        return models.CassandraUser(self._ADMIN_USER, cluster_password)
+        return models.CouchbaseUser(self._ADMIN_USER, cluster_password)
 
     @property
     def ramsize_quota_mb(self):
@@ -322,7 +322,7 @@ class CouchbaseApp(object):
         status, _ = self._run_couchbase_command('rebalance-status')
         status_tokens = StringConverter({}).to_objects(status)
         LOG.debug("Current rebalance status: %s (%s)" % status_tokens)
-        return status_tokens[0] != 'none'
+        return status_tokens[0] not in ('none', 'notRunning')
 
 
 class CouchbaseAppStatus(service.BaseDbStatus):
