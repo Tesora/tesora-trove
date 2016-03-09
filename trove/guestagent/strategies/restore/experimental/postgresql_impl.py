@@ -106,7 +106,7 @@ class PgBaseBackup(base.RestoreRunner, PgSqlConfig):
 
     def __init__(self, *args, **kwargs):
         self.base_restore_cmd = 'sudo -u %s tar xCf %s - ' % (
-            self.PGSQL_OWNER, self.PGSQL_DATA_DIR
+            self.PGSQL_OWNER, self.pgsql_data_dir
         )
 
         super(PgBaseBackup, self).__init__(*args, **kwargs)
@@ -115,7 +115,7 @@ class PgBaseBackup(base.RestoreRunner, PgSqlConfig):
         self.stop_db(context=None)
         LOG.info("Preparing WAL archive dir")
         PgSqlProcess.recreate_wal_archive_dir()
-        datadir = self.PGSQL_DATA_DIR
+        datadir = self.pgsql_data_dir
         operating_system.remove(datadir, force=True, recursive=True,
                                 as_root=True)
         operating_system.create_directory(datadir, user=self.PGSQL_OWNER,
@@ -123,7 +123,7 @@ class PgBaseBackup(base.RestoreRunner, PgSqlConfig):
                                           as_root=True)
 
     def post_restore(self):
-        operating_system.chmod(self.PGSQL_DATA_DIR,
+        operating_system.chmod(self.pgsql_data_dir,
                                FileMode.OCTAL_MODE("0700"),
                                as_root=True, recursive=True, force=True)
 
@@ -138,7 +138,7 @@ class PgBaseBackup(base.RestoreRunner, PgSqlConfig):
             recovery_conf += "restore_command = '" + \
                              self.pgsql_restore_cmd + "'\n"
 
-        recovery_file = os.path.join(self.PGSQL_DATA_DIR, 'recovery.conf')
+        recovery_file = os.path.join(self.pgsql_data_dir, 'recovery.conf')
         operating_system.write_file(recovery_file, recovery_conf,
                                     codec=stream_codecs.IdentityCodec(),
                                     as_root=True)
@@ -189,7 +189,7 @@ class PgBaseBackupIncremental(PgBaseBackup):
             cmd = self._incremental_restore_cmd(incr=False)
             self.content_length += self._unpack(location, checksum, cmd)
 
-            operating_system.chmod(self.PGSQL_DATA_DIR,
+            operating_system.chmod(self.pgsql_data_dir,
                                    FileMode.OCTAL_MODE("0700"),
                                    as_root=True, recursive=True, force=True)
 

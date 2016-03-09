@@ -120,7 +120,7 @@ class PostgresqlReplicationStreaming(
         """
 
         LOG.debug("Checking for replicator user")
-        pwfile = os.path.join(self.PGSQL_DATA_DIR, ".replpass")
+        pwfile = os.path.join(self.pgsql_data_dir, ".replpass")
         if self.user_exists(REPL_USER):
             if operating_system.exists(pwfile, as_root=True):
                 LOG.debug("Found existing .replpass, returning pw")
@@ -175,16 +175,16 @@ class PostgresqlReplicationStreaming(
 
         # TODO(atomic77) Remove this hack after adding cfg manager for pg_hba
         tmp_hba = '/tmp/pg_hba'
-        operating_system.copy(self.PGSQL_HBA_CONFIG, tmp_hba,
+        operating_system.copy(self.pgsql_hba_config, tmp_hba,
                               force=True, as_root=True)
         operating_system.chmod(tmp_hba, FileMode.OCTAL_MODE("0777"),
                                as_root=True)
         with open(tmp_hba, 'a+') as hba_file:
             hba_file.write(hba_entry)
 
-        operating_system.copy(tmp_hba, self.PGSQL_HBA_CONFIG,
+        operating_system.copy(tmp_hba, self.pgsql_hba_config,
                               force=True, as_root=True)
-        operating_system.chmod(self.PGSQL_HBA_CONFIG,
+        operating_system.chmod(self.pgsql_hba_config,
                                FileMode.OCTAL_MODE("0600"),
                                as_root=True)
         operating_system.remove(tmp_hba, as_root=True)
@@ -225,7 +225,7 @@ class PostgresqlReplicationStreaming(
         """Call pg_rewind to resync datadir against state of new master
         We should already have a recovery.conf file in PGDATA
         """
-        rconf = operating_system.read_file(self.PGSQL_RECOVERY_CONFIG,
+        rconf = operating_system.read_file(self.pgsql_recovery_config,
                                            as_root=True)
         regex = re.compile("primary_conninfo = (.*)")
         m = regex.search(rconf)
@@ -233,11 +233,11 @@ class PostgresqlReplicationStreaming(
 
         # The recovery.conf file we want should already be there, but pg_rewind
         # will delete it, so copy it out first
-        rec = self.PGSQL_RECOVERY_CONFIG
+        rec = self.pgsql_recovery_config
         tmprec = "/tmp/recovery.conf.bak"
         operating_system.move(rec, tmprec, as_root=True)
 
-        cmd_full = " ".join(["pg_rewind", "-D", self.PGSQL_DATA_DIR,
+        cmd_full = " ".join(["pg_rewind", "-D", self.pgsql_data_dir,
                              '--source-server=' + conninfo])
         out, err = utils.execute("sudo", "su", "-", self.PGSQL_OWNER, "-c",
                                  "%s" % cmd_full, check_exit_code=0)
@@ -260,12 +260,12 @@ class PostgresqlReplicationStreaming(
         restart with a recovery.conf file in the data dir, which contains
         the connection information for the master.
         """
-        assert operating_system.exists(self.PGSQL_RECOVERY_CONFIG,
+        assert operating_system.exists(self.pgsql_recovery_config,
                                        as_root=True)
         self.restart(context=None)
 
     def _remove_recovery_file(self):
-        operating_system.remove(self.PGSQL_RECOVERY_CONFIG, as_root=True)
+        operating_system.remove(self.pgsql_recovery_config, as_root=True)
 
     def _write_standby_recovery_file(self, snapshot, sslmode='prefer'):
         LOG.info("Snapshot data received:" + str(snapshot))
@@ -290,10 +290,10 @@ class PostgresqlReplicationStreaming(
         recovery_conf += "trigger_file = '/tmp/postgresql.trigger'\n"
         recovery_conf += "recovery_target_timeline='latest'\n"
 
-        operating_system.write_file(self.PGSQL_RECOVERY_CONFIG, recovery_conf,
+        operating_system.write_file(self.pgsql_recovery_config, recovery_conf,
                                     codec=stream_codecs.IdentityCodec(),
                                     as_root=True)
-        operating_system.chown(self.PGSQL_RECOVERY_CONFIG, user="postgres",
+        operating_system.chown(self.pgsql_recovery_config, user="postgres",
                                group="postgres", as_root=True)
 
     def enable_hot_standby(self, service):

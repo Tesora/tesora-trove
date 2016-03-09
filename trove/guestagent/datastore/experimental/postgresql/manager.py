@@ -116,8 +116,6 @@ class Manager(
             pgutil.PG_ADMIN = self.ADMIN_USER
             backup.restore(context, backup_info, '/tmp')
             pgutil.PG_ADMIN = self.ADMIN_USER
-        else:
-            self._secure(context)
 
         if snapshot:
             LOG.info("Found snapshot info: " + str(snapshot))
@@ -147,19 +145,19 @@ class Manager(
             backup.backup(context, backup_info)
 
     def backup_required_for_replication(self, context):
-        return replication.backup_required_for_replication()
+        return self.replication.backup_required_for_replication()
 
     def attach_replica(self, context, replica_info, slave_config):
-        replication.enable_as_slave(self, replica_info, None)
+        self.replication.enable_as_slave(self, replica_info, None)
 
     def detach_replica(self, context, for_failover=False):
-        replica_info = replication.detach_slave(self, for_failover)
+        replica_info = self.replication.detach_slave(self, for_failover)
         return replica_info
 
     def enable_as_master_s2(self, context, replica_source_config,
                             for_failover=False):
         self.enable_backups()
-        replication.enable_as_master(self, None)
+        self.replication.enable_as_master(self, None)
 
     def make_read_only(self, context, read_only):
         """There seems to be no way to flag this at the database level in
@@ -172,7 +170,7 @@ class Manager(
 
     def get_replica_context(self, context):
         LOG.debug("Getting replica context.")
-        return replication.get_replica_context(None)
+        return self.replication.get_replica_context(None)
 
     def get_latest_txn_id(self, context):
         if self.pg_is_in_recovery():
@@ -204,25 +202,25 @@ class Manager(
 
     def cleanup_source_on_replica_detach(self, context, replica_info):
         LOG.debug("Calling cleanup_source_on_replica_detach")
-        replication.cleanup_source_on_replica_detach()
+        self.replication.cleanup_source_on_replica_detach()
 
     def demote_replication_master(self, context):
         LOG.debug("Calling demote_replication_master")
-        replication.demote_master(self)
+        self.replication.demote_master(self)
 
     def get_replication_snapshot(self, context, snapshot_info,
                                  replica_source_config=None):
         LOG.debug("Getting replication snapshot.")
 
         self.enable_backups()
-        replication.enable_as_master(None, None)
+        self.replication.enable_as_master(None, None)
 
         snapshot_id, log_position = (
-            replication.snapshot_for_replication(context, None, None,
-                                                 snapshot_info))
+            self.replication.snapshot_for_replication(context, None, None,
+                                                      snapshot_info))
 
         mount_point = CONF.get(self.manager).mount_point
-        volume_stats = self.get_filesystem_volume_stats(mount_point)
+        volume_stats = self.get_filesystem_stats(context, mount_point)
 
         replication_snapshot = {
             'dataset': {
@@ -231,8 +229,8 @@ class Manager(
                 'volume_size': volume_stats.get('total', 0.0),
                 'snapshot_id': snapshot_id
             },
-            'replication_strategy': replication_strategy,
-            'master': replication.get_master_ref(None, snapshot_info),
+            'replication_strategy': self.replication_strategy,
+            'master': self.replication.get_master_ref(None, snapshot_info),
             'log_position': log_position
         }
 
