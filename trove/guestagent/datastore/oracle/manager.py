@@ -49,6 +49,7 @@
 # the logo is not reasonably feasible for technical reasons.
 
 from os import path
+import re
 
 from oslo_log import log as logging
 from trove.common import cfg
@@ -119,9 +120,9 @@ class Manager(manager.Manager):
                     # and to bookmark this for when per-datastore validation is
                     # added
                     db = models.ValidatedMySQLDatabase()
-                    # no database name provided so default to first 8
-                    # characters of instance name
-                    db.name = CONF.guest_name[:8]
+                    # no database name provided so default to first 8 valid
+                    # characters of instance name (alphanumeric, no '_')
+                    db.name = re.sub(r'[\W_]', '', CONF.guest_name[:8])
                     self.admin.create_database([db.serialize()])
 
             self.refresh_guest_log_defs()
