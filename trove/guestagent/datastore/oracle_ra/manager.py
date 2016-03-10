@@ -241,6 +241,10 @@ class Manager(manager.Manager):
 
         self._create_ra_status_file('OK')
 
+    def apply_overrides_on_prepare(self, context, overrides):
+        LOG.debug("Ignoring configuration for %s" % self.manager_name)
+        pass
+
     def restart(self, context):
         raise exception.DatastoreOperationNotSupported(
             operation='restart', datastore=MANAGER)
