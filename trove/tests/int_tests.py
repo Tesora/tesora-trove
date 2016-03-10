@@ -213,7 +213,7 @@ register(["couchbase_supported"], common_groups, root_actions_groups,
 register(["couchdb_supported"], common_groups)
 register(["postgresql_supported"], common_groups,
          backup_groups, database_actions_groups, configuration_groups,
-         root_actions_groups, user_actions_groups)
+         root_actions_groups, user_actions_groups, replication_groups)
 register(["mysql_supported", "percona_supported"], common_groups,
          backup_groups, configuration_groups, database_actions_groups,
          replication_groups, root_actions_groups, user_actions_groups)
