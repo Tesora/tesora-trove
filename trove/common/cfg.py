@@ -1345,6 +1345,50 @@ postgresql_opts = [
                help='Character length of generated passwords.'),
 ]
 
+# EDB (mostly uses same options as Postgresql community edition).
+# Use EDB PPAS port.
+edb_group = cfg.OptGroup(
+    'edb', title='EnterpriseDB options',
+    help="Oslo option group for the EnterpriseDB datastore.")
+edb_opts = _update_options(
+    postgresql_opts,
+    cfg.ListOpt('tcp_ports', default=["5444"],
+                help='List of TCP ports and/or port ranges to open '
+                     'in the security group (only applicable '
+                     'if trove_security_groups_support is True).'),
+    cfg.PortOpt('postgresql_port', default=5444,
+                help='The TCP port the server listens on.'),
+    cfg.StrOpt('backup_namespace',
+               default='trove.guestagent.strategies.backup.experimental.'
+                       'edb_impl',
+               help='Namespace to load backup strategies from.'),
+    cfg.StrOpt('backup_strategy', default='EdbPgBaseBackup',
+               help='Default strategy to perform backups.'),
+    cfg.DictOpt('backup_incremental_strategy',
+                default={'EdbPgBaseBackup': 'EdbPgBaseBackupIncremental'},
+                help='Incremental Backup Runner based on the default '
+                'strategy. For strategies that do not implement an '
+                'incremental, the runner will use the default full backup.'),
+    cfg.StrOpt('mount_point', default='/var/lib/ppas',
+               help="Filesystem path for mounting "
+               "volumes if volume support is enabled."),
+    cfg.StrOpt('restore_namespace',
+               default='trove.guestagent.strategies.restore.experimental.'
+                       'edb_impl',
+               help='Namespace to load restore strategies from.'),
+    cfg.StrOpt('replication_namespace',
+               default='trove.guestagent.strategies.replication.experimental.'
+                       'edb_impl',
+               help='Namespace to load replication strategies from.'),
+    cfg.StrOpt('replication_strategy',
+               default='EdbReplicationStreaming',
+               help='Default strategy for replication.'),
+    cfg.StrOpt('root_controller',
+               default='trove.extensions.edb.service'
+               '.EnterpriseDBRootController',
+               help='Root controller implementation for EnterpriseDB.'),
+    cfg.ListOpt('ignore_dbs', default=['postgres', 'enterprisedb', 'edb']))
+
 # Apache CouchDB
 couchdb_group = cfg.OptGroup(
     'couchdb', title='CouchDB options',
@@ -1673,6 +1717,7 @@ CONF.register_opts(dse_opts, dse_group)
 CONF.register_opts(couchbase_opts, couchbase_group)
 CONF.register_opts(mongodb_opts, mongodb_group)
 CONF.register_opts(postgresql_opts, postgresql_group)
+CONF.register_opts(edb_opts, edb_group)
 CONF.register_opts(couchdb_opts, couchdb_group)
 CONF.register_opts(vertica_opts, vertica_group)
 CONF.register_opts(db2_opts, db2_group)

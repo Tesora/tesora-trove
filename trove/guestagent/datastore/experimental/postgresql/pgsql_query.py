@@ -162,7 +162,7 @@ class AccessQuery(object):
     @classmethod
     def list(cls, user):
         """Query to list grants for a user."""
-        # TODO(pmalik): 'os_admin' reference
+        # FIXME(pmalik): 'os_admin' reference
         return (
             "SELECT datname, pg_encoding_to_char(encoding), datcollate "
             "FROM pg_database "
