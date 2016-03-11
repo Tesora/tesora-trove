@@ -50,11 +50,11 @@ REPLICATION_STRATEGY_CLASS = get_replication_strategy(REPLICATION_STRATEGY,
 
 
 class Manager(
-        manager.Manager,
         PgSqlDatabase,
         PgSqlRoot,
         PgSqlConfig,
         PgSqlInstall,
+        manager.Manager,
 ):
 
     PG_BUILTIN_ADMIN = 'postgres'
