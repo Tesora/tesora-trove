@@ -50,7 +50,7 @@ class RedisSyncReplication(base.Replication):
                                  location, snapshot_info):
         return None, None
 
-    def enable_as_master(self, service, master_config, for_failover=False):
+    def enable_as_master(self, service, master_config):
         service.configuration_manager.apply_system_override(
             master_config, change_id=self.CONF_LABEL_REPLICATION_MASTER)
         service.restart()

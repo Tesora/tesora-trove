@@ -255,12 +255,13 @@ class Manager(periodic_task.PeriodicTasks):
     #################
     # Prepare related
     #################
-    def _require_post_processing(self, snapshot):
-        """Tests whether the given replication snapshot indicates
-        post processing is needed.
+    def post_processing_required_for_replication(self, context):
+        """Tests whether the given replication strategy requires
+        post processing.
         """
-        if snapshot:
-            return snapshot.get('master', {}).get('post_processing')
+        if self.replication:
+            return (self.replication
+                    .post_processing_required_for_replication())
         else:
             return False
 
@@ -281,7 +282,9 @@ class Manager(periodic_task.PeriodicTasks):
                  cluster_config, snapshot, modules):
         LOG.info(_("Starting datastore prepare for '%s'.") % self.manager)
         self.status.begin_install()
-        if (cluster_config or self._require_post_processing(snapshot)):
+        if (cluster_config or (
+                snapshot and
+                self.post_processing_required_for_replication(None))):
             post_processing = True
         else:
             post_processing = False
@@ -866,10 +869,3 @@ class Manager(periodic_task.PeriodicTasks):
         LOG.debug("Demoting replication master.")
         raise exception.DatastoreOperationNotSupported(
             operation='demote_replication_master', datastore=self.manager)
-
-    ##################################################################
-    # Methods that requires to maintain multiple versions for backward
-    # compatibility reasons.
-    ##################################################################
-    def enable_as_master(self, context, replica_source_config):
-        self.enable_as_master_s2(context, replica_source_config, False)

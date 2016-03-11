@@ -171,8 +171,7 @@ class Manager(manager.Manager):
 
         return replication_snapshot
 
-    def enable_as_master_s2(self, context, replica_source_config,
-                            for_failover=False):
+    def enable_as_master(self, context, replica_source_config):
         LOG.debug("Calling enable_as_master.")
         self.replication.enable_as_master(self._app, replica_source_config)
 
