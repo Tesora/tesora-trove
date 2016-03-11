@@ -2030,7 +2030,7 @@ class BaseDbStatusTest(testtools.TestCase):
                 service_call.assert_called_once_with(
                     rd_instance.ServiceStatuses.RUNNING, 10, False)
                 os_cmd['start_service'].assert_called_once_with(
-                    service_candidates)
+                    service_candidates, timeout=10)
                 os_cmd['enable_service_on_boot'].assert_called_once_with(
                     service_candidates)
 
@@ -2045,7 +2045,7 @@ class BaseDbStatusTest(testtools.TestCase):
                 service_call.assert_called_once_with(
                     rd_instance.ServiceStatuses.RUNNING, 10, False)
                 os_cmd['start_service'].assert_called_once_with(
-                    service_candidates)
+                    service_candidates, timeout=10)
                 self.assertFalse(os_cmd['enable_service_on_boot'].called)
 
         # Test a failing call.
@@ -2061,7 +2061,7 @@ class BaseDbStatusTest(testtools.TestCase):
                     status.start_db_service,
                     service_candidates, 10, enable_on_boot=True)
                 os_cmd['start_service'].assert_called_once_with(
-                    service_candidates)
+                    service_candidates, timeout=10)
                 self.assertFalse(os_cmd['enable_service_on_boot'].called)
 
     def test_stop_db_service(self):
@@ -2079,7 +2079,7 @@ class BaseDbStatusTest(testtools.TestCase):
                 service_call.assert_called_once_with(
                     rd_instance.ServiceStatuses.SHUTDOWN, 10, False)
                 os_cmd['stop_service'].assert_called_once_with(
-                    service_candidates)
+                    service_candidates, timeout=10)
                 os_cmd['disable_service_on_boot'].assert_called_once_with(
                     service_candidates)
 
@@ -2094,7 +2094,7 @@ class BaseDbStatusTest(testtools.TestCase):
                 service_call.assert_called_once_with(
                     rd_instance.ServiceStatuses.SHUTDOWN, 10, False)
                 os_cmd['stop_service'].assert_called_once_with(
-                    service_candidates)
+                    service_candidates, timeout=10)
                 self.assertFalse(os_cmd['disable_service_on_boot'].called)
 
         # Test a failing call.
@@ -2110,7 +2110,7 @@ class BaseDbStatusTest(testtools.TestCase):
                     status.stop_db_service,
                     service_candidates, 10, disable_on_boot=True)
                 os_cmd['stop_service'].assert_called_once_with(
-                    service_candidates)
+                    service_candidates, timeout=10)
                 self.assertFalse(os_cmd['disable_service_on_boot'].called)
 
     def test_restart_db_service(self):
