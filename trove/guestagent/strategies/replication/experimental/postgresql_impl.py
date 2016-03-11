@@ -34,16 +34,10 @@ from trove.guestagent.strategies.replication import base
 
 AGENT = BackupAgent()
 CONF = cfg.CONF
+MANAGER = CONF.datastore_manager or 'postgresql'
 
 REPL_BACKUP_NAMESPACE = 'trove.guestagent.strategies.backup.experimental' \
                         '.postgresql_impl'
-REPL_BACKUP_STRATEGY = 'PgBaseBackup'
-REPL_BACKUP_INCREMENTAL_STRATEGY = 'PgBaseBackupIncremental'
-REPL_BACKUP_RUNNER = backup.get_backup_strategy(
-    REPL_BACKUP_STRATEGY, REPL_BACKUP_NAMESPACE)
-REPL_BACKUP_INCREMENTAL_RUNNER = backup.get_backup_strategy(
-    REPL_BACKUP_INCREMENTAL_STRATEGY, REPL_BACKUP_NAMESPACE)
-REPL_EXTRA_OPTS = CONF.backup_runner_options.get(REPL_BACKUP_STRATEGY, '')
 
 LOG = logging.getLogger(__name__)
 
@@ -64,13 +58,27 @@ class PostgresqlReplicationStreaming(base.Replication):
             self._app = self._build_app()
         return self._app
 
+    @property
+    def repl_backup_runner(self):
+        return backup.get_backup_strategy('PgBaseBackup',
+                                          REPL_BACKUP_NAMESPACE)
+
+    @property
+    def repl_incr_backup_runner(self):
+        return backup.get_backup_strategy('PgBaseBackupIncremental',
+                                          REPL_BACKUP_NAMESPACE)
+
+    @property
+    def repl_backup_extra_opts(self):
+        return CONF.backup_runner_options.get('PgBaseBackup', '')
+
     def _build_app(self):
         return PgSqlApp()
 
     def get_master_ref(self, service, snapshot_info):
         master_ref = {
             'host': netutils.get_my_ipv4(),
-            'port': CONF.postgresql.postgresql_port
+            'port': CONF.get(MANAGER).postgresql_port
         }
         return master_ref
 
@@ -87,9 +95,9 @@ class PostgresqlReplicationStreaming(base.Replication):
         # Only create a backup if it's the first replica
         if replica_number == 1:
             AGENT.execute_backup(
-                context, snapshot_info, runner=REPL_BACKUP_RUNNER,
-                extra_opts=REPL_EXTRA_OPTS,
-                incremental_runner=REPL_BACKUP_INCREMENTAL_RUNNER)
+                context, snapshot_info, runner=self.repl_backup_runner,
+                extra_opts=self.repl_backup_extra_opts,
+                incremental_runner=self.repl_incr_backup_runner)
         else:
             LOG.debug("Using existing backup created for previous replica.")
         LOG.debug("Replication snapshot %s used for replica number %d."
@@ -285,7 +293,8 @@ class PostgresqlReplicationStreaming(base.Replication):
                                     codec=stream_codecs.IdentityCodec(),
                                     as_root=True)
         operating_system.chown(self.app.pgsql_recovery_config,
-                               user="postgres", group="postgres", as_root=True)
+                               user=self.app.pgsql_owner,
+                               group=self.app.pgsql_owner, as_root=True)
 
     def enable_hot_standby(self, service):
         opts = {'hot_standby': 'on'}

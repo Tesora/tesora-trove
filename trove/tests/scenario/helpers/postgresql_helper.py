@@ -18,9 +18,9 @@ from trove.tests.scenario.helpers.sql_helper import SqlHelper
 
 class PostgresqlHelper(SqlHelper):
 
-    def __init__(self, expected_override_name):
+    def __init__(self, expected_override_name, port=None):
         super(PostgresqlHelper, self).__init__(expected_override_name,
-                                               'postgresql')
+                                               'postgresql', port=port)
 
     @property
     def test_schema(self):

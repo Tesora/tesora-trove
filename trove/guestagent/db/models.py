@@ -1143,6 +1143,16 @@ class PostgreSQLRootUser(PostgreSQLUser):
                                                  *args, **kwargs)
 
 
+class EnterpriseDBRootUser(PostgreSQLUser):
+    """Represents the EnterpriseDB default superuser."""
+
+    def __init__(self, password=None, *args, **kwargs):
+        if password is None:
+            password = utils.generate_random_password()
+        super(EnterpriseDBRootUser, self).__init__(
+            "enterprisedb", password=password, *args, **kwargs)
+
+
 class CassandraRootUser(CassandraUser):
     """Represents the Cassandra default superuser."""
 
