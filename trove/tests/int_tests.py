@@ -205,14 +205,14 @@ register(["user"], user_actions_groups)
 # These should contain all functionality currently supported by the datastore
 register(["db2_supported"], common_groups,
          database_actions_groups, user_actions_groups)
-register(["cassandra_supported", "dse_supported"], common_groups,
+register(["cassandra_supported"], common_groups,
          backup_groups, user_actions_groups, database_actions_group,
          root_actions_groups, cluster_actions_groups)
 register(["couchbase_supported"], common_groups, user_actions_groups,
          root_actions_groups, backup_groups, cluster_actions_groups)
 register(["couchdb_supported"], common_groups, backup_groups,
          user_actions_groups, database_actions_groups, root_actions_groups)
-register(["postgresql_supported", "edb_supported"], common_groups,
+register(["postgresql_supported"], common_groups,
          backup_groups, database_actions_groups, configuration_groups,
          root_actions_groups, user_actions_groups, replication_groups)
 register(["mysql_supported", "percona_supported"], common_groups,
@@ -231,3 +231,11 @@ register(["redis_supported"], common_groups,
          backup_groups, replication_groups, cluster_actions_groups)
 register(["vertica_supported"], common_groups,
          cluster_actions_groups, root_actions_groups, configuration_groups)
+
+# Tesora Downstream test groups
+register(["dse_supported"], common_groups,
+         backup_groups, user_actions_groups, database_actions_group,
+         root_actions_groups, cluster_actions_groups)
+register(["edb_supported"], common_groups,
+         backup_groups, database_actions_groups, configuration_groups,
+         root_actions_groups, user_actions_groups, replication_groups)
