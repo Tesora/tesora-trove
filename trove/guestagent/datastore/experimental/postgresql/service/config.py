@@ -52,7 +52,8 @@ class PgSqlConfig(PgSqlProcess):
         operating_system.SUSE: '/var/lib/pgsql/'}[OS]
     LISTEN_ADDRESSES = ['*']  # Listen on all available IP (v4/v6) interfaces.
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
+        super(PgSqlConfig, self).__init__(*args, **kwargs)
         self._configuration_manager = ConfigurationManager(
             self.PGSQL_CONFIG, self.PGSQL_OWNER, self.PGSQL_OWNER,
             PropertiesCodec(
