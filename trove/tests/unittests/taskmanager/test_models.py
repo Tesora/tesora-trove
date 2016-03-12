@@ -852,7 +852,7 @@ class BuiltInstanceTasksTest(trove_testtools.TestCase):
                           return_value=replica_source_config):
             self.instance_task.enable_as_master()
         mock_update_db.assert_called_with(slave_of_id=None)
-        test_func.assert_called_with(config_content, False)
+        test_func.assert_called_with(config_content)
 
     def test_get_last_txn(self):
         self.instance_task.get_last_txn()

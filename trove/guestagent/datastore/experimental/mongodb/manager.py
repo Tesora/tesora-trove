@@ -277,8 +277,7 @@ class Manager(manager.Manager):
         raise exception.DatastoreOperationNotSupported(
             operation='make_read_only', datastore=MANAGER)
 
-    def enable_as_master_s2(self, context, replica_source_config,
-                            for_failover=False):
+    def enable_as_master(self, context, replica_source_config):
         raise exception.DatastoreOperationNotSupported(
             operation='enable_as_master', datastore=MANAGER)
 

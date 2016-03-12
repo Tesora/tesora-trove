@@ -456,10 +456,3 @@ class Manager(periodic_task.PeriodicTasks):
                                as_root=True)
         LOG.debug("Set log file '%s' as readable" % log_file)
         return log_file
-
-    ##################################################################
-    # Methods that requires to maintain multiple versions for backward
-    # compatibility reasons.
-    ##################################################################
-    def enable_as_master(self, context, replica_source_config):
-        self.enable_as_master_s2(context, replica_source_config, False)

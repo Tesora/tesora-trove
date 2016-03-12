@@ -39,13 +39,17 @@ class Replication(Strategy):
         """Indicates whether a backup is required for replication."""
         return True
 
+    def post_processing_required_for_replication(self):
+        """Indicates whether a post processing is required for replication."""
+        return False
+
     @abc.abstractmethod
     def snapshot_for_replication(self, context, service, location,
                                  snapshot_info):
         """Capture snapshot of master db."""
 
     @abc.abstractmethod
-    def enable_as_master(self, service, master_config, for_failover):
+    def enable_as_master(self, service, master_config):
         """Configure underlying database to act as master for replication."""
 
     @abc.abstractmethod
