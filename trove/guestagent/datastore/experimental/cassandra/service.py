@@ -171,7 +171,8 @@ class CassandraApp(object):
         LOG.info(_("Starting Cassandra server."))
         self._enable_db_on_boot()
         try:
-            operating_system.start_service(self.service_candidates)
+            operating_system.start_service(self.service_candidates,
+                                           timeout=self.state_change_wait_time)
         except exception.ProcessExecutionError:
             LOG.exception(_("Error starting Cassandra"))
             pass
@@ -192,7 +193,8 @@ class CassandraApp(object):
     def stop_db(self, update_db=False, do_not_start_on_reboot=False):
         if do_not_start_on_reboot:
             self._disable_db_on_boot()
-        operating_system.stop_service(self.service_candidates)
+        operating_system.stop_service(self.service_candidates,
+                                      timeout=self.state_change_wait_time)
 
         if not (self.status.wait_for_real_status_to_change_to(
                 rd_instance.ServiceStatuses.SHUTDOWN,
