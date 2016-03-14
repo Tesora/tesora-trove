@@ -137,12 +137,14 @@ class OracleAdmin(object):
                   'underscore.') % {'name': pdb_name})
         admin_password = utils.generate_random_password(PASSWORD_MAX_LEN)
         with LocalOracleClient(CONF.get(MANAGER).oracle_cdb_name) as client:
-            client.execute("CREATE PLUGGABLE DATABASE %(pdb_name)s "
-                           "ADMIN USER %(username)s "
-                           "IDENTIFIED BY %(password)s" %
-                           {'pdb_name': pdb_name,
-                            'username': ROOT_USERNAME,
-                            'password': admin_password})
+            statement = ("CREATE PLUGGABLE DATABASE %(pdb_name)s "
+                         "ADMIN USER %(username)s "
+                         "IDENTIFIED BY %(password)s" %
+                         {'pdb_name': pdb_name,
+                          'username': ROOT_USERNAME,
+                          'password': admin_password})
+            LOG.debug("DEBUG_SQL: %s" % statement)
+            client.execute(statement)
             client.execute("ALTER PLUGGABLE DATABASE %s OPEN" %
                            CONF.guest_name)
         LOG.debug("Finished creating pluggable database")
