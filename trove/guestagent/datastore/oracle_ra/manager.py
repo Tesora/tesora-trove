@@ -243,7 +243,7 @@ class Manager(manager.Manager):
         self._create_ra_status_file('OK')
 
     def apply_overrides_on_prepare(self, context, overrides):
-        LOG.debug("Ignoring configuration for %s" % self.manager_name)
+        LOG.debug("Ignoring configuration for %s" % MANAGER)
         pass
 
     def restart(self, context):
