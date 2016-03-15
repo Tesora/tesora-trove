@@ -376,12 +376,6 @@ class API(object):
                           AGENT_LOW_TIMEOUT,
                           self.version_cap)
 
-    def post_processing_required_for_replication(self):
-        LOG.debug("Checking post processing requirement for replication")
-        return self._call("post_processing_required_for_replication",
-                          AGENT_LOW_TIMEOUT,
-                          self.version_cap)
-
     def get_replication_snapshot(self, snapshot_info=None,
                                  replica_source_config=None):
         LOG.debug("Retrieving replication snapshot from instance %s.", self.id)
@@ -415,10 +409,11 @@ class API(object):
         self._call("make_read_only", AGENT_HIGH_TIMEOUT, self.version_cap,
                    read_only=read_only)
 
-    def enable_as_master(self, replica_source_config):
+    def enable_as_master(self, replica_source_config, for_failover=False):
         LOG.debug("Executing enable_as_master")
-        self._call("enable_as_master", AGENT_HIGH_TIMEOUT, self.version_cap,
-                   replica_source_config=replica_source_config)
+        self._call("enable_as_master_s2", AGENT_HIGH_TIMEOUT, self.version_cap,
+                   replica_source_config=replica_source_config,
+                   for_failover=for_failover)
 
     def get_replication_detail(self):
         LOG.debug("Executing get_replication_detail")

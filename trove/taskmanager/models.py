@@ -1168,11 +1168,6 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
                   self.id)
         return self.guest.backup_required_for_replication()
 
-    def post_processing_required_for_replication(self):
-        LOG.debug("Seeing if replication post processing is required for "
-                  "instance %s." % self.id)
-        return self.guest.post_processing_required_for_replication()
-
     def get_replication_snapshot(self, snapshot_info, flavor):
 
         def _get_replication_snapshot():
@@ -1244,13 +1239,14 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         for ip in ips:
             nova_instance.add_floating_ip(ip)
 
-    def enable_as_master(self):
+    def enable_as_master(self, for_failover=False):
         LOG.debug("Calling enable_as_master on %s" % self.id)
         flavor = self.nova_client.flavors.get(self.flavor_id)
         replica_source_config = self._render_replica_source_config(flavor)
         self.update_db(slave_of_id=None)
         self.slave_list = None
-        self.guest.enable_as_master(replica_source_config.config_contents)
+        self.guest.enable_as_master(replica_source_config.config_contents,
+                                    for_failover)
 
     def complete_master_setup(self, dbs):
         self.guest.complete_master_setup(dbs)

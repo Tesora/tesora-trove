@@ -276,10 +276,6 @@ class Manager(manager.Manager):
         replication = REPLICATION_STRATEGY_CLASS(context)
         return replication.backup_required_for_replication()
 
-    def post_processing_required_for_replication(self, context):
-        replication = REPLICATION_STRATEGY_CLASS(context)
-        return replication.post_processing_required_for_replication()
-
     def get_replication_snapshot(self, context, snapshot_info,
                                  replica_source_config=None):
         LOG.debug("Getting replication snapshot.")
@@ -307,7 +303,8 @@ class Manager(manager.Manager):
 
         return replication_snapshot
 
-    def enable_as_master(self, context, replica_source_config):
+    def enable_as_master_s2(self, context, replica_source_config,
+                            for_failover=False):
         LOG.debug("Calling enable_as_master.")
         replication = REPLICATION_STRATEGY_CLASS(context)
         replication.enable_as_master(self._app, replica_source_config)

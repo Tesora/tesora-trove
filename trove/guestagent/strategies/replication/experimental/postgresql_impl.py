@@ -164,7 +164,7 @@ class PostgresqlReplicationStreaming(
                     "password '%s';" % (REPL_USER, pw))
         return pw
 
-    def enable_as_master(self, service, master_config):
+    def enable_as_master(self, service, master_config, for_failover=False):
         """For a server to be a master in postgres, we need to enable
         the replication user in pg_hba and ensure that WAL logging is
         at the appropriate level (use the same settings as backups)
