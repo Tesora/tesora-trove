@@ -94,9 +94,10 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
             return_value=FakeInstanceServiceStatus())
         self.context = trove_testtools.TroveTestContext(self)
         self.manager = cass_manager.Manager()
-        self.manager._Manager__admin = cass_service.CassandraAdmin(
+        self.manager._app = cass_service.CassandraApp()
+        self.manager._admin = cass_service.CassandraAdmin(
             models.CassandraUser('Test'))
-        self.admin = self.manager._Manager__admin
+        self.admin = self.manager._admin
         self.admin._CassandraAdmin__client = MagicMock()
         self.conn = self.admin._CassandraAdmin__client
         self.pkg = cass_service.packager

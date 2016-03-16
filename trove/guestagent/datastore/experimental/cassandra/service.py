@@ -46,7 +46,6 @@ from trove.guestagent import pkg
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
-MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'cassandra'
 
 packager = pkg.Package()
 
@@ -135,6 +134,9 @@ class CassandraApp(object):
     @property
     def cqlsh_conf_path(self):
         return "~/.cassandra/cqlshrc"
+
+    def build_admin(self):
+        return CassandraAdmin(self.get_current_superuser())
 
     def install_if_needed(self, packages):
         """Prepare the guest machine with a Cassandra server installation."""
@@ -696,7 +698,7 @@ class CassandraApp(object):
         superuser-level access to all keyspaces.
         """
         cassandra = models.CassandraRootUser(password=root_password)
-        admin = CassandraAdmin(self.get_current_superuser())
+        admin = self.build_admin()
         if self.is_root_enabled():
             admin.alter_user_password(cassandra)
         else:
@@ -708,7 +710,7 @@ class CassandraApp(object):
         """The Trove administrative user ('os_admin') should normally be the
         only superuser in the system.
         """
-        found = CassandraAdmin(self.get_current_superuser()).list_superusers()
+        found = self.build_admin().list_superusers()
         return len([user for user in found
                     if user.name != self._ADMIN_USER]) > 0
 
@@ -1142,11 +1144,11 @@ class CassandraAdmin(object):
 
     @property
     def ignore_users(self):
-        return cfg.get_ignored_users(manager=MANAGER)
+        return cfg.get_ignored_users()
 
     @property
     def ignore_dbs(self):
-        return cfg.get_ignored_dbs(manager=MANAGER)
+        return cfg.get_ignored_dbs()
 
 
 class CassandraConnection(object):
