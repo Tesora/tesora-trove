@@ -173,17 +173,16 @@ class PgSqlUsers(PgSqlAccess):
             db = models.PostgreSQLSchema.deserialize_schema(d)
             self.revoke_access(context, user.name, None, db.name)
 
-        with EndNotification(context):
-            LOG.info(
-                _("{guest_id}: Dropping user {name}.").format(
-                    guest_id=CONF.guest_id,
-                    name=user['_name'],
-                )
+        LOG.info(
+            _("{guest_id}: Dropping user {name}.").format(
+                guest_id=CONF.guest_id,
+                name=user.name,
             )
-            pgutil.psql(
-                pgutil.UserQuery.drop(name=user['_name']),
-                timeout=30,
-            )
+        )
+        pgutil.psql(
+            pgutil.UserQuery.drop(name=user.name),
+            timeout=30,
+        )
 
     def get_user(self, context, username, hostname):
         """Return a serialized representation of a user with a given name.

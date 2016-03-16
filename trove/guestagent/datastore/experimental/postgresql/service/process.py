@@ -41,7 +41,7 @@ class PgSqlProcess(object):
 
     @property
     def pgsql_recovery_config(self):
-        return os.path.join(self.PGSQL_DATA_DIR, "recovery.conf")
+        return os.path.join(self.pgsql_data_dir, "recovery.conf")
 
     @property
     def pgsql_data_dir(self):
