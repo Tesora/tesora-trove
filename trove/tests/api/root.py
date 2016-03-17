@@ -27,6 +27,7 @@ from trove import tests
 from trove.tests.api.databases import TestMysqlAccess
 from trove.tests.api.instances import instance_info
 from trove.tests.api.users import TestUsers
+from trove.tests.config import CONFIG
 from trove.tests import util
 from trove.tests.util import test_config
 
@@ -69,10 +70,11 @@ class TestRoot(object):
         enabled = self.dbaas.root.is_root_enabled(instance_info.id)
         assert_equal(200, self.dbaas.last_http_code)
 
-        is_enabled = enabled
-        if hasattr(enabled, 'rootEnabled'):
-            is_enabled = enabled.rootEnabled
-        assert_false(is_enabled, "Root SHOULD NOT be enabled.")
+        if not CONFIG.fake_mode:
+            is_enabled = enabled
+            if hasattr(enabled, 'rootEnabled'):
+                is_enabled = enabled.rootEnabled
+            assert_false(is_enabled, "Root SHOULD NOT be enabled.")
 
     @test
     def test_create_user_os_admin_failure(self):
@@ -104,8 +106,9 @@ class TestRoot(object):
     def test_root_disable_when_root_not_enabled(self):
         reh = self.dbaas_admin.management.root_enabled_history
         self.root_enabled_timestamp = reh(instance_info.id).enabled
-        assert_raises(exceptions.NotFound, self.dbaas.root.delete,
-                      instance_info.id)
+        if not CONFIG.fake_mode:
+            assert_raises(exceptions.NotFound, self.dbaas.root.delete,
+                          instance_info.id)
         self._verify_root_timestamp(instance_info.id)
 
     @test(depends_on=[test_root_disable_when_root_not_enabled])

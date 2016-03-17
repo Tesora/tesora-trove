@@ -343,7 +343,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                         datastore_manager, packages, volume_size,
                         backup_id, availability_zone, root_password, nics,
                         overrides, cluster_config, snapshot, volume_type,
-                        scheduler_hints):
+                        modules, scheduler_hints):
         # It is the caller's responsibility to ensure that
         # FreshInstanceTasks.wait_for_instance is called after
         # create_instance to ensure that the proper usage event gets sent
@@ -419,7 +419,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                             packages, databases, users, backup_info,
                             config.config_contents, root_password,
                             overrides,
-                            cluster_config, snapshot)
+                            cluster_config, snapshot, modules)
 
         if root_password:
             self.report_root_enabled()
@@ -910,7 +910,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
     def _guest_prepare(self, flavor_ram, volume_info,
                        packages, databases, users, backup_info=None,
                        config_contents=None, root_password=None,
-                       overrides=None, cluster_config=None, snapshot=None):
+                       overrides=None, cluster_config=None, snapshot=None,
+                       modules=None):
         LOG.debug("Entering guest_prepare")
         # Now wait for the response from the create to do additional work
         self.guest.prepare(flavor_ram, packages, databases, users,
@@ -921,7 +922,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                            root_password=root_password,
                            overrides=overrides,
                            cluster_config=cluster_config,
-                           snapshot=snapshot)
+                           snapshot=snapshot, modules=modules)
 
     def _create_dns_entry(self):
         dns_support = CONF.trove_dns_support
