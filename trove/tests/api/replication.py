@@ -81,7 +81,9 @@ def create_slave():
         instance_info.name + "_slave",
         instance_info.dbaas_flavor_href,
         instance_info.volume,
-        slave_of=instance_info.id)
+        datastore=instance_info.dbaas_datastore,
+        datastore_version=instance_info.dbaas_datastore_version,
+        replica_of=instance_info.id)
     assert_equal(200, instance_info.dbaas.last_http_code)
     assert_equal("BUILD", result.status)
     return result.id
@@ -91,7 +93,7 @@ def validate_slave(master, slave):
     new_slave = instance_info.dbaas.instances.get(slave.id)
     assert_equal(200, instance_info.dbaas.last_http_code)
     ns_dict = new_slave._info
-    CheckInstance(ns_dict).slave_of()
+    CheckInstance(ns_dict).replica_of()
     assert_equal(master.id, ns_dict['replica_of']['id'])
 
 
@@ -116,7 +118,9 @@ class CreateReplicationSlave(object):
                       instance_info.name + "_slave",
                       instance_info.dbaas_flavor_href,
                       instance_info.volume,
-                      slave_of="Missing replica source")
+                      datastore=instance_info.dbaas_datastore,
+                      datastore_version=instance_info.dbaas_datastore_version,
+                      replica_of="Missing replica source")
         assert_equal(404, instance_info.dbaas.last_http_code)
 
     @test
