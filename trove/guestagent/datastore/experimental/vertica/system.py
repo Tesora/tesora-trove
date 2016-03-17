@@ -11,9 +11,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import re
+
 from trove.common import utils
 
+ALTER_DB_CFG = "ALTER DATABASE %s SET %s = %s"
+ALTER_DB_RESET_CFG = "ALTER DATABASE %s CLEAR %s"
 ALTER_USER_PASSWORD = "ALTER USER %s IDENTIFIED BY '%s'"
+ADD_DB_TO_NODE = ("/opt/vertica/bin/adminTools -t db_add_node -a"
+                  " %s -d %s -p '%s'")
+REMOVE_DB_FROM_NODE = ("/opt/vertica/bin/adminTools -t db_remove_node -s"
+                       " %s -d %s -i -p '%s'")
 CREATE_DB = ("/opt/vertica/bin/adminTools -t create_db -s"
              " %s -d %s -c %s -D %s -p '%s'")
 CREATE_USER = "CREATE USER %s IDENTIFIED BY '%s'"
@@ -21,7 +29,10 @@ ENABLE_FOR_USER = "ALTER USER %s DEFAULT ROLE %s"
 GRANT_TO_USER = "GRANT %s to %s"
 INSTALL_VERTICA = ("/opt/vertica/sbin/install_vertica -s %s"
                    " -d %s -X -N -S default -r"
-                   " /vertica.deb -L CE -Y --no-system-checks")
+                   " /vertica.deb -L CE -Y --no-system-checks"
+                   " --ignore-aws-instance-type")
+MARK_DESIGN_KSAFE = "SELECT MARK_DESIGN_KSAFE(%s)"
+NODE_STATUS = "SELECT node_state FROM nodes where node_state <> '%s'"
 STOP_DB = "/opt/vertica/bin/adminTools -t stop_db -F -d %s -p '%s'"
 START_DB = "/opt/vertica/bin/adminTools -t start_db -d %s -p '%s'"
 STATUS_ACTIVE_DB = "/opt/vertica/bin/adminTools -t show_active_db"
@@ -33,9 +44,23 @@ SEND_CONF_TO_SERVER = ("rsync -v -e 'ssh -o "
                        "StrictHostKeyChecking=no' --perms --owner --group "
                        "%s %s:%s")
 SSH_KEY_GEN = "ssh-keygen -f %s/.ssh/id_rsa -t rsa -N ''"
+UPDATE_VERTICA = ("/opt/vertica/sbin/update_vertica %s %s "
+                  " -d %s -X -N -S default -r"
+                  " /vertica.deb -L CE -Y --no-system-checks"
+                  " --ignore-aws-instance-type")
+UPDATE_REMOVE = ("/opt/vertica/sbin/update_vertica --remove-hosts %s "
+                 " -d %s -X -N -S default -r"
+                 " /vertica.deb -L CE -Y --no-system-checks"
+                 " --ignore-aws-instance-type")
+UPDATE_ADD = ("/opt/vertica/sbin/update_vertica --add-hosts %s "
+              " -d %s -X -N -S default -r"
+              " /vertica.deb -L CE -Y --no-system-checks"
+              " --ignore-aws-instance-type")
 USER_EXISTS = ("/opt/vertica/bin/vsql -w '%s' -c "
                "\"select 1 from users where user_name = '%s'\" "
                "| grep row | awk '{print $1}' | cut -c2-")
+VERTICA_ADMIN = "dbadmin"
+VERTICA_ADMIN_GRP = "verticadba"
 VERTICA_AGENT_SERVICE_COMMAND = "service vertica_agent %s"
 VERTICA_CONF = "/etc/vertica.cnf"
 INSTALL_TIMEOUT = 1000
@@ -64,7 +89,32 @@ def shell_execute(command, command_executor="root"):
                          % command)
 
 
+class VSqlError(object):
+    def __init__(self, stderr):
+        """Parse the stderr part of the VSql output.
+        stderr looks like: "ERROR 3117: Division by zero"
+        :param stderr:  string from executing statement via vsql
+        """
+        parse = re.match("^(ERROR|WARNING) (\d+): (.+)$", stderr)
+        if not parse:
+            raise ValueError("VSql stderr %(msg)s not recognized."
+                             % {'msg': stderr})
+        self.type = parse.group(1)
+        self.code = int(parse.group(2))
+        self.msg = parse.group(3)
+
+    def is_warning(self):
+        return bool(self.type == "WARNING")
+
+    def __str__(self):
+        return "Vertica %s (%s): %s" % (self.type, self.code, self.msg)
+
+
 def exec_vsql_command(dbadmin_password, command):
     """Executes a VSQL command with the given dbadmin password."""
-    return shell_execute("/opt/vertica/bin/vsql -w \'%s\' -c \"%s\""
-                         % (dbadmin_password, command), "dbadmin")
+    out, err = shell_execute("/opt/vertica/bin/vsql -w \'%s\' -c \"%s\""
+                             % (dbadmin_password, command),
+                             VERTICA_ADMIN)
+    if err:
+        err = VSqlError(err)
+    return out, err

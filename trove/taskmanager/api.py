@@ -152,10 +152,9 @@ class API(object):
                         availability_zone=None, root_password=None,
                         nics=None, overrides=None, slave_of_id=None,
                         cluster_config=None, volume_type=None,
-                        locality=None):
+                        modules=None, locality=None):
 
         LOG.debug("Making async call to create instance %s " % instance_id)
-
         self._cast("create_instance", self.version_cap,
                    instance_id=instance_id, name=name,
                    flavor=self._transform_obj(flavor),
@@ -173,6 +172,7 @@ class API(object):
                    slave_of_id=slave_of_id,
                    cluster_config=cluster_config,
                    volume_type=volume_type,
+                   modules=modules,
                    locality=locality)
 
     def create_cluster(self, cluster_id):

@@ -20,6 +20,7 @@ import os.path
 from oslo_config import cfg
 from oslo_config.cfg import NoSuchOptError
 from oslo_log import log as logging
+from oslo_middleware import cors
 from osprofiler import opts as profiler
 
 from trove.version import version_info as version
@@ -436,8 +437,9 @@ common_opts = [
                     'become alive.'),
     cfg.StrOpt('module_aes_cbc_key', default='module_aes_cbc_key',
                help='OpenSSL aes_cbc key for module encryption.'),
-    cfg.StrOpt('module_types', default='test, hidden_test',
-               help='A list of module types supported.'),
+    cfg.ListOpt('module_types', default=['ping'],
+                help='A list of module types supported. A module type '
+                     'corresponds to the name of a ModuleDriver.'),
     cfg.StrOpt('guest_log_container_name',
                default='database_logs',
                help='Name of container that stores guest log components.'),
@@ -1306,13 +1308,15 @@ couchdb_opts = [
                 help='Whether to provision a Cinder volume for datadir.'),
     cfg.StrOpt('device_path', default='/dev/vdb',
                help='Device path for volume if volume support is enabled.'),
-    cfg.StrOpt('backup_strategy', default=None,
+    cfg.StrOpt('backup_strategy', default='CouchDBBackup',
                help='Default strategy to perform backups.'),
     cfg.StrOpt('replication_strategy', default=None,
                help='Default strategy for replication.'),
-    cfg.StrOpt('backup_namespace', default=None,
+    cfg.StrOpt('backup_namespace', default='trove.guestagent.strategies'
+               '.backup.experimental.couchdb_impl',
                help='Namespace to load backup strategies from.'),
-    cfg.StrOpt('restore_namespace', default=None,
+    cfg.StrOpt('restore_namespace', default='trove.guestagent.strategies'
+               '.restore.experimental.couchdb_impl',
                help='Namespace to load restore strategies from.'),
     cfg.DictOpt('backup_incremental_strategy', default={},
                 help='Incremental Backup Runner based on the default '
@@ -1390,6 +1394,8 @@ vertica_opts = [
                help='Root controller implementation for Vertica.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.IntOpt('min_ksafety', default=0,
+               help='Minimum k-safety setting permitted for vertica clusters'),
 ]
 
 # DB2
@@ -1413,7 +1419,7 @@ db2_opts = [
                 help='Whether to provision a Cinder volume for datadir.'),
     cfg.StrOpt('device_path', default='/dev/vdb',
                help='Device path for volume if volume support is enabled.'),
-    cfg.StrOpt('backup_strategy', default=None,
+    cfg.StrOpt('backup_strategy', default='DB2Backup',
                help='Default strategy to perform backups.'),
     cfg.StrOpt('replication_strategy', default=None,
                help='Default strategy for replication.'),
@@ -1422,10 +1428,18 @@ db2_opts = [
                 'service during instance-create. The generated password for '
                 'the root user is immediately returned in the response of '
                 "instance-create as the 'password' field."),
-    cfg.StrOpt('backup_namespace', default=None,
-               help='Namespace to load backup strategies from.'),
-    cfg.StrOpt('restore_namespace', default=None,
-               help='Namespace to load restore strategies from.'),
+    cfg.StrOpt('backup_namespace',
+               default='trove.guestagent.strategies.backup.experimental.'
+                       'db2_impl',
+               help='Namespace to load backup strategies from.',
+               deprecated_name='backup_namespace',
+               deprecated_group='DEFAULT'),
+    cfg.StrOpt('restore_namespace',
+               default='trove.guestagent.strategies.restore.experimental.'
+                       'db2_impl',
+               help='Namespace to load restore strategies from.',
+               deprecated_name='restore_namespace',
+               deprecated_group='DEFAULT'),
     cfg.DictOpt('backup_incremental_strategy', default={},
                 help='Incremental Backup Runner based on the default '
                 'strategy. For strategies that do not implement an '
@@ -1639,3 +1653,28 @@ def get_configuration_property(property_name, manager=None):
         return CONF.get(datastore_manager).get(property_name)
     except NoSuchOptError:
         return CONF.get(property_name)
+
+
+def set_api_config_defaults():
+    """This method updates all configuration default values."""
+
+    # CORS Middleware Defaults
+    # TODO(krotscheck): Update with https://review.openstack.org/#/c/285368/
+    cfg.set_defaults(cors.CORS_OPTS,
+                     allow_headers=['X-Auth-Token',
+                                    'X-Identity-Status',
+                                    'X-Roles',
+                                    'X-Service-Catalog',
+                                    'X-User-Id',
+                                    'X-Tenant-Id',
+                                    'X-OpenStack-Request-ID'],
+                     expose_headers=['X-Auth-Token',
+                                     'X-Subject-Token',
+                                     'X-Service-Token',
+                                     'X-OpenStack-Request-ID'],
+                     allow_methods=['GET',
+                                    'PUT',
+                                    'POST',
+                                    'DELETE',
+                                    'PATCH']
+                     )

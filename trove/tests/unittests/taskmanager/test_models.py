@@ -436,14 +436,14 @@ class FreshInstanceTasksTest(trove_testtools.TestCase):
                                                 'mysql-server', 2,
                                                 None, None, None, None,
                                                 overrides, None, None,
-                                                'volume_type',
+                                                'volume_type', None,
                                                 {'group': 'sg-id'})
         mock_create_secgroup.assert_called_with('mysql')
         mock_build_volume_info.assert_called_with('mysql', volume_size=2,
                                                   volume_type='volume_type')
         mock_guest_prepare.assert_called_with(
             768, mock_build_volume_info(), 'mysql-server', None, None, None,
-            config_content, None, overrides, None, None)
+            config_content, None, overrides, None, None, None)
         mock_create_server.assert_called_with(
             8, 'mysql-image-id', mock_create_secgroup(),
             'mysql', mock_build_volume_info()['block_device'], None,

@@ -215,6 +215,19 @@ configuration_id = {
     ]
 }
 
+module_list = {
+    "type": "array",
+    "minItems": 0,
+    "items": {
+        "type": "object",
+        "required": ["id"],
+        "additionalProperties": True,
+        "properties": {
+            "id": uuid,
+        }
+    }
+}
+
 cluster = {
     "create": {
         "type": "object",
@@ -246,7 +259,8 @@ cluster = {
                                 "flavorRef": flavorref,
                                 "volume": volume,
                                 "nics": nics,
-                                "availability_zone": non_empty_string
+                                "availability_zone": non_empty_string,
+                                "modules": module_list,
                             }
                         }
                     }
@@ -343,6 +357,7 @@ instance = {
                         }
                     },
                     "nics": nics,
+                    "modules": module_list,
                     "locality": non_empty_string
                 }
             }
@@ -358,6 +373,7 @@ instance = {
                 "required": [],
                 "additionalProperties": False,
                 "properties": {
+                    "slave_of": {},
                     "replica_of": {},
                     "name": non_empty_string,
                     "configuration": configuration_id,
@@ -538,10 +554,10 @@ guest_log = {
     }
 }
 
-module_non_empty_string = {
+module_contents = {
     "type": "string",
     "minLength": 1,
-    "maxLength": 65535,
+    "maxLength": 16777215,
     "pattern": "^.*.+.*$"
 }
 
@@ -558,7 +574,7 @@ module = {
                 "properties": {
                     "name": non_empty_string,
                     "module_type": non_empty_string,
-                    "contents": module_non_empty_string,
+                    "contents": module_contents,
                     "description": non_empty_string,
                     "datastore": {
                         "type": "object",
@@ -587,7 +603,7 @@ module = {
                 "properties": {
                     "name": non_empty_string,
                     "type": non_empty_string,
-                    "contents": module_non_empty_string,
+                    "contents": module_contents,
                     "description": non_empty_string,
                     "datastore": {
                         "type": "object",
@@ -603,6 +619,24 @@ module = {
                     "live_update": boolean_string,
                 }
             }
+        }
+    },
+    "apply": {
+        "name": "module:apply",
+        "type": "object",
+        "required": ["modules"],
+        "properties": {
+            "modules": module_list,
+        }
+    },
+    "list": {
+        "name": "module:list",
+        "type": "object",
+        "required": [],
+        "properties": {
+            "module": uuid,
+            "from_guest": boolean_string,
+            "include_contents": boolean_string
         }
     },
 }
