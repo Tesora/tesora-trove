@@ -1082,6 +1082,8 @@ class PostgreSQLUser(DatastoreUser):
 class CouchbaseUser(DatastoreUser):
     """Represents a Couchbase user and its associated properties."""
 
+    MAX_PASSWORD_LEN = 24
+
     def __init__(self, name, password=None, *args, **kwargs):
         super(CouchbaseUser, self).__init__(name, password, *args, **kwargs)
 
@@ -1100,7 +1102,7 @@ class CouchbaseUser(DatastoreUser):
 
     def _is_valid_password(self, value):
         length = len(value)
-        return length > 5
+        return length > 5 and length <= self.MAX_PASSWORD_LEN
 
     @classmethod
     def _dict_requirements(cls):
@@ -1112,7 +1114,8 @@ class CouchbaseUser(DatastoreUser):
 class RootUser(MySQLUser):
     """Overrides _ignore_users from the MySQLUser class."""
 
-    _ignore_users = []
+    def __init__(self):
+        self._ignore_users = []
 
 
 class MySQLRootUser(MySQLUser):
@@ -1155,7 +1158,8 @@ class CouchbaseRootUser(CouchbaseUser):
 
     def __init__(self, password=None, *args, **kwargs):
         if password is None:
-            password = utils.generate_random_password()
+            pwd_len = min(self.MAX_PASSWORD_LEN, CONF.default_password_length)
+            password = utils.generate_random_password(pwd_len)
 
         # TODO(pmalik): Name should really be 'Administrator' instead.
         super(CouchbaseRootUser, self).__init__("root", password=password,
