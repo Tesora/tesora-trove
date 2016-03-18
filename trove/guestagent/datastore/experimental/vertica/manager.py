@@ -38,6 +38,10 @@ class Manager(manager.Manager):
     def status(self):
         return self.appStatus
 
+    @property
+    def configuration_manager(self):
+        return self.app.configuration_manager
+
     def do_prepare(self, context, packages, databases, memory_mb, users,
                    device_path, mount_point, backup_info,
                    config_contents, root_password, overrides,
@@ -60,6 +64,11 @@ class Manager(manager.Manager):
             self.app.install_vertica()
             self.app.create_db()
             self.app.add_udls()
+
+            if config_contents:
+                self.app.configuration_manager.save_configuration(
+                    config_contents)
+
         elif cluster_config['instance_type'] not in ["member", "master"]:
             raise RuntimeError(_("Bad cluster configuration: instance type "
                                "given as %s.") %
@@ -115,5 +124,46 @@ class Manager(manager.Manager):
             LOG.debug("install_cluster call has finished.")
         except Exception:
             LOG.exception(_('Cluster installation failed.'))
+            self.appStatus.set_status(rd_ins.ServiceStatuses.FAILED)
+            raise
+
+    def update_overrides(self, context, overrides, remove=False):
+        LOG.debug("Updating overrides.")
+        if remove:
+            self.app.remove_overrides()
+        else:
+            self.app.update_overrides(context, overrides, remove)
+
+    def apply_overrides(self, context, overrides):
+        if overrides:
+            LOG.debug("Applying overrides: " + str(overrides))
+            self.app.apply_overrides(overrides)
+
+    def grow_cluster(self, context, members):
+        try:
+            LOG.debug("Growing cluster to members: %s." % members)
+            self.app.grow_cluster(members)
+            LOG.debug("grow_cluster call has finished.")
+        except Exception:
+            LOG.exception(_('Cluster grow failed.'))
+            self.appStatus.set_status(rd_ins.ServiceStatuses.FAILED)
+            raise
+
+    def shrink_cluster(self, context, members):
+        try:
+            LOG.debug("Shrinking cluster members: %s." % members)
+            self.app.shrink_cluster(members)
+            LOG.debug("shrink_cluster call has finished.")
+        except Exception:
+            LOG.exception(_('Cluster shrink failed.'))
+            self.appStatus.set_status(rd_ins.ServiceStatuses.FAILED)
+            raise
+
+    def mark_design_ksafe(self, context, k):
+        try:
+            LOG.debug("Setting vertica k-safety to %s." % k)
+            self.app.mark_design_ksafe(k)
+        except Exception:
+            LOG.exception(_('K-safety setting failed.'))
             self.appStatus.set_status(rd_ins.ServiceStatuses.FAILED)
             raise

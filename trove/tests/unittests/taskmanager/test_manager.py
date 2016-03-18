@@ -203,7 +203,8 @@ class TestManager(trove_testtools.TestCase):
                                          'mysql', 'mysql-server', 2,
                                          'temp-backup-id', None,
                                          'some_password', None, Mock(),
-                                         'some-master-id', None, None, None)
+                                         'some-master-id', None, None, None,
+                                         None)
         mock_tasks.get_replication_master_snapshot.assert_called_with(
             self.context, 'some-master-id', mock_flavor, 'temp-backup-id',
             replica_number=1)
@@ -220,7 +221,7 @@ class TestManager(trove_testtools.TestCase):
                           self.context, ['id1', 'id2'], Mock(), Mock(),
                           Mock(), None, None, 'mysql', 'mysql-server', 2,
                           'temp-backup-id', None, 'some_password', None,
-                          Mock(), 'some-master-id', None, None, None)
+                          Mock(), 'some-master-id', None, None, None, None)
 
     def test_AttributeError_create_instance(self):
         self.assertRaisesRegexp(
@@ -228,7 +229,7 @@ class TestManager(trove_testtools.TestCase):
             self.manager.create_instance, self.context, ['id1', 'id2'],
             Mock(), Mock(), Mock(), None, None, 'mysql', 'mysql-server', 2,
             'temp-backup-id', None, 'some_password', None, Mock(), None, None,
-            None, None)
+            None, None, None)
 
     def test_create_instance(self):
         mock_tasks = Mock()
@@ -240,12 +241,12 @@ class TestManager(trove_testtools.TestCase):
         mock_tasks.create_server_group = mock_csg
         with patch.object(models.FreshInstanceTasks, 'load',
                           return_value=mock_tasks):
-            self.manager.create_instance(
-                self.context, 'id1', 'inst1', mock_flavor,
-                'mysql-image-id', None, None, 'mysql',
-                'mysql-server', 2, 'temp-backup-id', None,
-                'password', None, mock_override, None, None,
-                None, 'affinity')
+            self.manager.create_instance(self.context, 'id1', 'inst1',
+                                         mock_flavor, 'mysql-image-id', None,
+                                         None, 'mysql', 'mysql-server', 2,
+                                         'temp-backup-id', None, 'password',
+                                         None, mock_override, None, None, None,
+                                         None, 'affinity')
         mock_tasks.create_instance.assert_called_with(mock_flavor,
                                                       'mysql-image-id', None,
                                                       None, 'mysql',
@@ -253,7 +254,7 @@ class TestManager(trove_testtools.TestCase):
                                                       'temp-backup-id', None,
                                                       'password', None,
                                                       mock_override,
-                                                      None, None, None,
+                                                      None, None, None, None,
                                                       {'group': 'sg-id'})
         mock_tasks.wait_for_instance.assert_called_with(36000, mock_flavor)
 
