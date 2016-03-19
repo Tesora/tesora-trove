@@ -77,6 +77,7 @@ class CouchbaseAPIStrategy(base.BaseAPIStrategy):
 class CouchbaseCluster(models.Cluster):
 
     DEFAULT_SERVICES = "data"
+    MAX_PASSWORD_LEN = 24
 
     @classmethod
     def create(cls, context, name, datastore, datastore_version,
@@ -132,7 +133,8 @@ class CouchbaseCluster(models.Cluster):
 
             cluster_password = coordinator['guest'].get_cluster_password()
         else:
-            cluster_password = utils.generate_random_password()
+            pwd_len = min(cls.MAX_PASSWORD_LEN, CONF.default_password_length)
+            cluster_password = utils.generate_random_password(pwd_len)
 
         models.assert_homogeneous_cluster(
             instances,
