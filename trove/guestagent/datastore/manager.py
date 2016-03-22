@@ -1,4 +1,4 @@
-# Copyright 2014 Tesora, Inc.
+# Copyright 2015 Tesora, Inc.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -28,7 +28,10 @@ from trove.common.notification import EndNotification
 from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.common.operating_system import FileMode
+from trove.guestagent import dbaas
 from trove.guestagent import guest_log
+from trove.guestagent.strategies import replication as repl_strategy
+from trove.guestagent import volume
 
 
 LOG = logging.getLogger(__name__)
@@ -54,11 +57,13 @@ class Manager(periodic_task.PeriodicTasks):
     GUEST_LOG_DEFS_ERROR_LABEL = 'error'
     GUEST_LOG_DEFS_SLOW_QUERY_LABEL = 'slow_query'
 
-    def __init__(self):
+    def __init__(self, manager_name):
 
         super(Manager, self).__init__(CONF)
 
         # Manager properties
+        self.__manager_name = manager_name
+        self.__manager = None
         self.__prepare_error = False
 
         # Guest log
@@ -68,17 +73,47 @@ class Manager(periodic_task.PeriodicTasks):
         self._guest_log_defs = None
 
     @property
-    def manager(self):
-        """This should return the name of the manager.  Each datastore
-        can override this if the default is not correct.
-        """
-        return CONF.datastore_manager
+    def manager_name(self):
+        """This returns the passed-in name of the manager."""
+        return self.__manager_name
 
     @property
-    def configuration_manager(self):
-        """If the datastore supports the new-style configuration manager,
-        it should override this to return it.
+    def manager(self):
+        """This returns the name of the manager."""
+        if not self.__manager:
+            self.__manager = CONF.datastore_manager or self.__manager_name
+        return self.__manager
+
+    @property
+    def prepare_error(self):
+        return self.__prepare_error
+
+    @prepare_error.setter
+    def prepare_error(self, prepare_error):
+        self.__prepare_error = prepare_error
+
+    @property
+    def replication(self):
+        """If the datastore supports replication, return an instance of
+        the strategy.
         """
+        try:
+            return repl_strategy.get_instance(self.manager)
+        except Exception as ex:
+            LOG.debug("Cannot get replication instance for '%s': %s" % (
+                      self.manager, ex.message))
+
+        return None
+
+    @property
+    def replication_strategy(self):
+        """If the datastore supports replication, return the strategy."""
+        try:
+            return repl_strategy.get_strategy(self.manager)
+        except Exception as ex:
+            LOG.debug("Cannot get replication strategy for '%s': %s" % (
+                      self.manager, ex.message))
+
         return None
 
     @abc.abstractproperty
@@ -88,14 +123,6 @@ class Manager(periodic_task.PeriodicTasks):
         must implement this property.
         """
         return None
-
-    @property
-    def prepare_error(self):
-        return self.__prepare_error
-
-    @prepare_error.setter
-    def prepare_error(self, prepare_error):
-        self.__prepare_error = prepare_error
 
     @property
     def datastore_log_defs(self):
@@ -200,20 +227,31 @@ class Manager(periodic_task.PeriodicTasks):
 
         self._guest_log_loaded_context = self.guest_log_context
 
-    ########################
-    # Status related methods
-    ########################
+    @property
+    def configuration_manager(self):
+        """If the datastore supports the new-style configuration manager,
+        it should override this to return it.
+        """
+        return None
+
+    ################
+    # Status related
+    ################
     @periodic_task.periodic_task
     def update_status(self, context):
         """Update the status of the trove instance. It is decorated with
-        perodic task so it is called automatically.
+        perodic_task so it is called automatically.
         """
         LOG.debug("Update status called.")
         self.status.update()
 
-    #########################
-    # Prepare related methods
-    #########################
+    def rpc_ping(self, context):
+        LOG.debug("Responding to RPC ping.")
+        return True
+
+    #################
+    # Prepare related
+    #################
     def _require_post_processing(self, snapshot):
         """Tests whether the given replication snapshot indicates
         post processing is needed.
@@ -223,38 +261,87 @@ class Manager(periodic_task.PeriodicTasks):
         else:
             return False
 
+    #################
+    # Prepare related
+    #################
     def prepare(self, context, packages, databases, memory_mb, users,
                 device_path=None, mount_point=None, backup_info=None,
                 config_contents=None, root_password=None, overrides=None,
                 cluster_config=None, snapshot=None):
         """Set up datastore on a Guest Instance."""
-        LOG.info(_("Starting datastore prepare."))
-        with EndNotification(context):
-            self.status.begin_install()
-            if (cluster_config or self._require_post_processing(snapshot)):
-                post_processing = True
-            else:
-                post_processing = False
+        with EndNotification(context, instance_id=CONF.guest_id):
+            self._prepare(context, packages, databases, memory_mb, users,
+                          device_path, mount_point, backup_info,
+                          config_contents, root_password, overrides,
+                          cluster_config, snapshot)
+
+    def _prepare(self, context, packages, databases, memory_mb, users,
+                 device_path, mount_point, backup_info,
+                 config_contents, root_password, overrides,
+                 cluster_config, snapshot):
+        LOG.info(_("Starting datastore prepare for '%s'.") % self.manager)
+        self.status.begin_install()
+        if cluster_config or self._require_post_processing(snapshot):
+            post_processing = True
+        else:
+            post_processing = False
+
+        try:
+            self.do_prepare(context, packages, databases, memory_mb,
+                            users, device_path, mount_point, backup_info,
+                            config_contents, root_password, overrides,
+                            cluster_config, snapshot)
+            if overrides:
+                LOG.info(_("Applying user-specified configuration "
+                           "(called from 'prepare')."))
+                self.apply_overrides_on_prepare(context, overrides)
+        except Exception as ex:
+            self.prepare_error = True
+            LOG.exception(_("An error occurred preparing datastore: %s") %
+                          ex.message)
+            raise
+        finally:
+            LOG.info(_("Ending datastore prepare for '%s'.") % self.manager)
+            self.status.end_install(error_occurred=self.prepare_error,
+                                    post_processing=post_processing)
+        # At this point critical 'prepare' work is done and the instance
+        # is now in the correct 'ACTIVE' 'INSTANCE_READY' or 'ERROR' state.
+        # Of cource if an error has occurred, none of the code that follows
+        # will run.
+        LOG.info(_("Completed setup of '%s' datastore successfully.") %
+                 self.manager)
+
+        # The following block performs single-instance initialization.
+        # Failures will be recorded, but won't stop the provisioning
+        # or change the instance state.
+        if not cluster_config:
             try:
-                self.do_prepare(
-                    context, packages, databases, memory_mb, users,
-                    device_path=device_path, mount_point=mount_point,
-                    backup_info=backup_info, config_contents=config_contents,
-                    root_password=root_password, overrides=overrides,
-                    cluster_config=cluster_config, snapshot=snapshot)
-                if overrides:
-                    LOG.info(_("Applying user-specified configuration "
-                               "(called from 'prepare')."))
-                    self.apply_overrides_on_prepare(context, overrides)
-            except Exception:
-                self.prepare_error = True
-                LOG.exception("An error occurred preparing datastore")
-                raise
-            finally:
-                LOG.info(_("Ending datastore prepare."))
-                self.status.end_install(error_occurred=self.prepare_error,
-                                        post_processing=post_processing)
-        LOG.info(_('Completed setup of datastore successfully.'))
+                if databases:
+                    LOG.info(
+                        _("Creating databases (called from 'prepare')."))
+                    self.create_database(context, databases)
+                    LOG.info(_('Databases created successfully.'))
+                if users:
+                    LOG.info(_("Creating users (called from 'prepare')"))
+                    self.create_user(context, users)
+                    LOG.info(_('Users created successfully.'))
+            except Exception as ex:
+                LOG.exception(_("An error occurred creating databases/users: "
+                                "%s") % ex.message)
+
+        try:
+            LOG.info(_("Calling post_prepare for '%s' datastore.") %
+                     self.manager)
+            self.post_prepare(context, packages, databases, memory_mb,
+                              users, device_path, mount_point, backup_info,
+                              config_contents, root_password, overrides,
+                              cluster_config, snapshot)
+            LOG.info(_("Post prepare for '%s' datastore completed.") %
+                     self.manager)
+        except Exception as ex:
+            LOG.exception(_("An error occurred in post prepare: %s") %
+                          ex.message)
+            raise
 
     def apply_overrides_on_prepare(self, context, overrides):
         self.update_overrides(context, overrides)
@@ -267,9 +354,26 @@ class Manager(periodic_task.PeriodicTasks):
         """This is called from prepare when the Trove instance first comes
         online.  'Prepare' is the first rpc message passed from the
         task manager.  do_prepare handles all the base configuration of
-        the instance and is where the actual work is done.  Each datastore
-        must implement this method.
+        the instance and is where the actual work is done.  Once this method
+        completes, the datastore is considered either 'ready' for use (or
+        for final connections to other datastores) or in an 'error' state,
+        and the status is changed accordingly.  Each datastore must
+        implement this method.
         """
+        pass
+
+    def post_prepare(self, context, packages, databases, memory_mb, users,
+                     device_path, mount_point, backup_info, config_contents,
+                     root_password, overrides, cluster_config, snapshot):
+        """This is called after prepare has completed successfully.
+        Processing done here should be limited to things that will not
+        affect the actual 'running' status of the datastore (for example,
+        creating databases and users, although these are now handled
+        automatically).  Any exceptions are caught, logged and rethrown,
+        however no status changes are made and the end-user will not be
+        informed of the error.
+        """
+        LOG.info(_('No post_prepare work has been defined.'))
         pass
 
     def pre_upgrade(self, context):
@@ -292,10 +396,50 @@ class Manager(periodic_task.PeriodicTasks):
         """Restart the database service."""
         pass
 
+    #####################
+    # File System related
+    #####################
+    def get_filesystem_stats(self, context, fs_path):
+        """Gets the filesystem stats for the path given."""
+        # TODO(peterstac) - note that fs_path is not used in this method.
+        mount_point = CONF.get(self.manager).mount_point
+        LOG.debug("Getting file system stats for '%s'" % mount_point)
+        return dbaas.get_filesystem_volume_stats(mount_point)
+
+    def mount_volume(self, context, device_path=None, mount_point=None):
+        LOG.debug("Mounting the device %s at the mount point %s." %
+                  (device_path, mount_point))
+        device = volume.VolumeDevice(device_path)
+        device.mount(mount_point, write_to_fstab=False)
+
+    def unmount_volume(self, context, device_path=None, mount_point=None):
+        LOG.debug("Unmounting the device %s from the mount point %s." %
+                  (device_path, mount_point))
+        device = volume.VolumeDevice(device_path)
+        device.unmount(mount_point)
+
+    def resize_fs(self, context, device_path=None, mount_point=None):
+        LOG.debug("Resizing the filesystem at %s." % mount_point)
+        device = volume.VolumeDevice(device_path)
+        device.resize_fs(mount_point)
+
+    ###############
+    # Configuration
+    ###############
+    def reset_configuration(self, context, configuration):
+        """The default implementation should be sufficient if a
+        configuration_manager is provided. Even if one is not, this
+        method needs to be implemented to allow the rollback of
+        flavor-resize on the guestagent side.
+        """
+        LOG.debug("Resetting configuration.")
+        if self.configuration_manager:
+            config_contents = configuration['config_contents']
+            self.configuration_manager.save_configuration(config_contents)
+
     #################
     # Cluster related
     #################
-
     def cluster_complete(self, context):
         LOG.debug("Cluster creation complete, starting status checks.")
         self.status.end_install()
@@ -456,6 +600,168 @@ class Manager(periodic_task.PeriodicTasks):
                                as_root=True)
         LOG.debug("Set log file '%s' as readable" % log_file)
         return log_file
+
+    ###############
+    # Not Supported
+    ###############
+    def change_passwords(self, context, users):
+        LOG.debug("Changing passwords.")
+        with EndNotification(context):
+            raise exception.DatastoreOperationNotSupported(
+                operation='change_passwords', datastore=self.manager)
+
+    def enable_root(self, context):
+        LOG.debug("Enabling root.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='enable_root', datastore=self.manager)
+
+    def enable_root_with_password(self, context, root_password=None):
+        LOG.debug("Enabling root with password.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='enable_root_with_password', datastore=self.manager)
+
+    def disable_root(self, context):
+        LOG.debug("Disabling root.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='disable_root', datastore=self.manager)
+
+    def is_root_enabled(self, context):
+        LOG.debug("Checking if root was ever enabled.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='is_root_enabled', datastore=self.manager)
+
+    def create_backup(self, context, backup_info):
+        LOG.debug("Creating backup.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='create_backup', datastore=self.manager)
+
+    def _perform_restore(self, backup_info, context, restore_location, app):
+        LOG.debug("Performing restore.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='_perform_restore', datastore=self.manager)
+
+    def create_database(self, context, databases):
+        LOG.debug("Creating databases.")
+        with EndNotification(context):
+            raise exception.DatastoreOperationNotSupported(
+                operation='create_database', datastore=self.manager)
+
+    def list_databases(self, context, limit=None, marker=None,
+                       include_marker=False):
+        LOG.debug("Listing databases.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='list_databases', datastore=self.manager)
+
+    def delete_database(self, context, database):
+        LOG.debug("Deleting database.")
+        with EndNotification(context):
+            raise exception.DatastoreOperationNotSupported(
+                operation='delete_database', datastore=self.manager)
+
+    def create_user(self, context, users):
+        LOG.debug("Creating users.")
+        with EndNotification(context):
+            raise exception.DatastoreOperationNotSupported(
+                operation='create_user', datastore=self.manager)
+
+    def list_users(self, context, limit=None, marker=None,
+                   include_marker=False):
+        LOG.debug("Listing users.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='list_users', datastore=self.manager)
+
+    def delete_user(self, context, user):
+        LOG.debug("Deleting user.")
+        with EndNotification(context):
+            raise exception.DatastoreOperationNotSupported(
+                operation='delete_user', datastore=self.manager)
+
+    def get_user(self, context, username, hostname):
+        LOG.debug("Getting user.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='get_user', datastore=self.manager)
+
+    def update_attributes(self, context, username, hostname, user_attrs):
+        LOG.debug("Updating user attributes.")
+        with EndNotification(context):
+            raise exception.DatastoreOperationNotSupported(
+                operation='update_attributes', datastore=self.manager)
+
+    def grant_access(self, context, username, hostname, databases):
+        LOG.debug("Granting user access.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='grant_access', datastore=self.manager)
+
+    def revoke_access(self, context, username, hostname, database):
+        LOG.debug("Revoking user access.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='revoke_access', datastore=self.manager)
+
+    def list_access(self, context, username, hostname):
+        LOG.debug("Listing user access.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='list_access', datastore=self.manager)
+
+    def get_config_changes(self, cluster_config, mount_point=None):
+        LOG.debug("Get configuration changes.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='get_configuration_changes', datastore=self.manager)
+
+    def update_overrides(self, context, overrides, remove=False):
+        LOG.debug("Updating overrides.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='update_overrides', datastore=self.manager)
+
+    def apply_overrides(self, context, overrides):
+        LOG.debug("Applying overrides.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='apply_overrides', datastore=self.manager)
+
+    def get_replication_snapshot(self, context, snapshot_info,
+                                 replica_source_config=None):
+        LOG.debug("Getting replication snapshot.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='get_replication_snapshot', datastore=self.manager)
+
+    def attach_replication_slave(self, context, snapshot, slave_config):
+        LOG.debug("Attaching replication slave.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='attach_replication_slave', datastore=self.manager)
+
+    def detach_replica(self, context, for_failover=False):
+        LOG.debug("Detaching replica.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='detach_replica', datastore=self.manager)
+
+    def get_replica_context(self, context):
+        LOG.debug("Getting replica context.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='get_replica_context', datastore=self.manager)
+
+    def make_read_only(self, context, read_only):
+        LOG.debug("Making datastore read-only.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='make_read_only', datastore=self.manager)
+
+    def get_txn_count(self, context):
+        LOG.debug("Getting transaction count.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='get_txn_count', datastore=self.manager)
+
+    def get_latest_txn_id(self, context):
+        LOG.debug("Getting latest transaction id.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='get_latest_txn_id', datastore=self.manager)
+
+    def wait_for_txn(self, context, txn):
+        LOG.debug("Waiting for transaction.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='wait_for_txn', datastore=self.manager)
+
+    def demote_replication_master(self, context):
+        LOG.debug("Demoting replication master.")
+        raise exception.DatastoreOperationNotSupported(
+            operation='demote_replication_master', datastore=self.manager)
 
     ##################################################################
     # Methods that requires to maintain multiple versions for backward

@@ -15,17 +15,13 @@
 
 from oslo_log import log as logging
 
-from trove.common import cfg
-from trove.common import exception
 from trove.common.notification import EndNotification
 from trove.guestagent.datastore.experimental.db2 import service
 from trove.guestagent.datastore import manager
-from trove.guestagent import dbaas
 from trove.guestagent import volume
 
+
 LOG = logging.getLogger(__name__)
-CONF = cfg.CONF
-MANAGER = CONF.datastore_manager
 
 
 class Manager(manager.Manager):
@@ -37,20 +33,16 @@ class Manager(manager.Manager):
         self.appStatus = service.DB2AppStatus()
         self.app = service.DB2App(self.appStatus)
         self.admin = service.DB2Admin()
-        super(Manager, self).__init__()
+        super(Manager, self).__init__('db2')
 
     @property
     def status(self):
         return self.appStatus
 
-    def rpc_ping(self, context):
-        LOG.debug("Responding to RPC ping.")
-        return True
-
     def do_prepare(self, context, packages, databases, memory_mb, users,
-                   device_path=None, mount_point=None, backup_info=None,
-                   config_contents=None, root_password=None, overrides=None,
-                   cluster_config=None, snapshot=None):
+                   device_path, mount_point, backup_info,
+                   config_contents, root_password, overrides,
+                   cluster_config, snapshot):
         """This is called from prepare in the base class."""
         if device_path:
             device = volume.VolumeDevice(device_path)
@@ -60,12 +52,6 @@ class Manager(manager.Manager):
             LOG.debug('Mounted the volume.')
         self.app.change_ownership(mount_point)
         self.app.start_db()
-
-        if databases:
-            self.create_database(context, databases)
-
-        if users:
-            self.create_user(context, users)
 
     def restart(self, context):
         """
@@ -84,13 +70,6 @@ class Manager(manager.Manager):
         """
         LOG.debug("Stop a given DB2 server instance.")
         self.app.stop_db(do_not_start_on_reboot=do_not_start_on_reboot)
-
-    def get_filesystem_stats(self, context, fs_path):
-        """Gets the filesystem stats for the path given."""
-        LOG.debug("Get the filesystem stats.")
-        mount_point = CONF.get(
-            'db2' if not MANAGER else MANAGER).mount_point
-        return dbaas.get_filesystem_volume_stats(mount_point)
 
     def create_database(self, context, databases):
         LOG.debug("Creating database(s)." % databases)
@@ -130,88 +109,6 @@ class Manager(manager.Manager):
         LOG.debug("List all the databases the user has access to.")
         return self.admin.list_access(username, hostname)
 
-    def mount_volume(self, context, device_path=None, mount_point=None):
-        device = volume.VolumeDevice(device_path)
-        device.mount(mount_point, write_to_fstab=False)
-        LOG.debug("Mounted the device %s at the mount point %s." %
-                  (device_path, mount_point))
-
-    def unmount_volume(self, context, device_path=None, mount_point=None):
-        device = volume.VolumeDevice(device_path)
-        device.unmount(mount_point)
-        LOG.debug("Unmounted the device %s from the mount point %s." %
-                  (device_path, mount_point))
-
-    def resize_fs(self, context, device_path=None, mount_point=None):
-        device = volume.VolumeDevice(device_path)
-        device.resize_fs(mount_point)
-        LOG.debug("Resized the filesystem %s." % mount_point)
-
     def start_db_with_conf_changes(self, context, config_contents):
         LOG.debug("Starting DB2 with configuration changes.")
         self.app.start_db_with_conf_changes(config_contents)
-
-    def grant_access(self, context, username, hostname, databases):
-        LOG.debug("Granting acccess.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='grant_access', datastore=MANAGER)
-
-    def revoke_access(self, context, username, hostname, database):
-        LOG.debug("Revoking access.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='revoke_access', datastore=MANAGER)
-
-    def reset_configuration(self, context, configuration):
-        """
-         Currently this method does nothing. This method needs to be
-         implemented to enable rollback of flavor-resize on guestagent side.
-        """
-        LOG.debug("Resetting DB2 configuration.")
-        pass
-
-    def change_passwords(self, context, users):
-        LOG.debug("Changing password.")
-        with EndNotification(context):
-            raise exception.DatastoreOperationNotSupported(
-                operation='change_passwords', datastore=MANAGER)
-
-    def update_attributes(self, context, username, hostname, user_attrs):
-        LOG.debug("Updating database attributes.")
-        with EndNotification(context):
-            raise exception.DatastoreOperationNotSupported(
-                operation='update_attributes', datastore=MANAGER)
-
-    def enable_root(self, context):
-        LOG.debug("Enabling root.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='enable_root', datastore=MANAGER)
-
-    def enable_root_with_password(self, context, root_password=None):
-        LOG.debug("Enabling root with password.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='enable_root_with_password', datastore=MANAGER)
-
-    def disable_root(self, context):
-        LOG.debug("Disabling root.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='disable_root', datastore=MANAGER)
-
-    def is_root_enabled(self, context):
-        LOG.debug("Checking if root is enabled.")
-        raise exception.DatastoreOperationNotSupported(
-            operation='is_root_enabled', datastore=MANAGER)
-
-    def _perform_restore(self, backup_info, context, restore_location, app):
-        raise exception.DatastoreOperationNotSupported(
-            operation='_perform_restore', datastore=MANAGER)
-
-    def create_backup(self, context, backup_info):
-        LOG.debug("Creating backup.")
-        with EndNotification(context):
-            raise exception.DatastoreOperationNotSupported(
-                operation='create_backup', datastore=MANAGER)
-
-    def get_config_changes(self, cluster_config, mount_point=None):
-        LOG.debug("Get configuration changes")
-        raise exception.DatastoreOperationNotSupported(
-            operation='get_configuration_changes', datastore=MANAGER)

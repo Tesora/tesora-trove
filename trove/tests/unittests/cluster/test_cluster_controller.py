@@ -28,6 +28,7 @@ import trove.common.cfg as cfg
 from trove.common import exception
 from trove.common.strategies.cluster import strategy
 from trove.common import utils
+from trove.conductor import api as conductor_api
 from trove.datastore import models as datastore_models
 from trove.tests.unittests import trove_testtools
 
@@ -272,6 +273,9 @@ class TestClusterControllerWithStrategy(TestCase):
                 ]
             }
         }
+        self.get_client_patch = patch.object(conductor_api.API, 'get_client')
+        self.get_client_mock = self.get_client_patch.start()
+        self.addCleanup(self.get_client_patch.stop)
 
     def tearDown(self):
         super(TestClusterControllerWithStrategy, self).tearDown()

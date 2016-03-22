@@ -73,7 +73,7 @@ MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'oracle_ra'
 class Manager(manager.Manager):
 
     def __init__(self):
-        super(Manager, self).__init__()
+        super(Manager, self).__init__(MANAGER)
 
     @property
     def status(self):

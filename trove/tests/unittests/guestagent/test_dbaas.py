@@ -74,7 +74,7 @@ from trove.guestagent.datastore.mysql.service import MySqlAdmin
 from trove.guestagent.datastore.mysql.service import MySqlApp
 from trove.guestagent.datastore.mysql.service import MySqlAppStatus
 from trove.guestagent.datastore.mysql.service import MySqlRootAccess
-import trove.guestagent.datastore.mysql.service_base as dbaas_base
+import trove.guestagent.datastore.mysql_common.service as dbaas_base
 import trove.guestagent.datastore.service as base_datastore_service
 from trove.guestagent.datastore.service import BaseDbStatus
 from trove.guestagent.db import models
@@ -849,8 +849,10 @@ class MySqlAppTest(testtools.TestCase):
         self.appStatus.set_next_status(
             rd_instance.ServiceStatuses.SHUTDOWN)
 
-        self.mySqlApp.stop_db()
-        self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.mySqlApp.stop_db()
+            self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
 
     def test_stop_mysql_with_db_update(self):
 
@@ -858,11 +860,13 @@ class MySqlAppTest(testtools.TestCase):
         self.appStatus.set_next_status(
             rd_instance.ServiceStatuses.SHUTDOWN)
 
-        self.mySqlApp.stop_db(True)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID,
-            {'service_status':
-             rd_instance.ServiceStatuses.SHUTDOWN.description}))
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.mySqlApp.stop_db(True)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID,
+                {'service_status':
+                 rd_instance.ServiceStatuses.SHUTDOWN.description}))
 
     @patch.object(utils, 'execute_with_timeout', return_value=('0', ''))
     def test_stop_mysql_do_not_start_on_reboot(self, mock_execute):
@@ -870,26 +874,32 @@ class MySqlAppTest(testtools.TestCase):
         self.appStatus.set_next_status(
             rd_instance.ServiceStatuses.SHUTDOWN)
 
-        self.mySqlApp.stop_db(True, True)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID,
-            {'service_status':
-             rd_instance.ServiceStatuses.SHUTDOWN.description}))
-        self.assertEqual(2, mock_execute.call_count)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.mySqlApp.stop_db(True, True)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID,
+                {'service_status':
+                 rd_instance.ServiceStatuses.SHUTDOWN.description}))
+            self.assertEqual(2, mock_execute.call_count)
 
     def test_stop_mysql_error(self):
         dbaas_base.utils.execute_with_timeout = Mock()
         self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
         self.mySqlApp.state_change_wait_time = 1
-        self.assertRaises(RuntimeError, self.mySqlApp.stop_db)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.mySqlApp.stop_db)
 
     @patch.object(operating_system, 'service_discovery',
                   side_effect=KeyError('error'))
-    @patch.object(utils, 'execute_with_timeout', return_value=('0', ''))
+    @patch.object(utils, 'execute_with_timeout')
     def test_stop_mysql_key_error(self, mock_execute, mock_service):
-        self.assertRaisesRegexp(RuntimeError, 'Service is not discovered.',
-                                self.mySqlApp.stop_db)
-        self.assertEqual(0, mock_execute.call_count)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaisesRegexp(RuntimeError, 'Service is not discovered.',
+                                    self.mySqlApp.stop_db)
+            self.assertEqual(0, mock_execute.call_count)
 
     def test_restart_is_successful(self):
 
@@ -898,14 +908,16 @@ class MySqlAppTest(testtools.TestCase):
         self.mysql_stops_successfully()
         self.mysql_starts_successfully()
 
-        self.mySqlApp.restart()
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.mySqlApp.restart()
 
-        self.assertTrue(self.mySqlApp.stop_db.called)
-        self.assertTrue(self.mySqlApp.start_mysql.called)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID,
-            {'service_status':
-             rd_instance.ServiceStatuses.RUNNING.description}))
+            self.assertTrue(self.mySqlApp.stop_db.called)
+            self.assertTrue(self.mySqlApp.start_mysql.called)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID,
+                {'service_status':
+                 rd_instance.ServiceStatuses.RUNNING.description}))
 
     def test_restart_mysql_wont_start_up(self):
 
@@ -914,11 +926,13 @@ class MySqlAppTest(testtools.TestCase):
         self.mysql_stops_unsuccessfully()
         self.mysql_starts_unsuccessfully()
 
-        self.assertRaises(RuntimeError, self.mySqlApp.restart)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.mySqlApp.restart)
 
-        self.assertTrue(self.mySqlApp.stop_db.called)
-        self.assertFalse(self.mySqlApp.start_mysql.called)
-        self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
+            self.assertTrue(self.mySqlApp.stop_db.called)
+            self.assertFalse(self.mySqlApp.start_mysql.called)
+            self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
 
     @patch.object(dbaas.MySqlApp, 'get_data_dir', return_value='some path')
     def test_wipe_ib_logfiles_error(self, get_datadir_mock):
@@ -943,11 +957,13 @@ class MySqlAppTest(testtools.TestCase):
         self.mySqlApp._enable_mysql_on_boot = Mock()
         self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
 
-        self.mySqlApp.start_mysql(update_db=True)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID,
-            {'service_status':
-             rd_instance.ServiceStatuses.RUNNING.description}))
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.mySqlApp.start_mysql(update_db=True)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID,
+                {'service_status':
+                 rd_instance.ServiceStatuses.RUNNING.description}))
 
     def test_start_mysql_runs_forever(self):
 
@@ -956,11 +972,13 @@ class MySqlAppTest(testtools.TestCase):
         self.mySqlApp.state_change_wait_time = 1
         self.appStatus.set_next_status(rd_instance.ServiceStatuses.SHUTDOWN)
 
-        self.assertRaises(RuntimeError, self.mySqlApp.start_mysql)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID,
-            {'service_status':
-             rd_instance.ServiceStatuses.SHUTDOWN.description}))
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.mySqlApp.start_mysql)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID,
+                {'service_status':
+                 rd_instance.ServiceStatuses.SHUTDOWN.description}))
 
     def test_start_mysql_error(self):
 
@@ -968,7 +986,9 @@ class MySqlAppTest(testtools.TestCase):
         mocked = Mock(side_effect=ProcessExecutionError('Error'))
         dbaas_base.utils.execute_with_timeout = mocked
 
-        self.assertRaises(RuntimeError, self.mySqlApp.start_mysql)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.mySqlApp.start_mysql)
 
     def test_start_db_with_conf_changes(self):
         self.mySqlApp.start_mysql = Mock()
@@ -1320,19 +1340,16 @@ class MySqlAppTest(testtools.TestCase):
         self.mysql_starts_successfully()
         sqlalchemy.create_engine = Mock()
 
-        self.mySqlApp.secure('contents')
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.mySqlApp.secure('contents')
 
-        self.assertTrue(self.mySqlApp.stop_db.called)
-        reset_config_calls = [call('contents', auth_pwd_mock.return_value),
-                              call('contents', auth_pwd_mock.return_value)]
-        self.mySqlApp._reset_configuration.has_calls(reset_config_calls)
+            self.assertTrue(self.mySqlApp.stop_db.called)
+            self.mySqlApp._reset_configuration.assert_has_calls(
+                [call('contents', auth_pwd_mock.return_value)])
 
-        self.assertTrue(self.mySqlApp.stop_db.called)
-        self.mySqlApp._reset_configuration.assert_has_calls(
-            [call('contents', auth_pwd_mock.return_value)])
-
-        self.assertTrue(self.mySqlApp.start_mysql.called)
-        self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
+            self.assertTrue(self.mySqlApp.start_mysql.called)
+            self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
 
     @patch.object(dbaas, 'get_engine',
                   return_value=MagicMock(name='get_engine'))
@@ -2358,15 +2375,17 @@ class TestRedisApp(testtools.TestCase):
         mock_status = MagicMock()
         self.app.status = mock_status
         mock_status.begin_restart = MagicMock(return_value=None)
-        with patch.object(RedisApp, 'stop_db', return_value=None):
-            with patch.object(RedisApp, 'start_redis', return_value=None):
-                mock_status.end_restart = MagicMock(
-                    return_value=None)
-                self.app.restart()
-                mock_status.begin_restart.assert_any_call()
-                RedisApp.stop_db.assert_any_call()
-                RedisApp.start_redis.assert_any_call()
-                mock_status.end_restart.assert_any_call()
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            with patch.object(RedisApp, 'stop_db', return_value=None):
+                with patch.object(RedisApp, 'start_redis', return_value=None):
+                    mock_status.end_restart = MagicMock(
+                        return_value=None)
+                    self.app.restart()
+                    mock_status.begin_restart.assert_any_call()
+                    RedisApp.stop_db.assert_any_call()
+                    RedisApp.start_redis.assert_any_call()
+                    mock_status.end_restart.assert_any_call()
 
     def test_start_redis(self):
         mock_status = MagicMock()
@@ -2463,18 +2482,22 @@ class CassandraDBAppTest(testtools.TestCase):
         self.appStatus.set_next_status(
             rd_instance.ServiceStatuses.SHUTDOWN)
 
-        self.cassandra.stop_db(True)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID,
-            {'service_status':
-             rd_instance.ServiceStatuses.SHUTDOWN.description}))
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.cassandra.stop_db(True)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID,
+                {'service_status':
+                 rd_instance.ServiceStatuses.SHUTDOWN.description}))
 
     def test_stop_db_error(self):
 
         cass_service.utils.execute_with_timeout = Mock()
         self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
         self.cassandra.state_change_wait_time = 1
-        self.assertRaises(RuntimeError, self.cassandra.stop_db)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.cassandra.stop_db)
 
     def test_restart(self):
 
@@ -2482,13 +2505,15 @@ class CassandraDBAppTest(testtools.TestCase):
         self.cassandra.start_db = Mock()
         self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
 
-        self.cassandra.restart()
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.cassandra.restart()
 
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID,
-            {'service_status':
-             rd_instance.ServiceStatuses.RUNNING.description}))
-        self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID,
+                {'service_status':
+                 rd_instance.ServiceStatuses.RUNNING.description}))
+            self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
 
     def test_start_cassandra(self):
 
@@ -2505,11 +2530,13 @@ class CassandraDBAppTest(testtools.TestCase):
          wait_for_real_status_to_change_to) = Mock(return_value=False)
         self.appStatus.set_next_status(rd_instance.ServiceStatuses.SHUTDOWN)
 
-        self.assertRaises(RuntimeError, self.cassandra.stop_db)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID,
-            {'service_status':
-             rd_instance.ServiceStatuses.SHUTDOWN.description}))
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.cassandra.stop_db)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID,
+                {'service_status':
+                 rd_instance.ServiceStatuses.SHUTDOWN.description}))
 
     def test_start_db_with_db_update(self):
 
@@ -2517,12 +2544,14 @@ class CassandraDBAppTest(testtools.TestCase):
         self.appStatus.set_next_status(
             rd_instance.ServiceStatuses.RUNNING)
 
-        self.cassandra.start_db(True)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID,
-            {'service_status':
-             rd_instance.ServiceStatuses.RUNNING.description}))
-        self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.cassandra.start_db(True)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID,
+                {'service_status':
+                 rd_instance.ServiceStatuses.RUNNING.description}))
+            self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
 
     def test_start_cassandra_error(self):
         self.cassandra._enable_db_on_boot = Mock()
@@ -2530,7 +2559,9 @@ class CassandraDBAppTest(testtools.TestCase):
         cass_service.utils.execute_with_timeout = Mock(
             side_effect=ProcessExecutionError('Error'))
 
-        self.assertRaises(RuntimeError, self.cassandra.start_db)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.cassandra.start_db)
 
     def test_install(self):
 
@@ -2611,7 +2642,9 @@ class CouchbaseAppTest(testtools.TestCase):
         self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
         self.couchbaseApp.state_change_wait_time = 1
 
-        self.assertRaises(RuntimeError, self.couchbaseApp.stop_db)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.couchbaseApp.stop_db)
 
     def test_restart(self):
         self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
@@ -2639,7 +2672,9 @@ class CouchbaseAppTest(testtools.TestCase):
         couchservice.utils.execute_with_timeout = mocked
         self.couchbaseApp._enable_db_on_boot = Mock()
 
-        self.assertRaises(RuntimeError, self.couchbaseApp.start_db)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.couchbaseApp.start_db)
 
     def test_start_db_runs_forever(self):
         couchservice.utils.execute_with_timeout = Mock()
@@ -2718,7 +2753,9 @@ class CouchDBAppTest(testtools.TestCase):
         self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
         self.couchdbApp.state_change_wait_time = 1
 
-        self.assertRaises(RuntimeError, self.couchdbApp.stop_db)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.couchdbApp.stop_db)
 
     def test_restart(self):
         self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
@@ -2746,7 +2783,9 @@ class CouchDBAppTest(testtools.TestCase):
             side_effect=ProcessExecutionError('Error'))
         self.couchdbApp._enable_db_on_boot = Mock()
 
-        self.assertRaises(RuntimeError, self.couchdbApp.start_db)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.couchdbApp.start_db)
 
     def test_install_when_couchdb_installed(self):
         couchdb_service.packager.pkg_is_installed = Mock(return_value=True)
@@ -2822,9 +2861,11 @@ class MongoDBAppTest(testtools.TestCase):
         self.mongoDbApp.status.set_next_status(
             rd_instance.ServiceStatuses.SHUTDOWN)
 
-        self.mongoDbApp.stop_db(True)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID, {'service_status': 'shutdown'}))
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.mongoDbApp.stop_db(True)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID, {'service_status': 'shutdown'}))
 
     def test_stop_db_error(self):
 
@@ -2832,7 +2873,9 @@ class MongoDBAppTest(testtools.TestCase):
         self.mongoDbApp.status.set_next_status(
             rd_instance.ServiceStatuses.RUNNING)
         self.mongoDbApp.state_change_wait_time = 1
-        self.assertRaises(RuntimeError, self.mongoDbApp.stop_db)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.mongoDbApp.stop_db)
 
     def test_restart(self):
 
@@ -2841,16 +2884,18 @@ class MongoDBAppTest(testtools.TestCase):
         self.mongoDbApp.stop_db = Mock()
         self.mongoDbApp.start_db = Mock()
 
-        self.mongoDbApp.restart()
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.mongoDbApp.restart()
 
-        self.assertTrue(self.mongoDbApp.stop_db.called)
-        self.assertTrue(self.mongoDbApp.start_db.called)
+            self.assertTrue(self.mongoDbApp.stop_db.called)
+            self.assertTrue(self.mongoDbApp.start_db.called)
 
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID, {'service_status': 'shutdown'}))
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID, {'service_status': 'shutdown'}))
 
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID, {'service_status': 'running'}))
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID, {'service_status': 'running'}))
 
     def test_start_db(self):
 
@@ -2867,9 +2912,11 @@ class MongoDBAppTest(testtools.TestCase):
         self.mongoDbApp.status.set_next_status(
             rd_instance.ServiceStatuses.RUNNING)
 
-        self.mongoDbApp.start_db(True)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID, {'service_status': 'running'}))
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.mongoDbApp.start_db(True)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID, {'service_status': 'running'}))
 
     def test_start_db_runs_forever(self):
 
@@ -2880,9 +2927,11 @@ class MongoDBAppTest(testtools.TestCase):
         self.mongoDbApp.status.set_next_status(
             rd_instance.ServiceStatuses.SHUTDOWN)
 
-        self.assertRaises(RuntimeError, self.mongoDbApp.start_db)
-        self.assertTrue(conductor_api.API.heartbeat.called_once_with(
-            self.FAKE_ID, {'service_status': 'shutdown'}))
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.mongoDbApp.start_db)
+            self.assertTrue(conductor_api.API.heartbeat.called_once_with(
+                self.FAKE_ID, {'service_status': 'shutdown'}))
 
     def test_start_db_error(self):
 
@@ -2890,7 +2939,9 @@ class MongoDBAppTest(testtools.TestCase):
         mocked = Mock(side_effect=ProcessExecutionError('Error'))
         mongo_service.utils.execute_with_timeout = mocked
 
-        self.assertRaises(RuntimeError, self.mongoDbApp.start_db)
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            self.assertRaises(RuntimeError, self.mongoDbApp.start_db)
 
     def test_start_db_with_conf_changes_db_is_running(self):
 
@@ -3186,14 +3237,16 @@ class VerticaAppTest(testtools.TestCase):
         mock_status = MagicMock()
         app = VerticaApp(mock_status)
         mock_status.begin_restart = MagicMock(return_value=None)
-        with patch.object(VerticaApp, 'stop_db', return_value=None):
-            with patch.object(VerticaApp, 'start_db', return_value=None):
-                mock_status.end_restart = MagicMock(
-                    return_value=None)
-                app.restart()
-                mock_status.begin_restart.assert_any_call()
-                VerticaApp.stop_db.assert_any_call()
-                VerticaApp.start_db.assert_any_call()
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            with patch.object(VerticaApp, 'stop_db', return_value=None):
+                with patch.object(VerticaApp, 'start_db', return_value=None):
+                    mock_status.end_restart = MagicMock(
+                        return_value=None)
+                    app.restart()
+                    mock_status.begin_restart.assert_any_call()
+                    VerticaApp.stop_db.assert_any_call()
+                    VerticaApp.start_db.assert_any_call()
 
     def test_start_db(self):
         mock_status = MagicMock()
@@ -3503,11 +3556,13 @@ class DB2AppTest(testtools.TestCase):
         mock_status.begin_restart = MagicMock(return_value=None)
         app.stop_db = MagicMock(return_value=None)
         app.start_db = MagicMock(return_value=None)
-        app.restart()
+        with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
+            patch_pc.__get__ = Mock(return_value=True)
+            app.restart()
 
-        self.assertTrue(mock_status.begin_restart.called)
-        self.assertTrue(app.stop_db.called)
-        self.assertTrue(app.start_db.called)
+            self.assertTrue(mock_status.begin_restart.called)
+            self.assertTrue(app.stop_db.called)
+            self.assertTrue(app.start_db.called)
 
     def test_start_db(self):
         db2service.utils.execute_with_timeout = MagicMock(return_value=None)
