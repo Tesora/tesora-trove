@@ -137,8 +137,8 @@ class OracleAdmin(object):
                   'underscore.') % {'name': pdb_name})
         admin_password = utils.generate_random_password(PASSWORD_MAX_LEN)
         with LocalOracleClient(CONF.get(MANAGER).oracle_cdb_name) as client:
-            client.execute('CREATE PLUGGABLE DATABASE "%(pdb_name)s" '
-                           'ADMIN USER "%(username)s" '
+            client.execute('CREATE PLUGGABLE DATABASE %(pdb_name)s '
+                           'ADMIN USER %(username)s '
                            'IDENTIFIED BY "%(password)s"' %
                            {'pdb_name': pdb_name,
                             'username': ROOT_USERNAME,
@@ -155,7 +155,7 @@ class OracleAdmin(object):
         user_id = users[0]['_name']
         password = users[0]['_password']
         with LocalOracleClient(CONF.guest_name, service=True) as client:
-            client.execute('CREATE USER %(user_id)s IDENTIFIED BY %(password)s'
+            client.execute('CREATE USER %(user_id)s IDENTIFIED BY "%(password)s"'
                            % {'user_id': user_id, 'password': password})
             client.execute('GRANT CREATE SESSION to %s' % user_id)
             client.execute('GRANT CREATE TABLE to %s' % user_id)
@@ -252,7 +252,7 @@ class OracleAdmin(object):
             for item in users:
                 LOG.debug("Changing password for user %s." % item.name)
                 client.execute('ALTER USER %(username)s '
-                               'IDENTIFIED BY %(password)s'
+                               'IDENTIFIED BY "%(password)s"'
                                % {'username': item.name,
                                   'password': item.password})
 
@@ -283,13 +283,13 @@ class OracleAdmin(object):
                            "WHERE USERNAME = upper('%s')"
                            % root_user.name.upper())
             if client.rowcount == 0:
-                client.execute("CREATE USER %(username)s "
-                               "IDENTIFIED BY %(password)s"
+                client.execute('CREATE USER %(username)s '
+                               'IDENTIFIED BY "%(password)s"'
                                % {'username': root_user.name,
                                   'password': root_user.password})
             else:
-                client.execute("ALTER USER %(username)s "
-                               "IDENTIFIED BY %(password)s"
+                client.execute('ALTER USER %(username)s '
+                               'IDENTIFIED BY "%(password)s"'
                                % {'username': root_user.name,
                                   'password': root_user.password})
             client.execute("GRANT PDB_DBA TO %s" % ROOT_USERNAME)
