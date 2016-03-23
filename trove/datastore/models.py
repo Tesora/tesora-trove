@@ -19,12 +19,13 @@ from oslo_log import log as logging
 
 from trove.common import cfg
 from trove.common import exception
+from trove.common.remote import create_cinder_client
 from trove.common.remote import create_nova_client
 from trove.common import utils
 from trove.db import get_db_api
 from trove.db import models as dbmodels
 from trove.flavor.models import Flavor as flavor_model
-
+from trove.volume_types.models import VolumeType as volume_type_model
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
@@ -555,13 +556,36 @@ def update_datastore_version(datastore, name, manager, image_id, packages,
 
 class DatastoreVersionMetadata(object):
     @classmethod
-    def _datastore_version_metadata_add(cls, datastore_version_id,
+    def _datastore_version_find(cls, datastore_name,
+                                datastore_version_name):
+        """
+        Helper to find a datastore version id for a given
+        datastore and datastore version name.
+        """
+        db_api.configure_db(CONF)
+        db_ds_record = DBDatastore.find_by(
+            name=datastore_name
+        )
+        db_dsv_record = DBDatastoreVersion.find_by(
+            datastore_id=db_ds_record.id,
+            name=datastore_version_name
+        )
+
+        return db_dsv_record.id
+
+    @classmethod
+    def _datastore_version_metadata_add(cls, datastore_name,
+                                        datastore_version_name,
+                                        datastore_version_id,
                                         key, value, exception_class):
-        """Create an entry in the Datastore Version Metadata table."""
-        # Do we have a mapping in the db?
-        # yes: and its deleted then modify the association
-        # yes: and its not deleted then error on create
-        # no: then just create the new association
+        """
+        Create a record of the specified key and value in the
+        metadata table.
+        """
+        # if an association does not exist, create a new one.
+        # if a deleted association exists, undelete it.
+        # if an un-deleted association exists, raise an exception.
+
         try:
             db_record = DBDatastoreVersionMetadata.find_by(
                 datastore_version_id=datastore_version_id,
@@ -573,17 +597,33 @@ class DatastoreVersionMetadata(object):
                 return
             else:
                 raise exception_class(
-                    datastore_version_id=datastore_version_id,
-                    flavor_id=value)
+                    datastore=datastore_name,
+                    datastore_version=datastore_version_name,
+                    id=value)
         except exception.NotFound:
             pass
+
+        # the record in the database only contains the datastore_verion_id
         DBDatastoreVersionMetadata.create(
             datastore_version_id=datastore_version_id,
             key=key, value=value)
 
     @classmethod
-    def _datastore_version_metadata_delete(cls, datastore_version_id,
+    def _datastore_version_metadata_delete(cls, datastore_name,
+                                           datastore_version_name,
                                            key, value, exception_class):
+        """
+        Delete a record of the specified key and value in the
+        metadata table.
+        """
+        # if an association does not exist, raise an exception
+        # if a deleted association exists, raise an exception
+        # if an un-deleted association exists, delete it
+
+        datastore_version_id = cls._datastore_version_find(
+            datastore_name,
+            datastore_version_name)
+
         try:
             db_record = DBDatastoreVersionMetadata.find_by(
                 datastore_version_id=datastore_version_id,
@@ -593,28 +633,25 @@ class DatastoreVersionMetadata(object):
                 return
             else:
                 raise exception_class(
-                    datastore_version_id=datastore_version_id,
-                    flavor_id=value)
+                    datastore=datastore_name,
+                    datastore_version=datastore_version_name,
+                    id=value)
         except exception.ModelNotFoundError:
-            raise exception_class(datastore_version_id=datastore_version_id,
-                                  flavor_id=value)
+            raise exception_class(datastore=datastore_name,
+                                  datastore_version=datastore_version_name,
+                                  id=value)
 
     @classmethod
     def add_datastore_version_flavor_association(cls, datastore_name,
                                                  datastore_version_name,
                                                  flavor_ids):
-        db_api.configure_db(CONF)
-        db_ds_record = DBDatastore.find_by(
-            name=datastore_name
-        )
-        db_datastore_id = db_ds_record.id
-        db_dsv_record = DBDatastoreVersion.find_by(
-            datastore_id=db_datastore_id,
-            name=datastore_version_name
-        )
-        datastore_version_id = db_dsv_record.id
+        datastore_version_id = cls._datastore_version_find(
+            datastore_name,
+            datastore_version_name)
+
         for flavor_id in flavor_ids:
             cls._datastore_version_metadata_add(
+                datastore_name, datastore_version_name,
                 datastore_version_id, 'flavor', flavor_id,
                 exception.DatastoreFlavorAssociationAlreadyExists)
 
@@ -622,18 +659,8 @@ class DatastoreVersionMetadata(object):
     def delete_datastore_version_flavor_association(cls, datastore_name,
                                                     datastore_version_name,
                                                     flavor_id):
-        db_api.configure_db(CONF)
-        db_ds_record = DBDatastore.find_by(
-            name=datastore_name
-        )
-        db_datastore_id = db_ds_record.id
-        db_dsv_record = DBDatastoreVersion.find_by(
-            datastore_id=db_datastore_id,
-            name=datastore_version_name
-        )
-        datastore_version_id = db_dsv_record.id
         cls._datastore_version_metadata_delete(
-            datastore_version_id, 'flavor', flavor_id,
+            datastore_name, datastore_version_name, 'flavor', flavor_id,
             exception.DatastoreFlavorAssociationNotFound)
 
     @classmethod
@@ -671,4 +698,116 @@ class DatastoreVersionMetadata(object):
             return associated_flavors
         else:
             msg = _("Specify both the datastore and datastore_version_id.")
+            raise exception.BadRequest(msg)
+
+    @classmethod
+    def add_datastore_version_volume_type_association(cls, datastore_name,
+                                                      datastore_version_name,
+                                                      volume_type_names):
+        datastore_version_id = cls._datastore_version_find(
+            datastore_name,
+            datastore_version_name)
+
+        # the database record will contain
+        # datastore_version_id, 'volume_type', volume_type_name
+        for volume_type_name in volume_type_names:
+            cls._datastore_version_metadata_add(
+                datastore_name, datastore_version_name,
+                datastore_version_id, 'volume_type', volume_type_name,
+                exception.DatastoreVolumeTypeAssociationAlreadyExists)
+
+    @classmethod
+    def delete_datastore_version_volume_type_association(
+            cls, datastore_name,
+            datastore_version_name,
+            volume_type_name):
+        cls._datastore_version_metadata_delete(
+            datastore_name, datastore_version_name, 'volume_type',
+            volume_type_name,
+            exception.DatastoreVolumeTypeAssociationNotFound)
+
+    @classmethod
+    def list_datastore_version_volume_type_associations(cls,
+                                                        datastore_version_id):
+        """
+        List the datastore associations for a given datastore version id as
+        found in datastore version metadata. Note that this may return an
+        empty set (if no associations are provided)
+        """
+        if datastore_version_id:
+            return DBDatastoreVersionMetadata.find_all(
+                datastore_version_id=datastore_version_id,
+                key='volume_type', deleted=False
+            )
+        else:
+            msg = _("Specify the datastore_version_id.")
+            raise exception.BadRequest(msg)
+
+    @classmethod
+    def list_datastore_volume_type_associations(cls,
+                                                datastore_name,
+                                                datastore_version_name):
+        """
+        List the datastore associations for a given datastore and version.
+        """
+        if datastore_name and datastore_version_name:
+            datastore_version_id = cls._datastore_version_find(
+                datastore_name, datastore_version_name)
+            return cls.list_datastore_version_volume_type_associations(
+                datastore_version_id)
+        else:
+            msg = _("Specify the datastore_name and datastore_version_name.")
+            raise exception.BadRequest(msg)
+
+    @classmethod
+    def datastore_volume_type_associations_exist(cls,
+                                                 datastore_name,
+                                                 datastore_version_name):
+        return cls.list_datastore_volume_type_associations(
+            datastore_name,
+            datastore_version_name).count() > 0
+
+    @classmethod
+    def allowed_datastore_version_volume_types(cls, context,
+                                               datastore_name,
+                                               datastore_version_name):
+        """
+        List all allowed volume types for a given datastore and
+        datastore version. If datastore version metadata is
+        provided, then the valid volume types in that list are
+        allowed. If datastore version metadata is not provided
+        then all volume types known to cinder are allowed.
+        """
+        if datastore_name and datastore_version_name:
+            # first obtain the list in the dsvmetadata
+            datastore_version_id = cls._datastore_version_find(
+                datastore_name, datastore_version_name)
+
+            metadata = cls.list_datastore_version_volume_type_associations(
+                datastore_version_id)
+
+            # then get the list from cinder
+            cinder_volume_types = create_cinder_client(
+                context).volume_types.list()
+
+            # if there's metadata: intersect,
+            # else, whatever cinder has.
+            if (metadata.count() != 0):
+                # the volume types from metadata first
+                volume_types = tuple(f.value for f in metadata)
+
+                # Cinder volume type names are unique, intersect
+                ds_volume_types = (f for f in cinder_volume_types
+                                   if f.name in volume_types)
+                allowed_volume_types = tuple(
+                    volume_type_model(volume_type=item)
+                    for item in ds_volume_types)
+            else:
+                allowed_volume_types = tuple(
+                    volume_type_model(volume_type=item)
+                    for item in cinder_volume_types)
+
+            return allowed_volume_types
+        else:
+            msg = _("Specify the datastore_name and datastore_version_name.")
             raise exception.BadRequest(msg)
