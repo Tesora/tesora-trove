@@ -125,6 +125,13 @@ class Manager(periodic_task.PeriodicTasks):
         return None
 
     @property
+    def configuration_manager(self):
+        """If the datastore supports the new-style configuration manager,
+        it should override this to return it.
+        """
+        return None
+
+    @property
     def datastore_log_defs(self):
         """Any datastore-specific log files should be overridden in this dict
         by the corresponding Manager class.
@@ -205,9 +212,7 @@ class Manager(periodic_task.PeriodicTasks):
                     exposed_logs = CONF.get(self.manager).get(
                         'guest_log_exposed_logs')
                 except oslo_cfg.NoSuchOptError:
-                    pass
-                if not exposed_logs:
-                    exposed_logs = CONF.guest_log_exposed_logs
+                    exposed_logs = ''
                 LOG.debug("Available log defs: %s" % ",".join(gl_defs.keys()))
                 exposed_logs = exposed_logs.lower().replace(',', ' ').split()
                 LOG.debug("Exposing log defs: %s" % ",".join(exposed_logs))
@@ -226,13 +231,6 @@ class Manager(periodic_task.PeriodicTasks):
                         exposed)
 
         self._guest_log_loaded_context = self.guest_log_context
-
-    @property
-    def configuration_manager(self):
-        """If the datastore supports the new-style configuration manager,
-        it should override this to return it.
-        """
-        return None
 
     ################
     # Status related
@@ -261,9 +259,6 @@ class Manager(periodic_task.PeriodicTasks):
         else:
             return False
 
-    #################
-    # Prepare related
-    #################
     def prepare(self, context, packages, databases, memory_mb, users,
                 device_path=None, mount_point=None, backup_info=None,
                 config_contents=None, root_password=None, overrides=None,
@@ -444,9 +439,9 @@ class Manager(periodic_task.PeriodicTasks):
         LOG.debug("Cluster creation complete, starting status checks.")
         self.status.end_install()
 
-    #####################
-    # Log related methods
-    #####################
+    #############
+    # Log related
+    #############
     def guest_log_list(self, context):
         LOG.debug("Getting list of guest logs.")
         self.guest_log_context = context
