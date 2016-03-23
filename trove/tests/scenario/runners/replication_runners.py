@@ -373,3 +373,24 @@ class MariadbReplicationRunner(ReplicationRunner):
 
     def run_promote_to_replica_source(self):
         raise SkipTest("Not supported by MariaDB 10.0")
+
+
+class PostgresqlReplicationRunner(ReplicationRunner):
+
+    def run_promote_original_source(self):
+        raise SkipTest("Not supported by Postgresql")
+
+    def run_verify_replica_data_new_master(self):
+        raise SkipTest("Not supported by Postgresql")
+
+    def run_add_data_to_replicate2(self):
+        raise SkipTest("Not supported by Postgresql")
+
+    def run_verify_data_to_replicate2(self):
+        raise SkipTest("Not supported by Postgresql")
+
+    def run_verify_replica_data_new2(self):
+        raise SkipTest("Not supported by Postgresql")
+
+    def run_promote_to_replica_source(self):
+        raise SkipTest("Not supported by Postgresql")

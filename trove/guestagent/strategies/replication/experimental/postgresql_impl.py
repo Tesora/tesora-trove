@@ -27,17 +27,7 @@ from trove.common import utils
 from trove.guestagent.backup.backupagent import BackupAgent
 from trove.guestagent.common import operating_system
 from trove.guestagent.common.operating_system import FileMode
-from trove.guestagent.datastore.experimental.postgresql import pgutil
-from trove.guestagent.datastore.experimental.postgresql\
-    .service.config import PgSqlConfig
-from trove.guestagent.datastore.experimental.postgresql\
-    .service.database import PgSqlDatabase
-from trove.guestagent.datastore.experimental.postgresql\
-    .service.install import PgSqlInstall
-from trove.guestagent.datastore.experimental.postgresql \
-    .service.process import PgSqlProcess
-from trove.guestagent.datastore.experimental.postgresql\
-    .service.root import PgSqlRoot
+from trove.guestagent.datastore.experimental.postgresql.service import PgSqlApp
 from trove.guestagent.db import models
 from trove.guestagent.strategies import backup
 from trove.guestagent.strategies.replication import base
@@ -62,16 +52,20 @@ REPL_USER = 'replicator'
 SLAVE_STANDBY_OVERRIDE = 'SlaveStandbyOverride'
 
 
-class PostgresqlReplicationStreaming(
-    base.Replication,
-    PgSqlConfig,
-    PgSqlDatabase,
-    PgSqlRoot,
-    PgSqlInstall,
-):
+class PostgresqlReplicationStreaming(base.Replication):
 
     def __init__(self, *args, **kwargs):
         super(PostgresqlReplicationStreaming, self).__init__(*args, **kwargs)
+        self._app = None
+
+    @property
+    def app(self):
+        if self._app is None:
+            self._app = self._build_app()
+        return self._app
+
+    def _build_app(self):
+        return PgSqlApp()
 
     def get_master_ref(self, service, snapshot_info):
         master_ref = {
@@ -120,19 +114,20 @@ class PostgresqlReplicationStreaming(
         """
 
         LOG.debug("Checking for replicator user")
-        pwfile = os.path.join(self.PGSQL_DATA_DIR, ".replpass")
-        if self.user_exists(REPL_USER):
+        pwfile = os.path.join(self.app.pgsql_data_dir, ".replpass")
+        admin = self.app.build_admin()
+        if admin.user_exists(REPL_USER):
             if operating_system.exists(pwfile, as_root=True):
                 LOG.debug("Found existing .replpass, returning pw")
                 pw = operating_system.read_file(pwfile, as_root=True)
             else:
                 LOG.debug("Found user but not .replpass, recreate")
                 u = models.PostgreSQLUser(REPL_USER)
-                self._drop_user(context=None, user=u)
-                pw = self._create_replication_user(pwfile)
+                admin._drop_user(context=None, user=u)
+                pw = self._create_replication_user(admin, pwfile)
         else:
             LOG.debug("Found no replicator user, create one")
-            pw = self._create_replication_user(pwfile)
+            pw = self._create_replication_user(admin, pwfile)
 
         repl_user_info = {
             'name': REPL_USER,
@@ -141,27 +136,22 @@ class PostgresqlReplicationStreaming(
 
         return repl_user_info
 
-    def _create_replication_user(self, pwfile):
+    def _create_replication_user(self, admin, pwfile):
         """Create the replication user. Unfortunately, to be able to
         run pg_rewind, we need SUPERUSER, not just REPLICATION privilege
         """
 
         pw = utils.generate_random_password()
         operating_system.write_file(pwfile, pw, as_root=True)
-        operating_system.chown(pwfile, user=self.PGSQL_OWNER,
-                               group=self.PGSQL_OWNER, as_root=True)
+        operating_system.chown(pwfile, user=self.app.pgsql_owner,
+                               group=self.app.pgsql_owner, as_root=True)
         operating_system.chmod(pwfile, FileMode.OCTAL_MODE("0600"),
                                as_root=True)
 
-        # TODO(atomic77) Alter user is swallowing the replication
-        # option for some reason -- enable this code when the
-        # underlying issue is fixed
-        # repl_user = models.PostgreSQLUser(name=REPL_USER,
-        #                                  password=REPL_PW)
-        # self._create_user(context=None, user=repl_user)
-        # self.alter_user(None, repl_user, 'REPLICATION', 'LOGIN')
-        pgutil.psql("CREATE USER %s SUPERUSER ENCRYPTED "
-                    "password '%s';" % (REPL_USER, pw))
+        repl_user = models.PostgreSQLUser(name=REPL_USER, password=pw)
+        admin._create_user(context=None, user=repl_user)
+        admin.alter_user(None, repl_user, True, 'REPLICATION', 'LOGIN')
+
         return pw
 
     def enable_as_master(self, service, master_config, for_failover=False):
@@ -175,20 +165,20 @@ class PostgresqlReplicationStreaming(
 
         # TODO(atomic77) Remove this hack after adding cfg manager for pg_hba
         tmp_hba = '/tmp/pg_hba'
-        operating_system.copy(self.PGSQL_HBA_CONFIG, tmp_hba,
+        operating_system.copy(self.app.pgsql_hba_config, tmp_hba,
                               force=True, as_root=True)
         operating_system.chmod(tmp_hba, FileMode.OCTAL_MODE("0777"),
                                as_root=True)
         with open(tmp_hba, 'a+') as hba_file:
             hba_file.write(hba_entry)
 
-        operating_system.copy(tmp_hba, self.PGSQL_HBA_CONFIG,
+        operating_system.copy(tmp_hba, self.app.pgsql_hba_config,
                               force=True, as_root=True)
-        operating_system.chmod(self.PGSQL_HBA_CONFIG,
+        operating_system.chmod(self.app.pgsql_hba_config,
                                FileMode.OCTAL_MODE("0600"),
                                as_root=True)
         operating_system.remove(tmp_hba, as_root=True)
-        pgutil.psql("SELECT pg_reload_conf()")
+        self.app.reload_configuration()
 
     def enable_as_slave(self, service, snapshot, slave_config):
         """Adds appropriate config options to postgresql.conf, and writes out
@@ -198,18 +188,18 @@ class PostgresqlReplicationStreaming(
         self._write_standby_recovery_file(snapshot, sslmode='prefer')
         self.enable_hot_standby(service)
         # Ensure the WAL arch is empty before restoring
-        PgSqlProcess.recreate_wal_archive_dir()
+        self.app.recreate_wal_archive_dir()
 
     def detach_slave(self, service, for_failover):
         """Touch trigger file in to disable recovery mode"""
         LOG.debug("Detaching slave, use trigger file to disable recovery mode")
         operating_system.write_file(TRIGGER_FILE, '')
-        operating_system.chown(TRIGGER_FILE, user=self.PGSQL_OWNER,
-                               group=self.PGSQL_OWNER, as_root=True)
+        operating_system.chown(TRIGGER_FILE, user=self.app.pgsql_owner,
+                               group=self.app.pgsql_owner, as_root=True)
 
         def _wait_for_failover():
             """Wait until slave has switched out of recovery mode"""
-            return not self.pg_is_in_recovery()
+            return not self.app.pg_is_in_recovery()
 
         try:
             utils.poll_until(_wait_for_failover, time_out=120)
@@ -225,7 +215,7 @@ class PostgresqlReplicationStreaming(
         """Call pg_rewind to resync datadir against state of new master
         We should already have a recovery.conf file in PGDATA
         """
-        rconf = operating_system.read_file(self.PGSQL_RECOVERY_CONFIG,
+        rconf = operating_system.read_file(self.app.pgsql_recovery_config,
                                            as_root=True)
         regex = re.compile("primary_conninfo = (.*)")
         m = regex.search(rconf)
@@ -233,14 +223,14 @@ class PostgresqlReplicationStreaming(
 
         # The recovery.conf file we want should already be there, but pg_rewind
         # will delete it, so copy it out first
-        rec = self.PGSQL_RECOVERY_CONFIG
+        rec = self.app.pgsql_recovery_config
         tmprec = "/tmp/recovery.conf.bak"
         operating_system.move(rec, tmprec, as_root=True)
 
-        cmd_full = " ".join(["pg_rewind", "-D", self.PGSQL_DATA_DIR,
+        cmd_full = " ".join(["pg_rewind", "-D", self.app.pgsql_data_dir,
                              '--source-server=' + conninfo])
-        out, err = utils.execute("sudo", "su", "-", self.PGSQL_OWNER, "-c",
-                                 "%s" % cmd_full, check_exit_code=0)
+        out, err = utils.execute("sudo", "su", "-", self.app.pgsql_owner,
+                                 "-c", "%s" % cmd_full, check_exit_code=0)
         LOG.debug("Got stdout %s and stderr %s from pg_rewind" %
                   (str(out), str(err)))
 
@@ -251,21 +241,21 @@ class PostgresqlReplicationStreaming(
            pg_rewind against the new master to enable a proper timeline
            switch.
            """
-        self.stop_db(context=None)
+        self.app.stop_db()
         self._rewind_against_master()
-        self.start_db(context=None)
+        self.app.start_db()
 
     def connect_to_master(self, service, snapshot):
         """All that is required in postgresql to connect to a slave is to
         restart with a recovery.conf file in the data dir, which contains
         the connection information for the master.
         """
-        assert operating_system.exists(self.PGSQL_RECOVERY_CONFIG,
+        assert operating_system.exists(self.app.pgsql_recovery_config,
                                        as_root=True)
-        self.restart(context=None)
+        self.app.restart()
 
     def _remove_recovery_file(self):
-        operating_system.remove(self.PGSQL_RECOVERY_CONFIG, as_root=True)
+        operating_system.remove(self.app.pgsql_recovery_config, as_root=True)
 
     def _write_standby_recovery_file(self, snapshot, sslmode='prefer'):
         LOG.info("Snapshot data received:" + str(snapshot))
@@ -290,16 +280,17 @@ class PostgresqlReplicationStreaming(
         recovery_conf += "trigger_file = '/tmp/postgresql.trigger'\n"
         recovery_conf += "recovery_target_timeline='latest'\n"
 
-        operating_system.write_file(self.PGSQL_RECOVERY_CONFIG, recovery_conf,
+        operating_system.write_file(self.app.pgsql_recovery_config,
+                                    recovery_conf,
                                     codec=stream_codecs.IdentityCodec(),
                                     as_root=True)
-        operating_system.chown(self.PGSQL_RECOVERY_CONFIG, user="postgres",
-                               group="postgres", as_root=True)
+        operating_system.chown(self.app.pgsql_recovery_config,
+                               user="postgres", group="postgres", as_root=True)
 
     def enable_hot_standby(self, service):
         opts = {'hot_standby': 'on'}
         # wal_log_hints for pg_rewind is only supported in 9.4+
-        if self.pg_version[1] in ('9.4', '9.5'):
+        if self.app.pg_version[1] in ('9.4', '9.5'):
             opts['wal_log_hints'] = 'on'
 
         service.configuration_manager.\

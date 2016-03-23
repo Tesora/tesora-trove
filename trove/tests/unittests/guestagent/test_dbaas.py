@@ -56,6 +56,8 @@ from trove.guestagent.datastore.experimental.mongodb import (
     service as mongo_service)
 from trove.guestagent.datastore.experimental.mongodb import (
     system as mongo_system)
+from trove.guestagent.datastore.experimental.postgresql import (
+    service as pg_service)
 from trove.guestagent.datastore.experimental.pxc import (
     service as pxc_service)
 from trove.guestagent.datastore.experimental.pxc import (
@@ -3821,3 +3823,40 @@ class PXCAppTest(testtools.TestCase):
         self.assertEqual(1, self.PXCApp.wipe_ib_logfiles.call_count)
         self.assertEqual(1, apply_mock.call_count)
         self.assertEqual(1, self.PXCApp._bootstrap_cluster.call_count)
+
+
+class PostgresAppTest(testtools.TestCase):
+
+    @patch.object(pg_service.PgSqlApp, '_find_config_file', return_value='')
+    @patch.object(pg_service.PgSqlApp,
+                  'pgsql_extra_bin_dir', PropertyMock(return_value=''))
+    def setUp(self, _):
+        super(PostgresAppTest, self).setUp(str(uuid4()))
+        self.orig_time_sleep = time.sleep
+        self.orig_time_time = time.time
+        time.sleep = Mock()
+        time.time = Mock(side_effect=faketime)
+        self.postgres = pg_service.PgSqlApp()
+        self.postgres.status = FakeAppStatus(self.FAKE_ID,
+                                             rd_instance.ServiceStatuses.NEW)
+
+    @property
+    def app(self):
+        return self.postgres
+
+    @property
+    def appStatus(self):
+        return self.postgres.status
+
+    @property
+    def expected_state_change_timeout(self):
+        return CONF.state_change_wait_time
+
+    @property
+    def expected_service_candidates(self):
+        return self.postgres.service_candidates
+
+    def tearDown(self):
+        time.sleep = self.orig_time_sleep
+        time.time = self.orig_time_time
+        super(PostgresAppTest, self).tearDown()
