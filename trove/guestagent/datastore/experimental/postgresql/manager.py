@@ -81,7 +81,7 @@ class Manager(manager.Manager):
         return {
             self.GUEST_LOG_DEFS_GENERAL_LABEL: {
                 self.GUEST_LOG_TYPE_LABEL: guest_log.LogType.USER,
-                self.GUEST_LOG_USER_LABEL: self.PGSQL_OWNER,
+                self.GUEST_LOG_USER_LABEL: owner,
                 self.GUEST_LOG_FILE_LABEL: general_log_file,
                 self.GUEST_LOG_ENABLE_LABEL: {
                     'logging_collector': 'on',
