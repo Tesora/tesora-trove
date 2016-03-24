@@ -257,6 +257,10 @@ class Manager(manager.Manager):
         LOG.debug("Enabling root.")
         return self.admin.enable_root()
 
+    def enable_root_with_password(self, context, root_password=None):
+        LOG.debug("Enabling root with password.")
+        return self.admin.enable_root(root_password)
+
     def disable_root(self, context):
         LOG.debug("Disabling root.")
         return self.admin.disable_root()
