@@ -248,9 +248,8 @@ class Manager(manager.Manager):
         replica_info = self.replication.detach_slave(self, for_failover)
         return replica_info
 
-    def enable_as_master_s2(self, context, replica_source_config,
-                            for_failover=False):
-        self.app.enable_backups()
+    def enable_as_master(self, context, replica_source_config):
+        self.enable_backups()
         self.replication.enable_as_master(self, None)
 
     def make_read_only(self, context, read_only):

@@ -14,7 +14,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from mock import Mock, patch, PropertyMock
+from mock import ANY, DEFAULT, Mock, patch, PropertyMock
+
 from proboscis.asserts import assert_equal
 
 from trove.backup.models import Backup
@@ -75,11 +76,19 @@ class TestManager(trove_testtools.TestCase):
 
     def test_detach_replica(self):
         slave = Mock()
-        master = Mock()
+        self.mock_master.complete_master_setup = Mock()
         with patch.object(models.BuiltInstanceTasks, 'load',
-                          side_effect=[slave, master]):
-            self.manager.detach_replica(self.context, 'some-inst-id')
-        slave.detach_replica.assert_called_with(master)
+                          side_effect=[slave, self.mock_master,
+                                       self.mock_slave1,
+                                       self.mock_slave2]):
+            with patch.multiple(
+                    self.mock_master, complete_master_setup=DEFAULT,
+                    post_processing_required_for_replication=Mock(
+                        return_value=True)):
+                self.manager.detach_replica(self.context, 'some-inst-id')
+                slave.detach_replica.assert_called_with(self.mock_master)
+                (self.mock_master.complete_master_setup.
+                    assert_called_once_with(ANY))
 
     @patch.object(Manager, '_set_task_status')
     def test_promote_to_replica_source(self, mock_set_task_status):
@@ -111,17 +120,24 @@ class TestManager(trove_testtools.TestCase):
     @patch.object(Manager, '_most_current_replica')
     def test_eject_replica_source(self, mock_most_current_replica,
                                   mock_set_task_status):
+        mock_most_current_replica.return_value = self.mock_slave1
         with patch.object(models.BuiltInstanceTasks, 'load',
                           side_effect=[self.mock_master, self.mock_slave1,
                                        self.mock_slave2]):
-            self.manager.eject_replica_source(self.context, 'some-inst-id')
-        mock_most_current_replica.assert_called_with(self.mock_master,
-                                                     [self.mock_slave1,
-                                                      self.mock_slave2])
-        mock_set_task_status.assert_called_with(([self.mock_master] +
-                                                 [self.mock_slave1,
-                                                  self.mock_slave2]),
-                                                InstanceTasks.NONE)
+            with patch.multiple(self.mock_slave1,
+                                complete_master_setup=DEFAULT,
+                                post_processing_required_for_replication=Mock(
+                                    return_value=True)):
+                self.manager.eject_replica_source(self.context,
+                                                  'some-inst-id')
+                mock_most_current_replica.assert_called_with(
+                    self.mock_master, [self.mock_slave1, self.mock_slave2])
+                mock_set_task_status.assert_called_with(([self.mock_master] +
+                                                         [self.mock_slave1,
+                                                          self.mock_slave2]),
+                                                        InstanceTasks.NONE)
+                (self.mock_slave1.complete_master_setup.
+                    assert_called_once_with(ANY))
 
     @patch.object(Manager, '_set_task_status')
     def test_exception_TroveError_promote_to_replica_source(self, *args):

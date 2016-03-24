@@ -352,8 +352,7 @@ class ApiTest(trove_testtools.TestCase):
         self.api.enable_as_master({})
         # verify
         self._verify_rpc_prepare_before_call()
-        self._verify_call('enable_as_master_s2', for_failover=False,
-                          replica_source_config={})
+        self._verify_call('enable_as_master', replica_source_config={})
 
     def test_get_txn_count(self):
         # execute

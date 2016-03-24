@@ -124,9 +124,6 @@ class Manager(manager.Manager):
 
             self.app.prep_pfile_management()
 
-            if users:
-                self.create_user(context, users)
-
             if root_password:
                 self.admin.enable_root(root_password)
 
@@ -274,6 +271,9 @@ class Manager(manager.Manager):
     def backup_required_for_replication(self, context):
         return self.replication.backup_required_for_replication()
 
+    def post_processing_required_for_replication(self, context):
+        return self.replication.post_processing_required_for_replication()
+
     def get_replication_snapshot(self, context, snapshot_info,
                                  replica_source_config=None):
         LOG.debug("Getting replication snapshot.")
@@ -298,11 +298,9 @@ class Manager(manager.Manager):
 
         return replication_snapshot
 
-    def enable_as_master_s2(self, context, replica_source_config,
-                            for_failover=False):
+    def enable_as_master(self, context, replica_source_config):
         LOG.debug("Calling enable_as_master.")
-        self.replication.enable_as_master(self.app, replica_source_config,
-                                     for_failover)
+        self.replication.enable_as_master(self.app, replica_source_config)
 
     def get_replication_detail(self, context):
         LOG.debug("Calling get_replication_detail.")
@@ -345,7 +343,7 @@ class Manager(manager.Manager):
                 self._validate_slave_for_replication(context, replica_info)
             if 'is_master' in replica_info and replica_info['is_master']:
                 self.replication.enable_as_slave(self.app, replica_info,
-                                            slave_config)
+                                                 slave_config)
             else:
                 self.replication.prepare_slave(replica_info)
         except Exception:
@@ -383,7 +381,7 @@ class Manager(manager.Manager):
         return None
 
     def wait_for_txn(self, context, txn):
-        pass
+        self.replication.wait_for_txn()
 
     def cleanup_source_on_replica_detach(self, context, replica_info):
         LOG.debug("Cleaning up the source on the detach of a replica.")
