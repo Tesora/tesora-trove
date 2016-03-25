@@ -54,7 +54,7 @@ class VerticaCluster(models.Cluster):
 
     @classmethod
     def create(cls, context, name, datastore, datastore_version,
-               instances, extended_properties):
+               instances, extended_properties, locality):
         LOG.debug("Initiating cluster creation.")
         vertica_conf = CONF.get(datastore_version.manager)
         num_instances = len(instances)
@@ -123,7 +123,8 @@ class VerticaCluster(models.Cluster):
                                         nics=nics[i],
                                         availability_zone=azs[i],
                                         configuration_id=None,
-                                        cluster_config=member_config)
+                                        cluster_config=member_config,
+                                        locality=locality)
 
         # Calling taskmanager to further proceed for cluster-configuration
         task_api.load(context, datastore_version.manager).create_cluster(

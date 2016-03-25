@@ -53,6 +53,7 @@ import trove.common.remote as remote
 from trove.common.remote import create_cinder_client
 from trove.common.remote import create_dns_client
 from trove.common.remote import create_heat_client
+from trove.common import server_group as srv_grp
 from trove.common.strategies.cluster import strategy
 from trove.common.strategies.storage import get_storage_strategy
 from trove.common import template
@@ -991,15 +992,6 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             except (ValueError, TroveError):
                 set_error_and_raise([from_, to_])
 
-    def create_server_group(self, locality):
-        server_group_name = "%s_%s" % ('locality', self.id)
-        server_group = self.nova_client.server_groups.create(
-            name=server_group_name, policies=[locality])
-        LOG.debug("Created '%s' server group for instance %s (id: %s)." %
-                  (locality, self.id, server_group.id))
-
-        return server_group
-
     def _build_heat_nics(self, nics):
         ifaces = []
         ports = []
@@ -1071,10 +1063,11 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
             LOG.exception(_("Error during dns entry of instance %(id)s: "
                             "%(ex)s") % {'id': self.db_info.id, 'ex': ex})
         try:
-            self._delete_server_group()
+            srv_grp.ServerGroup.delete(
+                self.context, self.server_group, self.id)
         except Exception:
-            LOG.exception(_("Error during delete server group %s")
-                          % self.server_group_name)
+            LOG.exception(_("Error during delete server group for %s")
+                          % self.id)
 
         # Poll until the server is gone.
         def server_is_finished():
@@ -1117,18 +1110,6 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
 #                                deleted_at=timeutils.isotime(deleted_at),
 #                                server=old_server)
         LOG.debug("End _delete_resources for instance %s" % self.id)
-
-    def _delete_server_group(self):
-        server_group = self.server_group
-        # Only delete the server group if we're the last member in it
-        if server_group:
-            if len(server_group.members) == 1:
-                self.nova_client.server_groups.delete(server_group.id)
-                LOG.debug("Deleted server group for instance %s (id: %s)." %
-                          (self.id, server_group.id))
-            else:
-                LOG.debug("Skipping delete of server group %s (members: %s)." %
-                          (server_group.id, server_group.members))
 
     def server_status_matches(self, expected_status, server=None):
         if not server:

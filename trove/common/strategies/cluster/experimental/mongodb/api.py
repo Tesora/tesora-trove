@@ -23,6 +23,7 @@ from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common import remote
+from trove.common import server_group as srv_grp
 from trove.common.strategies.cluster import base
 from trove.common import utils
 from trove.datastore import models as datastore_models
@@ -123,7 +124,7 @@ class MongoDbCluster(models.Cluster):
 
     @classmethod
     def create(cls, context, name, datastore, datastore_version,
-               instances, extended_properties):
+               instances, extended_properties, locality):
 
         # TODO(amcreynolds): consider moving into CONF and even supporting
         # TODO(amcreynolds): an array of values, e.g. [3, 5, 7]
@@ -199,7 +200,8 @@ class MongoDbCluster(models.Cluster):
                                         availability_zone=azs[i],
                                         nics=nics[i],
                                         configuration_id=None,
-                                        cluster_config=member_config)
+                                        cluster_config=member_config,
+                                        locality=locality)
 
         configsvr_config = {"id": db_info.id,
                             "instance_type": "config_server",
@@ -215,7 +217,8 @@ class MongoDbCluster(models.Cluster):
                                         availability_zone=None,
                                         nics=None,
                                         configuration_id=None,
-                                        cluster_config=configsvr_config)
+                                        cluster_config=configsvr_config,
+                                        locality=locality)
 
         mongos_config = {"id": db_info.id,
                          "instance_type": "query_router",
@@ -231,7 +234,8 @@ class MongoDbCluster(models.Cluster):
                                         availability_zone=None,
                                         nics=None,
                                         configuration_id=None,
-                                        cluster_config=mongos_config)
+                                        cluster_config=mongos_config,
+                                        locality=locality)
 
         task_api.load(context, datastore_version.manager).create_cluster(
             db_info.id)
@@ -279,6 +283,7 @@ class MongoDbCluster(models.Cluster):
                          "instance_type": "member",
                          "replica_set_name": new_replica_set_name,
                          "key": key}
+        locality = srv_grp.ServerGroup.convert_to_hint(self.server_group)
         for i in range(1, num_members_per_shard + 1):
             instance_name = "%s-%s-%s" % (self.name, new_replica_set_name,
                                           str(i))
@@ -291,7 +296,8 @@ class MongoDbCluster(models.Cluster):
                                         availability_zone=None,
                                         nics=None,
                                         configuration_id=None,
-                                        cluster_config=member_config)
+                                        cluster_config=member_config,
+                                        locality=locality)
 
         self.update_db(task_status=ClusterTasks.ADDING_SHARD)
         manager.mongodb_add_shard_cluster(
@@ -319,12 +325,13 @@ class MongoDbCluster(models.Cluster):
             self._check_instances(self.context, query_routers,
                                   self.datastore_version)
         # all checks are done before any instances are created
+        locality = srv_grp.ServerGroup.convert_to_hint(self.server_group)
         instance_ids = []
         for shard in shards:
-            instance_ids.extend(self._create_shard_instances(shard))
+            instance_ids.extend(self._create_shard_instances(shard, locality))
         if query_routers:
             instance_ids.extend(
-                self._create_query_router_instances(query_routers)
+                self._create_query_router_instances(query_routers, locality)
             )
 
         self.update_db(task_status=ClusterTasks.GROWING_CLUSTER)
@@ -403,7 +410,7 @@ class MongoDbCluster(models.Cluster):
         self.manager.shrink_cluster(self.id, instance_ids)
 
     def _create_instances(self, instances, cluster_config,
-                          default_name_tag, key=None):
+                          default_name_tag, locality, key=None):
         """Loop through the instances and create them in this cluster."""
         cluster_config['id'] = self.id
         if not key:
@@ -420,12 +427,13 @@ class MongoDbCluster(models.Cluster):
                 instance['volume_size'], None,
                 availability_zone=instance.get('availability_zone', None),
                 nics=instance.get('nics', None),
-                cluster_config=cluster_config
+                cluster_config=cluster_config,
+                locality=locality
             )
             instance_ids.append(new_instance.id)
         return instance_ids
 
-    def _create_shard_instances(self, instances,
+    def _create_shard_instances(self, instances, locality,
                                 replica_set_name=None, key=None):
         """Create the instances for a new shard in the cluster."""
         shard_id = utils.generate_uuid()
@@ -435,13 +443,13 @@ class MongoDbCluster(models.Cluster):
                           'instance_type': 'member',
                           'replica_set_name': replica_set_name}
         return self._create_instances(instances, cluster_config,
-                                      replica_set_name, key=key)
+                                      replica_set_name, locality, key=key)
 
-    def _create_query_router_instances(self, instances, key=None):
+    def _create_query_router_instances(self, instances, locality, key=None):
         """Create the instances for the new query router."""
         cluster_config = {'instance_type': 'query_router'}
         return self._create_instances(instances, cluster_config,
-                                      'mongos', key=key)
+                                      'mongos', locality, key=key)
 
     def _prep_resize(self):
         """Get information about the cluster's current state."""
