@@ -30,6 +30,7 @@ from trove.common.i18n import _
 from trove.common.notification import EndNotification
 from trove.common import remote
 import trove.common.rpc.version as rpc_version
+from trove.common import server_group as srv_grp
 from trove.common.strategies.cluster import strategy
 from trove.datastore.models import DatastoreVersion
 import trove.extensions.mgmt.instances.models as mgmtmodels
@@ -313,7 +314,7 @@ class Manager(periodic_task.PeriodicTasks):
 
         master_instance_tasks = BuiltInstanceTasks.load(context, slave_of_id)
         server_group = master_instance_tasks.server_group
-        scheduler_hints = self._convert_server_group_to_hint(server_group)
+        scheduler_hints = srv_grp.ServerGroup.convert_to_hint(server_group)
         LOG.debug("Using scheduler hints for locality: %s" % scheduler_hints)
 
         try:
@@ -404,20 +405,8 @@ class Manager(periodic_task.PeriodicTasks):
                     "Cannot create multiple non-replica instances."))
             instance_tasks = FreshInstanceTasks.load(context, instance_id)
 
-            scheduler_hints = None
-            if locality:
-                try:
-                    server_group = instance_tasks.create_server_group(locality)
-                    scheduler_hints = self._convert_server_group_to_hint(
-                        server_group)
-                except Exception as e:
-                    msg = (_("Error creating '%(locality)s' server group for "
-                             "instance %(id)s: $(error)s") %
-                           {'locality': locality, 'id': instance_id,
-                            'error': e.message})
-                    LOG.exception(msg)
-                    raise
-
+            scheduler_hints = srv_grp.ServerGroup.build_scheduler_hint(
+                context, locality, instance_id)
             instance_tasks.create_instance(flavor, image_id, databases, users,
                                            datastore_manager, packages,
                                            volume_size, backup_id,
@@ -427,12 +416,6 @@ class Manager(periodic_task.PeriodicTasks):
             timeout = (CONF.restore_usage_timeout if backup_id
                        else CONF.usage_timeout)
             instance_tasks.wait_for_instance(timeout, flavor)
-
-    def _convert_server_group_to_hint(self, server_group, hints=None):
-        if server_group:
-            hints = hints or {}
-            hints["group"] = server_group.id
-        return hints
 
     def create_instance(self, context, instance_id, name, flavor,
                         image_id, databases, users, datastore_manager,

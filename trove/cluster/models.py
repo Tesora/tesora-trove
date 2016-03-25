@@ -22,6 +22,7 @@ from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common import remote
+from trove.common import server_group as srv_grp
 from trove.common.strategies.cluster import strategy
 from trove.datastore import models as datastore_models
 from trove.db import models as dbmodels
@@ -86,6 +87,8 @@ class Cluster(object):
             self.ds = (datastore_models.Datastore.
                        load(self.ds_version.datastore_id))
         self._db_instances = None
+        self._server_group = None
+        self._server_group_loaded = False
 
     @classmethod
     def get_guest(cls, instance):
@@ -197,13 +200,24 @@ class Cluster(object):
         return inst_models.Instances.load_all_by_cluster_id(
             self.context, self.db_info.id, load_servers=False)
 
+    @property
+    def server_group(self):
+        # The server group could be empty, so we need a flag to cache it
+        if not self._server_group_loaded:
+            self._server_group = self.instances[0].server_group
+        self._server_group_loaded = True
+        return self._server_group
+
     @classmethod
     def create(cls, context, name, datastore, datastore_version,
-               instances, extended_properties):
+               instances, extended_properties, locality):
+        locality = srv_grp.ServerGroup.build_scheduler_hint(
+            context, locality, name)
         api_strategy = strategy.load_api_strategy(datastore_version.manager)
         return api_strategy.cluster_class.create(context, name, datastore,
                                                  datastore_version, instances,
-                                                 extended_properties)
+                                                 extended_properties,
+                                                 locality)
 
     def validate_cluster_available(self, valid_states=[ClusterTasks.NONE]):
         if self.db_info.task_status not in valid_states:

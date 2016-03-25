@@ -249,7 +249,8 @@ cluster = {
                                 "availability_zone": non_empty_string
                             }
                         }
-                    }
+                    },
+                    "locality": non_empty_string
                 }
             }
         }

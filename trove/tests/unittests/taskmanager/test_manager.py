@@ -20,6 +20,7 @@ from proboscis.asserts import assert_equal
 
 from trove.backup.models import Backup
 from trove.common.exception import TroveError, ReplicationSlaveAttachError
+from trove.common import server_group as srv_grp
 from trove.instance.tasks import InstanceTasks
 from trove.taskmanager.manager import Manager
 from trove.taskmanager import models
@@ -247,15 +248,15 @@ class TestManager(trove_testtools.TestCase):
         mock_csg = Mock()
         type(mock_csg.return_value).id = PropertyMock(
             return_value='sg-id')
-        mock_tasks.create_server_group = mock_csg
         with patch.object(models.FreshInstanceTasks, 'load',
                           return_value=mock_tasks):
-            self.manager.create_instance(
-                self.context, 'id1', 'inst1', mock_flavor,
-                'mysql-image-id', None, None, 'mysql',
-                'mysql-server', 2, 'temp-backup-id', None,
-                'password', None, mock_override, None, None,
-                None, 'affinity')
+            with patch.object(srv_grp.ServerGroup, 'create', mock_csg):
+                self.manager.create_instance(
+                    self.context, 'id1', 'inst1', mock_flavor,
+                    'mysql-image-id', None, None, 'mysql',
+                    'mysql-server', 2, 'temp-backup-id', None,
+                    'password', None, mock_override, None, None,
+                    None, 'affinity')
         mock_tasks.create_instance.assert_called_with(mock_flavor,
                                                       'mysql-image-id', None,
                                                       None, 'mysql',
