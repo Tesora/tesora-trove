@@ -23,6 +23,7 @@ from trove.common import exception
 from trove.common.exception import TroveError
 from trove.common.i18n import _
 from trove.common import remote
+from trove.common import server_group as srv_grp
 from trove.common.strategies.cluster import base
 from trove.extensions.mgmt.clusters.views import MgmtClusterView
 from trove.instance import models as inst_models
@@ -51,7 +52,7 @@ class RedisCluster(models.Cluster):
 
     @staticmethod
     def _create_instances(context, db_info, datastore, datastore_version,
-                          instances):
+                          instances, extended_properties, locality):
         Redis_conf = CONF.get(datastore_version.manager)
         num_instances = len(instances)
         total_volume_allocation = 0
@@ -106,13 +107,14 @@ class RedisCluster(models.Cluster):
                                                configuration_id=None,
                                                cluster_config={
                                                    "id": db_info.id,
-                                                   "instance_type": "member"}
+                                                   "instance_type": "member"},
+                                               locality=locality
                                                ),
                    instances)
 
     @classmethod
     def create(cls, context, name, datastore, datastore_version,
-               instances, extended_properties):
+               instances, extended_properties, locality):
         LOG.debug("Initiating cluster creation.")
 
         # Updating Cluster Task
@@ -123,7 +125,7 @@ class RedisCluster(models.Cluster):
             task_status=ClusterTasks.BUILDING_INITIAL)
 
         cls._create_instances(context, db_info, datastore, datastore_version,
-                              instances)
+                              instances, extended_properties, locality)
 
         # Calling taskmanager to further proceed for cluster-configuration
         task_api.load(context, datastore_version.manager).create_cluster(
@@ -143,9 +145,10 @@ class RedisCluster(models.Cluster):
 
         db_info.update(task_status=ClusterTasks.GROWING_CLUSTER)
 
+        locality = srv_grp.ServerGroup.convert_to_hint(self.server_group)
         new_instances = self._create_instances(context, db_info,
                                                datastore, datastore_version,
-                                               instances)
+                                               instances, None, locality)
 
         task_api.load(context, datastore_version.manager).grow_cluster(
             db_info.id, [instance.id for instance in new_instances])

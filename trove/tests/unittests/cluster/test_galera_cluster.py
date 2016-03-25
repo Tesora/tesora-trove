@@ -65,6 +65,7 @@ class ClusterTest(trove_testtools.TestCase):
         self.datastore_version = self.dv
         self.cluster = galera_api.GaleraCommonCluster(
             self.context, self.db_info, self.datastore, self.datastore_version)
+        self.cluster._server_group_loaded = True
         self.instances = [{'volume_size': 1, 'flavor_id': '1234'},
                           {'volume_size': 1, 'flavor_id': '1234'},
                           {'volume_size': 1, 'flavor_id': '1234'}]
@@ -79,7 +80,7 @@ class ClusterTest(trove_testtools.TestCase):
                           self.cluster_name,
                           self.datastore,
                           self.datastore_version,
-                          [], {},
+                          [], {}, None
                           )
 
     def test_create_flavor_not_specified(self):
@@ -91,7 +92,7 @@ class ClusterTest(trove_testtools.TestCase):
                           self.cluster_name,
                           self.datastore,
                           self.datastore_version,
-                          instances, {}
+                          instances, {}, None
                           )
 
     @patch.object(remote, 'create_nova_client')
@@ -111,7 +112,7 @@ class ClusterTest(trove_testtools.TestCase):
                           self.cluster_name,
                           self.datastore,
                           self.datastore_version,
-                          instances, {}
+                          instances, {}, None
                           )
 
     @patch.object(remote, 'create_nova_client')
@@ -127,7 +128,7 @@ class ClusterTest(trove_testtools.TestCase):
                           self.cluster_name,
                           self.datastore,
                           self.datastore_version,
-                          instances, {}
+                          instances, {}, None
                           )
 
     @patch.object(remote, 'create_nova_client')
@@ -147,7 +148,7 @@ class ClusterTest(trove_testtools.TestCase):
                           self.cluster_name,
                           self.datastore,
                           self.datastore_version,
-                          instances, {}
+                          instances, {}, None
                           )
 
     @patch.object(remote, 'create_nova_client')
@@ -179,7 +180,7 @@ class ClusterTest(trove_testtools.TestCase):
                           self.cluster_name,
                           self.datastore,
                           self.datastore_version,
-                          instances, {}
+                          instances, {}, None
                           )
 
     @patch.object(remote, 'create_nova_client')
@@ -194,7 +195,7 @@ class ClusterTest(trove_testtools.TestCase):
                           self.cluster_name,
                           self.datastore,
                           self.datastore_version,
-                          instances, {}
+                          instances, {}, None
                           )
 
     @patch.object(inst_models.DBInstance, 'find_all')
@@ -214,7 +215,7 @@ class ClusterTest(trove_testtools.TestCase):
                             self.cluster_name,
                             self.datastore,
                             self.datastore_version,
-                            instances, {})
+                            instances, {}, None)
         mock_task_api.return_value.create_cluster.assert_called_with(
             mock_db_create.return_value.id)
         self.assertEqual(3, mock_ins_create.call_count)
@@ -236,7 +237,7 @@ class ClusterTest(trove_testtools.TestCase):
                             self.cluster_name,
                             self.datastore,
                             self.datastore_version,
-                            instances, {})
+                            instances, {}, None)
         mock_task_api.return_value.create_cluster.assert_called_with(
             mock_db_create.return_value.id)
         self.assertEqual(4, mock_ins_create.call_count)
@@ -274,7 +275,7 @@ class ClusterTest(trove_testtools.TestCase):
                             self.cluster_name,
                             self.datastore,
                             self.datastore_version,
-                            instances, {})
+                            instances, {}, None)
         mock_task_api.return_value.create_cluster.assert_called_with(
             mock_db_create.return_value.id)
         self.assertEqual(3, mock_ins_create.call_count)

@@ -263,7 +263,8 @@ cluster = {
                                 "modules": module_list,
                             }
                         }
-                    }
+                    },
+                    "locality": non_empty_string
                 }
             }
         }

@@ -34,6 +34,7 @@ from trove.common.remote import create_cinder_client
 from trove.common.remote import create_dns_client
 from trove.common.remote import create_guest_client
 from trove.common.remote import create_nova_client
+from trove.common import server_group as srv_grp
 from trove.common import template
 from trove.common import utils
 from trove.configuration.models import Configuration
@@ -539,22 +540,9 @@ def load_guest_info(instance, context, id):
 
 
 def load_server_group_info(instance, context, compute_id):
-    server_group = load_server_group(context, compute_id)
+    server_group = srv_grp.ServerGroup.load(context, compute_id)
     if server_group:
-        instance.locality = server_group.policies[0]
-
-
-def load_server_group(context, compute_id):
-    client = create_nova_client(context)
-    server_group = None
-    try:
-        server_groups = client.server_groups.list()
-        for sg in server_groups:
-            if compute_id in sg.members:
-                server_group = sg
-    except Exception as e:
-        LOG.error(e)
-    return server_group
+        instance.locality = srv_grp.ServerGroup.get_locality(server_group)
 
 
 class BaseInstance(SimpleInstance):
@@ -712,7 +700,7 @@ class BaseInstance(SimpleInstance):
     def server_group(self):
         # The server group could be empty, so we need a flag to cache it
         if not self._server_group_loaded:
-            self._server_group = load_server_group(
+            self._server_group = srv_grp.ServerGroup.load(
                 self.context, self.db_info.compute_instance_id)
             self._server_group_loaded = True
         return self._server_group
