@@ -220,7 +220,7 @@ class PgSqlApp(object):
             'external_pid_file': self._quote(self.pgsql_pid_file),
             'unix_socket_directories': self._quote(self.pgsql_run_dir),
             'listen_addresses': self._quote(','.join(self.LISTEN_ADDRESSES)),
-            'port': CONF.postgresql.postgresql_port}
+            'port': CONF.get(MANAGER).postgresql_port}
         self.configuration_manager.apply_system_override(file_locations)
         self._apply_access_rules()
 
@@ -287,14 +287,14 @@ class PgSqlApp(object):
         if we are using the PgBaseBackup strategy
         """
         LOG.info("Checking if we need to apply changes to WAL config")
-        if not CONF.postgresql.backup_strategy == 'PgBaseBackup':
+        if 'PgBaseBackup' not in CONF.get(MANAGER).backup_strategy:
             return
         if self.configuration_manager.has_system_override(BACKUP_CFG_OVERRIDE):
             return
 
         LOG.info("Applying changes to WAL config for use by base backups")
         arch_cmd = "'test ! -f {wal_arch}/%f && cp %p {wal_arch}/%f'".format(
-            wal_arch=CONF.postgresql.wal_archive_location
+            wal_arch=CONF.get(MANAGER).wal_archive_location
         )
         opts = {
             # FIXME(atomic77) These spaces after the options are needed until
@@ -469,7 +469,7 @@ class PgSqlApp(object):
         return m.group(1)
 
     def recreate_wal_archive_dir(self):
-        wal_archive_dir = CONF.postgresql.wal_archive_location
+        wal_archive_dir = CONF.get(MANAGER).wal_archive_location
         operating_system.remove(wal_archive_dir, force=True, recursive=True,
                                 as_root=True)
         operating_system.create_directory(wal_archive_dir,
@@ -478,7 +478,7 @@ class PgSqlApp(object):
                                           force=True, as_root=True)
 
     def remove_wal_archive_dir(self):
-        wal_archive_dir = CONF.postgresql.wal_archive_location
+        wal_archive_dir = CONF.get(MANAGER).wal_archive_location
         operating_system.remove(wal_archive_dir, force=True, recursive=True,
                                 as_root=True)
 
@@ -584,7 +584,7 @@ class PgSqlAdmin(object):
     )
 
     def __init__(self, user):
-        port = CONF.postgresql.postgresql_port
+        port = CONF.get(MANAGER).postgresql_port
         self.__connection = PostgresLocalhostConnection(user.name, port=port)
 
     def grant_access(self, context, username, hostname, databases):

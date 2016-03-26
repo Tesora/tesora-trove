@@ -63,7 +63,9 @@ defaults = {
     'oracle_ra':
     'trove.guestagent.datastore.oracle_ra.manager.Manager',
     'mariadb':
-    'trove.guestagent.datastore.experimental.mariadb.manager.Manager'
+    'trove.guestagent.datastore.experimental.mariadb.manager.Manager',
+    'edb':
+    'trove.guestagent.datastore.experimental.edb.manager.Manager',
 }
 CONF = cfg.CONF
 
