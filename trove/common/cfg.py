@@ -1280,8 +1280,8 @@ edb_opts = _update_options(
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
                      'if trove_security_groups_support is True).'),
-    cfg.PortOpt('postgresql_port', default=5444,
-                help='The TCP port the server listens on.'),
+    cfg.IntOpt('postgresql_port', default=5444,
+               help='The TCP port the server listens on.'),
     cfg.StrOpt('backup_namespace',
                default='trove.guestagent.strategies.backup.experimental.'
                        'edb_impl',
