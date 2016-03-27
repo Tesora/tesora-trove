@@ -249,7 +249,7 @@ class Manager(manager.Manager):
         return replica_info
 
     def enable_as_master(self, context, replica_source_config):
-        self.enable_backups()
+        self.app.enable_backups()
         self.replication.enable_as_master(self, None)
 
     def make_read_only(self, context, read_only):
