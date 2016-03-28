@@ -35,6 +35,13 @@ class TestDatastoreVersionMetadata(TestDatastoreBase):
         self.assertEqual(ds_version.id, mapping.datastore_version_id)
         self.assertEqual('flavor', str(mapping.key))
 
+        mapping = datastore_models.DBDatastoreVersionMetadata.find_by(
+            datastore_version_id=ds_version.id,
+            value=self.volume_type, deleted=False, key='volume_type')
+        self.assertEqual(str(self.volume_type), mapping.value)
+        self.assertEqual(ds_version.id, mapping.datastore_version_id)
+        self.assertEqual('volume_type', str(mapping.key))
+
     def test_add_existing_associations(self):
         dsmetadata = datastore_models.DatastoreVersionMetadata
         self.assertRaisesRegexp(
@@ -44,6 +51,12 @@ class TestDatastoreVersionMetadata(TestDatastoreBase):
             dsmetadata.add_datastore_version_flavor_association,
             self.ds_name, self.ds_version, [self.flavor_id])
 
+        dsmetadata = datastore_models.DatastoreVersionMetadata
+        self.assertRaises(
+            exception.DatastoreVolumeTypeAssociationAlreadyExists,
+            dsmetadata.add_datastore_version_volume_type_association,
+            self.ds_name, self.ds_version, [self.volume_type])
+
     def test_delete_nonexistent_mapping(self):
         dsmeta = datastore_models.DatastoreVersionMetadata
         self.assertRaisesRegexp(
@@ -52,6 +65,12 @@ class TestDatastoreVersionMetadata(TestDatastoreBase):
             % (self.ds_name, self.ds_version),
             dsmeta.delete_datastore_version_flavor_association,
             self.ds_name, self.ds_version, flavor_id=2)
+
+        self.assertRaises(
+            exception.DatastoreVolumeTypeAssociationNotFound,
+            dsmeta.delete_datastore_version_volume_type_association,
+            self.ds_name, self.ds_version,
+            volume_type_name='some random thing')
 
     def test_delete_mapping(self):
         flavor_id = 2
@@ -79,3 +98,33 @@ class TestDatastoreVersionMetadata(TestDatastoreBase):
             delete_datastore_version_flavor_association(self.ds_name,
                                                         self.ds_version,
                                                         flavor_id)
+
+        volume_type = 'this is bogus'
+        dsmetadata = datastore_models. DatastoreVersionMetadata
+        dsmetadata.add_datastore_version_volume_type_association(
+            self.ds_name,
+            self.ds_version,
+            [volume_type])
+        dsmetadata.delete_datastore_version_volume_type_association(
+            self.ds_name,
+            self.ds_version,
+            volume_type)
+        datastore = datastore_models.Datastore.load(self.ds_name)
+        ds_version = datastore_models.DatastoreVersion.load(datastore,
+                                                            self.ds_version)
+        mapping = datastore_models.DBDatastoreVersionMetadata.find_by(
+            datastore_version_id=ds_version.id, value=volume_type,
+            key='volume_type')
+        self.assertTrue(mapping.deleted)
+        # check update
+        dsmetadata.add_datastore_version_volume_type_association(
+            self.ds_name, self.ds_version, [volume_type])
+        mapping = datastore_models.DBDatastoreVersionMetadata.find_by(
+            datastore_version_id=ds_version.id, value=volume_type,
+            key='volume_type')
+        self.assertFalse(mapping.deleted)
+        # clear the mapping
+        dsmetadata.delete_datastore_version_volume_type_association(
+            self.ds_name,
+            self.ds_version,
+            volume_type)
