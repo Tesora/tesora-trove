@@ -275,7 +275,7 @@ class Manager(manager.Manager):
 
     def get_last_txn(self, context):
         master_host = self.app.pg_primary_host()
-        repl_offset = self.app.get_latest_txn_id(context)
+        repl_offset = self.get_latest_txn_id(context)
         return master_host, repl_offset
 
     def wait_for_txn(self, context, txn):
