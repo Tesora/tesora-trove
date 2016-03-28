@@ -139,13 +139,13 @@ class OracleSyncReplication(base.Replication):
                                    pwfile, pfile, oratabfile, oracnffile,
                                    run_as_root=True, root_helper='sudo')
         oradata_encoded = operating_system.read_file(
-            datafile, codec=stream_codecs.Base64Codec(), as_root=True)
+            datafile, codec=stream_codecs.Base64Codec(), as_root=True,
+            decode=False)
         _cleanup_tmp_files()
         master_ref = {
             'host': netutils.get_my_ipv4(),
             'db_name': self._get_config().db_name,
             'db_list': db_list,
-            'post_processing': True,
             'oradata': oradata_encoded,
         }
         return master_ref
@@ -153,6 +153,10 @@ class OracleSyncReplication(base.Replication):
     def backup_required_for_replication(self):
         LOG.debug('Request for replication backup: no backup required')
         return False
+
+    def post_processing_required_for_replication(self):
+        """"Post processing required for replication"""
+        return True
 
     def snapshot_for_replication(self, context, service,
                                  location, snapshot_info):
@@ -166,11 +170,44 @@ class OracleSyncReplication(base.Replication):
             row = client.fetchone()
             return int(row[0]) > 0
 
-    def enable_as_master(self, service, master_config, for_failover=False):
-        """Turn a running slave node into a master node"""
-        if for_failover:
-            # Turn this slave node into master when failing over
-            # (eject-replica-source)
+    def wait_for_txn(self):
+        # Turn this slave node into master when switching over
+        # (promote-to-replica-source)
+        if self._log_apply_is_running():
+            # Switchover from slave to master only if the current
+            # instance is already a slave
+            with ora_service.OracleConnection(
+                    self._get_config().db_name) as conn:
+                cursor = conn.cursor()
+                cursor.execute("ALTER DATABASE COMMIT TO SWITCHOVER TO "
+                               "PRIMARY WITH SESSION SHUTDOWN")
+                conn.shutdown(mode=cx_Oracle.DBSHUTDOWN_IMMEDIATE)
+                cursor.execute("alter database dismount")
+                conn.shutdown(mode=cx_Oracle.DBSHUTDOWN_FINAL)
+
+            # The DB has been shut down at this point, need to establish a
+            # new connection in PRELIM_AUTH mode in order to start it up.
+            with ora_service.OracleConnection(
+                    self._get_config().db_name,
+                    mode=(cx_Oracle.SYSDBA |
+                          cx_Oracle.PRELIM_AUTH)) as conn:
+                conn.startup()
+
+            # DB is now up but not open, re-connect to the DB in SYSDBA
+            # mode to open it.
+            with ora_service.OracleConnection(
+                    self._get_config().db_name) as conn:
+                cursor = conn.cursor()
+                cursor.execute("alter database mount")
+                cursor.execute("alter database open")
+                cursor.execute("ALTER SYSTEM SWITCH LOGFILE")
+            ora_status = ora_service.OracleAppStatus()
+            ora_status.update()
+
+    def enable_as_master(self, service, master_config):
+        # Turn this slave node into master when failing over
+        # (eject-replica-source)
+        if self._log_apply_is_running():
             with ora_service.LocalOracleClient(
                     self._get_config().db_name) as client:
                 client.execute("ALTER DATABASE RECOVER MANAGED STANDBY "
@@ -178,39 +215,6 @@ class OracleSyncReplication(base.Replication):
                 client.execute("ALTER DATABASE ACTIVATE STANDBY DATABASE")
                 client.execute("ALTER DATABASE OPEN")
                 client.execute("ALTER SYSTEM SWITCH LOGFILE")
-        else:
-            # Turn this slave node into master when switching over
-            # (promote-to-replica-source)
-            if self._log_apply_is_running():
-                # Switchover from slave to master only if the current
-                # instance is already a slave
-                with ora_service.OracleConnection(
-                        self._get_config().db_name) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("ALTER DATABASE COMMIT TO SWITCHOVER TO "
-                                   "PRIMARY WITH SESSION SHUTDOWN")
-                    conn.shutdown(mode=cx_Oracle.DBSHUTDOWN_IMMEDIATE)
-                    cursor.execute("alter database dismount")
-                    conn.shutdown(mode=cx_Oracle.DBSHUTDOWN_FINAL)
-
-                # The DB has been shut down at this point, need to establish a
-                # new connection in PRELIM_AUTH mode in order to start it up.
-                with ora_service.OracleConnection(
-                        self._get_config().db_name,
-                        mode=(cx_Oracle.SYSDBA |
-                              cx_Oracle.PRELIM_AUTH)) as conn:
-                    conn.startup()
-
-                # DB is now up but not open, re-connect to the DB in SYSDBA
-                # mode to open it.
-                with ora_service.OracleConnection(
-                        self._get_config().db_name) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("alter database mount")
-                    cursor.execute("alter database open")
-                    cursor.execute("ALTER SYSTEM SWITCH LOGFILE")
-                ora_status = ora_service.OracleAppStatus()
-                ora_status.update()
 
     def _create_tns_entry(self, dbname, host, service_name):
         return ('(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)'
@@ -278,19 +282,10 @@ class OracleSyncReplication(base.Replication):
         db_list = [db['db_unique_name'] for db in dbs]
         dg_config_list = ",".join(db_list)
         fal_server_list = ",".join("'%s'" % db for db in db_list)
-        file_name_convert_list = ",".join(
-            ["'%(db_unique_name)s','%(db_name)s'" %
-             {'db_unique_name': db['db_unique_name'],
-              'db_name': self._get_config().db_name} for db in dbs])
-
         oracle_client.execute("ALTER SYSTEM SET LOG_ARCHIVE_CONFIG="
                               "'DG_CONFIG=(%s)'" % dg_config_list)
         oracle_client.execute("ALTER SYSTEM SET FAL_SERVER=%s" %
                               fal_server_list)
-        oracle_client.execute("ALTER SYSTEM SET DB_FILE_NAME_CONVERT=%s "
-                              "SCOPE=SPFILE" % file_name_convert_list)
-        oracle_client.execute("ALTER SYSTEM SET LOG_FILE_NAME_CONVERT=%s "
-                              "SCOPE=SPFILE" % file_name_convert_list)
         for index in range(2, 31):
             oracle_client.execute("ALTER SYSTEM SET LOG_ARCHIVE_DEST_%s=''" %
                                   index)
@@ -346,16 +341,6 @@ class OracleSyncReplication(base.Replication):
             conn.startup()
         db_list = [db['db_unique_name'] for db in dbs]
         fal_server_list = ",".join("'%s'" % db for db in db_list)
-        log_archive_dest = []
-        dest_index = 1
-        for db in db_list:
-            if db != self._get_config().db_unique_name:
-                dest_index += 1
-                log_archive_dest.append("SET LOG_ARCHIVE_DEST_%(dest_index)s="
-                                        "'SERVICE=%(db)s ASYNC VALID_FOR="
-                                        "(ONLINE_LOGFILES,PRIMARY_ROLE) "
-                                        "DB_UNIQUE_NAME=%(db)s'" %
-                                        {'dest_index': dest_index, 'db': db})
         # The RMAN DUPLICATE command requires connecting to target with the
         # 'sys' user. If we use any other user, such as 'os_admin', even with
         # the sysdba and sysoper roles assigned, it will still fail with:
@@ -367,7 +352,6 @@ run {
 DUPLICATE TARGET DATABASE FOR STANDBY
 FROM ACTIVE DATABASE DORECOVER SPFILE
 SET db_unique_name='%(db_unique_name)s' COMMENT 'Is standby'
-%(log_archive_dest)s
 SET FAL_SERVER=%(fal_server_list)s COMMENT 'Is primary'
 NOFILENAMECHECK;
 }
@@ -380,9 +364,7 @@ EOF\"
                                 'db_name': self._get_config().db_name,
                                 'db_unique_name':
                                     self._get_config().db_unique_name,
-                                'fal_server_list': fal_server_list,
-                                'log_archive_dest':
-                                "\n".join(log_archive_dest)})
+                                'fal_server_list': fal_server_list})
         utils.execute_with_timeout("su - oracle -c " + duplicate_cmd,
                                    run_as_root=True, root_helper='sudo',
                                    timeout=CONF.restore_usage_timeout,
@@ -397,16 +379,11 @@ EOF\"
 
     def complete_slave_setup(self, context, master_detail, slave_detail):
         """Finalize slave setup and start the slave Oracle processes."""
-        dbs = [master_detail]
-        dbs.extend(slave_detail)
-        is_new_repl_node = self._is_new_replication_node()
-        self._create_tns_file(dbs)
-        if is_new_repl_node:
+        if self._is_new_replication_node():
+            dbs = [master_detail]
+            dbs.extend(slave_detail)
+            self._create_tns_file(dbs)
             self._complete_new_slave_setup(master_detail['host'], dbs)
-        else:
-            with ora_service.LocalOracleClient(self._get_config().db_name,
-                                               service=True) as ora_client:
-                self._update_dynamic_params(ora_client, dbs)
 
     def sync_data_to_slaves(self, context):
         """Trigger an archive log switch and flush transactions down to the
@@ -451,7 +428,8 @@ EOF\"
         # (e.g. the control, pfile, password, oracle.cnf file ... etc)
         oradata = master_info['oradata']
         operating_system.write_file(tmp_data_path, oradata,
-                                    codec=stream_codecs.Base64Codec())
+                                    codec=stream_codecs.Base64Codec(),
+                                    encode=False)
         utils.execute_with_timeout('tar', '-Pxzvf', tmp_data_path,
                                    run_as_root=True, root_helper='sudo')
 
@@ -519,13 +497,21 @@ EOF\"
                                    timeout=CONF.usage_timeout)
 
     def detach_slave(self, service, for_failover=False):
-        """Detach this slave by disabling the log apply process"""
+        """Detach this slave by disabling the log apply process,
+        setting it to read/write.
+        """
         if not for_failover:
-            LOG.debug('detach_slave - Disabling the log apply process.')
             with ora_service.LocalOracleClient(
                     self._get_config().db_name) as client:
                 client.execute("ALTER DATABASE RECOVER MANAGED STANDBY "
                                "DATABASE CANCEL")
+                client.execute("ALTER DATABASE ACTIVATE STANDBY DATABASE")
+                client.execute("ALTER DATABASE OPEN")
+                for index in range(2, 31):
+                    client.execute("ALTER SYSTEM SET LOG_ARCHIVE_DEST_%s=''" %
+                                   index)
+                client.execute("ALTER SYSTEM SET LOG_ARCHIVE_CONFIG=''")
+                client.execute("ALTER SYSTEM SET FAL_SERVER=''")
 
     def cleanup_source_on_replica_detach(self, service, replica_info):
         # Nothing needs to be done to the master when a replica goes away.
