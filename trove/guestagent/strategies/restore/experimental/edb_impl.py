@@ -56,3 +56,6 @@ class EdbPgBaseBackup(postgresql_impl.PgBaseBackup):
 
     def _build_app(self):
         return EDBApp()
+
+class EdbPgBaseBackupIncremental(EdbPgBaseBackup):
+    pass
