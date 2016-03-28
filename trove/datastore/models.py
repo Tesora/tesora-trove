@@ -19,7 +19,7 @@ from oslo_log import log as logging
 
 from trove.common import cfg
 from trove.common import exception
-from trove.common.remote import create_cinder_client
+from trove.common import remote
 from trove.common.remote import create_nova_client
 from trove.common import utils
 from trove.db import get_db_api
@@ -787,7 +787,7 @@ class DatastoreVersionMetadata(object):
                 datastore_version_id)
 
             # then get the list from cinder
-            cinder_volume_types = create_cinder_client(
+            cinder_volume_types = remote.create_cinder_client(
                 context).volume_types.list()
 
             # if there's metadata: intersect,
@@ -798,7 +798,8 @@ class DatastoreVersionMetadata(object):
 
                 # Cinder volume type names are unique, intersect
                 ds_volume_types = (f for f in cinder_volume_types
-                                   if f.name in volume_types)
+                                   if ((f.name in volume_types) or
+                                       (f.id in volume_types)))
                 allowed_volume_types = tuple(
                     volume_type_model(volume_type=item)
                     for item in ds_volume_types)
