@@ -192,5 +192,7 @@ class ClusterController(wsgi.Controller):
                                             datastore_version, instances,
                                             extended_properties,
                                             locality)
+        if locality:
+            cluster.locality = locality
         view = views.load_view(cluster, req=req, load_servers=False)
         return wsgi.Result(view.data(), 200)
