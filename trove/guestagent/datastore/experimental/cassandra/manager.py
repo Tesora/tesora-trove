@@ -295,7 +295,7 @@ class Manager(manager.Manager):
 
     def cluster_secure(self, context, password):
         os_admin = self.app.cluster_secure(password)
-        self.__admin = CassandraAdmin(self.app.get_current_superuser())
+        self.__admin = service.CassandraAdmin(self.app.get_current_superuser())
         return os_admin
 
     def get_admin_credentials(self, context):
@@ -303,4 +303,4 @@ class Manager(manager.Manager):
 
     def store_admin_credentials(self, context, admin_credentials):
         self.app.store_admin_credentials(admin_credentials)
-        self.__admin = CassandraAdmin(self.app.get_current_superuser())
+        self.__admin = service.CassandraAdmin(self.app.get_current_superuser())
