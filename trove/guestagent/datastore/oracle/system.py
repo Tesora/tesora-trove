@@ -78,5 +78,5 @@ DELETE_DB_COMMAND = ("dbca -silent -deleteDatabase -sourceDB %(db)s "
 
 PARAMETER_DIR_NAME = "dbs"
 PFILE_NAME = "os_pfile.ora"
-SPFILE_NAME = "os_spfile.ora"
+SPFILE_NAME = "spfile%(db_name)s.ora"
 NEW_SPFILE_NAME = "new_os_spfile.ora"
