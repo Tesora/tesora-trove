@@ -201,6 +201,9 @@ class ReplicationRunner(TestRunner):
             self.report.log("Checking data on host %s" % host)
             self.assert_verify_replication_data(data_type, host)
 
+    def run_verify_replica_data_after_single(self):
+        self.assert_verify_replica_data(self.instance_info.id, DataType.micro)
+
     def run_verify_replica_data_new(self):
         self.assert_verify_replica_data(self.instance_info.id, DataType.tiny)
 
