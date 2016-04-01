@@ -92,6 +92,7 @@ class Cluster(object):
         self._db_instances = None
         self._server_group = None
         self._server_group_loaded = False
+        self._locality = None
 
     @classmethod
     def get_guest(cls, instance):
@@ -204,10 +205,25 @@ class Cluster(object):
     @property
     def server_group(self):
         # The server group could be empty, so we need a flag to cache it
-        if not self._server_group_loaded:
+        if not self._server_group_loaded and self.instances:
             self._server_group = self.instances[0].server_group
-        self._server_group_loaded = True
+            self._server_group_loaded = True
         return self._server_group
+
+    @property
+    def locality(self):
+        if not self._locality and not self._server_group_loaded:
+            if self.server_group:
+                self._locality = srv_grp.ServerGroup.get_locality(
+                    self._server_group)
+        return self._locality
+
+    @locality.setter
+    def locality(self, value):
+        """This is to facilitate the fact that the server group may not be
+        set up before the create command returns.
+        """
+        self._locality = value
 
     @classmethod
     def create(cls, context, name, datastore, datastore_version,
@@ -238,6 +254,11 @@ class Cluster(object):
 
         self.update_db(task_status=ClusterTasks.DELETING)
 
+        # we force the server-group delete here since we need to load the
+        # group while the instances still exist. Also, since the instances
+        # take a while to be removed they might not all be gone even if we
+        # do it after the delete.
+        srv_grp.ServerGroup.delete(self.context, self.server_group, force=True)
         for db_inst in db_insts:
             instance = inst_models.load_any_instance(self.context, db_inst.id)
             instance.delete()
