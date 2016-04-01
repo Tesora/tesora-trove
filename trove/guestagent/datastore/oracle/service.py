@@ -123,7 +123,6 @@ class OracleApp(object):
         LOG.debug("state_change_wait_time = %s." % self.state_change_wait_time)
 
         self.pfile = self._param_file_path(system.PFILE_NAME)
-        self.spfile = self._param_file_path(system.SPFILE_NAME)
         self.new_spfile = self._param_file_path(system.NEW_SPFILE_NAME)
         self.configuration_manager = None
         if operating_system.exists(self.pfile):
@@ -247,11 +246,13 @@ class OracleApp(object):
         """Checks if there is a new SPFILE and replaces the old.
         The database must be shutdown before running this.
         """
+        spfile = self._param_file_path(
+            system.SPFILE_NAME % {'db_name': OracleAdmin().database_name})
         if operating_system.exists(self.new_spfile, as_root=True):
             LOG.debug('Found a new SPFILE.')
             operating_system.move(
                 self.new_spfile,
-                self.spfile,
+                spfile,
                 force=True
             )
 
