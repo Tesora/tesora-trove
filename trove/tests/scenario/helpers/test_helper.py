@@ -29,16 +29,20 @@ class DataType(Enum):
     _fn_data dictionary defined in TestHelper.
     """
 
+    # micro amount of data, useful for testing datastore logging, etc.
+    micro = 1
+    # another micro dataset (also for datastore logging)
+    micro2 = 2
     # very tiny amount of data, useful for testing replication
     # propagation, etc.
-    tiny = 1
+    tiny = 3
     # another tiny dataset (also for replication propagation)
-    tiny2 = 2
+    tiny2 = 4
     # small amount of data (this can be added to each instance
     # after creation, for example).
-    small = 3
+    small = 5
     # large data, enough to make creating a backup take 20s or more.
-    large = 4
+    large = 6
 
 
 class TestHelper(object):
@@ -98,6 +102,12 @@ class TestHelper(object):
         self.DATA_START = 'start'
         self.DATA_SIZE = 'size'
         self._fn_data = {
+            DataType.micro.name: {
+                self.DATA_START: 100,
+                self.DATA_SIZE: 10},
+            DataType.micro2.name: {
+                self.DATA_START: 200,
+                self.DATA_SIZE: 10},
             DataType.tiny.name: {
                 self.DATA_START: 1,
                 self.DATA_SIZE: 100},
