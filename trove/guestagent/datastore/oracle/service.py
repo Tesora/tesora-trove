@@ -151,6 +151,7 @@ class OracleApp(object):
 
     def start_db(self, update_db=False):
         LOG.debug("Start the Oracle databases.")
+        self.update_spfile()
         os.environ["ORACLE_HOME"] = CONF.get(MANAGER).oracle_home
         ora_admin = OracleAdmin()
         databases, marker = ora_admin.list_databases()
@@ -164,7 +165,6 @@ class OracleApp(object):
                                            password=OracleConfig().admin_password,
                                            mode=(cx_Oracle.SYSDBA |
                                                  cx_Oracle.PRELIM_AUTH))
-            self.update_spfile()
             connection.startup()
             connection = cx_Oracle.connect(user=ADMIN_USER_NAME,
                                            password=OracleConfig().admin_password,
