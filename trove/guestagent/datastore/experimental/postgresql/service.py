@@ -797,7 +797,7 @@ class PgSqlAdmin(object):
     def _get_users(self, context):
         """Return all non-system Postgres users on the instance."""
         results = self.query(
-            pgsql_query.UserQuery.list(ignore=IGNORE_DBS_LIST),
+            pgsql_query.UserQuery.list(ignore=IGNORE_USERS_LIST),
             timeout=30,
         )
         return [self._build_user(context, row[0].strip()) for row in results]
