@@ -253,6 +253,7 @@ class OracleApp(object):
             operating_system.move(
                 self.new_spfile,
                 spfile,
+                as_root=True,
                 force=True
             )
 
