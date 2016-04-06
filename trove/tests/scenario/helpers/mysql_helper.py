@@ -24,6 +24,9 @@ class MysqlHelper(SqlHelper):
     def get_helper_credentials(self):
         return {'name': 'lite', 'password': 'litepass', 'database': 'firstdb'}
 
+    def get_helper_credentials_root(self):
+        return {'name': 'root', 'password': 'rootpass'}
+
     def get_valid_database_definitions(self):
         return [{'name': 'db1', 'character_set': 'latin2',
                  'collate': 'latin2_general_ci'},
@@ -46,3 +49,9 @@ class MysqlHelper(SqlHelper):
 
     def get_invalid_groups(self):
         return [{'key_buffer_size': 4}, {"join_buffer_size": 'string_value'}]
+
+    def get_exposed_user_log_names(self):
+        return ['general', 'slow_query']
+
+    def get_unexposed_sys_log_names(self):
+        return ['guest', 'error']

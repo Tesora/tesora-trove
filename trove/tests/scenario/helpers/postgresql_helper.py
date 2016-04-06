@@ -42,7 +42,7 @@ class PostgresqlHelper(SqlHelper):
                  'databases': [{'name': 'db1'}, {'name': 'db2'}]}]
 
     def get_dynamic_group(self):
-        return {'max_worker_processes': 11}
+        return {'effective_cache_size': '528MB'}
 
     def get_non_dynamic_group(self):
         return {'max_connections': 113}
@@ -51,3 +51,9 @@ class PostgresqlHelper(SqlHelper):
         return [{'timezone': 997},
                 {"max_worker_processes": 'string_value'},
                 {"standard_conforming_strings": 'string_value'}]
+
+    def get_exposed_user_log_names(self):
+        return ['general']
+
+    def log_enable_requires_restart(self):
+        return True

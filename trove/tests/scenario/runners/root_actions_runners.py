@@ -53,10 +53,10 @@ class RootActionsRunner(TestRunner):
                            self.auth_client.root.delete, instance_id)
 
     def run_enable_root_no_password(self, expected_http_code=200):
-        self.current_root_creds = self.assert_root_enable(
+        self.current_root_creds = self.assert_root_create(
             self.instance_info.id, None, expected_http_code)
 
-    def assert_root_enable(self, instance_id, root_password,
+    def assert_root_create(self, instance_id, root_password,
                            expected_http_code):
         if root_password:
             root_creds = self.auth_client.root.create_instance_root(
@@ -77,7 +77,7 @@ class RootActionsRunner(TestRunner):
 
     def run_enable_root_with_password(self, expected_http_code=200):
         password = self.test_helper.get_valid_root_password()
-        self.current_root_creds = self.assert_root_enable(
+        self.current_root_creds = self.assert_root_create(
             self.instance_info.id, password, expected_http_code)
 
     def run_check_root_still_enabled(self, expected_http_code=200):
@@ -177,4 +177,19 @@ class Couchbase_eeRootActionsRunner(RootActionsRunner):
         raise SkipTest("Operation is currently not supported.")
 
     def run_disable_root(self):
+        raise SkipTest("Operation is currently not supported.")
+
+
+class PxcRootActionsRunner(RootActionsRunner):
+
+    def run_disable_root_before_enabled(self):
+        raise SkipTest("Operation is currently not supported.")
+
+    def run_enable_root_with_password(self):
+        raise SkipTest("Operation is currently not supported.")
+
+    def run_disable_root(self):
+        raise SkipTest("Operation is currently not supported.")
+
+    def check_root_still_enabled_after_disable(self):
         raise SkipTest("Operation is currently not supported.")

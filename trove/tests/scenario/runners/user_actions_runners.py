@@ -13,13 +13,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import urllib
+from six.moves.urllib import parse as urllib_parse
 
 from proboscis import SkipTest
 
 from trove.tests.scenario.runners.test_runners import TestRunner
 from troveclient.compat import exceptions
-from troveclient.openstack.common.apiclient.exceptions import ValidationError
 
 
 class UserActionsRunner(TestRunner):
@@ -127,7 +126,7 @@ class UserActionsRunner(TestRunner):
                 list_page, full_list, limit, len(full_list))
 
     def as_pagination_marker(self, user):
-        return urllib.quote(user.name)
+        return urllib_parse.quote(user.name)
 
     def run_user_create_with_no_attributes(
             self, expected_exception=exceptions.BadRequest,
@@ -195,12 +194,6 @@ class UserActionsRunner(TestRunner):
         self.assert_raises(
             expected_exception, expected_http_code,
             self.auth_client.users.create, instance_id, serial_users_def)
-
-    def run_user_update_with_no_attributes(self):
-        # Note: this is caught on the client-side.
-        self.assert_user_attribute_update_failure(
-            self.instance_info.id, self.first_user_def,
-            {}, ValidationError, None)
 
     def run_user_update_with_blank_name(
             self, expected_exception=exceptions.BadRequest,
@@ -366,7 +359,7 @@ class UserActionsRunner(TestRunner):
 class MysqlUserActionsRunner(UserActionsRunner):
 
     def as_pagination_marker(self, user):
-        return urllib.quote('%s@%s' % (user.name, user.host))
+        return urllib_parse.quote('%s@%s' % (user.name, user.host))
 
 
 class MariadbUserActionsRunner(MysqlUserActionsRunner):
