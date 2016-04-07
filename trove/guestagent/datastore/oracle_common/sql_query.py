@@ -47,16 +47,37 @@
 # License, version 3, these Appropriate Legal Notices must retain the logo of
 # Tesora or display the words "Initial Development by Tesora" if the display of
 # the logo is not reasonably feasible for technical reasons.
-"""
 
-Intermediary class for building SQL queries for use by the guest agent.
-Do not hard-code strings into the guest agent; use this module to build
-them for you.
+import re
 
-"""
+from oslo_log import log as logging
+
+LOG = logging.getLogger(__name__)
 
 
-class Query(object):
+class OracleSql(object):
+    """The base class of Oracle SQL statement classes.
+       Child classes must implement the statement property.
+    """
+    def __repr__(self):
+        return str(self)
+
+    def __str__(self):
+        LOG.debug('SQL statement: ' + self._cleansed_statement)
+        return self.statement
+
+    @property
+    def statement(self):
+        return ""
+
+    @property
+    def _cleansed_statement(self):
+        return re.sub(r'IDENTIFIED BY ".*"',
+                      'IDENTIFIED BY "***"',
+                      self.statement)
+
+
+class Query(OracleSql):
 
     def __init__(self, columns=None, tables=None, where=None, order=None,
                  group=None, limit=None):
@@ -67,9 +88,6 @@ class Query(object):
         self.group = group or []
         self.limit = limit
 
-    def __repr__(self):
-        return str(self)
-
     @property
     def _columns(self):
         if not self.columns:
@@ -78,6 +96,8 @@ class Query(object):
 
     @property
     def _tables(self):
+        if not self.tables:
+            raise ValueError('SQL query requires a table.')
         return "FROM %s" % (", ".join(self.tables))
 
     @property
@@ -104,7 +124,8 @@ class Query(object):
             return ""
         return "LIMIT %s" % str(self.limit)
 
-    def __str__(self):
+    @property
+    def statement(self):
         query = [
             self._columns,
             self._tables,
@@ -117,80 +138,168 @@ class Query(object):
         return " ".join(query)
 
 
-class CreateUser(object):
+class CreateUser(OracleSql):
 
-    def __init__(self, user, password=None):
+    def __init__(self, user, password):
         self.user = user
         self.password = password
 
-    def __repr__(self):
-        return str(self)
+    @property
+    def log_statement(self):
+        return 'CREATE USER %s IDENTIFIED BY "***"' % (self.user,)
 
     @property
-    def _identity(self):
-        if self.password:
-            return 'IDENTIFIED BY "%s"' % self.password
-        return ""
+    def statement(self):
+        return 'CREATE USER %s IDENTIFIED BY "%s"' % (self.user, self.password)
 
-    def __str__(self):
-        query = ['CREATE USER %s' % self.user,
-                 self._identity,
-                 ]
-        query = [q for q in query if q]
-        return " ".join(query)
 
-class DropUser(object):
+class DropUser(OracleSql):
 
     def __init__(self, user, cascade=False):
         self.user = user
         self.cascade = cascade
 
-    def __repr__(self):
-        return str(self)
-
-    def __str__(self):
+    @property
+    def statement(self):
         q = "DROP USER %s" % self.user
         if self.cascade:
             q += " CASCADE"
         return q
 
-class CreateRole(object):
+
+class AlterUser(OracleSql):
+
+    def __init__(self, user, clause):
+        self.user = user
+        self.clause = clause
+        self._log = "ALTER USER %s %s" % (self.user, self.clause)
+
+    @classmethod
+    def change_password(cls, user, password):
+        q = cls(user, 'IDENTIFIED BY "%s"' % password)
+        q._log = q._log.replace(password, '***')
+        return q
+
+    @property
+    def log_statement(self):
+        return self._log
+
+    @property
+    def statement(self):
+        return "ALTER USER %s %s" % (self.user, self.clause)
+
+
+class CreateRole(OracleSql):
 
     def __init__(self, role):
         self.role = role
 
-    def __repr__(self):
-        return str(self)
-
-    def __str__(self):
+    @property
+    def statement(self):
         return "CREATE ROLE %s" % self.role
 
-class AlterUser(object):
 
-    def __init__(self, user, password=None):
+class Grant(OracleSql):
+
+    def __init__(self, user, privileges):
+        self.user = user
+        self.privileges = privileges
+
+    @property
+    def statement(self):
+        if type(self.privileges) is list:
+            privileges_str = ", ".join(self.privileges)
+        else:
+            privileges_str = self.privileges
+        return "GRANT %s TO %s" % (privileges_str, self.user)
+
+
+class AlterSystem(OracleSql):
+
+    def __init__(self, clause):
+        self.clause = None
+
+    @classmethod
+    def set_parameter(cls, k, v, deferred=False):
+        scope = 'SPFILE' if deferred else 'BOTH'
+        q = cls('SET %s = %s SCOPE = %s' % (k, v, scope))
+        return q
+
+    @property
+    def statement(self):
+        return "ALTER SYSTEM " + self.clause
+
+
+class AlterDatabase(OracleSql):
+
+    def __init__(self, clause):
+        self.clause = clause
+
+    @property
+    def statement(self):
+        return "ALTER DATABASE %s" % self.clause
+
+
+class CreatePFile(OracleSql):
+    _SOURCE_TYPE = 'SPFILE'
+    _TARGET_TYPE = 'PFILE'
+
+    def __init__(self, source=None, target=None):
+        self.source = source
+        self.target = target
+
+    @property
+    def statement(self):
+        return ("CREATE %s%s FROM %s%s"
+                % (self._TARGET_TYPE,
+                   ("='%s'" % self.target if self.target else ''),
+                   self._SOURCE_TYPE,
+                   ("'='%s'" % self.source if self.source else '')))
+
+
+class CreateSPFile(CreatePFile):
+    _SOURCE_TYPE = 'PFILE'
+    _TARGET_TYPE = 'SPFILE'
+
+
+class CreatePDB(OracleSql):
+
+    def __init__(self, pdb, user, password):
+        self.pdb = pdb
         self.user = user
         self.password = password
 
-    def __repr__(self):
-        return str(self)
+    @property
+    def log_statement(self):
+        return ('CREATE PLUGGABLE DATABASE %s '
+                'ADMIN USER %s '
+                'IDENTIFIED BY "***"'
+                % (self.pdb, self.user,))
 
-    def __str__(self):
-        q = "ALTER USER %s" % self.user
-        if self.password:
-            q += " IDENTIFIED BY %s" % self.password
-        return q
+    @property
+    def statement(self):
+        return ('CREATE PLUGGABLE DATABASE %s '
+                'ADMIN USER %s '
+                'IDENTIFIED BY "%s"'
+                % (self.pdb, self.user, self.password))
 
 
-class AlterSystem(object):
+class DropPDB(OracleSql):
 
-    def __init__(self):
-        self.query = None
+    def __init__(self, pdb):
+        self.pdb = pdb
 
-    @classmethod
-    def set_parameter(cls, k, v):
-        q = AlterSystem()
-        q.query = "SET %s = %s" % (k, v)
-        return q
+    @property
+    def statement(self):
+        return 'DROP PLUGGABLE DATABASE %s INCLUDING DATAFILES' % self.pdb
 
-    def __str__(self):
-        return "ALTER SYSTEM " + self.query
+
+class AlterPDB(OracleSql):
+
+    def __init__(self, pdb, clause):
+        self.pdb = pdb
+        self.clause = clause
+
+    @property
+    def statement(self):
+        return 'ALTER PLUGGABLE DATABASE %s %s' % (self.pdb, self.clause)

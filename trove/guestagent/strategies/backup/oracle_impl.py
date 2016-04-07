@@ -53,126 +53,86 @@ from oslo_log import log as logging
 from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
-from trove.common import utils
 from trove.guestagent.common import operating_system
-from trove.guestagent.datastore.oracle import (
-    service as oracle_service)
-from trove.guestagent.datastore.oracle import sql_query
-from trove.guestagent.datastore.oracle.service import LocalOracleClient
-from trove.guestagent.db import models
+from trove.guestagent.datastore.oracle import service
+from trove.guestagent.datastore.oracle_common import sql_query
 from trove.guestagent.strategies.backup import base
 
 CONF = cfg.CONF
-
+MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'oracle'
 LOG = logging.getLogger(__name__)
-LARGE_TIMEOUT = 1200
-BACKUP_DIR = CONF.get('oracle').mount_point + '/backupset_files'
-REDO_LOGS_BKUP_DIR = (CONF.get('oracle').fast_recovery_area +
-                      '/%(db_name)s/backupset')
-ORACLE_HOME = CONF.get('oracle').oracle_home
-CONF_FILE = CONF.get('oracle').conf_file
-ADMIN_USER = 'os_admin'
+
 
 class RmanBackup(base.BackupRunner):
     """Implementation of Backup Strategy for RMAN."""
     __strategy_name__ = 'rmanbackup'
 
     def __init__(self, *args, **kwargs):
-        self.status = oracle_service.OracleAppStatus()
-        self.ora_admin = oracle_service.OracleAdmin()
-        self.oracnf = oracle_service.OracleConfig()
-        self.db_name = self._get_db_name()
+        self.app = service.OracleVMApp(service.OracleVMAppStatus())
+        self.db_name = self.app.admin.database_name
         self.backup_id = kwargs.get('filename')
         self.backup_level = 0
         super(RmanBackup, self).__init__(*args, **kwargs)
 
-    def _get_db_name(self):
-        dbs, marker = self.ora_admin.list_databases()
-        # There will be only one Oracle database per trove instance
-        oradb = models.OracleSchema.deserialize_schema(dbs[0])
-        return oradb.name
-
     def _run_pre_backup(self):
         """Create backupset in backup dir"""
         self.cleanup()
-        operating_system.create_directory(BACKUP_DIR,
-                                          user='oracle', group='oinstall',
-                                          force=True, as_root=True)
         try:
             est_backup_size = self.estimate_backup_size()
-            avail = operating_system.get_bytes_free_on_fs(CONF.get('oracle').
-                                                          mount_point)
+            avail = operating_system.get_bytes_free_on_fs(
+                self.app.paths.data_dir)
             if est_backup_size > avail:
                 # TODO(schang): BackupRunner will leave the trove instance
                 # in a BACKUP state
                 raise OSError(_("Need more free space to run RMAN backup, "
-                                "estimated %(est_backup_size)s"
-                                " and found %(avail)s bytes free ") %
+                                "estimated %(est_backup_size)s "
+                                "and found %(avail)s bytes free.") %
                               {'est_backup_size': est_backup_size,
                                'avail': avail})
-            backup_dir = (BACKUP_DIR + '/%s') % self.db_name
-            operating_system.create_directory(backup_dir,
-                                              user='oracle',
-                                              group='oinstall',
-                                              force=True,
-                                              as_root=True)
-            backup_cmd = ("""\"\
-rman target %(admin_user)s/%(admin_pswd)s@localhost/%(db_name)s <<EOF
-run {
-configure backup optimization on;
-backup incremental level=%(backup_level)s as compressed backupset database format '%(backup_dir)s/%%I_%%u_%%s_%(backup_id)s.dat' plus archivelog;
-backup current controlfile format '%(backup_dir)s/%%I_%%u_%%s_%(backup_id)s.ctl';
-}
-EXIT;
-EOF\"
-""" % {'admin_user': ADMIN_USER, 'admin_pswd': self.oracnf.admin_password,
-       'db_name': self.db_name, 'backup_dir': backup_dir,
-       'backup_id': self.backup_id, 'backup_level': self.backup_level})
-            utils.execute_with_timeout("su - oracle -c " + backup_cmd,
-                                       run_as_root=True,
-                                       root_helper='sudo',
-                                       timeout=LARGE_TIMEOUT,
-                                       shell=True,
-                                       log_output_on_error=True)
+            bkp_dir = self.app.paths.db_backup_dir
+            operating_system.create_directory(
+                bkp_dir,
+                user=self.app.instance_owner,
+                group=self.app.instance_owner_group,
+                force=True,
+                as_root=True)
+            cmds = [
+                "configure backup optimization on",
+                ("backup incremental level=%s as compressed backupset "
+                 "database format '%s/%%I_%%u_%%s_%s.dat' plus archivelog"
+                 % (self.backup_level, bkp_dir, self.backup_id)),
+                ("backup current controlfile format '%s/%%I_%%u_%%s_%s.ctl'"
+                 % (bkp_dir, self.backup_id))]
+            script = self.app.rman_scripter(
+                cmds, self.db_name,
+                t_user=self.app.admin_user_name,
+                t_pswd=self.app.admin.ora_config.admin_password)
+            script.run(timeout=CONF.restore_usage_timeout)
 
         except exception.ProcessExecutionError as e:
             LOG.debug("Caught exception when creating backup files")
             self.cleanup()
             raise e
 
-    def _get_sp_pw_files(self):
-        """Create a list of sp and password files to be backed up"""
-        result = ['%(ora_home)s/dbs/orapw%(db_name)s' %
-                  {'ora_home': ORACLE_HOME, 'db_name': self.db_name},
-                  '%(ora_home)s/dbs/spfile%(db_name)s.ora' %
-                  {'ora_home': ORACLE_HOME, 'db_name': self.db_name}]
-        return result;
-
     @property
     def cmd(self):
         """Tars and streams the backup data to the stdout"""
-        cmd = ('sudo tar cPf - %(backup_dir)s %(sp_pw_files)s %(conf_file)s '
-               '%(redo_logs_backup)s' %
-               {'backup_dir': BACKUP_DIR,
-                'redo_logs_backup': REDO_LOGS_BKUP_DIR %
-                {'db_name': self.db_name.upper()},
-                'sp_pw_files': ' '.join(self._get_sp_pw_files()),
-                'conf_file': CONF_FILE})
-
+        cmd = 'sudo tar cPf - %s %s %s %s' % (
+            self.app.paths.backup_dir,
+            self.app.paths.orapw_file,
+            self.app.paths.spfile,
+            CONF.get(MANAGER).conf_file)
         return cmd + self.zip_cmd + self.encrypt_cmd
 
     def cleanup(self):
-        operating_system.remove(BACKUP_DIR, force=True, as_root=True,
-                                recursive=True)
-        operating_system.remove(REDO_LOGS_BKUP_DIR %
-                                {'db_name': self.db_name.upper()}, force=True,
-                                as_root=True, recursive=True)
+        operating_system.remove(self.app.paths.backup_dir,
+                                force=True, as_root=True, recursive=True)
 
     def _run_post_backup(self):
         self.cleanup()
 
     def metadata(self):
-        LOG.debug('Getting metadata from backup.')
+        LOG.debug("Getting metadata from backup.")
         meta = {'db_name': self.db_name}
         LOG.info(_("Metadata for backup: %s.") % str(meta))
         return meta
@@ -180,14 +140,13 @@ EOF\"
     def estimate_backup_size(self):
         """Estimate the backup size. The estimation is 1/3 the total size
         of datafiles, which is a conservative figure derived from the
-        Oracle RMAN backupset compression ratio."""
-        with oracle_service.LocalOracleClient(self.db_name,
-                                              service=True) as client:
-            q = sql_query.Query()
-            q.columns = ["sum(bytes)"]
-            q.tables = ["dba_data_files"]
-            client.execute(str(q))
-            result = client.fetchall()
+        Oracle RMAN backupset compression ratio.
+        """
+        with self.app.cursor(self.db_name) as cursor:
+            cursor.execute(str(sql_query.Query(
+                columns=['sum(bytes)'],
+                tables=['dba_data_files'])))
+            result = cursor.fetchall()
             return result[0][0] / 3
 
 
@@ -196,6 +155,7 @@ class RmanBackupIncremental(RmanBackup):
 
     def __init__(self, *args, **kwargs):
         super(RmanBackupIncremental, self).__init__(*args, **kwargs)
+        self.app = service.OracleVMApp(service.OracleVMAppStatus)
         self.parent_id = kwargs.get('parent_id')
         self.parent_location = kwargs.get('parent_location')
         self.parent_checksum = kwargs.get('parent_checksum')
@@ -205,35 +165,24 @@ class RmanBackupIncremental(RmanBackup):
         """Truncate all backups in the backup chain after the
         specified parent backup."""
 
-        with LocalOracleClient(self.db_name, service=True) as client:
-            max_recid = sql_query.Query()
-            max_recid.columns = ["max(recid)"]
-            max_recid.tables = ["v$backup_piece"]
-            max_recid.where = ["handle like '%%%s%%'" % self.parent_id]
-
-            q = sql_query.Query()
-            q.columns = ["recid"]
-            q.tables = ["v$backup_piece"]
-            q.where = ["recid > (%s)" % str(max_recid)]
-            client.execute(str(q))
-            delete_list = [ str(row[0]) for row in client ]
+        max_recid = sql_query.Query(
+            columns=['max(recid)'],
+            tables=['v$backup_piece'],
+            where=["handle like '%%%s%%'" % self.parent_id])
+        q = sql_query.Query(
+            columns=['recid'],
+            tables=['v$backup_piece'],
+            where=['recid > (%s)' % str(max_recid)])
+        with self.app.cursor(self.db_name) as cursor:
+            cursor.execute(str(q))
+            delete_list = [str(row[0]) for row in cursor]
 
         if delete_list:
-            cmd = ("""\"\
-rman target %(admin_user)s/%(admin_pswd)s@localhost/%(db_name)s <<EOF
-run {
-delete force noprompt backupset %(delete_list)s;
-}
-EXIT;
-EOF\"
-""" % {'admin_user': ADMIN_USER, 'admin_pswd': self.oracnf.admin_password,
-       'db_name': self.db_name, 'delete_list': ",".join(delete_list)})
-            utils.execute_with_timeout("su - oracle -c " + cmd,
-                                       run_as_root=True,
-                                       root_helper='sudo',
-                                       timeout=LARGE_TIMEOUT,
-                                       shell=True,
-                                       log_output_on_error=True)
+            self.app.rman_scripter(
+                'delete force noprompt backupset %s' % ','.join(delete_list),
+                self.app.admin.database_name,
+                t_user=self.app.admin_user_name,
+                t_pswd=self.app.admin.ora_config.admin_password).run()
 
     def _run_pre_backup(self):
         # Delete from the control file backups that are no longer valid in Trove

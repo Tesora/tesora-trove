@@ -48,19 +48,19 @@
 # Tesora or display the words "Initial Development by Tesora" if the display of
 # the logo is not reasonably feasible for technical reasons.
 
-from os import path
 import re
 
 from oslo_log import log as logging
+
 from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance as ds_instance
+from trove.common.notification import EndNotification
 from trove.guestagent import backup
-from trove.guestagent.common import guestagent_utils
-from trove.guestagent.datastore import manager
+from trove.guestagent.common import operating_system
+from trove.guestagent.datastore.oracle_common import manager
 from trove.guestagent.datastore.oracle import service
-from trove.guestagent.datastore.oracle import system
 from trove.guestagent import dbaas
 from trove.guestagent.db import models
 from trove.guestagent import guest_log
@@ -68,43 +68,37 @@ from trove.guestagent import volume
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
-MANAGER = 'oracle'
 
-class Manager(manager.Manager):
-    """
-    This is the Oracle Manager class. It is dynamically loaded
-    based off of the datastore of the Trove instance.
-    """
+
+class Manager(manager.OracleManager):
+
     def __init__(self):
-        super(Manager, self).__init__('oracle')
-        self.appStatus = service.OracleAppStatus()
-        self.app = service.OracleApp(self.appStatus)
-        self.admin = service.OracleAdmin()
-
-    @property
-    def status(self):
-        return self.appStatus
+        super(Manager, self).__init__(service.OracleVMApp,
+                                      service.OracleVMAppStatus,
+                                      manager_name='oracle')
 
     def do_prepare(self, context, packages, databases, memory_mb, users,
-                device_path=None, mount_point=None, backup_info=None,
-                config_contents=None, root_password=None, overrides=None,
-                cluster_config=None, snapshot=None):
+                   device_path=None, mount_point=None, backup_info=None,
+                   config_contents=None, root_password=None, overrides=None,
+                   cluster_config=None, snapshot=None):
         """This is called from prepare in the base class."""
         if device_path:
             device = volume.VolumeDevice(device_path)
             device.unmount_device(device_path)
             device.format()
             device.mount(mount_point)
+            operating_system.chown(mount_point,
+                                   service.OracleVMApp.instance_owner,
+                                   service.OracleVMApp.instance_owner_group,
+                                   recursive=False, as_root=True)
             LOG.debug('Mounted the volume.')
-
-        self.app.change_ownership(mount_point)
 
         if snapshot:
             self.attach_replica(context, snapshot, snapshot['config'])
         else:
             if backup_info:
-                self._perform_restore(backup_info, context,
-                                      mount_point, self.app)
+                self._perform_restore(backup_info, context, mount_point,
+                                      self.app)
             else:
                 if databases:
                     # only create 1 database
@@ -128,115 +122,36 @@ class Manager(manager.Manager):
             if root_password:
                 self.admin.enable_root(root_password)
 
-
-    def restart(self, context):
-        LOG.debug("Restart an Oracle server instance.")
-        self.app.restart()
-
-    def stop_db(self, context, do_not_start_on_reboot=False):
-        LOG.debug("Stop a given Oracle server instance.")
-        self.app.stop_db(do_not_start_on_reboot=do_not_start_on_reboot)
-
-    def get_filesystem_stats(self, context, fs_path):
-        """Gets the filesystem stats for the path given."""
-        LOG.debug("Get the filesystem stats.")
-        mount_point = CONF.get(MANAGER).mount_point
-        return dbaas.get_filesystem_volume_stats(mount_point)
-
     def create_database(self, context, databases):
-        LOG.debug("Creating database(s)." % databases)
         raise exception.DatastoreOperationNotSupported(
-            operation='create_database', datastore=MANAGER)
+            operation='create_database', datastore=self.manager)
 
     def delete_database(self, context, database):
-        LOG.debug("Deleting database %s." % database)
         raise exception.DatastoreOperationNotSupported(
-            operation='delete_database', datastore=MANAGER)
-
-    def list_databases(self, context, limit=None, marker=None,
-                       include_marker=False):
-        LOG.debug("Listing all databases.")
-        return self.admin.list_databases(limit, marker, include_marker)
-
-    def create_user(self, context, users):
-        LOG.debug("Create user(s).")
-        self.admin.create_user(users)
-
-    def delete_user(self, context, user):
-        LOG.debug("Delete a user %s." % user)
-        self.admin.delete_user(user)
-
-    def get_user(self, context, username, hostname):
-        LOG.debug("Show details of user %s." % username)
-        return self.admin.get_user(username, hostname)
-
-    def list_users(self, context, limit=None, marker=None,
-                   include_marker=False):
-        LOG.debug("List all users.")
-        return self.admin.list_users(limit, marker, include_marker)
-
-    def list_access(self, context, username, hostname):
-        LOG.debug("List all the databases the user has access to.")
-        return self.admin.list_access(username, hostname)
-
-    def mount_volume(self, context, device_path=None, mount_point=None):
-        device = volume.VolumeDevice(device_path)
-        device.mount(mount_point, write_to_fstab=False)
-        LOG.debug("Mounted the device %s at the mount point %s." %
-                  (device_path, mount_point))
-
-    def unmount_volume(self, context, device_path=None, mount_point=None):
-        device = volume.VolumeDevice(device_path)
-        device.unmount(mount_point)
-        LOG.debug("Unmounted the device %s from the mount point %s." %
-                  (device_path, mount_point))
-
-    def resize_fs(self, context, device_path=None, mount_point=None):
-        device = volume.VolumeDevice(device_path)
-        device.resize_fs(mount_point)
-        LOG.debug("Resized the filesystem %s." % mount_point)
-
-    def start_db_with_conf_changes(self, context, config_contents):
-        LOG.debug("Starting Oracle with configuration changes.")
-        self.app.start_db_with_conf_changes(config_contents)
+            operation='delete_database', datastore=self.manager)
 
     def grant_access(self, context, username, hostname, databases):
-        LOG.debug("Granting acccess.")
         raise exception.DatastoreOperationNotSupported(
-            operation='grant_access', datastore=MANAGER)
+            operation='grant_access', datastore=self.manager)
 
     def revoke_access(self, context, username, hostname, database):
-        LOG.debug("Revoking access.")
         raise exception.DatastoreOperationNotSupported(
-            operation='revoke_access', datastore=MANAGER)
+            operation='revoke_access', datastore=self.manager)
 
     def reset_configuration(self, context, configuration):
+        """Currently this method does nothing. This method needs to be
+        implemented to enable rollback of flavor-resize on guestagent side.
         """
-         Currently this method does nothing. This method needs to be
-         implemented to enable rollback of flavor-resize on guestagent side.
-        """
-        LOG.debug("Resetting Oracle configuration.")
+        LOG.debug("Oracle reset configuration is a no-op.")
         pass
 
     @property
     def datastore_log_defs(self):
-        if not self.appStatus.is_running:
-            # do nothing if Oracle is not running
-            return {}
-        owner = system.ORACLE_INSTANCE_OWNER
-        group = system.ORACLE_GROUP_OWNER
-        sid = self.admin.database_name
-        diag_dest = self.admin.get_parameter('diagnostic_dest')
-        dbname = sid.lower()
-        # alert log path:
-        # <diagnostic_dest>/diag/rdbms/<dbname>/<instname>/alert/log.xml
+        owner = service.OracleVMApp.instance_owner
+        group = service.OracleVMApp.instance_owner_group
         alert_log_file = self.validate_log_file(
-            guestagent_utils.build_file_path(
-                path.join(diag_dest, 'diag', 'rdbms', dbname, sid, 'alert'),
-                'log', 'xml'
-            ), owner, group=group
-        )
-
+            service.OracleVMPaths(self.admin.database_name).alert_log_file,
+            owner, group=group)
         return {
             'alert': {
                 self.GUEST_LOG_TYPE_LABEL: guest_log.LogType.SYS,
@@ -244,31 +159,6 @@ class Manager(manager.Manager):
                 self.GUEST_LOG_FILE_LABEL: alert_log_file,
             },
         }
-
-    def change_passwords(self, context, users):
-        LOG.debug("Changing password.")
-        return self.admin.change_passwords(users)
-
-    def update_attributes(self, context, username, hostname, user_attrs):
-        LOG.debug("Updating database attributes.")
-        return self.admin.update_attributes(
-            username, hostname, user_attrs)
-
-    def enable_root(self, context):
-        LOG.debug("Enabling root.")
-        return self.admin.enable_root()
-
-    def enable_root_with_password(self, context, root_password=None):
-        LOG.debug("Enabling root with password.")
-        return self.admin.enable_root(root_password)
-
-    def disable_root(self, context):
-        LOG.debug("Disabling root.")
-        return self.admin.disable_root()
-
-    def is_root_enabled(self, context):
-        LOG.debug("Checking if root is enabled.")
-        return self.admin.is_root_enabled()
 
     def _perform_restore(self, backup_info, context, restore_location, app):
         LOG.info(_("Restoring database from backup %s.") % backup_info['id'])
@@ -279,25 +169,13 @@ class Manager(manager.Manager):
                           backup_info['id'])
             app.status.set_status(ds_instance.ServiceStatuses.FAILED)
             raise
+        self.admin.delete_conf_cache()
+        self.app.paths.update_db_name(self.admin.database_name)
         LOG.info(_("Restored database successfully."))
 
     def create_backup(self, context, backup_info):
-        LOG.debug("Creating backup.")
-        backup.backup(context, backup_info)
-
-    def update_overrides(self, context, overrides, remove=False):
-        LOG.debug("Update overrides request accepted.")
-        if remove:
-            self.app.remove_overrides()
-        else:
-            LOG.debug("Updating overrides: %s" % overrides)
-            self.app.update_overrides(overrides)
-
-    def apply_overrides(self, context, overrides):
-        LOG.debug("Apply overrides request accepted.")
-        if overrides:
-            LOG.debug("Applying overrides: %s" % overrides)
-            self.app.apply_overrides(overrides)
+        with EndNotification(context):
+            backup.backup(context, backup_info)
 
     def backup_required_for_replication(self, context):
         return self.replication.backup_required_for_replication()
@@ -310,13 +188,13 @@ class Manager(manager.Manager):
         LOG.debug("Getting replication snapshot.")
         snapshot_id, log_position = (
             self.replication.snapshot_for_replication(context, self.app, None,
-                                                 snapshot_info))
-        mount_point = CONF.get(MANAGER).mount_point
+                                                      snapshot_info))
+        mount_point = CONF.get(self.manager).mount_point
         volume_stats = dbaas.get_filesystem_volume_stats(mount_point)
 
         replication_snapshot = {
             'dataset': {
-                'datastore_manager': MANAGER,
+                'datastore_manager': self.manager,
                 'dataset_size': volume_stats.get('used', 0.0),
                 'volume_size': volume_stats.get('total', 0.0),
                 'snapshot_id': snapshot_id
@@ -343,7 +221,8 @@ class Manager(manager.Manager):
 
     def complete_slave_setup(self, context, master_detail, slave_detail):
         LOG.debug("Calling complete_slave_setup.")
-        self.replication.complete_slave_setup(self.app, master_detail, slave_detail)
+        self.replication.complete_slave_setup(self.app, master_detail,
+                                              slave_detail)
 
     def sync_data_to_slaves(self, context):
         LOG.debug("Calling sync_data_to_slaves.")
@@ -359,23 +238,22 @@ class Manager(manager.Manager):
         replica_info = self.replication.get_replica_context(self.app)
         return replica_info
 
-    def _validate_slave_for_replication(self, context, replica_info):
-        if (replica_info['replication_strategy'] != self.replication_strategy):
+    def _validate_slave_for_replication(self, replica_info):
+        if replica_info['replication_strategy'] != self.replication_strategy:
             raise exception.IncompatibleReplicationStrategy(
                 replica_info.update({
-                    'guest_strategy': self.replication_strategy
-                }))
+                    'guest_strategy': self.replication_strategy}))
 
     def attach_replica(self, context, replica_info, slave_config):
         LOG.debug("Attaching replica.")
         try:
             if 'replication_strategy' in replica_info:
-                self._validate_slave_for_replication(context, replica_info)
+                self._validate_slave_for_replication(replica_info)
             if 'is_master' in replica_info and replica_info['is_master']:
                 self.replication.enable_as_slave(self.app, replica_info,
                                                  slave_config)
             else:
-                self.replication.prepare_slave(replica_info)
+                self.replication.prepare_slave(self.app, replica_info)
         except Exception:
             LOG.exception("Error enabling replication.")
             self.app.status.set_status(ds_instance.ServiceStatuses.FAILED)
@@ -401,8 +279,6 @@ class Manager(manager.Manager):
         return int(offset)
 
     def get_last_txn(self, context):
-        #master_host = self._get_master_host()
-        #repl_offset = self._get_repl_offset()
         return None, None
 
     def get_latest_txn_id(self, context):
@@ -417,7 +293,8 @@ class Manager(manager.Manager):
 
     def cleanup_source_on_replica_detach(self, context, replica_info):
         LOG.debug("Cleaning up the source on the detach of a replica.")
-        self.replication.cleanup_source_on_replica_detach(self.app, replica_info)
+        self.replication.cleanup_source_on_replica_detach(self.app,
+                                                          replica_info)
 
     def demote_replication_master(self, context):
         LOG.debug("Demoting replica source.")
