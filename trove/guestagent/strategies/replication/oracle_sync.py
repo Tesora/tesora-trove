@@ -85,6 +85,8 @@ class OracleSyncReplication(base.Replication):
     def __init__(self):
         super(OracleSyncReplication, self).__init__()
         self._oracle_config = None
+        self.appStatus = ora_service.OracleAppStatus()
+        self.app = ora_service.OracleApp(self.appStatus)
 
     def _get_config(self):
         if not self._oracle_config:
@@ -181,25 +183,10 @@ class OracleSyncReplication(base.Replication):
                 cursor = conn.cursor()
                 cursor.execute("ALTER DATABASE COMMIT TO SWITCHOVER TO "
                                "PRIMARY WITH SESSION SHUTDOWN")
-                conn.shutdown(mode=cx_Oracle.DBSHUTDOWN_IMMEDIATE)
-                cursor.execute("alter database dismount")
-                conn.shutdown(mode=cx_Oracle.DBSHUTDOWN_FINAL)
-
-            # The DB has been shut down at this point, need to establish a
-            # new connection in PRELIM_AUTH mode in order to start it up.
-            with ora_service.OracleConnection(
-                    self._get_config().db_name,
-                    mode=(cx_Oracle.SYSDBA |
-                          cx_Oracle.PRELIM_AUTH)) as conn:
-                conn.startup()
-
-            # DB is now up but not open, re-connect to the DB in SYSDBA
-            # mode to open it.
+            self.app.restart()
             with ora_service.OracleConnection(
                     self._get_config().db_name) as conn:
                 cursor = conn.cursor()
-                cursor.execute("alter database mount")
-                cursor.execute("alter database open")
                 cursor.execute("ALTER SYSTEM SWITCH LOGFILE")
             ora_status = ora_service.OracleAppStatus()
             ora_status.update()

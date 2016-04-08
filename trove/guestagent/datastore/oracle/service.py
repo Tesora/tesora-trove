@@ -48,9 +48,7 @@
 # Tesora or display the words "Initial Development by Tesora" if the display of
 # the logo is not reasonably feasible for technical reasons.
 
-import ConfigParser
 import os
-import re
 
 import cx_Oracle
 
@@ -58,11 +56,11 @@ from oslo_log import log as logging
 
 from trove.common import cfg
 from trove.common import exception
+from trove.common.i18n import _
 from trove.common import instance as rd_instance
 from trove.common import pagination
 from trove.common import stream_codecs
 from trove.common import utils as utils
-from trove.common.i18n import _
 from trove.guestagent.common import configuration
 from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
@@ -75,6 +73,7 @@ ADMIN_USER_NAME = "os_admin"
 CONF = cfg.CONF
 MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'oracle'
 LOG = logging.getLogger(__name__)
+
 
 class OracleApp(object):
     """
@@ -151,55 +150,23 @@ class OracleApp(object):
 
     def start_db(self, update_db=False):
         LOG.debug("Start the Oracle databases.")
+        ora_conf = OracleConfig()
+        db_name = ora_conf.db_name
         self.update_spfile()
-        os.environ["ORACLE_HOME"] = CONF.get(MANAGER).oracle_home
-        ora_admin = OracleAdmin()
-        databases, marker = ora_admin.list_databases()
-        for database in databases:
-            oradb = models.OracleSchema.deserialize_schema(database)
-            # at this point the trove instance is in reboot mode and
-            # the DB is not running, pass in the SID through
-            # environment variable
-            os.environ["ORACLE_SID"] = oradb.name
-            connection = cx_Oracle.connect(user=ADMIN_USER_NAME,
-                                           password=OracleConfig().admin_password,
-                                           mode=(cx_Oracle.SYSDBA |
-                                                 cx_Oracle.PRELIM_AUTH))
-            connection.startup()
-            connection = cx_Oracle.connect(user=ADMIN_USER_NAME,
-                                           password=OracleConfig().admin_password,
-                                           mode=cx_Oracle.SYSDBA)
-            cursor = connection.cursor()
-            cursor.execute("alter database mount")
-            cursor.execute("alter database open")
-            del os.environ["ORACLE_SID"]
+        self.status.start_db_service()
+        with LocalOracleClient(db_name) as client:
+            client.execute('select database_role, open_mode from v$database')
+            row = client.fetchone()
+            if row[0] == 'PHYSICAL STANDBY' and row[1] == 'READ ONLY':
+                # Start up log apply if this database is supposed to be
+                # a standby.
+                client.execute("ALTER DATABASE RECOVER MANAGED STANDBY "
+                               "DATABASE USING CURRENT LOGFILE DISCONNECT "
+                               "FROM SESSION")
 
     def stop_db(self, update_db=False, do_not_start_on_reboot=False):
         LOG.debug("Stop the Oracle databases.")
-        os.environ["ORACLE_HOME"] = CONF.get(MANAGER).oracle_home
-        ora_admin = OracleAdmin()
-        databases, marker = ora_admin.list_databases()
-        for database in databases:
-            oradb = models.OracleSchema.deserialize_schema(database)
-            try:
-                dsn_tns = cx_Oracle.makedsn('localhost', CONF.get(MANAGER).listener_port,
-                                            oradb.name)
-                connection = cx_Oracle.connect(ADMIN_USER_NAME,
-                                               OracleConfig().admin_password,
-                                               dsn_tns, mode=cx_Oracle.SYSDBA)
-                connection.shutdown(mode = cx_Oracle.DBSHUTDOWN_IMMEDIATE)
-                cursor = connection.cursor()
-                cursor.execute("alter database close normal")
-                cursor.execute("alter database dismount")
-                connection.shutdown(mode = cx_Oracle.DBSHUTDOWN_FINAL)
-            except cx_Oracle.DatabaseError as e:
-                error, = e.args
-                if (12500 <= error.code <= 12629):
-                    # ORA-12500 - 12629: TNS issues, cannot connect to
-                    # Oracle database
-                    pass
-                else:
-                    raise e
+        self.status.stop_db_service()
 
     def restart(self):
         LOG.debug("Restarting Oracle server instance.")
@@ -271,16 +238,35 @@ class OracleApp(object):
             cursor.execute('select open_mode from v$database')
             row = cursor.fetchone()
             if not row[0].startswith('READ ONLY'):
+                # This command has the side effect of shutting down the
+                # database and close the connection. Therefore the
+                # database needs to be restarted.
+                # Due to the behavior of this command, we
+                # are not using the LocalOracleClient here to manage
+                # the connection.
                 cursor.execute("ALTER DATABASE COMMIT TO SWITCHOVER TO "
                                "STANDBY")
-                connection.startup()
-                connection = cx_Oracle.connect(user=ADMIN_USER_NAME,
-                                               password=admin_pswd,
-                                               mode=cx_Oracle.SYSDBA)
-                cursor = connection.cursor()
-                cursor.execute("ALTER DATABASE MOUNT STANDBY DATABASE")
-                cursor.execute("ALTER DATABASE OPEN READ ONLY")
+                self.restart()
             del os.environ["ORACLE_SID"]
+
+    def set_db_start_flag_in_oratab(self, db_start_flag='Y'):
+        """
+        Set the database start flag of all entries in the oratab file to the
+        specified value.
+        """
+        oratab_path = '/etc/oratab'
+        oratab = operating_system.read_file(oratab_path,
+                                            stream_codecs.PropertiesCodec(
+                                                delimiter=':'))
+        for key in oratab.keys():
+            oratab[key][1] = db_start_flag
+        operating_system.write_file(
+            oratab_path, oratab,
+            stream_codecs.PropertiesCodec(delimiter=':',
+                                          line_terminator='\n'),
+            as_root=True)
+        operating_system.chown(oratab_path, 'oracle', 'oinstall',
+                               as_root=True)
 
 
 class OracleAppStatus(service.BaseDbStatus):
@@ -292,17 +278,32 @@ class OracleAppStatus(service.BaseDbStatus):
             out, err = utils.execute_with_timeout(
                 system.ORACLE_STATUS, shell=True)
             if out != '0\n':
-                # If the number of 'ora' process is not zero, it means an Oracle
-                # instance is running.
-                LOG.debug("Setting state to rd_instance.ServiceStatuses.RUNNING")
+                # If the number of 'ora' process is not zero, it means an
+                # Oracle instance is running.
+                LOG.debug("Setting state to "
+                          "rd_instance.ServiceStatuses.RUNNING")
                 return rd_instance.ServiceStatuses.RUNNING
             else:
-                LOG.debug("Setting state to rd_instance.ServiceStatuses.SHUTDOWN")
+                LOG.debug("Setting state to "
+                          "rd_instance.ServiceStatuses.SHUTDOWN")
                 return rd_instance.ServiceStatuses.SHUTDOWN
         except exception.ProcessExecutionError:
             LOG.exception(_("Error getting the Oracle server status."))
             return rd_instance.ServiceStatuses.CRASHED
 
+    def _run_dbora_service(self, mode):
+        cmd = 'sudo systemctl %s dbora.service' % mode
+        utils.execute_with_timeout(
+            cmd, timeout=CONF.get(MANAGER).service_start_timeout,
+            shell=True, log_output_on_error=True)
+
+    def start_db_service(self, service_candidates=None, timeout=None,
+                         enable_on_boot=True, update_db=False):
+        self._run_dbora_service(mode='start')
+
+    def stop_db_service(self, service_candidates=None, timeout=None,
+                        disable_on_boot=False, update_db=False):
+        self._run_dbora_service(mode='stop')
 
 def run_command(command, superuser=system.ORACLE_INSTANCE_OWNER,
                 timeout=system.TIMEOUT):
@@ -339,15 +340,20 @@ class OracleConfig(object):
                                                 as_root=True)
             try:
                 if self._CONF_SYS_KEY in config[self._CONF_ORA_SEC]:
-                    self._sys_pwd = config[self._CONF_ORA_SEC][self._CONF_SYS_KEY]
+                    self._sys_pwd = config[
+                        self._CONF_ORA_SEC][self._CONF_SYS_KEY]
                 if self._CONF_ADMIN_KEY in config[self._CONF_ORA_SEC]:
-                    self._admin_pwd = config[self._CONF_ORA_SEC][self._CONF_ADMIN_KEY]
+                    self._admin_pwd = config[
+                        self._CONF_ORA_SEC][self._CONF_ADMIN_KEY]
                 if self._CONF_ROOT_ENABLED in config[self._CONF_ORA_SEC]:
-                    self._root_enabled = config[self._CONF_ORA_SEC][self._CONF_ROOT_ENABLED]
+                    self._root_enabled = config[
+                        self._CONF_ORA_SEC][self._CONF_ROOT_ENABLED]
                 if self._CONF_DB_NAME in config[self._CONF_ORA_SEC]:
-                    self._db_name = config[self._CONF_ORA_SEC][self._CONF_DB_NAME]
+                    self._db_name = config[
+                        self._CONF_ORA_SEC][self._CONF_DB_NAME]
                 if self._CONF_DB_UNIQUE_NAME in config[self._CONF_ORA_SEC]:
-                    self._db_unique_name = config[self._CONF_ORA_SEC][self._CONF_DB_UNIQUE_NAME]
+                    self._db_unique_name = config[
+                        self._CONF_ORA_SEC][self._CONF_DB_UNIQUE_NAME]
             except KeyError:
                 # the ORACLE section does not exist, stop parsing
                 pass
@@ -406,6 +412,7 @@ class OracleConfig(object):
         self._save_value_in_file(self._CONF_ROOT_ENABLED, 'false')
         self._root_enabled = 'false'
 
+
 class LocalOracleClient(object):
     """A wrapper to manage Oracle connection."""
 
@@ -437,6 +444,7 @@ class LocalOracleClient(object):
 
     def __exit__(self, type, value, traceback):
         self.conn.close()
+
 
 class OracleConnection(object):
     """A wrapper to manage Oracle connection."""
@@ -479,6 +487,7 @@ class OracleConnection(object):
             else:
                 raise e
 
+
 class OracleAdmin(object):
     """
     Handles administrative tasks on the Oracle instance.
@@ -500,9 +509,11 @@ class OracleAdmin(object):
                 ora_conf.sys_password = sys_pwd
                 run_command(system.CREATE_DB_COMMAND %
                             {'gdbname': dbName, 'sid': dbName,
-                             'pswd': sys_pwd, 'db_ram': CONF.get(MANAGER).db_ram_size,
+                             'pswd': sys_pwd,
+                             'db_ram': CONF.get(MANAGER).db_ram_size,
                              'template': CONF.get(MANAGER).template})
-                client = LocalOracleClient(sid=dbName, service=True, user_id='sys', password=sys_pwd)
+                client = LocalOracleClient(sid=dbName, service=True,
+                                           user_id='sys', password=sys_pwd)
                 self._create_admin_user(client)
                 self.create_cloud_user_role(database)
             except exception.ProcessExecutionError:
@@ -538,7 +549,8 @@ class OracleAdmin(object):
         with ora_sys_client as client:
             oracnf = OracleConfig()
             if not oracnf.admin_password:
-                oracnf.admin_password = utils.generate_random_password(password_length=30)
+                oracnf.admin_password = utils.generate_random_password(
+                    password_length=30)
             q = sql_query.CreateUser(ADMIN_USER_NAME, oracnf.admin_password)
             client.execute(str(q))
             q = ('grant sysdba, sysoper to %s' % ADMIN_USER_NAME)
@@ -564,7 +576,8 @@ class OracleAdmin(object):
                 q = sql_query.Query()
                 q.columns = ["ROLE"]
                 q.tables = ["DBA_ROLES"]
-                q.where = ["ROLE = '%s'" % CONF.get(MANAGER).cloud_user_role.upper()]
+                q.where = ["ROLE = '%s'" %
+                           CONF.get(MANAGER).cloud_user_role.upper()]
                 client.execute(str(q))
                 client.fetchall()
                 if client.rowcount == 1:
@@ -583,7 +596,8 @@ class OracleAdmin(object):
     def list_databases(self, limit=None, marker=None, include_marker=False):
         dblist_page, next_marker = pagination.paginate_list(
             self._get_database_names(), limit, marker, include_marker)
-        result = [models.OracleSchema(name).serialize() for name in dblist_page]
+        result = [models.OracleSchema(name).serialize()
+                  for name in dblist_page]
         return result, next_marker
 
     @property
@@ -614,12 +628,14 @@ class OracleAdmin(object):
         for item in users:
             user = models.OracleUser.deserialize_user(item)
             if self._database_is_up(self.database_name):
-                with LocalOracleClient(self.database_name, service=True) as client:
+                with LocalOracleClient(self.database_name,
+                                       service=True) as client:
                     q = sql_query.CreateUser(user.name, user.password)
                     client.execute(str(q))
                     # TO-DO: Refactor GRANT query into the sql_query module
                     client.execute('GRANT cloud_user_role to %s' % user.name)
-                    client.execute('GRANT UNLIMITED TABLESPACE to %s' % user.name)
+                    client.execute('GRANT UNLIMITED TABLESPACE to %s' %
+                                   user.name)
                 LOG.debug(_("Created user %(user)s on %(db)s") %
                           {'user': user.name, 'db': self.database_name})
             else:
@@ -649,7 +665,8 @@ class OracleAdmin(object):
 
     def list_users(self, limit=None, marker=None, include_marker=False):
         LOG.debug(
-            "List all users for all the databases in an Oracle server instance.")
+            "List all users for all the databases in an Oracle server "
+            "instance.")
         user_list = {}
 
         databases, marker = self.list_databases()
@@ -659,13 +676,15 @@ class OracleAdmin(object):
                 q = sql_query.Query()
                 q.columns = ["grantee"]
                 q.tables = ["dba_role_privs"]
-                q.where = ["granted_role = '%s'" % CONF.get(MANAGER).cloud_user_role,
+                q.where = ["granted_role = '%s'" %
+                           CONF.get(MANAGER).cloud_user_role,
                            "grantee != 'SYS'"]
                 client.execute(str(q))
                 for row in client:
                     user_name = row[0]
                     if user_name in user_list:
-                        user = models.OracleUser.deserialize_user(user_list.get(user_name))
+                        user = models.OracleUser.deserialize_user(
+                            user_list.get(user_name))
                     else:
                         user = models.OracleUser(user_name)
                     user.databases = oracle_db.name
@@ -692,7 +711,7 @@ class OracleAdmin(object):
                 q.tables = ["all_users"]
                 q.where = ["username = '%s'" % username.upper()]
                 client.execute(str(q))
-                users = client.fetchall()
+                client.fetchall()
                 if client.rowcount == 1:
                     user.databases.append(database)
 
@@ -779,7 +798,7 @@ class OracleAdmin(object):
                               % (k, v))
                     q = sql_query.AlterSystem.set_parameter(k, v)
                     client.execute(str(q))
-                except cx_Oracle.DatabaseError as e:
+                except cx_Oracle.DatabaseError:
                     LOG.exception(_("Error setting initialization parameter "
                                     "%(k)s = %(v)s") % {'k': k, 'v': v})
 

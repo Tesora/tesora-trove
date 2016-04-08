@@ -698,6 +698,9 @@ oracle_opts = [
     cfg.IntOpt('usage_timeout', default=1500,
                help='Maximum time (in seconds) to wait for a Guest to become '
                     'active.'),
+    cfg.IntOpt('service_start_timeout', default=120,
+               help='Maximum time (in seconds) to wait for Oracle service '
+                    'start.'),
     cfg.StrOpt('backup_namespace',
                default='trove.guestagent.strategies.backup.oracle_impl',
                help='Namespace to load backup strategies from.'),

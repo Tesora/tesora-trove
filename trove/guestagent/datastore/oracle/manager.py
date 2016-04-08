@@ -119,6 +119,7 @@ class Manager(manager.Manager):
                     # characters of instance name (alphanumeric, no '_')
                     db.name = re.sub(r'[\W_]', '', CONF.guest_name[:8])
                     self.admin.create_database([db.serialize()])
+                self.app.set_db_start_flag_in_oratab()
 
             self.refresh_guest_log_defs()
 
@@ -406,8 +407,10 @@ class Manager(manager.Manager):
 
     def get_latest_txn_id(self, context):
         LOG.info(_("Retrieving latest repl offset."))
-        #return self._get_repl_offset()
-        return None
+        # Replication offset is actually not needed. Returning a
+        # dummy value here so that wait_for_txn can run in the
+        # next step.
+        return 1
 
     def wait_for_txn(self, context, txn):
         self.replication.wait_for_txn()

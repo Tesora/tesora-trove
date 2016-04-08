@@ -260,7 +260,8 @@ class PropertiesCodec(StreamCodec):
     SKIP_INIT_SPACE = True
 
     def __init__(self, delimiter=' ', comment_markers=('#'),
-                 unpack_singletons=True, string_mappings=None):
+                 unpack_singletons=True, string_mappings=None,
+                 line_terminator='\r\n'):
         """
         :param delimiter:         A one-character used to separate fields.
         :type delimiter:          string
@@ -283,13 +284,15 @@ class PropertiesCodec(StreamCodec):
         self._comment_markers = comment_markers
         self._string_converter = StringConverter(string_mappings or {})
         self._unpack_singletons = unpack_singletons
+        self._line_terminator = line_terminator
 
     def serialize(self, dict_data):
         output = six.StringIO()
         writer = csv.writer(output, delimiter=self._delimiter,
                             quoting=self.QUOTING_MODE,
                             strict=self.STRICT_MODE,
-                            skipinitialspace=self.SKIP_INIT_SPACE)
+                            skipinitialspace=self.SKIP_INIT_SPACE,
+                            lineterminator=self._line_terminator)
 
         for key, value in dict_data.items():
             writer.writerows(self._to_rows(key, value))
