@@ -361,9 +361,9 @@ class CouchbaseRootAccess(object):
 
     @classmethod
     def enable_root(cls, root_password=None):
-        admin = models.CouchbaseRootUser()
+        admin = models.CouchbaseRootUser(password=root_password)
         if root_password:
-            CouchbaseRootAccess().write_password_to_file(root_password)
+            CouchbaseRootAccess().write_password_to_file(admin.password)
         else:
             CouchbaseRootAccess().set_password(admin.password)
         return admin.serialize()
