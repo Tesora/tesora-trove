@@ -65,6 +65,8 @@ class TestRunner(object):
     EPHEMERAL_SUPPORT = not VOLUME_SUPPORT and CONFIG.get('device_path', None)
     ROOT_PARTITION = not (VOLUME_SUPPORT or CONFIG.get('device_path', None))
 
+    GUEST_CAST_WAIT_TIMEOUT_SEC = 60
+
     report = CONFIG.get_report()
 
     def __init__(self, sleep_time=10, timeout=1200):
