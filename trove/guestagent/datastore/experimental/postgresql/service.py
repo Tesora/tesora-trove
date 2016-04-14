@@ -548,7 +548,7 @@ class PgSqlApp(object):
         self.enable_root(context)
 
     def enable_root_with_password(self, context, root_password=None):
-        self.enable_root(context, root_password)
+        return self.enable_root(context, root_password)
 
 
 class PgSqlAppStatus(service.BaseDbStatus):
@@ -636,8 +636,10 @@ class PgSqlAdmin(object):
         """List database for which the given user as access.
         Return a list of serialized Postgres databases.
         """
+        if self.user_exists(username):
+            return [db.serialize() for db in self._get_databases_for(username)]
 
-        return [db.serialize() for db in self._get_databases_for(username)]
+        raise exception.UserNotFound(username)
 
     def _get_databases_for(self, username):
         """Return all Postgres databases accessible by a given user."""
@@ -845,7 +847,8 @@ class PgSqlAdmin(object):
     def get_user(self, context, username, hostname):
         """Return a serialized representation of a user with a given name.
         """
-        return self._find_user(context, username).serialize()
+        user = self._find_user(context, username)
+        return user.serialize() if user is not None else None
 
     def _find_user(self, context, username):
         """Lookup a user with a given username.
@@ -859,15 +862,16 @@ class PgSqlAdmin(object):
         if results:
             return self._build_user(context, username)
 
-        raise exception.UserNotFound()
+        return None
 
     def user_exists(self, username):
-        """Wrapper for find user to avoid need to catch an exception"""
-        try:
-            self._find_user(context=None, username=username)
-            return True
-        except exception.UserNotFound:
-            return False
+        """Return whether a given user exists on the instance."""
+        results = self.query(
+            pgsql_query.UserQuery.get(name=username),
+            timeout=30,
+        )
+
+        return bool(results)
 
     def change_passwords(self, context, users):
         """Change the passwords of one or more existing users.
@@ -931,6 +935,10 @@ class PgSqlAdmin(object):
             self._rename_user(context, user, new_username)
             # Make sure we can retrieve the renamed user.
             user = self._find_user(context, new_username)
+            if user is None:
+                raise exception.TroveError(_(
+                    "Renamed user %s could not be found on the instance.")
+                    % new_username)
 
         if new_password is not None:
             user.password = new_password
