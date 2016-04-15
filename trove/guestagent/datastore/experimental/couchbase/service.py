@@ -15,6 +15,7 @@
 
 import json
 import os
+import re
 import stat
 import subprocess
 import tempfile
@@ -27,6 +28,7 @@ from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance as rd_instance
+from trove.common import pagination
 from trove.common.stream_codecs import StringConverter
 from trove.common import utils as utils
 from trove.guestagent.common import guestagent_utils
@@ -307,6 +309,58 @@ class CouchbaseAdmin(object):
         LOG.debug("Current rebalance status: %s (%s)" % status_tokens)
         return status_tokens[0] not in ('none', 'notRunning')
 
+    def run_bucket_create(self, bucket_name, bucket_password, bucket_port,
+                          bucket_type, bucket_ramsize_quota_mb,
+                          enable_index_replica, eviction_policy,
+                          replica_count):
+        LOG.debug("Creating a new bucket: %s" % bucket_name)
+        self._run_couchbase_command(
+            'bucket-create', {'bucket': bucket_name,
+                              'bucket-type': bucket_type,
+                              'bucket-password': bucket_password,
+                              'bucket-port': bucket_port,
+                              'bucket-ramsize': bucket_ramsize_quota_mb,
+                              'enable-flush': 0,
+                              'enable-index-replica': enable_index_replica,
+                              'bucket-eviction-policy': eviction_policy,
+                              'bucket-replica': replica_count,
+                              'wait': None,
+                              'force': None})
+
+    def run_bucket_edit(self, bucket_name, bucket_password, bucket_port,
+                        bucket_type, bucket_ramsize_quota_mb,
+                        enable_index_replica, eviction_policy, replica_count):
+        LOG.debug("Modifying bucket: %s" % bucket_name)
+        self._run_couchbase_command(
+            'bucket-edit', {'bucket': bucket_name,
+                            'bucket-type': bucket_type,
+                            'bucket-password': bucket_password,
+                            'bucket-port': bucket_port,
+                            'bucket-ramsize': bucket_ramsize_quota_mb,
+                            'enable-flush': 0,
+                            'enable-index-replica': enable_index_replica,
+                            'bucket-eviction-policy': eviction_policy,
+                            'bucket-replica': replica_count,
+                            'wait': None,
+                            'force': None})
+
+    def run_bucket_list(self):
+        LOG.debug("Retrieving the list of buckets.")
+        bucket_list, _ = self._run_couchbase_command('bucket-list')
+        return bucket_list
+
+    def run_bucket_delete(self, bucket_name):
+        LOG.debug("Deleting bucket: %s" % bucket_name)
+        self._run_couchbase_command('bucket-delete', {'bucket': bucket_name})
+
+    def run_server_info(self):
+        out, _ = self._run_couchbase_command('server-info')
+        return json.loads(out)
+
+    def run_server_list(self):
+        out, _ = self._run_couchbase_command('server-list')
+        return out.splitlines()
+
     def _run_couchbase_command(self, cmd, options=None, **kwargs):
         """Execute a couchbase-cli command on this node.
         """
@@ -321,10 +375,15 @@ class CouchbaseAdmin(object):
         return utils.execute(' '.join(cmd_tokens), shell=True, **kwargs)
 
     def _build_command_options(self, options):
+        cmd_opts = []
         if options:
-            return ['--%s=%s' % (name, value)
-                    for name, value in options.items()]
-        return []
+            for name, value in options.items():
+                tokens = [name]
+                if value is not None:
+                    tokens.append(str(value))
+                cmd_opts.append('--%s' % '='.join(tokens))
+
+        return cmd_opts
 
     @property
     def couchbase_cli_bin(self):
@@ -335,6 +394,118 @@ class CouchbaseAdmin(object):
     def couchbase_bin_dir(self):
         return '/opt/couchbase/bin'
 
+    def create_user(self, context, users):
+        if len(users) > 1:
+            raise exception.UnprocessableEntity(
+                _("Only a single user can be created on the instance."))
+
+        user_list = self._list_buckets()
+        if user_list:
+            raise exception.UnprocessableEntity(
+                _("There already is a user on this instance: %s")
+                % user_list[0].name)
+
+        self._create_bucket(models.CouchbaseUser.deserialize_user(users[0]))
+
+    def _create_bucket(self, user):
+        bucket_ramsize_quota_mb = self.get_memory_quota_mb()
+        num_cluster_nodes = self.get_num_cluster_nodes()
+        replica_count = min(CONF.couchbase.default_replica_count,
+                            num_cluster_nodes - 1)
+        self.run_bucket_create(
+            user.name,
+            user.password,
+            CONF.couchbase.bucket_port,
+            CONF.couchbase.bucket_type,
+            bucket_ramsize_quota_mb,
+            int(CONF.couchbase.enable_index_replica),
+            CONF.couchbase.eviction_policy,
+            replica_count)
+
+    def get_memory_quota_mb(self):
+        server_info = self.run_server_info()
+        return server_info['memoryQuota']
+
+    def get_num_cluster_nodes(self):
+        server_list = self.run_server_list()
+        return len(server_list)
+
+    def delete_user(self, context, user):
+        self._delete_bucket(models.CassandraUser.deserialize_user(user))
+
+    def _delete_bucket(self, user):
+        self.run_bucket_delete(user.name)
+
+    def get_user(self, context, username, hostname):
+        user = self._find_bucket(username)
+        return user.serialize() if user is not None else None
+
+    def _find_bucket(self, username):
+        return next((user for user in self._list_buckets()
+                     if user.name == username), None)
+
+    def list_users(self, context, limit=None, marker=None,
+                   include_marker=False):
+        users = [user.serialize() for user in self._list_buckets()]
+        return pagination.paginate_list(users, limit, marker, include_marker)
+
+    def _list_buckets(self):
+        bucket_list = self.run_bucket_list()
+        return [models.CouchbaseUser(item)
+                for item in self._parse_bucket_list(bucket_list)]
+
+    def _parse_bucket_list(self, bucket_list):
+        buckets = dict()
+        if bucket_list:
+            bucket_info = dict()
+            for item in bucket_list.splitlines():
+                if not re.match('^\s.*$', item):
+                    bucket_info = dict()
+                    buckets.update({item.strip(): bucket_info})
+                else:
+                    key, value = item.split(':', 1)
+                    bucket_info.update({key.strip(): value.lstrip()})
+
+        return buckets
+
+    def change_passwords(self, context, users):
+        if len(users) > 1:
+            raise exception.UnprocessableEntity(
+                _("There is only one user on the instance."))
+
+        self._edit_bucket(models.CouchbaseUser.deserialize_user(users[0]))
+
+    def _edit_bucket(self, user):
+        # When changing the active bucket configuration,
+        # specify all existing configuration parameters to avoid having them
+        # reset to defaults.
+        buckets = self._parse_bucket_list(self.run_bucket_list())
+        bucket = buckets[user.name]
+
+        bucket_ramsize_quota_mb = str(int(bucket['ramQuota']) / 1048576)
+        replica_count = int(bucket['numReplicas'])
+        bucket_type = bucket['bucketType']
+        self.run_bucket_edit(
+            user.name,
+            user.password,
+            CONF.couchbase.bucket_port,
+            bucket_type,
+            bucket_ramsize_quota_mb,
+            int(CONF.couchbase.enable_index_replica),
+            CONF.couchbase.eviction_policy,
+            replica_count)
+
+    def update_attributes(self, context, username, hostname, user_attrs):
+        new_name = user_attrs.get('name')
+        if new_name:
+            raise exception.UnprocessableEntity(
+                _("Users cannot be renamed."))
+
+        new_password = user_attrs.get('password')
+        if new_password:
+            user = models.CouchbaseUser(username, password=new_password)
+            self._edit_bucket(user)
+
 
 class CouchbaseAppStatus(service.BaseDbStatus):
     """
@@ -343,28 +514,17 @@ class CouchbaseAppStatus(service.BaseDbStatus):
 
     def __init__(self, user):
         super(CouchbaseAppStatus, self).__init__()
-        self._user = user
+        self._admin = CouchbaseAdmin(user)
 
     def _get_actual_db_status(self):
-        self.ip_address = netutils.get_my_ipv4()
-        pwd = self._user.password
         try:
-            return self._get_status_from_couchbase(pwd)
-        except exception.ProcessExecutionError:
-            LOG.exception(_("Error getting the Couchbase status."))
+            server_info = self._admin.run_server_info()
+            if server_info["clusterMembership"] == "active":
+                return rd_instance.ServiceStatuses.RUNNING
+        except Exception:
+            LOG.exception(_("Error getting Couchbase status."))
 
         return rd_instance.ServiceStatuses.SHUTDOWN
-
-    def _get_status_from_couchbase(self, pwd):
-        out, err = utils.execute_with_timeout(
-            (system.cmd_couchbase_status %
-             {'IP': self.ip_address, 'PWD': pwd}),
-            shell=True)
-        server_stats = json.loads(out)
-        if not err and server_stats["clusterMembership"] == "active":
-            return rd_instance.ServiceStatuses.RUNNING
-        else:
-            return rd_instance.ServiceStatuses.SHUTDOWN
 
 
 class CouchbaseRootAccess(object):
