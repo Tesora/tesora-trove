@@ -198,3 +198,22 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
         mkdir_mock.assert_called_once_with(
             mount_point, user=app.couchbase_owner, group=app.couchbase_owner,
             as_root=True)
+
+    def test_build_command_options(self):
+        app = couch_service.CouchbaseApp(Mock())
+        opts = app.build_admin()._build_command_options({'bucket': 'bucket1',
+                                                         'bucket-replica': 0,
+                                                         'wait': None})
+        self.assertEqual(
+            set(['--bucket=bucket1', '--bucket-replica=0', '--wait']),
+            set(opts))
+
+    def test_parse_bucket_list(self):
+        app = couch_service.CouchbaseApp(Mock())
+        bucket_list = app.build_admin()._parse_bucket_list(
+            "bucket1\n saslPassword: password1\n ramQuota: 268435456\n"
+            "bucket2\n saslPassword: password2\n ramQuota: 134217728")
+        self.assertEqual({'bucket1': {'saslPassword': 'password1',
+                                      'ramQuota': '268435456'},
+                          'bucket2': {'saslPassword': 'password2',
+                                      'ramQuota': '134217728'}}, bucket_list)

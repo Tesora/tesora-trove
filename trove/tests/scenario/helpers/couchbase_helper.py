@@ -1,4 +1,4 @@
-# Copyright (c) 2013 eBay Software Foundation
+# Copyright 2016 Tesora Inc.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -13,14 +13,13 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from trove.tests.scenario.helpers.test_helper import TestHelper
 
-COUCHBASE_DUMP_DIR = '/tmp/backups'
-COUCHBASE_CONF_DIR = '/etc/couchbase'
-COUCHBASE_WEBADMIN_PORT = '8091'
-COUCHBASE_REST_API = 'http://localhost:' + COUCHBASE_WEBADMIN_PORT
-BUCKETS_JSON = '/buckets.json'
-SECRET_KEY = '/secret_key'
-SERVICE_CANDIDATES = ["couchbase-server"]
-cmd_kill = 'sudo pkill -u couchbaso tee -a '
-cmd_reset_pwd = 'sudo /opt/couchbase/bin/cbreset_password %(IP)s:8091'
-pwd_file = COUCHBASE_CONF_DIR + SECRET_KEY
+
+class CouchbaseHelper(TestHelper):
+
+    def __init__(self, expected_override_name):
+        super(CouchbaseHelper, self).__init__(expected_override_name)
+
+    def get_valid_user_definitions(self):
+        return [{'name': 'bucket1', 'password': 'password1', 'databases': []}]

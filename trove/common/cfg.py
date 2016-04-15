@@ -1171,6 +1171,21 @@ couchbase_opts = [
                ' percentage of the available memory.'
                ' Minimum of 256MB will be used if the given percentage amounts'
                ' for less.'),
+    cfg.IntOpt('default_replica_count', default=1, min=0, max=3,
+               help='Default number of bucket replicas.'
+               'The nearest possible value will be chosen if there is not'
+               ' enough servers in the cluster to support this number of'
+               ' replicas.'),
+    cfg.IntOpt('bucket_port', default=11211,
+               help='Port clients use to communicate with the data bucket.'),
+    cfg.BoolOpt('enable_index_replica', default=True,
+                help='Whether to create replica indexes.'),
+    cfg.StrOpt('eviction_policy', default='valueOnly',
+               choices='valueOnly,fullEviction',
+               help='Default bucket metadata ejection policy.'),
+    cfg.StrOpt('bucket_type', default='couchbase',
+               choices='couchbase,memcached',
+               help='Default bucket type.'),
 ]
 
 # MongoDB
