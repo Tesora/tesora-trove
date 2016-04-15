@@ -85,7 +85,7 @@ class InstanceCreateRunner(TestRunner):
             # test instances.
             raise SkipTest("Using an existing instance.")
 
-        name = self.instance_info.name
+        name = self.instance_info.name + '_init'
         flavor = self._get_instance_flavor()
         trove_volume_size = CONFIG.get('trove_volume_size', 1)
         self.init_inst_dbs = (self.test_helper.get_valid_database_definitions()
@@ -142,7 +142,7 @@ class InstanceCreateRunner(TestRunner):
 
         # Here we add helper user/database if any.
         if create_helper_user:
-            helper_db_def, helper_user_def = self.build_helper_defs()
+            helper_db_def, helper_user_def, root_def = self.build_helper_defs()
             if helper_db_def:
                 self.report.log(
                     "Appending a helper database '%s' to the instance "

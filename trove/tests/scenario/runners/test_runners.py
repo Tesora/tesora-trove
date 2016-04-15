@@ -16,14 +16,15 @@
 import os
 import time as timer
 
+from oslo_config.cfg import NoSuchOptError
 from proboscis import asserts
+import swiftclient
 from troveclient.compat import exceptions
 
-from oslo_config.cfg import NoSuchOptError
 from trove.common import cfg
+from trove.common import exception
 from trove.common import utils
 from trove.common.utils import poll_until, build_polling_task
-from trove.common import exception
 from trove.tests.api.instances import instance_info
 from trove.tests.config import CONFIG
 from trove.tests.util import create_dbaas_client
@@ -66,7 +67,7 @@ class TestRunner(object):
 
     report = CONFIG.get_report()
 
-    def __init__(self, sleep_time=10, timeout=1200):
+    def __init__(self, sleep_time=10, timeout=1800):
         self.def_sleep_time = sleep_time
         self.def_timeout = timeout
 
@@ -79,7 +80,9 @@ class TestRunner(object):
             instance_info.volume = None
 
         self.auth_client = create_dbaas_client(self.instance_info.user)
-        self.unauth_client = None
+        self._unauth_client = None
+        self._admin_client = None
+        self._swift_client = None
         self._nova_client = None
         self._test_helper = None
         self._servers = {}
@@ -151,12 +154,13 @@ class TestRunner(object):
     def test_helper(self, test_helper):
         self._test_helper = test_helper
 
-    def get_unauth_client(self):
-        if not self.unauth_client:
-            self.unauth_client = self._create_unauthorized_client()
-        return self.unauth_client
+    @property
+    def unauth_client(self):
+        if not self._unauth_client:
+            self._unauth_client = self._create_unauthorized_client()
+        return self._unauth_client
 
-    def _create_unauthorized_client(self, force=False):
+    def _create_unauthorized_client(self):
         """Create a client from a different 'unauthorized' user
         to facilitate negative testing.
         """
@@ -170,6 +174,44 @@ class TestRunner(object):
         if not self._nova_client:
             self._nova_client = create_nova_client(self.instance_info.user)
         return self._nova_client
+
+    @property
+    def admin_client(self):
+        if not self._admin_client:
+            self._admin_client = self._create_admin_client()
+        return self._admin_client
+
+    def _create_admin_client(self):
+        """Create a client from an admin user."""
+        requirements = Requirements(is_admin=True, services=["swift"])
+        admin_user = CONFIG.users.find_user(requirements)
+        return create_dbaas_client(admin_user)
+
+    @property
+    def swift_client(self):
+        if not self._swift_client:
+            self._swift_client = self._create_swift_client()
+        return self._swift_client
+
+    def _create_swift_client(self):
+        """Create a swift client from the admin user details."""
+        requirements = Requirements(is_admin=True, services=["swift"])
+        user = CONFIG.users.find_user(requirements)
+        os_options = {'region_name': CONFIG.trove_client_region_name}
+        return swiftclient.client.Connection(
+            authurl=CONFIG.nova_client['auth_url'],
+            user=user.auth_user,
+            key=user.auth_key,
+            tenant_name=user.tenant,
+            auth_version='2.0',
+            os_options=os_options)
+
+    def get_client_tenant(self, client):
+        tenant_name = client.real_client.client.tenant
+        service_url = client.real_client.client.service_url
+        su_parts = service_url.split('/')
+        tenant_id = su_parts[-1]
+        return tenant_name, tenant_id
 
     def assert_raises(self, expected_exception, expected_http_code,
                       client_cmd, *cmd_args, **cmd_kwargs):
@@ -368,10 +410,9 @@ class TestRunner(object):
             if server.id in sg.members:
                 server_group = sg
         if should_exist and server_group is None:
-            raise ("Could not find server group for Nova instance %s" %
-                   server.id)
+            raise "Could not find server group for Nova instance %s"
         if server_group and not should_exist:
-            raise ("Found left-over server group: %s" % server_group)
+            raise "Found left-over server group: %s"
 
     def get_instance(self, instance_id):
         return self.auth_client.instances.get(instance_id)
@@ -406,7 +447,7 @@ class TestRunner(object):
         These are for internal use by the test framework and should
         not be changed by individual test-cases.
         """
-        database_def, user_def = self.build_helper_defs()
+        database_def, user_def, root_def = self.build_helper_defs()
         if database_def:
             self.report.log(
                 "Creating a helper database '%s' on instance: %s"
@@ -419,22 +460,33 @@ class TestRunner(object):
                 % (user_def['name'], user_def['password'], instance_id))
             self.auth_client.users.create(instance_id, [user_def])
 
+        if root_def:
+            # Not enabling root on a single instance of the cluster here
+            # because we want to test the cluster root enable instead.
+            pass
+
     def build_helper_defs(self):
         """Build helper database and user JSON definitions if credentials
         are defined by the helper.
         """
         database_def = None
-        user_def = None
+
+        def _get_credentials(creds):
+            if creds:
+                username = creds.get('name')
+                if username:
+                    password = creds.get('password', '')
+                    return {'name': username, 'password': password,
+                            'databases': [{'name': database}]}
+            return None
+
         credentials = self.test_helper.get_helper_credentials()
         if credentials:
             database = credentials.get('database')
             if database:
                 database_def = {'name': database}
+        credentials_root = self.test_helper.get_helper_credentials_root()
 
-            username = credentials.get('name')
-            if username:
-                password = credentials.get('password', '')
-                user_def = {'name': username, 'password': password,
-                            'databases': [{'name': database}]}
-
-        return database_def, user_def
+        return (database_def,
+                _get_credentials(credentials),
+                _get_credentials(credentials_root))
