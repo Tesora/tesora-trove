@@ -1179,6 +1179,9 @@ mongodb_opts = [
                     'per cluster.'),
     cfg.BoolOpt('cluster_support', default=True,
                 help='Enable clusters to be created and managed.'),
+    cfg.BoolOpt('cluster_secure', default=True,
+                help='Create secure clusters. If False then the '
+                     'Role-Based Access Control will be disabled.'),
     cfg.StrOpt('api_strategy',
                default='trove.common.strategies.cluster.experimental.'
                'mongodb.api.MongoDbAPIStrategy',
@@ -1335,6 +1338,16 @@ couchdb_opts = [
                help='Root controller implementation for couchdb.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.ListOpt('ignore_users', default=['os_admin', 'root'],
+                help='Users to exclude when listing users.',
+                deprecated_name='ignore_users',
+                deprecated_group='DEFAULT'),
+    cfg.ListOpt('ignore_dbs',
+                default=['_users', '_replicator'],
+                help='Databases to exclude when listing databases.',
+                deprecated_name='ignore_dbs',
+                deprecated_group='DEFAULT'),
+
 ]
 
 # Vertica
