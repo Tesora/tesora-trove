@@ -17,6 +17,7 @@ from proboscis import test
 
 from trove.tests.scenario.groups import instance_create_group
 from trove.tests.scenario.groups.test_group import TestGroup
+from trove.tests.scenario.helpers.test_helper import DataType
 
 
 GROUP = "scenario.replication_group"
@@ -61,6 +62,16 @@ class ReplicationGroup(TestGroup):
         self.test_runner.run_create_non_affinity_replica()
 
     @test(runs_after=[create_non_affinity_replica])
+    def add_data_after_replica(self):
+        """Add data to master after initial replica is setup"""
+        self.test_runner.run_add_data_for_replication(data_type=DataType.micro)
+
+    @test(runs_after=[add_data_after_replica])
+    def verify_data_after_replica(self):
+        """Verify data exists on single replica"""
+        self.test_runner.run_verify_replica_data_after_single()
+
+    @test(runs_after=[verify_data_after_replica])
     def create_multiple_replicas(self):
         """Test creating multiple replicas."""
         self.test_runner.run_create_multiple_replicas()
