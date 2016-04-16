@@ -57,9 +57,7 @@ from trove.guestagent.datastore.experimental.dse import service
 class Manager(community_manager.Manager):
 
     def __init__(self):
-        super(Manager, self).__init__()
-        self._app = service.DSEApp()
+        super(Manager, self).__init__(manager_name='dse')
 
-    @property
-    def app(self):
-        return self._app
+    def build_app(self):
+        return service.DSEApp()
