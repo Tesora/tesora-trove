@@ -84,7 +84,7 @@ common_opts = [
     cfg.StrOpt('nova_compute_endpoint_type', default='publicURL',
                help='Service endpoint type to use when searching catalog.'),
     cfg.StrOpt('nova_client_version', default='2.12',
-               help="The version of of the compute service client."),
+               help="The version of the compute service client."),
     cfg.StrOpt('neutron_url', help='URL without the tenant segment.'),
     cfg.StrOpt('neutron_service_type', default='network',
                help='Service type to use when searching catalog.'),
@@ -1176,6 +1176,9 @@ mongodb_opts = [
                     'per cluster.'),
     cfg.BoolOpt('cluster_support', default=True,
                 help='Enable clusters to be created and managed.'),
+    cfg.BoolOpt('cluster_secure', default=True,
+                help='Create secure clusters. If False then the '
+                     'Role-Based Access Control will be disabled.'),
     cfg.StrOpt('api_strategy',
                default='trove.common.strategies.cluster.experimental.'
                'mongodb.api.MongoDbAPIStrategy',
@@ -1214,7 +1217,8 @@ mongodb_opts = [
                help='Maximum time to wait (in seconds) for a replica set '
                     'initialization process to complete.'),
     cfg.StrOpt('root_controller',
-               default='trove.extensions.common.service.DefaultRootController',
+               default='trove.extensions.mongodb.service.'
+                       'MongoDBRootController',
                help='Root controller implementation for mongodb.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
@@ -1332,6 +1336,16 @@ couchdb_opts = [
                help='Root controller implementation for couchdb.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.ListOpt('ignore_users', default=['os_admin', 'root'],
+                help='Users to exclude when listing users.',
+                deprecated_name='ignore_users',
+                deprecated_group='DEFAULT'),
+    cfg.ListOpt('ignore_dbs',
+                default=['_users', '_replicator'],
+                help='Databases to exclude when listing databases.',
+                deprecated_name='ignore_dbs',
+                deprecated_group='DEFAULT'),
+
 ]
 
 # Vertica

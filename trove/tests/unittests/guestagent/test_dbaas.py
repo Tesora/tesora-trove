@@ -235,7 +235,7 @@ class DbaasTest(trove_testtools.TestCase):
 
     def test_load_mysqld_options(self):
 
-        output = "mysqld would've been started with the these args:\n"\
+        output = "mysqld would've been started with these args:\n"\
                  "--user=mysql --port=3306 --basedir=/usr "\
                  "--tmpdir=/tmp --skip-external-locking"
 
@@ -252,7 +252,7 @@ class DbaasTest(trove_testtools.TestCase):
         self.assertTrue("skip-external-locking" in options)
 
     def test_load_mysqld_options_contains_plugin_loads_options(self):
-        output = ("mysqld would've been started with the these args:\n"
+        output = ("mysqld would've been started with these args:\n"
                   "--plugin-load=blackhole=ha_blackhole.so "
                   "--plugin-load=federated=ha_federated.so")
 
@@ -2138,7 +2138,7 @@ class BaseDbStatusTest(trove_testtools.TestCase):
                 service_call.assert_called_once_with(
                     rd_instance.ServiceStatuses.RUNNING, 10, False)
                 os_cmd['start_service'].assert_called_once_with(
-                    service_candidates)
+                    service_candidates, timeout=10)
                 os_cmd['enable_service_on_boot'].assert_called_once_with(
                     service_candidates)
 
@@ -2153,7 +2153,7 @@ class BaseDbStatusTest(trove_testtools.TestCase):
                 service_call.assert_called_once_with(
                     rd_instance.ServiceStatuses.RUNNING, 10, False)
                 os_cmd['start_service'].assert_called_once_with(
-                    service_candidates)
+                    service_candidates, timeout=10)
                 self.assertFalse(os_cmd['enable_service_on_boot'].called)
 
         # Test a failing call.
@@ -2169,7 +2169,7 @@ class BaseDbStatusTest(trove_testtools.TestCase):
                     status.start_db_service,
                     service_candidates, 10, enable_on_boot=True)
                 os_cmd['start_service'].assert_called_once_with(
-                    service_candidates)
+                    service_candidates, timeout=10)
                 self.assertFalse(os_cmd['enable_service_on_boot'].called)
 
     def test_stop_db_service(self):
@@ -2187,7 +2187,7 @@ class BaseDbStatusTest(trove_testtools.TestCase):
                 service_call.assert_called_once_with(
                     rd_instance.ServiceStatuses.SHUTDOWN, 10, False)
                 os_cmd['stop_service'].assert_called_once_with(
-                    service_candidates)
+                    service_candidates, timeout=10)
                 os_cmd['disable_service_on_boot'].assert_called_once_with(
                     service_candidates)
 
@@ -2202,7 +2202,7 @@ class BaseDbStatusTest(trove_testtools.TestCase):
                 service_call.assert_called_once_with(
                     rd_instance.ServiceStatuses.SHUTDOWN, 10, False)
                 os_cmd['stop_service'].assert_called_once_with(
-                    service_candidates)
+                    service_candidates, timeout=10)
                 self.assertFalse(os_cmd['disable_service_on_boot'].called)
 
         # Test a failing call.
@@ -2218,7 +2218,7 @@ class BaseDbStatusTest(trove_testtools.TestCase):
                     status.stop_db_service,
                     service_candidates, 10, disable_on_boot=True)
                 os_cmd['stop_service'].assert_called_once_with(
-                    service_candidates)
+                    service_candidates, timeout=10)
                 self.assertFalse(os_cmd['disable_service_on_boot'].called)
 
     def test_restart_db_service(self):
