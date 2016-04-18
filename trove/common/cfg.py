@@ -698,7 +698,7 @@ oracle_opts = [
     cfg.IntOpt('usage_timeout', default=1500,
                help='Maximum time (in seconds) to wait for a Guest to become '
                     'active.'),
-    cfg.IntOpt('service_start_timeout', default=120,
+    cfg.IntOpt('service_start_timeout', default=180,
                help='Maximum time (in seconds) to wait for Oracle service '
                     'start.'),
     cfg.StrOpt('backup_namespace',
