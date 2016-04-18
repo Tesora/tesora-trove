@@ -566,6 +566,12 @@ module_contents = {
     "pattern": "^.*.+.*$"
 }
 
+module_apply_order = {
+    "type": "integer",
+    "minimum": 0,
+    "maximum": 9,
+}
+
 module = {
     "create": {
         "name": "module:create",
@@ -592,6 +598,9 @@ module = {
                     "all_tenants": boolean_string,
                     "visible": boolean_string,
                     "live_update": boolean_string,
+                    "priority_apply": boolean_string,
+                    "apply_order": module_apply_order,
+                    "full_access": boolean_string,
                 }
             }
         }
@@ -624,6 +633,9 @@ module = {
                     "all_datastore_versions": boolean_string,
                     "visible": boolean_string,
                     "live_update": boolean_string,
+                    "priority_apply": boolean_string,
+                    "apply_order": module_apply_order,
+                    "full_access": boolean_string,
                 }
             }
         }

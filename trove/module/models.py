@@ -135,19 +135,10 @@ class Module(object):
         self.module_id = module_id
 
     @staticmethod
-    def is_full_access(context, tenant_id, auto_apply, visible):
-        if context.is_admin:
-            return tenant_id is not None and not auto_apply and visible
-        return None
-
-    @staticmethod
     def create(context, name, module_type, contents,
                description, tenant_id, datastore,
-               datastore_version, auto_apply, visible, live_update):
-        full_access = Module.is_full_access(
-            context, tenant_id, auto_apply, visible)
-        priority_apply = 0
-        apply_order = 5
+               datastore_version, auto_apply, visible, live_update,
+               priority_apply, apply_order, full_access):
         if module_type.lower() not in Modules.VALID_MODULE_TYPES:
             LOG.error("Valid module types: %s" % Modules.VALID_MODULE_TYPES)
             raise exception.ModuleTypeNotFound(module_type=module_type)
@@ -313,12 +304,10 @@ class Module(object):
         return module
 
     @staticmethod
-    def update(context, module, original_module):
+    def update(context, module, original_module, full_access):
         Module.enforce_live_update(
             original_module.id, original_module.live_update,
             original_module.md5)
-        full_access = Module.is_full_access(
-            context, module.tenant_id, module.auto_apply, module.visible)
         # we don't allow any changes to 'is_admin' modules by non-admin
         if original_module.is_admin and not context.is_admin:
             raise exception.ModuleAccessForbidden(
