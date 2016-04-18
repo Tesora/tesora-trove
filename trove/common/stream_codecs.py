@@ -20,12 +20,12 @@ import csv
 import json
 import re
 import six
-import xmltodict
 import yaml
 
 from ConfigParser import SafeConfigParser
 
 from trove.common import utils as trove_utils
+from trove.common import xmltodict
 
 
 class StringConverter(object):
