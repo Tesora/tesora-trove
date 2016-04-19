@@ -18,6 +18,7 @@
 import os.path
 
 from oslo_config import cfg
+from oslo_config.cfg import NoSuchOptError
 from oslo_log import log as logging
 
 import trove
@@ -572,6 +573,8 @@ mysql_opts = [
     cfg.FloatOpt('guest_log_long_query_time', default=1,
                  help='The time in seconds that a statement must take in '
                       'in order to be logged in the slow_query log.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # Oracle remote agent
@@ -642,6 +645,8 @@ oracle_ra_opts = [
     cfg.StrOpt('root_controller',
                default='trove.extensions.oracle.service.OracleRootController',
                help='Root controller implementation for Oracle Remote Agent.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # Oracle
@@ -731,6 +736,8 @@ oracle_opts = [
                        'guestagent.OracleGuestAgentStrategy',
                help='Class that implements datastore-specific Guest Agent API '
                     'logic.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # Percona
@@ -800,6 +807,9 @@ percona_opts = [
     cfg.FloatOpt('guest_log_long_query_time', default=1,
                  help='The time in seconds that a statement must take in '
                       'in order to be logged in the slow_query log.'),
+    cfg.IntOpt('default_password_length',
+               default='${mysql.default_password_length}',
+               help='Character length of generated passwords.'),
 ]
 
 # Percona XtraDB Cluster
@@ -879,6 +889,9 @@ pxc_opts = [
     cfg.FloatOpt('guest_log_long_query_time', default=1,
                  help='The time in seconds that a statement must take in '
                       'in order to be logged in the slow_query log.'),
+    cfg.IntOpt('default_password_length',
+               default='${mysql.default_password_length}',
+               help='Character length of generated passwords.'),
 ]
 
 # Redis
@@ -950,6 +963,8 @@ redis_opts = [
                help='Root controller implementation for redis.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # Cassandra
@@ -1028,6 +1043,8 @@ cassandra_opts = [
                '.cassandra.guestagent.CassandraGuestAgentStrategy',
                help='Class that implements datastore-specific Guest Agent API '
                     'logic.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # DSE (mostly uses same options as Cassandra community edition).
@@ -1095,6 +1112,8 @@ couchbase_opts = [
     cfg.StrOpt('root_controller',
                default='trove.extensions.common.service.DefaultRootController',
                help='Root controller implementation for couchbase.'),
+    cfg.IntOpt('default_password_length', default=24, min=6, max=24,
+               help='Character length of generated passwords.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
     cfg.BoolOpt('cluster_support', default=True,
@@ -1201,6 +1220,8 @@ mongodb_opts = [
                help='Root controller implementation for mongodb.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # PostgreSQL
@@ -1267,6 +1288,8 @@ postgresql_opts = [
                help="The time in milliseconds that a statement must take in "
                     "in order to be logged.  A value of '0' logs all "
                     "statements, while '-1' turns off statement logging."),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # EDB (mostly uses same options as Postgresql community edition).
@@ -1311,7 +1334,10 @@ edb_opts = _update_options(
                default='trove.extensions.edb.service'
                '.EnterpriseDBRootController',
                help='Root controller implementation for EnterpriseDB.'),
-    cfg.ListOpt('ignore_dbs', default=['postgres', 'enterprisedb', 'edb']))
+    cfg.ListOpt('ignore_dbs', default=['postgres', 'enterprisedb', 'edb']),
+    cfg.IntOpt('default_password_length',
+               default='${postgresql.default_password_length}',
+               help='Character length of generated passwords.'),)
 
 # Apache CouchDB
 couchdb_group = cfg.OptGroup(
@@ -1356,6 +1382,8 @@ couchdb_opts = [
                help='Root controller implementation for couchdb.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # Vertica
@@ -1418,6 +1446,8 @@ vertica_opts = [
                help='Root controller implementation for Vertica.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # DB2
@@ -1464,6 +1494,8 @@ db2_opts = [
                help='Root controller implementation for db2.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # MariaDB
@@ -1529,6 +1561,9 @@ mariadb_opts = [
     cfg.FloatOpt('guest_log_long_query_time', default=1,
                  help='The time in seconds that a statement must take in '
                       'in order to be logged in the slow_query log.'),
+    cfg.IntOpt('default_password_length',
+               default='${mysql.default_password_length}',
+               help='Character length of generated passwords.'),
 ]
 
 # RPC version groups
@@ -1606,3 +1641,25 @@ def parse_args(argv, default_config_files=None):
              project='trove',
              version=trove.__version__,
              default_config_files=default_config_files)
+
+
+def get_configuration_property(property_name, manager=None):
+    """
+    Get a configuration property.
+    Try to get it from the datastore-specific section first.
+    If it is not available, retrieve it from the DEFAULT section.
+    """
+
+    # TODO(pmalik): Note that the unit and fake-integration tests
+    # do not define 'CONF.datastore_manager'. *MySQL* options will
+    # be loaded unless the caller passes a manager name explicitly.
+    #
+    # Once the tests are fixed this conditional expression should be removed
+    # and the proper value should always be either loaded from
+    # 'CONF.datastore_manager' or passed-in by the caller.
+    datastore_manager = manager or CONF.datastore_manager or 'mysql'
+
+    try:
+        return CONF.get(datastore_manager).get(property_name)
+    except NoSuchOptError:
+        return CONF.get(property_name)
