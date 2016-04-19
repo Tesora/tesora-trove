@@ -581,6 +581,8 @@ mysql_opts = [
     cfg.IntOpt('guest_log_long_query_time', default=1000,
                help='The time in milliseconds that a statement must take in '
                     'in order to be logged in the slow_query log.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # Oracle remote agent
@@ -651,6 +653,8 @@ oracle_ra_opts = [
     cfg.StrOpt('root_controller',
                default='trove.extensions.oracle.service.OracleRootController',
                help='Root controller implementation for Oracle Remote Agent.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # Oracle
@@ -743,6 +747,8 @@ oracle_opts = [
                        'guestagent.OracleGuestAgentStrategy',
                help='Class that implements datastore-specific Guest Agent API '
                     'logic.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # Percona
@@ -821,6 +827,9 @@ percona_opts = [
     cfg.IntOpt('guest_log_long_query_time', default=1000,
                help='The time in milliseconds that a statement must take in '
                     'in order to be logged in the slow_query log.'),
+    cfg.IntOpt('default_password_length',
+               default='${mysql.default_password_length}',
+               help='Character length of generated passwords.'),
 ]
 
 # Percona XtraDB Cluster
@@ -903,6 +912,9 @@ pxc_opts = [
     cfg.IntOpt('guest_log_long_query_time', default=1000,
                help='The time in milliseconds that a statement must take in '
                     'in order to be logged in the slow_query log.'),
+    cfg.IntOpt('default_password_length',
+               default='${mysql.default_password_length}',
+               help='Character length of generated passwords.'),
 ]
 
 
@@ -975,6 +987,8 @@ redis_opts = [
                help='Root controller implementation for redis.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # Cassandra
@@ -1053,6 +1067,8 @@ cassandra_opts = [
                '.cassandra.guestagent.CassandraGuestAgentStrategy',
                help='Class that implements datastore-specific Guest Agent API '
                     'logic.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # DSE (mostly uses same options as Cassandra community edition).
@@ -1122,6 +1138,8 @@ couchbase_opts = [
                help='Root controller implementation for couchbase.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.IntOpt('default_password_length', default=24, min=6, max=24,
+               help='Character length of generated passwords.'),
     cfg.BoolOpt('cluster_support', default=True,
                 help='Enable clusters to be created and managed.'),
     cfg.StrOpt('api_strategy',
@@ -1229,6 +1247,8 @@ mongodb_opts = [
                help='Root controller implementation for mongodb.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # PostgreSQL
@@ -1296,6 +1316,8 @@ postgresql_opts = [
                     "in order to be logged in the 'general' log.  A value of "
                     "'0' logs all statements, while '-1' turns off "
                     "statement logging."),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # Apache CouchDB
@@ -1352,7 +1374,8 @@ couchdb_opts = [
                 help='Databases to exclude when listing databases.',
                 deprecated_name='ignore_dbs',
                 deprecated_group='DEFAULT'),
-
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # Vertica
@@ -1417,6 +1440,8 @@ vertica_opts = [
                help='List of Guest Logs to expose for publishing.'),
     cfg.IntOpt('min_ksafety', default=0,
                help='Minimum k-safety setting permitted for vertica clusters'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # DB2
@@ -1471,6 +1496,8 @@ db2_opts = [
                help='Root controller implementation for db2.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # MariaDB
@@ -1564,6 +1591,9 @@ mariadb_opts = [
                'galera_common.guestagent.GaleraCommonGuestAgentStrategy',
                help='Class that implements datastore-specific Guest Agent API '
                     'logic.'),
+    cfg.IntOpt('default_password_length',
+               default='${mysql.default_password_length}',
+               help='Character length of generated passwords.'),
 ]
 
 # RPC version groups
