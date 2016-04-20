@@ -16,8 +16,8 @@
 from proboscis import SkipTest
 
 from trove.common import utils
-from trove.tests.api.instances import CheckInstance
 from trove.tests.scenario.helpers.test_helper import DataType
+from trove.tests.scenario.runners.test_runners import CheckInstance
 from trove.tests.scenario.runners.test_runners import TestRunner
 from troveclient.compat import exceptions
 
