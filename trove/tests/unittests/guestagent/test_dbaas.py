@@ -2612,9 +2612,10 @@ class CouchbaseAppTest(testtools.TestCase):
         self.FAKE_ID = str(uuid4())
         InstanceServiceStatus.create(instance_id=self.FAKE_ID,
                                      status=rd_instance.ServiceStatuses.NEW)
-        self.appStatus = FakeAppStatus(self.FAKE_ID,
-                                       rd_instance.ServiceStatuses.NEW)
-        self.couchbaseApp = couchservice.CouchbaseApp(self.appStatus)
+        self.couchbaseApp = couchservice.CouchbaseApp()
+        self.couchbaseApp.status = FakeAppStatus(
+            self.FAKE_ID,
+            rd_instance.ServiceStatuses.NEW)
         dbaas.CONF.guest_id = self.FAKE_ID
 
     def tearDown(self):
@@ -2634,14 +2635,16 @@ class CouchbaseAppTest(testtools.TestCase):
 
     def test_stop_db(self):
         couchservice.utils.execute_with_timeout = Mock()
-        self.appStatus.set_next_status(rd_instance.ServiceStatuses.SHUTDOWN)
+        self.couchbaseApp.status.set_next_status(
+            rd_instance.ServiceStatuses.SHUTDOWN)
 
         self.couchbaseApp.stop_db()
         self.assert_reported_status(rd_instance.ServiceStatuses.NEW)
 
     def test_stop_db_error(self):
         couchservice.utils.execute_with_timeout = Mock()
-        self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
+        self.couchbaseApp.status.set_next_status(
+            rd_instance.ServiceStatuses.RUNNING)
         self.couchbaseApp.state_change_wait_time = 1
 
         with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
@@ -2649,7 +2652,8 @@ class CouchbaseAppTest(testtools.TestCase):
             self.assertRaises(RuntimeError, self.couchbaseApp.stop_db)
 
     def test_restart(self):
-        self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
+        self.couchbaseApp.status.set_next_status(
+            rd_instance.ServiceStatuses.RUNNING)
         self.couchbaseApp.stop_db = Mock()
         self.couchbaseApp.start_db = Mock()
 
@@ -2663,7 +2667,8 @@ class CouchbaseAppTest(testtools.TestCase):
 
     def test_start_db(self):
         couchservice.utils.execute_with_timeout = Mock()
-        self.appStatus.set_next_status(rd_instance.ServiceStatuses.RUNNING)
+        self.couchbaseApp.status.set_next_status(
+            rd_instance.ServiceStatuses.RUNNING)
         self.couchbaseApp._enable_db_on_boot = Mock()
 
         self.couchbaseApp.start_db()
@@ -2682,7 +2687,8 @@ class CouchbaseAppTest(testtools.TestCase):
         couchservice.utils.execute_with_timeout = Mock()
         self.couchbaseApp._enable_db_on_boot = Mock()
         self.couchbaseApp.state_change_wait_time = 1
-        self.appStatus.set_next_status(rd_instance.ServiceStatuses.SHUTDOWN)
+        self.couchbaseApp.status.set_next_status(
+            rd_instance.ServiceStatuses.SHUTDOWN)
 
         with patch.object(BaseDbStatus, 'prepare_completed') as patch_pc:
             patch_pc.__get__ = Mock(return_value=True)

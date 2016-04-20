@@ -36,19 +36,13 @@ class Manager(manager.Manager):
     based off of the datastore of the trove instance
     """
 
-    def __init__(self):
-        self.appStatus = service.CouchbaseAppStatus()
-        self.app = service.CouchbaseApp(self.appStatus)
-        super(Manager, self).__init__('couchbase')
+    def __init__(self, manager_name='couchbase'):
+        super(Manager, self).__init__(manager_name)
+        self.app = service.CouchbaseApp()
 
     @property
     def status(self):
-        return self.appStatus
-
-    def change_passwords(self, context, users):
-        with EndNotification(context):
-            raise exception.DatastoreOperationNotSupported(
-                operation='change_passwords', datastore=self.manager)
+        return self.app.status
 
     def reset_configuration(self, context, configuration):
         self.app.reset_configuration(configuration)
@@ -75,13 +69,18 @@ class Manager(manager.Manager):
 
         if root_password:
             LOG.debug('Enabling root user (with password).')
-            self.app.enable_root(root_password)
+            self.app.secure(password=root_password)
+        elif cluster_config:
+            self.app.secure(password=cluster_config['cluster_password'])
+        else:
+            self.app.secure()
 
         if backup_info:
             LOG.debug('Now going to perform restore.')
             self._perform_restore(backup_info,
                                   context,
                                   mount_point)
+            self.app.apply_post_restore_updates(backup_info)
 
         if not cluster_config:
             if self.is_root_enabled(context):
@@ -106,32 +105,6 @@ class Manager(manager.Manager):
         gets a stop message from the taskmanager.
         """
         self.app.stop_db(do_not_start_on_reboot=do_not_start_on_reboot)
-
-    def get_user(self, context, username, hostname):
-        raise exception.DatastoreOperationNotSupported(
-            operation='get_user', datastore=self.manager)
-
-    def grant_access(self, context, username, hostname, databases):
-        raise exception.DatastoreOperationNotSupported(
-            operation='grant_access', datastore=self.manager)
-
-    def revoke_access(self, context, username, hostname, database):
-        raise exception.DatastoreOperationNotSupported(
-            operation='revoke_access', datastore=self.manager)
-
-    def list_access(self, context, username, hostname):
-        raise exception.DatastoreOperationNotSupported(
-            operation='list_access', datastore=self.manager)
-
-    def list_databases(self, context, limit=None, marker=None,
-                       include_marker=False):
-        raise exception.DatastoreOperationNotSupported(
-            operation='list_databases', datastore=self.manager)
-
-    def list_users(self, context, limit=None, marker=None,
-                   include_marker=False):
-        raise exception.DatastoreOperationNotSupported(
-            operation='list_users', datastore=self.manager)
 
     def enable_root(self, context):
         LOG.debug("Enabling root.")

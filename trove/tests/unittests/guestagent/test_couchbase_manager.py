@@ -57,7 +57,7 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
 
     def test_update_status(self):
         mock_status = MagicMock()
-        self.manager.appStatus = mock_status
+        self.manager.app.status = mock_status
         self.manager.update_status(self.context)
         mock_status.update.assert_any_call()
 
@@ -71,7 +71,9 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
                     install_if_needed=DEFAULT,
                     start_db_with_conf_changes=DEFAULT,
                     init_storage_structure=DEFAULT,
-                    apply_initial_guestagent_configuration=DEFAULT)
+                    apply_initial_guestagent_configuration=DEFAULT,
+                    apply_post_restore_updates=DEFAULT,
+                    secure=DEFAULT)
     @patch.multiple(volume.VolumeDevice,
                     format=DEFAULT,
                     mount=DEFAULT,
@@ -88,7 +90,7 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
 
         mock_status = MagicMock()
         mock_status.begin_install = MagicMock(return_value=None)
-        self.manager.appStatus = mock_status
+        self.manager.app.status = mock_status
 
         instance_ram = 2048
         mount_point = '/var/lib/couchbase'
@@ -110,13 +112,16 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
         mock_status.begin_install.assert_any_call()
         kwmocks['install_if_needed'].assert_any_call(self.packages)
         if backup_info:
-            backup.restore.assert_any_call(self.context,
-                                           backup_info,
-                                           mount_point)
+            backup.restore.assert_called_once_with(self.context,
+                                                   backup_info,
+                                                   mount_point)
+            kwmocks['apply_post_restore_updates'].assert_called_once_with(
+                backup_info)
+        kwmocks['secure'].assert_called_once_with()
 
     def test_restart(self):
         mock_status = MagicMock()
-        self.manager.appStatus = mock_status
+        self.manager.app.status = mock_status
         couch_service.CouchbaseApp.restart = MagicMock(return_value=None)
         # invocation
         self.manager.restart(self.context)
@@ -125,7 +130,7 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
 
     def test_stop_db(self):
         mock_status = MagicMock()
-        self.manager.appStatus = mock_status
+        self.manager.app.status = mock_status
         couch_service.CouchbaseApp.stop_db = MagicMock(return_value=None)
         # invocation
         self.manager.stop_db(self.context)

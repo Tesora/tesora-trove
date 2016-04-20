@@ -1073,6 +1073,8 @@ couchbase_opts = [
                 help='List of UDP ports and/or port ranges to open '
                      'in the security group (only applicable '
                      'if trove_security_groups_support is True).'),
+    cfg.PortOpt('couchbase_port', default=8091,
+                help='The TCP port the server listens on.'),
     cfg.StrOpt('backup_strategy', default='CbBackup',
                help='Default strategy to perform backups.',
                deprecated_name='backup_strategy',
