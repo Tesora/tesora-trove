@@ -458,10 +458,9 @@ class OracleVMApp(service.OracleApp):
 
     def start_db(self, update_db=False):
         LOG.debug("Start the Oracle database.")
-        db_name = self._Config().db_name
         self.update_spfile()
         self.status.start_db_service()
-        with self._Cursor(db_name) as cursor:
+        with self.cursor(self.admin.database_name) as cursor:
             cursor.execute(str(sql_query.Query(
                 columns=['DATABASE_ROLE', 'OPEN_MODE'],
                 tables=['V$DATABASE'])))
@@ -530,7 +529,7 @@ class OracleVMApp(service.OracleApp):
         if read_only:
             db_name = self.admin.database_name
             LOG.debug("Making database %s read only." % db_name)
-            with self._Cursor(db_name) as cursor:
+            with self.cursor(db_name) as cursor:
                 cursor.execute(str(sql_query.Query(
                     columns=['OPEN_MODE'],
                     tables=['V$DATABASE'])))
