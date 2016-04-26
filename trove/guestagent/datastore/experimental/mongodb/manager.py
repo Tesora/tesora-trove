@@ -17,6 +17,7 @@ import os
 
 from oslo_log import log as logging
 
+from trove.common import cfg
 from trove.common.i18n import _
 from trove.common import instance as ds_instance
 from trove.common.notification import EndNotification
@@ -28,6 +29,7 @@ from trove.guestagent.datastore import manager
 from trove.guestagent import volume
 
 LOG = logging.getLogger(__name__)
+CONF = cfg.CONF
 
 
 class Manager(manager.Manager):
@@ -90,6 +92,26 @@ class Manager(manager.Manager):
             self._perform_restore(backup_info, context, mount_point, self.app)
             if service.MongoDBAdmin().is_root_enabled():
                 self.app.status.report_root(context, 'root')
+
+    def pre_upgrade(self, context):
+        LOG.debug('Preparing MongoDB for upgrade.')
+        self.app.status.begin_restart()
+        self.app.stop_db()
+        mount_point = CONF.mongodb.mount_point
+        upgrade_info = self.app.save_files_pre_upgrade(mount_point)
+        upgrade_info['mount_point'] = mount_point
+        return upgrade_info
+
+    def post_upgrade(self, context, upgrade_info):
+        LOG.debug('Finalizing MongoDB upgrade.')
+        self.app.stop_db()
+        if 'device' in upgrade_info:
+            self.mount_volume(context,
+                              mount_point=upgrade_info['mount_point'],
+                              device_path=upgrade_info['device'])
+        self.app.restore_files_post_upgrade(upgrade_info)
+        self.app.initialize_writable_run_dir()
+        self.app.start_db()
 
     def restart(self, context):
         LOG.debug("Restarting MongoDB.")
