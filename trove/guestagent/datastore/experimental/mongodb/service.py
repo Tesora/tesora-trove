@@ -38,7 +38,6 @@ from trove.guestagent.db import models
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
-CONFIG_FILE = operating_system.file_discovery(system.CONFIG_CANDIDATES)
 
 # Configuration group for clustering-related settings.
 CNF_CLUSTER = 'clustering'
@@ -56,9 +55,7 @@ class MongoDBApp(object):
     def _init_overrides_dir(cls):
         """Initialize a directory for configuration overrides.
         """
-        revision_dir = guestagent_utils.build_file_path(
-            os.path.dirname(CONFIG_FILE),
-            ConfigurationManager.DEFAULT_STRATEGY_OVERRIDES_SUB_DIR)
+        revision_dir = system.CONFIG_OVERRIDES_DIR
 
         if not os.path.exists(revision_dir):
             operating_system.create_directory(
@@ -73,7 +70,7 @@ class MongoDBApp(object):
 
         revision_dir = self._init_overrides_dir()
         self.configuration_manager = ConfigurationManager(
-            CONFIG_FILE, system.MONGO_USER, system.MONGO_USER,
+            system.CONFIG_FILE, system.MONGO_USER, system.MONGO_USER,
             SafeYamlCodec(default_flow_style=False),
             requires_root=True,
             override_strategy=OneFileOverrideStrategy(revision_dir))
@@ -209,7 +206,7 @@ class MongoDBApp(object):
         # Mongodb init scripts assume the PID-file path is writable by the
         # database service.
         # See: https://jira.mongodb.org/browse/SERVER-20075
-        self._initialize_writable_run_dir()
+        self.initialize_writable_run_dir()
 
         # todo mvandijk: enable authorization.
         # 'security.authorization': True
@@ -230,7 +227,7 @@ class MongoDBApp(object):
         else:
             self._configure_network(MONGODB_PORT)
 
-    def _initialize_writable_run_dir(self):
+    def initialize_writable_run_dir(self):
         """Create a writable directory for Mongodb's runtime data
         (e.g. PID-file).
         """
@@ -516,6 +513,38 @@ class MongoDBApp(object):
         else:
             LOG.debug('Replica set %s is not active.' % replica_set_name)
             return False
+
+    def save_files_pre_upgrade(self, mount_point):
+        mnt_confs_dir = os.path.join(mount_point, 'save_confs/')
+        mnt_creds_dir = os.path.join(mount_point, 'save_creds/')
+        for save_dir in [mnt_confs_dir, mnt_creds_dir]:
+            if not operating_system.exists(save_dir,
+                                           is_directory=True,
+                                           as_root=True):
+                operating_system.create_directory(save_dir,
+                                                  force=True,
+                                                  as_root=True)
+        operating_system.copy(system.CONFIG_FILE, mnt_confs_dir,
+                              preserve=True, as_root=True)
+        operating_system.copy(system.CONFIG_OVERRIDES_DIR, mnt_confs_dir,
+                              preserve=True, recursive=True, as_root=True)
+        operating_system.copy(system.MONGO_ADMIN_CREDS_FILE, mnt_creds_dir,
+                              preserve=True, as_root=True)
+        return {'save_confs': mnt_confs_dir,
+                'save_creds': mnt_creds_dir}
+
+    def restore_files_post_upgrade(self, upgrade_info):
+        operating_system.copy('%s/.' % upgrade_info['save_confs'],
+                              system.CONFIG_DIR,
+                              preserve=True, recursive=True,
+                              force=True, as_root=True)
+        operating_system.copy('%s/.' % upgrade_info['save_creds'],
+                              os.path.expanduser('~'),
+                              preserve=True, recursive=True,
+                              force=True, as_root=True)
+        for save_dir in [upgrade_info['save_confs'],
+                         upgrade_info['save_creds']]:
+            operating_system.remove(save_dir, )
 
 
 class MongoDBAppStatus(service.BaseDbStatus):

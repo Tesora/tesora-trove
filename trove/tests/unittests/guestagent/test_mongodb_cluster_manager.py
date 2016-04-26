@@ -105,7 +105,7 @@ class GuestAgentMongoDBClusterManagerTest(trove_testtools.TestCase):
             'clustering')
         mock_start_db.assert_called_with(True)
 
-    @mock.patch.object(service.MongoDBApp, '_initialize_writable_run_dir')
+    @mock.patch.object(service.MongoDBApp, 'initialize_writable_run_dir')
     @mock.patch.object(service.MongoDBApp, '_configure_as_query_router')
     @mock.patch.object(service.MongoDBApp, '_configure_cluster_security')
     def test_prepare_mongos(self, mock_secure, mock_config, mock_run_init):
@@ -116,7 +116,7 @@ class GuestAgentMongoDBClusterManagerTest(trove_testtools.TestCase):
         self.manager.app.status.set_status.assert_called_with(
             ds_instance.ServiceStatuses.INSTANCE_READY, force=True)
 
-    @mock.patch.object(service.MongoDBApp, '_initialize_writable_run_dir')
+    @mock.patch.object(service.MongoDBApp, 'initialize_writable_run_dir')
     @mock.patch.object(service.MongoDBApp, '_configure_as_config_server')
     @mock.patch.object(service.MongoDBApp, '_configure_cluster_security')
     def test_prepare_config_server(
@@ -128,7 +128,7 @@ class GuestAgentMongoDBClusterManagerTest(trove_testtools.TestCase):
         self.manager.app.status.set_status.assert_called_with(
             ds_instance.ServiceStatuses.INSTANCE_READY, force=True)
 
-    @mock.patch.object(service.MongoDBApp, '_initialize_writable_run_dir')
+    @mock.patch.object(service.MongoDBApp, 'initialize_writable_run_dir')
     @mock.patch.object(service.MongoDBApp, '_configure_as_cluster_member')
     @mock.patch.object(service.MongoDBApp, '_configure_cluster_security')
     def test_prepare_member(self, mock_secure, mock_config, mock_run_init):
