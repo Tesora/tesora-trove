@@ -22,7 +22,7 @@ from oslo_log import log as logging
 
 from trove.common import exception
 from trove.common import utils
-from trove.guestagent.common import operating_system
+from trove.guestagent.common import operating_system, guestagent_utils
 from trove.guestagent.datastore.experimental.couchbase import service
 from trove.guestagent.datastore.experimental.couchbase import system
 from trove.guestagent import dbaas
@@ -40,6 +40,7 @@ class CbBackup(base.RestoreRunner):
     base_restore_cmd = 'sudo tar xpPf -'
 
     def __init__(self, *args, **kwargs):
+        self.app = service.CouchbaseApp()
         super(CbBackup, self).__init__(*args, **kwargs)
 
     def pre_restore(self):
@@ -52,16 +53,15 @@ class CbBackup(base.RestoreRunner):
     def post_restore(self):
         try:
             # Root enabled for the backup
-            pwd_file = system.COUCHBASE_DUMP_DIR + system.SECRET_KEY
+            pwd_file = guestagent_utils.build_file_path(
+                system.COUCHBASE_DUMP_DIR, self.app.SECRET_KEY_FILE)
             if os.path.exists(pwd_file):
                 with open(pwd_file, "r") as f:
                     pw = f.read().rstrip("\n")
-                    root = service.CouchbaseRootAccess()
-                    root.set_password(pw)
+                    self.app.set_password(pw)
 
             # Get current root password
-            root = service.CouchbaseRootAccess()
-            root_pwd = root.get_password()
+            root_pwd = self.app.get_password()
 
             # Iterate through each bucket config
             buckets_json = system.COUCHBASE_DUMP_DIR + system.BUCKETS_JSON

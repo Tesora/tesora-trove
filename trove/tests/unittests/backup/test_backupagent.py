@@ -28,6 +28,8 @@ from trove.conductor import api as conductor_api
 from trove.guestagent.backup import backupagent
 from trove.guestagent.common import configuration
 from trove.guestagent.common.configuration import ImportOverrideStrategy
+from trove.guestagent.datastore.experimental.couchbase.service import \
+    CouchbaseApp
 from trove.guestagent.strategies.backup.base import BackupRunner
 from trove.guestagent.strategies.backup.base import UnknownBackupType
 from trove.guestagent.strategies.backup.experimental import couchbase_impl
@@ -244,7 +246,8 @@ class BackupAgentTest(trove_testtools.TestCase):
         str_innobackup_manifest = 'innobackupex.xbstream.gz.enc'
         self.assertEqual(str_innobackup_manifest, inno_backup_ex.manifest)
 
-    def test_backup_impl_CbBackup(self):
+    @patch.object(CouchbaseApp, 'get_password', return_value='password')
+    def test_backup_impl_CbBackup(self, _):
         netutils.get_my_ipv4 = Mock(return_value="1.1.1.1")
         utils.execute_with_timeout = Mock(return_value=None)
         cbbackup = couchbase_impl.CbBackup('cbbackup', extra_opts='')

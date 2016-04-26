@@ -1,4 +1,4 @@
-# Copyright (c) 2013 eBay Software Foundation
+# Copyright 2016 Tesora Inc.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -13,13 +13,19 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from trove.guestagent.datastore.experimental.couchbase import (
+    manager as community_manager
+)
+from trove.guestagent.datastore.experimental.couchbase_4 import service
 
-# FIXME(pmalik): These properties are used by Couchbase backup/restore
-# strategies. This file should eventually go away and the strategies should
-# be using the existing CouchbaseApp interface to execute database commands.
-COUCHBASE_DUMP_DIR = '/tmp/backups'
-COUCHBASE_WEBADMIN_PORT = '8091'
-COUCHBASE_REST_API = 'http://localhost:' + COUCHBASE_WEBADMIN_PORT
-BUCKETS_JSON = '/buckets.json'
 
-# Do not extend this file any more. Use the CouchbaseApp instead.
+class Manager(community_manager.Manager):
+
+    def __init__(self):
+        super(Manager, self).__init__(manager_name='couchbase_4')
+
+    def build_app(self):
+        return service.Couchbase4App()
+
+    def initialize_cluster(self, context, enabled_services=None):
+        self.app.initialize_cluster(enabled_services=enabled_services)

@@ -2522,12 +2522,13 @@ class CouchbaseAppTest(BaseAppTest.AppTestCase):
 
     @property
     def expected_service_candidates(self):
-        return couchservice.system.SERVICE_CANDIDATES
+        return self.couchbaseApp.service_candidates
 
     @patch.object(utils, 'execute_with_timeout')
     def test_service_cleanup(self, exec_mock):
         couchservice.CouchbaseAppStatus(Mock()).cleanup_stalled_db_services()
-        exec_mock.assert_called_once_with(couchservice.system.cmd_kill)
+        exec_mock.assert_called_once_with(self.couchbaseApp.COUCHBASE_KILL_CMD,
+                                          root_helper='sudo', run_as_root=True)
 
     def tearDown(self):
         couchservice.utils.execute_with_timeout = (

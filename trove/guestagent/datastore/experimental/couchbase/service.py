@@ -17,7 +17,6 @@ import json
 import os
 import re
 import stat
-import subprocess
 import tempfile
 
 from oslo_log import log as logging
@@ -33,7 +32,6 @@ from trove.common.stream_codecs import StringConverter
 from trove.common import utils as utils
 from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
-from trove.guestagent.datastore.experimental.couchbase import system
 from trove.guestagent.datastore import service
 from trove.guestagent.db import models
 from trove.guestagent import pkg
@@ -50,12 +48,33 @@ class CouchbaseApp(object):
     on a trove instance.
     """
 
+    # TODO(pmalik): This should be obtained from the CouchbaseRootUser model.
+    DEFAULT_ADMIN_NAME = 'root'
+    DEFAULT_ADMIN_PASSWORD = 'password'
+
     MIN_RAMSIZE_QUOTA_MB = 256
     _ADMIN_USER = 'root'  # TODO(pmalik): Should be 'os_admin'.
+
+    COUCHBASE_KILL_CMD = 'pkill -u couchbaso tee -a'
+
+    SECRET_KEY_FILE = 'secret_key'
 
     @property
     def couchbase_owner(self):
         return 'couchbase'
+
+    @property
+    def service_candidates(self):
+        return ["couchbase-server"]
+
+    @property
+    def couchbase_pwd_file(self):
+        return guestagent_utils.build_file_path(self.couchbase_conf_dir,
+                                                self.SECRET_KEY_FILE)
+
+    @property
+    def couchbase_conf_dir(self):
+        return '/etc/couchbase/'
 
     def __init__(self, state_change_wait_time=None):
         """
@@ -65,7 +84,7 @@ class CouchbaseApp(object):
             self.state_change_wait_time = state_change_wait_time
         else:
             self.state_change_wait_time = CONF.state_change_wait_time
-        self.status = CouchbaseAppStatus(self.get_cluster_admin())
+        self.status = CouchbaseAppStatus(self.build_admin())
         self._available_ram_mb = self.MIN_RAMSIZE_QUOTA_MB
 
     @property
@@ -98,16 +117,15 @@ class CouchbaseApp(object):
         store it on the filesystem. Skip the cluster initialization as
         it will be performed later from the task manager.
         """
-        self.ip_address = netutils.get_my_ipv4()
+        ip_address = netutils.get_my_ipv4()
         mount_point = CONF.couchbase.mount_point
-        self.build_admin().run_node_init(mount_point, mount_point,
-                                         self.ip_address)
+        self.build_admin().run_node_init(mount_point, mount_point, ip_address)
 
         if not cluster_config:
             self.initialize_cluster()
 
     def apply_post_restore_updates(self, backup_info):
-        self.status = CouchbaseAppStatus(self.get_cluster_admin())
+        self.status = CouchbaseAppStatus(self.build_admin())
 
     def initialize_cluster(self):
         """Initialize this node as cluster.
@@ -115,13 +133,13 @@ class CouchbaseApp(object):
         self.build_admin().run_cluster_init(self.ramsize_quota_mb)
 
     def get_cluster_admin(self):
-        cluster_password = CouchbaseRootAccess.get_password()
+        cluster_password = self.get_password()
         return models.CouchbaseUser(self._ADMIN_USER, cluster_password)
 
     def secure(self, password=None):
-        admin = CouchbaseRootAccess.update_admin_credentials(password=password)
+        admin = self.update_admin_credentials(password=password)
         # Update the internal status with the new user.
-        self.status = CouchbaseAppStatus(admin)
+        self.status = CouchbaseAppStatus(self.build_admin())
         return admin
 
     @property
@@ -143,8 +161,8 @@ class CouchbaseApp(object):
         Install the Couchbase Server.
         """
         LOG.debug('Installing Couchbase Server. Creating %s' %
-                  system.COUCHBASE_CONF_DIR)
-        operating_system.create_directory(system.COUCHBASE_CONF_DIR,
+                  self.couchbase_conf_dir)
+        operating_system.create_directory(self.couchbase_conf_dir,
                                           as_root=True)
         pkg_opts = {}
         packager.pkg_install(packages, pkg_opts, 1200)
@@ -153,16 +171,16 @@ class CouchbaseApp(object):
 
     def stop_db(self, update_db=False, do_not_start_on_reboot=False):
         self.status.stop_db_service(
-            system.SERVICE_CANDIDATES, self.state_change_wait_time,
+            self.service_candidates, self.state_change_wait_time,
             disable_on_boot=do_not_start_on_reboot, update_db=update_db)
 
     def restart(self):
         self.status.restart_db_service(
-            system.SERVICE_CANDIDATES, self.state_change_wait_time)
+            self.service_candidates, self.state_change_wait_time)
 
     def start_db(self, update_db=False):
         self.status.start_db_service(
-            system.SERVICE_CANDIDATES, self.state_change_wait_time,
+            self.service_candidates, self.state_change_wait_time,
             enable_on_boot=True, update_db=update_db)
 
     def enable_root(self, root_password=None):
@@ -181,6 +199,45 @@ class CouchbaseApp(object):
         """Return whether rebalancing is currently running.
         """
         return self.build_admin().get_cluster_rebalance_status()
+
+    def update_admin_credentials(self, password=None):
+        admin = models.CouchbaseRootUser(password=password)
+        if password:
+            self.write_password_to_file(admin.password)
+        else:
+            self.set_password(admin.password)
+
+        return admin
+
+    def set_password(self, root_password):
+        self.build_admin().reset_root_password(root_password)
+        self.write_password_to_file(root_password)
+
+    def write_password_to_file(self, root_password):
+        operating_system.create_directory(self.couchbase_conf_dir,
+                                          as_root=True)
+        try:
+            tempfd, tempname = tempfile.mkstemp()
+            os.fchmod(tempfd, stat.S_IRUSR | stat.S_IWUSR)
+            os.write(tempfd, root_password)
+            os.fchmod(tempfd, stat.S_IRUSR)
+            os.close(tempfd)
+        except OSError as err:
+            message = _("An error occurred in saving password "
+                        "(%(errno)s). %(strerror)s.") % {
+                            "errno": err.errno,
+                            "strerror": err.strerror}
+            LOG.exception(message)
+            raise RuntimeError(message)
+
+        operating_system.move(tempname, self.couchbase_pwd_file, as_root=True)
+
+    def get_password(self):
+        pwd = self.DEFAULT_ADMIN_PASSWORD
+        if os.path.exists(self.couchbase_pwd_file):
+            with open(self.couchbase_pwd_file) as file:
+                pwd = file.readline().strip()
+        return pwd
 
 
 class CouchbaseAdmin(object):
@@ -435,15 +492,39 @@ class CouchbaseAdmin(object):
             user = models.CouchbaseUser(username, password=new_password)
             self._edit_bucket(user)
 
+    def reset_root_password(self, new_password):
+        host_and_port = 'localhost:%d' % self._http_client_port
+        cmd = guestagent_utils.build_file_path(self.couchbase_bin_dir,
+                                               'cbreset_password')
+        cmd_tokens = ['sudo', cmd, host_and_port]
+
+        child = pexpect.spawn(' '.join(cmd_tokens))
+        try:
+            child.expect('.*password.*')
+            child.sendline(new_password)
+            child.expect('.*(yes/no).*')
+            child.sendline('yes')
+            child.expect('.*successfully.*')
+        except pexpect.TIMEOUT:
+            child.delayafterclose = 1
+            child.delayafterterminate = 1
+            try:
+                child.close(force=True)
+            except pexpect.ExceptionPexpect:
+                # Close fails to terminate a sudo process on some OSes.
+                utils.execute_with_timeout(
+                    'kill', str(child.pid),
+                    run_as_root=True, root_helper='sudo')
+
 
 class CouchbaseAppStatus(service.BaseDbStatus):
     """
     Handles all of the status updating for the couchbase guest agent.
     """
 
-    def __init__(self, user):
+    def __init__(self, admin):
         super(CouchbaseAppStatus, self).__init__()
-        self._admin = CouchbaseAdmin(user)
+        self._admin = admin
 
     def _get_actual_db_status(self):
         try:
@@ -456,68 +537,5 @@ class CouchbaseAppStatus(service.BaseDbStatus):
         return rd_instance.ServiceStatuses.SHUTDOWN
 
     def cleanup_stalled_db_services(self):
-        utils.execute_with_timeout(system.cmd_kill)
-
-
-class CouchbaseRootAccess(object):
-
-    # TODO(pmalik): This should be obtained from the CouchbaseRootUser model.
-    DEFAULT_ADMIN_NAME = 'root'
-    DEFAULT_ADMIN_PASSWORD = 'password'
-
-    @classmethod
-    def update_admin_credentials(cls, password=None):
-        admin = models.CouchbaseRootUser(password=password)
-        if password:
-            CouchbaseRootAccess().write_password_to_file(admin.password)
-        else:
-            CouchbaseRootAccess().set_password(admin.password)
-
-        return admin
-
-    def set_password(self, root_password):
-        self.ip_address = netutils.get_my_ipv4()
-        child = pexpect.spawn(system.cmd_reset_pwd % {'IP': self.ip_address})
-        try:
-            child.expect('.*password.*')
-            child.sendline(root_password)
-            child.expect('.*(yes/no).*')
-            child.sendline('yes')
-            child.expect('.*successfully.*')
-        except pexpect.TIMEOUT:
-            child.delayafterclose = 1
-            child.delayafterterminate = 1
-            try:
-                child.close(force=True)
-            except pexpect.ExceptionPexpect:
-                # Close fails to terminate a sudo process on some OSes.
-                subprocess.call(['sudo', 'kill', str(child.pid)])
-
-        self.write_password_to_file(root_password)
-
-    def write_password_to_file(self, root_password):
-        operating_system.create_directory(system.COUCHBASE_CONF_DIR,
-                                          as_root=True)
-        try:
-            tempfd, tempname = tempfile.mkstemp()
-            os.fchmod(tempfd, stat.S_IRUSR | stat.S_IWUSR)
-            os.write(tempfd, root_password)
-            os.fchmod(tempfd, stat.S_IRUSR)
-            os.close(tempfd)
-        except OSError as err:
-            message = _("An error occurred in saving password "
-                        "(%(errno)s). %(strerror)s.") % {
-                            "errno": err.errno,
-                            "strerror": err.strerror}
-            LOG.exception(message)
-            raise RuntimeError(message)
-
-        operating_system.move(tempname, system.pwd_file, as_root=True)
-
-    @classmethod
-    def get_password(cls):
-        pwd = cls.DEFAULT_ADMIN_PASSWORD
-        if os.path.exists(system.pwd_file):
-            with open(system.pwd_file) as file:
-                pwd = file.readline().strip()
-        return pwd
+        utils.execute_with_timeout(CouchbaseApp.COUCHBASE_KILL_CMD,
+                                   run_as_root=True, root_helper='sudo')

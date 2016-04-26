@@ -1,4 +1,4 @@
-# Copyright (c) 2013 eBay Software Foundation
+# Copyright 2016 Tesora Inc.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -13,13 +13,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from trove.tests.scenario.helpers.couchbase_helper import CouchbaseHelper
 
-# FIXME(pmalik): These properties are used by Couchbase backup/restore
-# strategies. This file should eventually go away and the strategies should
-# be using the existing CouchbaseApp interface to execute database commands.
-COUCHBASE_DUMP_DIR = '/tmp/backups'
-COUCHBASE_WEBADMIN_PORT = '8091'
-COUCHBASE_REST_API = 'http://localhost:' + COUCHBASE_WEBADMIN_PORT
-BUCKETS_JSON = '/buckets.json'
 
-# Do not extend this file any more. Use the CouchbaseApp instead.
+class Couchbase4Helper(CouchbaseHelper):
+
+    def __init__(self, expected_override_name):
+        super(Couchbase4Helper, self).__init__(expected_override_name)

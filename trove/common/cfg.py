@@ -48,6 +48,8 @@ def _update_options(options, *values):
             match_index = updated_options.index(match)
             updated_options.remove(match)
             updated_options.insert(match_index, value)
+        else:
+            updated_options.append(value)
 
     return updated_options
 
@@ -1188,6 +1190,14 @@ couchbase_opts = [
                help='Default bucket type.'),
 ]
 
+couchbase_4_group = cfg.OptGroup(
+    'couchbase_4', title='Couchbase 4.x options',
+    help="Oslo option group designed for Couchbase 4.x datastore")
+couchbase_4_opts = _update_options(
+    couchbase_opts,
+    cfg.ListOpt('default_services', default=['data', 'index', 'query'],
+                help='Couchbase services enabled on a new node.'))
+
 # MongoDB
 mongodb_group = cfg.OptGroup(
     'mongodb', title='MongoDB options',
@@ -1655,6 +1665,7 @@ CONF.register_group(redis_group)
 CONF.register_group(cassandra_group)
 CONF.register_group(dse_group)
 CONF.register_group(couchbase_group)
+CONF.register_group(couchbase_4_group)
 CONF.register_group(mongodb_group)
 CONF.register_group(postgresql_group)
 CONF.register_group(couchdb_group)
@@ -1671,6 +1682,7 @@ CONF.register_opts(redis_opts, redis_group)
 CONF.register_opts(cassandra_opts, cassandra_group)
 CONF.register_opts(dse_opts, dse_group)
 CONF.register_opts(couchbase_opts, couchbase_group)
+CONF.register_opts(couchbase_4_opts, couchbase_4_group)
 CONF.register_opts(mongodb_opts, mongodb_group)
 CONF.register_opts(postgresql_opts, postgresql_group)
 CONF.register_opts(couchdb_opts, couchdb_group)

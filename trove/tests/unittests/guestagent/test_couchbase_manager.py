@@ -166,8 +166,8 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
                                self.__fake_mkstemp):
             self.addCleanup(self.__cleanup_tempfile)
 
-            rootaccess = couch_service.CouchbaseRootAccess()
-            rootaccess.write_password_to_file('mypassword')
+            app = couch_service.CouchbaseApp()
+            app.write_password_to_file('mypassword')
 
             filepermissions = os.stat(self.tempname).st_mode
             self.assertEqual(stat.S_IRUSR, filepermissions & 0o777)
@@ -184,10 +184,10 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
                                'mkstemp',
                                self.__fake_mkstemp_raise):
 
-            rootaccess = couch_service.CouchbaseRootAccess()
+            app = couch_service.CouchbaseApp()
 
             self.assertRaises(RuntimeError,
-                              rootaccess.write_password_to_file,
+                              app.write_password_to_file,
                               'mypassword')
 
     @mock.patch.object(operating_system, 'create_directory')

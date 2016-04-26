@@ -46,6 +46,10 @@ class CbBackup(base.BackupRunner):
         ['rm', '-rf', system.COUCHBASE_DUMP_DIR],
     ]
 
+    def __init__(self, filename, **kwargs):
+        self.app = service.CouchbaseApp()
+        super(CbBackup, self).__init__(filename, **kwargs)
+
     @property
     def cmd(self):
         """
@@ -71,8 +75,7 @@ class CbBackup(base.BackupRunner):
         try:
             for cmd in self.pre_backup_commands:
                 utils.execute_with_timeout(*cmd)
-            root = service.CouchbaseRootAccess()
-            pw = root.get_password()
+            pw = self.app.get_password()
             self._save_buckets_config(pw)
             with open(OUTFILE, "r") as f:
                 out = f.read()
@@ -92,7 +95,7 @@ class CbBackup(base.BackupRunner):
             operating_system.move(OUTFILE, system.COUCHBASE_DUMP_DIR)
             if pw != "password":
                 # Not default password, backup generated root password
-                operating_system.copy(system.pwd_file,
+                operating_system.copy(self.app.couchbase_pwd_file,
                                       system.COUCHBASE_DUMP_DIR,
                                       preserve=True, as_root=True)
         except exception.ProcessExecutionError as p:
