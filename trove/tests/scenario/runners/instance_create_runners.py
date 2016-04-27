@@ -377,3 +377,22 @@ class InstanceCreateRunner(TestRunner):
             self.assert_client_code(expected_http_code)
         else:
             raise SkipTest("Cleanup is not required.")
+
+
+class CouchbaseInstanceCreateRunner(InstanceCreateRunner):
+
+    def run_initialized_instance_create(
+            self, with_dbs=True, with_users=False, configuration_id=None,
+            expected_states=['BUILD', 'ACTIVE'], expected_http_code=200,
+            create_helper_user=True):
+        # Couchbase supports only one user per instance.
+        # Since we already by default create the helper user, we need to skip
+        # creating any other instance users.
+        super(CouchbaseInstanceCreateRunner,
+              self).run_initialized_instance_create(
+            with_dbs=with_dbs,
+            with_users=with_users,
+            configuration_id=configuration_id,
+            expected_states=expected_states,
+            expected_http_code=expected_http_code,
+            create_helper_user=create_helper_user)
