@@ -375,7 +375,7 @@ class OracleVMAdmin(service.OracleAdmin):
 
     def _get_database_names(self):
         oratab_items = operating_system.read_file(
-            self.paths.oratab_file,
+            OracleVMPaths.oratab_file,
             stream_codecs.PropertiesCodec(delimiter=':'))
         return oratab_items.keys()
 
