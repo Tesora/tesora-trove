@@ -452,7 +452,7 @@ class CouchbaseInstanceCreateRunner(InstanceCreateRunner):
     def run_initialized_instance_create(
             self, with_dbs=True, with_users=False, configuration_id=None,
             expected_states=['BUILD', 'ACTIVE'], expected_http_code=200,
-            create_helper_user=True):
+            create_helper_user=True, name_suffix='_init'):
         # Couchbase supports only one user per instance.
         # Since we already by default create the helper user, we need to skip
         # creating any other instance users.
@@ -463,7 +463,8 @@ class CouchbaseInstanceCreateRunner(InstanceCreateRunner):
             configuration_id=configuration_id,
             expected_states=expected_states,
             expected_http_code=expected_http_code,
-            create_helper_user=create_helper_user)
+            create_helper_user=create_helper_user,
+            name_suffix=name_suffix)
 
 
 class Couchbase_4InstanceCreateRunner(CouchbaseInstanceCreateRunner):
