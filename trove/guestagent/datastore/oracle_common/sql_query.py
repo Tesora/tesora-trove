@@ -254,7 +254,7 @@ class CreatePFile(OracleSql):
                 % (self._TARGET_TYPE,
                    ("='%s'" % self.target if self.target else ''),
                    self._SOURCE_TYPE,
-                   ("'='%s'" % self.source if self.source else '')))
+                   ("='%s'" % self.source if self.source else '')))
 
 
 class CreateSPFile(CreatePFile):
