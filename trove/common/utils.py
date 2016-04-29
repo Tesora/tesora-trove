@@ -277,12 +277,70 @@ def correct_id_with_req(id, request):
     return id
 
 
-def generate_random_password(password_length=None):
+def generate_random_password(password_length=None, datastore=None,
+                             alpha_first=True):
+    """
+    Generate and return a random password string.
+
+    :param password_length: Length of password to create. If value is None,
+    the default_password_length set in the configuration will be used.
+    :param datastore: Datastore name to generate random password for. If
+    value is None, default values set in the configuration will be used.
+    :param alpha_first: Specify whether the generated password should begin
+    with an alphabet.
+    :return: A randomly generated password string
+    """
+    lower_case = 'abcdefghjkmnpqrstuvwxyz'
+    upper_case = 'ABCDEFGHJKMNPQRTUVWXYZ'
+    numbers = '2346789'
+    min_lower_case = cfg.get_configuration_property(
+        'password_min_lower_case', datastore)
+    min_upper_case = cfg.get_configuration_property(
+        'password_min_upper_case', datastore)
+    min_numbers = cfg.get_configuration_property(
+        'password_min_numbers', datastore)
+    min_special_chars = cfg.get_configuration_property(
+        'password_min_special_chars', datastore)
+    special_chars = cfg.get_configuration_property(
+        'password_special_charset', datastore)
     password_length = (
         password_length or
         cfg.get_configuration_property('default_password_length')
     )
-    return passlib_utils.generate_password(size=password_length)
+    choices = [lower_case, upper_case, numbers, special_chars]
+    mins = [min_lower_case, min_upper_case, min_numbers, min_special_chars]
+    all_choices = (lower_case + upper_case + numbers + special_chars)
+
+    password = bytearray()
+    if password_length < 1:
+        raise RuntimeError("Length cannot be less than 1")
+    total_min = 0
+    for index, value in enumerate(mins):
+        total_min += value
+        if value:
+            password.extend(passlib_utils.generate_password(
+                size=value, charset=choices[index]).encode('utf-8'))
+        if index == 1:
+            random.shuffle(password)
+    remainder = password_length - total_min
+    if total_min > password_length:
+        raise RuntimeError("Length cannot be less than %d" % total_min)
+    if remainder > 0:
+        password.extend(passlib_utils.generate_password(
+            size=password_length - total_min, charset=all_choices)
+            .encode('utf-8'))
+    if alpha_first:
+        last_part = bytearray(password[1:])
+        random.shuffle(last_part)
+        password = password[:1]
+        password.extend(last_part)
+    else:
+        random.shuffle(password)
+
+    try:
+        return password.decode('utf-8')
+    except AttributeError:
+        return str(password)
 
 
 def generate_random_string(length,

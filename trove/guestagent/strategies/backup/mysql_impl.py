@@ -34,14 +34,14 @@ class MySQLDump(base.BackupRunner):
     @property
     def cmd(self):
         user_and_pass = (
-            ' --password=%(password)s -u %(user)s '
-            '2>/tmp/mysqldump.log' %
+            " --password='%(password)s' -u %(user)s "
+            "2>/tmp/mysqldump.log" %
             {'password': MySqlApp.get_auth_password(),
              'user': ADMIN_USER_NAME})
-        cmd = ('mysqldump'
-               ' --all-databases'
-               ' %(extra_opts)s'
-               ' --opt' + user_and_pass)
+        cmd = ("mysqldump"
+               " --all-databases"
+               " %(extra_opts)s"
+               " --opt" + user_and_pass)
         return cmd + self.zip_cmd + self.encrypt_cmd
 
 
@@ -51,18 +51,18 @@ class InnoBackupEx(base.BackupRunner):
 
     @property
     def user_and_pass(self):
-        return (' --user=%(user)s --password=%(password)s ' %
+        return (" --user=%(user)s --password='%(password)s' " %
                 {'user': ADMIN_USER_NAME,
                  'password': MySqlApp.get_auth_password()})
 
     @property
     def cmd(self):
-        cmd = ('sudo innobackupex'
-               ' --stream=xbstream'
-               ' %(extra_opts)s ' +
+        cmd = ("sudo innobackupex"
+               " --stream=xbstream"
+               " %(extra_opts)s " +
                self.user_and_pass +
                MySqlApp.get_data_dir() +
-               ' 2>/tmp/innobackupex.log'
+               " 2>/tmp/innobackupex.log"
                )
         return cmd + self.zip_cmd + self.encrypt_cmd
 
@@ -111,14 +111,14 @@ class InnoBackupExIncremental(InnoBackupEx):
 
     @property
     def cmd(self):
-        cmd = ('sudo innobackupex'
-               ' --stream=xbstream'
-               ' --incremental'
-               ' --incremental-lsn=%(lsn)s'
-               ' %(extra_opts)s ' +
+        cmd = ("sudo innobackupex"
+               " --stream=xbstream"
+               " --incremental"
+               " --incremental-lsn=%(lsn)s"
+               " %(extra_opts)s " +
                self.user_and_pass +
                MySqlApp.get_data_dir() +
-               ' 2>/tmp/innobackupex.log')
+               " 2>/tmp/innobackupex.log")
         return cmd + self.zip_cmd + self.encrypt_cmd
 
     def metadata(self):

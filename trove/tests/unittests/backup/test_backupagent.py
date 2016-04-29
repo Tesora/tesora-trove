@@ -208,16 +208,16 @@ class BackupAgentTest(trove_testtools.TestCase):
         mysql_dump = mysql_impl.MySQLDump(
             'abc', extra_opts='')
         self.assertIsNotNone(mysql_dump.cmd)
-        str_mysql_dump_cmd = ('mysqldump'
-                              ' --all-databases'
-                              ' %(extra_opts)s'
-                              ' --opt'
-                              ' --password=123'
-                              ' -u os_admin'
-                              ' 2>/tmp/mysqldump.log'
-                              ' | gzip |'
-                              ' openssl enc -aes-256-cbc -salt '
-                              '-pass pass:default_aes_cbc_key')
+        str_mysql_dump_cmd = ("mysqldump"
+                              " --all-databases"
+                              " %(extra_opts)s"
+                              " --opt"
+                              " --password='123'"
+                              " -u os_admin"
+                              " 2>/tmp/mysqldump.log"
+                              " | gzip |"
+                              " openssl enc -aes-256-cbc -salt "
+                              "-pass pass:default_aes_cbc_key")
         self.assertEqual(str_mysql_dump_cmd, mysql_dump.cmd)
         self.assertIsNotNone(mysql_dump.manifest)
         self.assertEqual('abc.gz.enc', mysql_dump.manifest)
@@ -230,14 +230,14 @@ class BackupAgentTest(trove_testtools.TestCase):
         """
         inno_backup_ex = mysql_impl.InnoBackupEx('innobackupex', extra_opts='')
         self.assertIsNotNone(inno_backup_ex.cmd)
-        str_innobackup_cmd = ('sudo innobackupex'
-                              ' --stream=xbstream'
-                              ' %(extra_opts)s '
-                              ' --user=os_admin --password=123'
-                              ' /var/lib/mysql/data 2>/tmp/innobackupex.log'
-                              ' | gzip |'
-                              ' openssl enc -aes-256-cbc -salt '
-                              '-pass pass:default_aes_cbc_key')
+        str_innobackup_cmd = ("sudo innobackupex"
+                              " --stream=xbstream"
+                              " %(extra_opts)s "
+                              " --user=os_admin --password='123'"
+                              " /var/lib/mysql/data 2>/tmp/innobackupex.log"
+                              " | gzip |"
+                              " openssl enc -aes-256-cbc -salt "
+                              "-pass pass:default_aes_cbc_key")
         self.assertEqual(str_innobackup_cmd, inno_backup_ex.cmd)
         self.assertIsNotNone(inno_backup_ex.manifest)
         str_innobackup_manifest = 'innobackupex.xbstream.gz.enc'

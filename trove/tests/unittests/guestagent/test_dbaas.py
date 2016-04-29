@@ -17,6 +17,7 @@ import os
 import subprocess
 import tempfile
 import time
+import urllib
 from uuid import uuid4
 
 from mock import ANY
@@ -299,6 +300,7 @@ class MySqlAdminTest(testtools.TestCase):
         self.orig_LocalSqlClient_execute = dbaas.LocalSqlClient.execute
         self.orig_MySQLUser_is_valid_user_name = (
             models.MySQLUser._is_valid_user_name)
+        self.orig_urllib_quote = urllib.quote
         dbaas.get_engine = MagicMock(name='get_engine')
         dbaas.LocalSqlClient = Mock
         dbaas.LocalSqlClient.__enter__ = Mock()
@@ -309,6 +311,7 @@ class MySqlAdminTest(testtools.TestCase):
         dbaas.MySqlApp.configuration_manager = Mock()
         dbaas.orig_get_auth_password = dbaas.MySqlApp.get_auth_password
         dbaas.MySqlApp.get_auth_password = Mock()
+        urllib.quote = Mock()
 
         self.mySqlAdmin = MySqlAdmin()
 
@@ -326,6 +329,7 @@ class MySqlAdminTest(testtools.TestCase):
             dbaas.orig_configuration_manager
         dbaas.MySqlApp.get_auth_password = \
             dbaas.orig_get_auth_password
+        urllib.quote = self.orig_urllib_quote
 
     def test__associate_dbs(self):
         db_result = [{"grantee": "'test_user'@'%'", "table_schema": "db1"},
@@ -799,7 +803,9 @@ class MySqlAppTest(testtools.TestCase):
         self.mock_client.__enter__.return_value.execute = self.mock_execute
         dbaas.orig_configuration_manager = dbaas.MySqlApp.configuration_manager
         dbaas.MySqlApp.configuration_manager = Mock()
+        self.orig_urllib_quote = urllib.quote
         self.orig_create_engine = sqlalchemy.create_engine
+        urllib.quote = Mock()
 
     def tearDown(self):
         super(MySqlAppTest, self).tearDown()
@@ -813,6 +819,7 @@ class MySqlAppTest(testtools.TestCase):
         dbaas.MySqlApp.configuration_manager = \
             dbaas.orig_configuration_manager
         sqlalchemy.create_engine = self.orig_create_engine
+        urllib.quote = self.orig_urllib_quote
 
     def assert_reported_status(self, expected_status):
         service_status = InstanceServiceStatus.find_by(
@@ -1451,7 +1458,8 @@ class MySqlAppTest(testtools.TestCase):
     @patch.object(dbaas.MySqlApp, '_save_authentication_properties')
     @patch.object(dbaas, 'get_engine',
                   return_value=MagicMock(name='get_engine'))
-    def test_reset_admin_password(self, mock_engine, mock_save_auth):
+    def test_reset_admin_password(self, mock_engine,
+                                  mock_save_auth):
         with patch.object(dbaas.MySqlApp, 'local_sql_client',
                           return_value=self.mock_client):
             self.mySqlApp._create_admin_user = Mock()

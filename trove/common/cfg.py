@@ -436,6 +436,21 @@ common_opts = [
                help='Maximum size of a chunk saved in guest log container.'),
     cfg.IntOpt('guest_log_expiry', default=2592000,
                help='Expiry (in seconds) of objects in guest log container.'),
+    cfg.IntOpt('password_min_lower_case', default=1,
+               help='Minimum number of lower case letters to use in '
+                    'randomly generated database passwords.'),
+    cfg.IntOpt('password_min_upper_case', default=1,
+               help='Minimum number of upper case letters to use in '
+                    'randomly generated database passwords.'),
+    cfg.IntOpt('password_min_numbers', default=1,
+               help='Minimum number of numbers to use in randomly generated '
+                    'database passwords.'),
+    cfg.IntOpt('password_min_special_chars', default=1,
+               help='Minimum number of special characters to use in randomly '
+                    'generated database passwords.'),
+    cfg.StrOpt('password_special_charset', default='!^+?_',
+               help='List of special characters that can be used in randomly '
+                    'generated database passwords.'),
 ]
 
 # Profiling specific option groups
