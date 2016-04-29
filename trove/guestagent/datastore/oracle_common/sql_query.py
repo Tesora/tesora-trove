@@ -217,7 +217,7 @@ class Grant(OracleSql):
 class AlterSystem(OracleSql):
 
     def __init__(self, clause):
-        self.clause = None
+        self.clause = clause
 
     @classmethod
     def set_parameter(cls, k, v, deferred=False):
