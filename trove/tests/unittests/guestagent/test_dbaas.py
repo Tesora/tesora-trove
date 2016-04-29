@@ -2503,9 +2503,9 @@ class CouchbaseAppTest(BaseAppTest.AppTestCase):
         operating_system.service_discovery = (
             self.fake_couchbase_service_discovery)
         netutils.get_my_ipv4 = Mock()
-        status = FakeAppStatus(self.FAKE_ID,
-                               rd_instance.ServiceStatuses.NEW)
-        self.couchbaseApp = couchservice.CouchbaseApp(status)
+        self.couchbaseApp = couchservice.CouchbaseApp()
+        self.couchbaseApp.status = FakeAppStatus(
+            self.FAKE_ID, rd_instance.ServiceStatuses.NEW)
         dbaas.CONF.guest_id = self.FAKE_ID
 
     @property
@@ -2526,7 +2526,7 @@ class CouchbaseAppTest(BaseAppTest.AppTestCase):
 
     @patch.object(utils, 'execute_with_timeout')
     def test_service_cleanup(self, exec_mock):
-        couchservice.CouchbaseAppStatus().cleanup_stalled_db_services()
+        couchservice.CouchbaseAppStatus(Mock()).cleanup_stalled_db_services()
         exec_mock.assert_called_once_with(couchservice.system.cmd_kill)
 
     def tearDown(self):

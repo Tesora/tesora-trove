@@ -372,3 +372,20 @@ class PerconaUserActionsRunner(MysqlUserActionsRunner):
 
     def __init__(self):
         super(PerconaUserActionsRunner, self).__init__()
+
+
+class CouchbaseUserActionsRunner(UserActionsRunner):
+
+    def run_user_attribute_update(self, expected_http_code=202):
+        # Couchbase users cannot be renamed.
+        # We only test changing the password here.
+        updated_def = self.first_user_def
+        update_attribites = {'password': 'password2'}
+        self.assert_user_attribute_update(
+            self.instance_info.id, updated_def,
+            update_attribites, expected_http_code)
+
+    def run_user_update_with_existing_name(
+            self, expected_exception=exceptions.BadRequest,
+            expected_http_code=400):
+        raise SkipTest("Couchbase users cannot be renamed.")
