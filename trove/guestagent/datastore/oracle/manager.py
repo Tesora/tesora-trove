@@ -145,21 +145,6 @@ class Manager(manager.OracleManager):
         LOG.debug("Oracle reset configuration is a no-op.")
         pass
 
-    @property
-    def datastore_log_defs(self):
-        owner = service.OracleVMApp.instance_owner
-        group = service.OracleVMApp.instance_owner_group
-        alert_log_file = self.validate_log_file(
-            service.OracleVMPaths(self.admin.database_name).alert_log_file,
-            owner, group=group)
-        return {
-            'alert': {
-                self.GUEST_LOG_TYPE_LABEL: guest_log.LogType.SYS,
-                self.GUEST_LOG_USER_LABEL: owner,
-                self.GUEST_LOG_FILE_LABEL: alert_log_file,
-            },
-        }
-
     def _perform_restore(self, backup_info, context, restore_location, app):
         LOG.info(_("Restoring database from backup %s.") % backup_info['id'])
         try:
