@@ -560,7 +560,7 @@ class BaseKeepAliveConnection(interfaces.PoolListener):
                 dbapi_con.ping(False)
             except TypeError:
                 dbapi_con.ping()
-        except dbapi_con.OperationalError as ex:
+        except (dbapi_con.OperationalError, dbapi_con.InternalError) as ex:
             if ex.args[0] in (2006, 2013, 2014, 2045, 2055):
                 raise exc.DisconnectionError()
             else:
@@ -817,7 +817,7 @@ class BaseMySqlApp(object):
                 t = text(str(q))
                 try:
                     client.execute(t)
-                except exc.OperationalError:
+                except (exc.OperationalError, exc.InternalError):
                     output = {'key': k, 'value': byte_value}
                     LOG.exception(_("Unable to set %(key)s with value "
                                     "%(value)s.") % output)
@@ -1047,10 +1047,13 @@ class BaseMySqlRootAccess(object):
                 cu = sql_query.CreateUser(user.name, host=user.host)
                 t = text(str(cu))
                 client.execute(t, **cu.keyArgs)
-            except exc.OperationalError as err:
-                # Ignore, user is already created, just reset the password
-                # TODO(rnirmal): More fine grained error checking later on
-                LOG.debug(err)
+            except (exc.OperationalError, exc.InternalError) as err:
+                if '1396' in err.args[0]:
+                    # Ignore, user is already created, just reset the password
+                    # TODO(rnirmal): More fine grained error checking later on
+                    LOG.debug(err)
+                else:
+                    raise
         with self.local_sql_client(self.mysql_app.get_engine()) as client:
             print(client)
             uu = sql_query.SetPassword(user.name, host=user.host,
