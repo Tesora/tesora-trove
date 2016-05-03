@@ -22,7 +22,6 @@ from trove.common import instance as rd_instance
 from trove.common.notification import EndNotification
 from trove.guestagent import backup
 from trove.guestagent.datastore.experimental.couchbase import service
-from trove.guestagent.datastore.experimental.couchbase import system
 from trove.guestagent.datastore import manager
 from trove.guestagent import volume
 
@@ -38,8 +37,23 @@ class Manager(manager.Manager):
 
     def __init__(self, manager_name='couchbase'):
         super(Manager, self).__init__(manager_name)
-        self.app = service.CouchbaseApp()
-        self.admin = self.app.build_admin()
+        self._app = None
+        self._admin = None
+
+    @property
+    def app(self):
+        if self._app is None:
+            self._app = self.build_app()
+        return self._app
+
+    def build_app(self):
+        return service.CouchbaseApp()
+
+    @property
+    def admin(self):
+        if self._admin is None:
+            self._admin = self.app.build_admin()
+        return self._admin
 
     @property
     def status(self):
@@ -83,12 +97,11 @@ class Manager(manager.Manager):
                                   mount_point)
             self.app.apply_post_restore_updates(backup_info)
 
-        self.admin = self.app.build_admin()
+        self._admin = self.app.build_admin()
 
         if not cluster_config:
             if self.is_root_enabled(context):
-                self.status.report_root(
-                    context, service.CouchbaseRootAccess.DEFAULT_ADMIN_NAME)
+                self.status.report_root(context, self.app.DEFAULT_ADMIN_NAME)
 
     def restart(self, context):
         """
@@ -136,7 +149,7 @@ class Manager(manager.Manager):
     def enable_root(self, context):
         LOG.debug("Enabling root.")
         root = self.app.enable_root()
-        self.admin = self.app.build_admin()
+        self._admin = self.app.build_admin()
         return root
 
     def enable_root_with_password(self, context, root_password=None):
@@ -144,7 +157,7 @@ class Manager(manager.Manager):
 
     def is_root_enabled(self, context):
         LOG.debug("Checking if root is enabled.")
-        return os.path.exists(system.pwd_file)
+        return os.path.exists(self.app.couchbase_pwd_file)
 
     def _perform_restore(self, backup_info, context, restore_location):
         """
