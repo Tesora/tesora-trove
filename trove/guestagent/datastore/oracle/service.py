@@ -186,12 +186,14 @@ class OracleVMPaths(object):
             self.spfile = path.join(self.dbs_dir, 'spfile%s.ora' % db_name)
             self.db_backup_dir = path.join(self.backup_dir, db_name)
             self.db_data_dir = path.join(self.data_dir, db_name)
-            self.db_fast_recovery_dir = path.join(
-                self.fast_recovery_area, db_name)
+            self.db_fast_recovery_logs_dir = path.join(
+                self.fast_recovery_area, db_name.upper())
+            self.redo_logs_backup_dir = path.join(
+                self.db_fast_recovery_logs_dir, 'backupset')
             self.audit_dir = path.join(self.admin_dir, db_name, 'adump')
             self.ctlfile1_file = path.join(self.db_data_dir, 'control01.ctl')
             self.ctlfile2_file = path.join(
-                self.db_fast_recovery_dir, 'control02.ctl')
+                self.fast_recovery_area, db_name, 'control02.ctl')
             self.diag_dir = path.join(
                 self.oracle_base, 'diag', 'rdbms', db_name.lower(), db_name)
             self.alert_log_file = path.join(self.diag_dir, 'alert', 'log.xml')
@@ -424,7 +426,6 @@ class OracleVMApp(service.OracleApp):
     instance_owner_group = INSTANCE_OWNER_GROUP
     root_user_name = ROOT_USER_NAME
     admin_user_name = ADMIN_USER_NAME
-    run_sys_command = run_sys_command
     rman_scripter = RmanScript
 
     def __init__(self, status, state_change_wait_time=None):
@@ -435,6 +436,9 @@ class OracleVMApp(service.OracleApp):
         self.configuration_manager = None
         if operating_system.exists(self.paths.os_pfile):
             self._init_configuration_manager()
+
+    def run_oracle_sys_command(self, *args, **kwargs):
+        run_sys_command(*args, **kwargs)
 
     def _init_configuration_manager(self):
         cm = configuration.ConfigurationManager

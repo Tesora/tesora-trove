@@ -129,7 +129,7 @@ class RmanBackup(base.RestoreRunner):
         self.app.paths.update_db_name(self.db_name)
 
         new_dirs = [self.app.paths.audit_dir,
-                    self.app.paths.db_fast_recovery_dir,
+                    self.app.paths.db_fast_recovery_logs_dir,
                     self.app.paths.db_data_dir]
         for new_dir in new_dirs:
             operating_system.create_directory(

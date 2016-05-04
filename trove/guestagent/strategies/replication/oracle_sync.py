@@ -357,7 +357,7 @@ class OracleSyncReplication(base.Replication):
 
         # Create necessary directories and set necessary permissions
         new_dirs = [service.paths.db_data_dir,
-                    service.paths.db_fast_recovery_dir,
+                    service.paths.db_fast_recovery_logs_dir,
                     service.paths.audit_dir]
         for directory in new_dirs:
             operating_system.create_directory(directory,
@@ -416,7 +416,7 @@ class OracleSyncReplication(base.Replication):
         self._restart_listener(service)
 
     def _restart_listener(self, service):
-        service.run_sys_command('lsnrctl reload')
+        service.run_oracle_sys_command('lsnrctl reload')
 
     def enable_as_slave(self, service, snapshot, slave_config):
         """Turn this node into slave by enabling the log apply process."""
