@@ -347,6 +347,14 @@ class CassandraClusterActionsRunner(ClusterActionsRunner):
         raise SkipTest("Operation is currently not supported.")
 
 
+class Cassandra_22ClusterActionsRunner(CassandraClusterActionsRunner):
+    pass
+
+
+class Cassandra_3ClusterActionsRunner(CassandraClusterActionsRunner):
+    pass
+
+
 class MariadbClusterActionsRunner(ClusterActionsRunner):
 
     @property

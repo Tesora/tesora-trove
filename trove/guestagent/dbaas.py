@@ -44,6 +44,10 @@ defaults = {
     'trove.guestagent.datastore.experimental.redis.manager.Manager',
     'cassandra':
     'trove.guestagent.datastore.experimental.cassandra.manager.Manager',
+    'cassandra_22':
+    'trove.guestagent.datastore.experimental.cassandra_22.manager.Manager',
+    'cassandra_3':
+    'trove.guestagent.datastore.experimental.cassandra_3.manager.Manager',
     'dse':
     'trove.guestagent.datastore.experimental.dse.manager.Manager',
     'couchbase':
