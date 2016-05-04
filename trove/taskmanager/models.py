@@ -1458,7 +1458,8 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
 
             if self.volume_id:
                 volume = self.volume_client.volumes.get(self.volume_id)
-                volume_device = volume.attachments[0]['device']
+                volume_device = self._fix_device_path(
+                    volume.attachments[0]['device'])
 
             injected_files = self.get_injected_files(
                 datastore_version.manager)
@@ -1487,6 +1488,14 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
             err = inst_models.InstanceTasks.BUILDING_ERROR_SERVER
             self.update_db(task_status=err)
             raise e
+
+    # Some cinder drivers appear to return "vdb" instead of "/dev/vdb".
+    # We need to account for that.
+    def _fix_device_path(self, device):
+        if device.startswith("/dev"):
+            return device
+        else:
+            return "/dev/%s" % device
 
 
 class BackupTasks(object):

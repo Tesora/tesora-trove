@@ -901,6 +901,14 @@ class BuiltInstanceTasksTest(trove_testtools.TestCase):
                     self.instance_task._guest.post_upgrade.assert_called_with(
                         mock_volume.attachments[0])
 
+    def test_fix_device_path(self):
+        self.assertEqual("/dev/vdb", self.instance_task.
+                         _fix_device_path("vdb"))
+        self.assertEqual("/dev/dev", self.instance_task.
+                         _fix_device_path("dev"))
+        self.assertEqual("/dev/vdb/dev", self.instance_task.
+                         _fix_device_path("vdb/dev"))
+
 
 class BackupTasksTest(trove_testtools.TestCase):
 
