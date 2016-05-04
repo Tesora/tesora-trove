@@ -237,15 +237,15 @@ class Manager(manager.Manager):
         return self.replication.backup_required_for_replication()
 
     def attach_replica(self, context, replica_info, slave_config):
-        self.replication.enable_as_slave(self, replica_info, None)
+        self.replication.enable_as_slave(self.app, replica_info, None)
 
     def detach_replica(self, context, for_failover=False):
-        replica_info = self.replication.detach_slave(self, for_failover)
+        replica_info = self.replication.detach_slave(self.app, for_failover)
         return replica_info
 
     def enable_as_master(self, context, replica_source_config):
         self.app.enable_backups()
-        self.replication.enable_as_master(self, None)
+        self.replication.enable_as_master(self.app, None)
 
     def make_read_only(self, context, read_only):
         """There seems to be no way to flag this at the database level in
@@ -258,7 +258,7 @@ class Manager(manager.Manager):
 
     def get_replica_context(self, context):
         LOG.debug("Getting replica context.")
-        return self.replication.get_replica_context(None)
+        return self.replication.get_replica_context(self.app)
 
     def get_latest_txn_id(self, context):
         if self.app.pg_is_in_recovery():
@@ -290,21 +290,22 @@ class Manager(manager.Manager):
 
     def cleanup_source_on_replica_detach(self, context, replica_info):
         LOG.debug("Calling cleanup_source_on_replica_detach")
-        self.replication.cleanup_source_on_replica_detach()
+        self.replication.cleanup_source_on_replica_detach(self.app,
+                                                          replica_info)
 
     def demote_replication_master(self, context):
         LOG.debug("Calling demote_replication_master")
-        self.replication.demote_master(self)
+        self.replication.demote_master(self.app)
 
     def get_replication_snapshot(self, context, snapshot_info,
                                  replica_source_config=None):
         LOG.debug("Getting replication snapshot.")
 
         self.app.enable_backups()
-        self.replication.enable_as_master(None, None)
+        self.replication.enable_as_master(self.app, None)
 
         snapshot_id, log_position = (
-            self.replication.snapshot_for_replication(context, None, None,
+            self.replication.snapshot_for_replication(context, self.app, None,
                                                       snapshot_info))
 
         mount_point = CONF.get(self.manager).mount_point
@@ -318,7 +319,7 @@ class Manager(manager.Manager):
                 'snapshot_id': snapshot_id
             },
             'replication_strategy': self.replication_strategy,
-            'master': self.replication.get_master_ref(None, snapshot_info),
+            'master': self.replication.get_master_ref(self.app, snapshot_info),
             'log_position': log_position
         }
 
