@@ -347,12 +347,6 @@ class CassandraClusterActionsRunner(ClusterActionsRunner):
         raise SkipTest("Operation is currently not supported.")
 
 
-class MariadbClusterActionsRunner(ClusterActionsRunner):
-
-    def run_cluster_root_enable(self):
-        raise SkipTest("Operation is currently not supported.")
-
-
 class PxcClusterActionsRunner(ClusterActionsRunner):
 
     def run_cluster_create(self, num_nodes=3, expected_task_name='BUILDING',
@@ -368,6 +362,9 @@ class PxcClusterActionsRunner(ClusterActionsRunner):
 
     def run_cluster_grow(self):
         raise SkipTest("Operation not supported by the datastore.")
+
+    def run_cluster_root_enable(self):
+        raise SkipTest("Operation is currently not supported.")
 
     @property
     def min_cluster_node_count(self):
