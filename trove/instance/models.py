@@ -168,6 +168,7 @@ class SimpleInstance(object):
         self.db_info = db_info
         self.datastore_status = datastore_status
         self.root_pass = root_password
+        self.fault_details = None
         if ds_version is None:
             self.ds_version = (datastore_models.DatastoreVersion.
                                load_by_uuid(self.db_info.datastore_version_id))
@@ -392,6 +393,16 @@ class SimpleInstance(object):
     @property
     def root_password(self):
         return self.root_pass
+
+    @property
+    def fault(self):
+        if not self.fault_details:
+            try:
+                self.fault_details = DBInstanceFault.find_by(
+                    instance_id=self.id)
+            except exception.ModelNotFoundError:
+                pass
+        return self.fault_details
 
     @property
     def configuration(self):
@@ -630,6 +641,7 @@ class BaseInstance(SimpleInstance):
         self.update_db(deleted=True, deleted_at=deleted_at,
                        task_status=InstanceTasks.NONE)
         self.set_servicestatus_deleted()
+        self.set_instance_fault_deleted()
         # Delete associated security group
         if CONF.trove_security_groups_support:
             SecurityGroup.delete_for_instance(self.db_info.id,
@@ -657,6 +669,15 @@ class BaseInstance(SimpleInstance):
         del_instance = InstanceServiceStatus.find_by(instance_id=self.id)
         del_instance.set_status(tr_instance.ServiceStatuses.DELETED)
         del_instance.save()
+
+    def set_instance_fault_deleted(self):
+        try:
+            del_fault = DBInstanceFault.find_by(instance_id=self.id)
+            del_fault.deleted = True
+            del_fault.deleted_at = datetime.utcnow()
+            del_fault.save()
+        except exception.ModelNotFoundError:
+            pass
 
     @property
     def volume_client(self):
@@ -1431,6 +1452,44 @@ class DBInstance(dbmodels.DatabaseModelBase):
     task_status = property(get_task_status, set_task_status)
 
 
+def persist_instance_fault(notification, event_qualifier):
+    """This callback is registered to be fired whenever a
+    notification is sent out.
+    """
+    if "error" == event_qualifier:
+        instance_id = notification.payload.get('instance_id')
+        if instance_id:
+            try:
+                # Make sure it's a valid id - sometimes the error is related
+                # to an invalid id and we can't save those
+                DBInstance.find_by(id=instance_id, deleted=False)
+                message = notification.payload.get('message')
+                details = "".join(notification.payload.get('exception'))
+                try:
+                    fault = DBInstanceFault.find_by(instance_id=instance_id)
+                    fault.set_info(message, details)
+                    fault.save()
+                except exception.ModelNotFoundError:
+                    DBInstanceFault.create(
+                        instance_id=instance_id,
+                        message=message, details=details)
+            except exception.ModelNotFoundError:
+                # We don't need to save anything if the instance id isn't valid
+                pass
+
+
+class DBInstanceFault(dbmodels.DatabaseModelBase):
+    _data_fields = ['instance_id', 'message', 'details',
+                    'created', 'updated', 'deleted', 'deleted_at']
+
+    def __init__(self, **kwargs):
+        super(DBInstanceFault, self).__init__(**kwargs)
+
+    def set_info(self, message, details):
+        self.message = message
+        self.details = details
+
+
 class InstanceServiceStatus(dbmodels.DatabaseModelBase):
     _data_fields = ['instance_id', 'status_id', 'status_description',
                     'updated_at']
@@ -1476,6 +1535,7 @@ class InstanceServiceStatus(dbmodels.DatabaseModelBase):
 def persisted_models():
     return {
         'instance': DBInstance,
+        'instance_faults': DBInstanceFault,
         'service_statuses': InstanceServiceStatus,
     }
 

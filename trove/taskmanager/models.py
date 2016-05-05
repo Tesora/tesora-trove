@@ -597,10 +597,18 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             raise TroveError(_("Service not active, status: %s") % status)
 
         c_id = self.db_info.compute_instance_id
-        nova_status = self.nova_client.servers.get(c_id).status
-        if nova_status in [InstanceStatus.ERROR,
-                           InstanceStatus.FAILED]:
-            raise TroveError(_("Server not active, status: %s") % nova_status)
+        server = self.nova_client.servers.get(c_id)
+        server_status = server.status
+        if server_status in [InstanceStatus.ERROR,
+                             InstanceStatus.FAILED]:
+            server_message = ''
+            if server.fault:
+                server_message = "Server error: %s" % (
+                    server.fault.get('message', 'Unknown'))
+            raise TroveError(_("Server not active, status: %(status)s\n"
+                               "%(srv_msg)s") %
+                             {'status': server_status,
+                              'srv_msg': server_message})
         return False
 
     def _create_server_volume(self, flavor_id, image_id, security_groups,
@@ -818,7 +826,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
         LOG.error(exc)
         LOG.error(traceback.format_exc())
         self.update_db(task_status=task_status)
-        raise TroveError(message=message)
+        full_message = "%s\n%s" % (message, exc)
+        raise TroveError(message=full_message)
 
     def _create_volume(self, volume_size, volume_type, datastore_manager):
         LOG.debug("Begin _create_volume for id: %s" % self.id)
