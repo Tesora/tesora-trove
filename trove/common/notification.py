@@ -135,6 +135,7 @@ class TroveBaseTraits(object):
     def deserialize(self, ctxt, payload):
         self.payload = payload
         self.context = ctxt
+        return self
 
     def notify(self, event_type, publisher_id=None):
         publisher_id = publisher_id or CONF.host
@@ -288,11 +289,11 @@ class DBaaSQuotas(object):
 
     event_type = 'dbaas.quotas'
 
-    def __init__(self, context, resource, quota, usage):
+    def __init__(self, context, quota, usage):
         self.context = context
 
         self.payload = {
-            'resource': resource,
+            'resource': quota.resource,
             'in_use': usage.in_use,
             'reserved': usage.reserved,
             'limit': quota.hard_limit,
