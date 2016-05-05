@@ -404,6 +404,9 @@ class SimpleInstance(object):
         if not self._fault_loaded:
             try:
                 self._fault = DBInstanceFault.find_by(instance_id=self.id)
+                # Get rid of the stack trace if we're not admin
+                if not self.context.is_admin:
+                    self._fault.details = None
             except exception.ModelNotFoundError:
                 pass
             self._fault_loaded = True
@@ -1557,30 +1560,34 @@ def persist_instance_fault(notification, event_qualifier):
     """
     if "error" == event_qualifier:
         instance_id = notification.payload.get('instance_id')
-        if instance_id:
+        message = notification.payload.get(
+            'message', 'Missing notification message')
+        details = notification.payload.get('exception', [])
+        server_type = notification.server_type
+        if server_type:
+            details.insert(0, "Server type: %s\n" % server_type)
+        save_instance_fault(instance_id, message, details)
+
+
+def save_instance_fault(instance_id, message, details):
+    if instance_id:
+        try:
+            # Make sure it's a valid id - sometimes the error is related
+            # to an invalid id and we can't save those
+            DBInstance.find_by(id=instance_id, deleted=False)
+            msg = utils.format_output(message, truncate_len=255)
+            det = utils.format_output(details)
             try:
-                # Make sure it's a valid id - sometimes the error is related
-                # to an invalid id and we can't save those
-                DBInstance.find_by(id=instance_id, deleted=False)
-                message = notification.payload.get('message').replace(
-                    '. ', '.\n')
-                exc_list = [line.replace('. ', '.\n') for line in
-                            notification.payload.get('exception')]
-                details = "".join(exc_list)
-                server_type = notification.server_type
-                if server_type:
-                    details = "Server type: %s\n%s" % (server_type, details)
-                try:
-                    fault = DBInstanceFault.find_by(instance_id=instance_id)
-                    fault.set_info(message, details)
-                    fault.save()
-                except exception.ModelNotFoundError:
-                    DBInstanceFault.create(
-                        instance_id=instance_id,
-                        message=message, details=details)
+                fault = DBInstanceFault.find_by(instance_id=instance_id)
+                fault.set_info(msg, det)
+                fault.save()
             except exception.ModelNotFoundError:
-                # We don't need to save anything if the instance id isn't valid
-                pass
+                DBInstanceFault.create(
+                    instance_id=instance_id,
+                    message=msg, details=det)
+        except exception.ModelNotFoundError:
+            # We don't need to save anything if the instance id isn't valid
+            pass
 
 
 class DBInstanceFault(dbmodels.DatabaseModelBase):
