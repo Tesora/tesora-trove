@@ -117,8 +117,9 @@ class RmanBackup(base.BackupRunner):
     @property
     def cmd(self):
         """Tars and streams the backup data to the stdout"""
-        cmd = 'sudo tar cPf - %s %s %s %s' % (
+        cmd = 'sudo tar cPf - %s %s %s %s %s' % (
             self.app.paths.backup_dir,
+            self.app.paths.redo_logs_backup_dir,
             self.app.paths.orapw_file,
             self.app.paths.spfile,
             CONF.get(MANAGER).conf_file)
