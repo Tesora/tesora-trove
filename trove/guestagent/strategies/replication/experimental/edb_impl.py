@@ -51,7 +51,6 @@
 from trove.common import cfg
 from trove.guestagent.strategies.replication.experimental import \
     postgresql_impl
-from trove.guestagent.datastore.experimental.edb.service import EDBApp
 from trove.guestagent.strategies import backup
 
 CONF = cfg.CONF
@@ -59,12 +58,14 @@ CONF = cfg.CONF
 REPL_BACKUP_NAMESPACE = 'trove.guestagent.strategies.backup.experimental' \
                         '.edb_impl'
 
+
 class EdbReplicationStreaming(
         postgresql_impl.PostgresqlReplicationStreaming):
 
     @property
     def repl_backup_runner(self):
-        return backup.get_backup_strategy('EdbPgBaseBackup', REPL_BACKUP_NAMESPACE)
+        return backup.get_backup_strategy('EdbPgBaseBackup',
+                                          REPL_BACKUP_NAMESPACE)
 
     @property
     def repl_incr_backup_runner(self):
@@ -74,6 +75,3 @@ class EdbReplicationStreaming(
     @property
     def repl_backup_extra_opts(self):
         return CONF.backup_runner_options.get('EdbPgBaseBackup', '')
-
-    def _build_app(self):
-        return EDBApp()
