@@ -20,15 +20,15 @@ from trove.common import utils
 from trove.tests.unittests import trove_testtools
 
 
-class TestTroveExecuteWithTimeout(trove_testtools.TestCase):
+class TestUtils(trove_testtools.TestCase):
 
     def setUp(self):
-        super(TestTroveExecuteWithTimeout, self).setUp()
+        super(TestUtils, self).setUp()
         self.orig_utils_execute = utils.execute
         self.orig_utils_log_error = utils.LOG.error
 
     def tearDown(self):
-        super(TestTroveExecuteWithTimeout, self).tearDown()
+        super(TestUtils, self).tearDown()
         utils.execute = self.orig_utils_execute
         utils.LOG.error = self.orig_utils_log_error
 
@@ -75,3 +75,21 @@ class TestTroveExecuteWithTimeout(trove_testtools.TestCase):
         self.assertEqual(1, utils.unpack_singleton([[[1]]]))
         self.assertEqual([[1], [2]], utils.unpack_singleton([[1], [2]]))
         self.assertEqual(['a', 'b'], utils.unpack_singleton(['a', 'b']))
+
+    def test_format_output(self):
+        data = [
+            ['', ''],
+            ['Single line', 'Single line'],
+            ['Long line no breaks ' * 10, 'Long line no breaks ' * 10],
+            ['Long line. Has breaks ' * 5,
+             'Long line.\nHas breaks ' * 2 + 'Long line. Has breaks ' * 3],
+            ['Long line with semi: ' * 4,
+             'Long line with semi:\n    ' +
+             'Long line with semi: ' * 3],
+            ['Long line with brack (' * 4,
+             'Long line with brack\n(' +
+             'Long line with brack (' * 3],
+        ]
+        for index, datum in enumerate(data):
+            self.assertEqual(datum[1], utils.format_output(datum[0]),
+                             "Error formatting line %d of data" % index)

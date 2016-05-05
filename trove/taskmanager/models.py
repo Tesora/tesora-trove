@@ -323,6 +323,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
         # Make sure the service becomes active before sending a usage
         # record to avoid over billing a customer for an instance that
         # fails to build properly.
+        error_message = ''
+        error_details = ''
         try:
             utils.poll_until(self._service_is_active,
                              sleep_time=USAGE_SLEEP_TIME,
@@ -331,14 +333,22 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             TroveInstanceCreate(instance=self,
                                 instance_size=flavor['ram']).notify()
 #            self.send_usage_event('create', instance_size=flavor['ram'])
-        except PollTimeOut:
+        except PollTimeOut as ex:
             LOG.error(_("Failed to create instance %s. "
                         "Timeout waiting for instance to become active. "
                         "No usage create-event was sent.") % self.id)
             self.update_statuses_on_time_out()
-        except Exception:
+            error_message = "%s" % ex
+            error_details = traceback.format_exc()
+        except Exception as ex:
             LOG.exception(_("Failed to send usage create-event for "
                             "instance %s.") % self.id)
+            error_message = "%s" % ex
+            error_details = traceback.format_exc()
+        finally:
+            if error_message:
+                inst_models.save_instance_fault(
+                    self.id, error_message, error_details)
 
     def create_instance(self, flavor, image_id, databases, users,
                         datastore_manager, packages, volume_size,

@@ -266,9 +266,14 @@ class TestRunner(object):
             self.assert_equal(expected_http_code, client.last_http_code,
                               "Unexpected client status code")
 
-    def assert_all_instance_states(self, instance_ids, expected_states):
+    def assert_all_instance_states(self, instance_ids, expected_states,
+                                   fast_fail_status=None,
+                                   require_all_states=False):
         tasks = [build_polling_task(
-            lambda: self._assert_instance_states(instance_id, expected_states),
+            lambda: self._assert_instance_states(
+                instance_id, expected_states,
+                fast_fail_status=fast_fail_status,
+                require_all_states=require_all_states),
             sleep_time=self.def_sleep_time, time_out=self.def_timeout)
             for instance_id in instance_ids]
         poll_until(lambda: all(poll_task.ready() for poll_task in tasks),
@@ -417,8 +422,9 @@ class TestRunner(object):
         if server_group and not should_exist:
             raise "Found left-over server group: %s"
 
-    def get_instance(self, instance_id):
-        return self.auth_client.instances.get(instance_id)
+    def get_instance(self, instance_id, client=None):
+        client = client or self.auth_client
+        return client.instances.get(instance_id)
 
     def get_instance_host(self, instance_id=None):
         instance_id = instance_id or self.instance_info.id
@@ -493,3 +499,127 @@ class TestRunner(object):
         return (database_def,
                 _get_credentials(credentials),
                 _get_credentials(credentials_root))
+
+
+class CheckInstance(AttrCheck):
+    """Class to check various attributes of Instance details."""
+
+    def __init__(self, instance):
+        super(CheckInstance, self).__init__()
+        self.instance = instance
+        self.volume_support = TestRunner.VOLUME_SUPPORT
+        self.existing_instance = TestRunner.is_using_existing_instance
+
+    def flavor(self):
+        if 'flavor' not in self.instance:
+            self.fail("'flavor' not found in instance.")
+        else:
+            allowed_attrs = ['id', 'links']
+            self.contains_allowed_attrs(
+                self.instance['flavor'], allowed_attrs,
+                msg="Flavor")
+            self.links(self.instance['flavor']['links'])
+
+    def datastore(self):
+        if 'datastore' not in self.instance:
+            self.fail("'datastore' not found in instance.")
+        else:
+            allowed_attrs = ['type', 'version']
+            self.contains_allowed_attrs(
+                self.instance['datastore'], allowed_attrs,
+                msg="datastore")
+
+    def volume_key_exists(self):
+        if 'volume' not in self.instance:
+            self.fail("'volume' not found in instance.")
+            return False
+        return True
+
+    def volume(self):
+        if not self.volume_support:
+            return
+        if self.volume_key_exists():
+            allowed_attrs = ['size']
+            if self.existing_instance:
+                allowed_attrs.append('used')
+            self.contains_allowed_attrs(
+                self.instance['volume'], allowed_attrs,
+                msg="Volumes")
+
+    def used_volume(self):
+        if not self.volume_support:
+            return
+        if self.volume_key_exists():
+            allowed_attrs = ['size', 'used']
+            print(self.instance)
+            self.contains_allowed_attrs(
+                self.instance['volume'], allowed_attrs,
+                msg="Volumes")
+
+    def volume_mgmt(self):
+        if not self.volume_support:
+            return
+        if self.volume_key_exists():
+            allowed_attrs = ['description', 'id', 'name', 'size']
+            self.contains_allowed_attrs(
+                self.instance['volume'], allowed_attrs,
+                msg="Volumes")
+
+    def addresses(self):
+        allowed_attrs = ['addr', 'version']
+        print(self.instance)
+        networks = ['usernet']
+        for network in networks:
+            for address in self.instance['addresses'][network]:
+                self.contains_allowed_attrs(
+                    address, allowed_attrs,
+                    msg="Address")
+
+    def guest_status(self):
+        allowed_attrs = ['created_at', 'deleted', 'deleted_at', 'instance_id',
+                         'state', 'state_description', 'updated_at']
+        self.contains_allowed_attrs(
+            self.instance['guest_status'], allowed_attrs,
+            msg="Guest status")
+
+    def mgmt_volume(self):
+        if not self.volume_support:
+            return
+        allowed_attrs = ['description', 'id', 'name', 'size']
+        self.contains_allowed_attrs(
+            self.instance['volume'], allowed_attrs,
+            msg="Volume")
+
+    def replica_of(self):
+        if 'replica_of' not in self.instance:
+            self.fail("'replica_of' not found in instance.")
+        else:
+            allowed_attrs = ['id', 'links']
+            self.contains_allowed_attrs(
+                self.instance['replica_of'], allowed_attrs,
+                msg="Replica-of links not found")
+            self.links(self.instance['replica_of']['links'])
+
+    def slaves(self):
+        if 'replicas' not in self.instance:
+            self.fail("'replicas' not found in instance.")
+        else:
+            allowed_attrs = ['id', 'links']
+            for slave in self.instance['replicas']:
+                self.contains_allowed_attrs(
+                    slave, allowed_attrs,
+                    msg="Replica links not found")
+                self.links(slave['links'])
+
+    def fault(self, is_admin=False):
+        if 'fault' not in self.instance:
+            self.fail("'fault' not found in instance.")
+        else:
+            allowed_attrs = ['message', 'created', 'details']
+            self.contains_allowed_attrs(
+                self.instance['fault'], allowed_attrs,
+                msg="Fault")
+            if is_admin and not self.instance['fault']['details']:
+                self.fail("Missing fault details")
+            if not is_admin and self.instance['fault']['details']:
+                self.fail("Fault details provided for non-admin")
