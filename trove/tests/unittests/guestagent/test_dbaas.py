@@ -18,6 +18,7 @@ import os
 import subprocess
 import tempfile
 import time
+import urllib
 from uuid import uuid4
 
 from mock import ANY
@@ -430,6 +431,8 @@ class MySqlAdminTest(trove_testtools.TestCase):
         self.orig_configuration_manager = \
             mysql_common_service.BaseMySqlApp.configuration_manager
         mysql_common_service.BaseMySqlApp.configuration_manager = Mock()
+        self.orig_urllib_quote = urllib.quote
+        urllib.quote = Mock()
 
         self.mySqlAdmin = MySqlAdmin()
 
@@ -443,6 +446,7 @@ class MySqlAdminTest(trove_testtools.TestCase):
             dbaas.orig_get_auth_password
         mysql_common_service.BaseMySqlApp.configuration_manager = \
             self.orig_configuration_manager
+        urllib.quote = self.orig_urllib_quote
         super(MySqlAdminTest, self).tearDown()
 
     def test__associate_dbs(self):
@@ -844,6 +848,8 @@ class MySqlAppTest(trove_testtools.TestCase):
         self.mock_client.__exit__ = Mock()
         self.mock_client.__enter__.return_value.execute = self.mock_execute
         self.orig_create_engine = sqlalchemy.create_engine
+        self.orig_urllib_quote = urllib.quote
+        urllib.quote = Mock()
 
     def tearDown(self):
         mysql_common_service.utils.execute_with_timeout = \
@@ -854,6 +860,7 @@ class MySqlAppTest(trove_testtools.TestCase):
         operating_system.service_discovery = self.orig_service_discovery
         InstanceServiceStatus.find_by(instance_id=self.FAKE_ID).delete()
         sqlalchemy.create_engine = self.orig_create_engine
+        urllib.quote = self.orig_urllib_quote
         super(MySqlAppTest, self).tearDown()
 
     def assert_reported_status(self, expected_status):
