@@ -281,7 +281,7 @@ class TestRunner(object):
                 self.fail(str(task.poll_exception()))
 
     def _assert_instance_states(self, instance_id, expected_states,
-                                fast_fail_status=['ERROR', 'FAILED'],
+                                fast_fail_status=None,
                                 require_all_states=False):
         """Keep polling for the expected instance states until the instance
         acquires either the last or fast-fail state.
@@ -291,7 +291,8 @@ class TestRunner(object):
         instance had already acquired before and moves to the next expected
         state.
         """
-
+        if fast_fail_status is None:
+            fast_fail_status = ['ERROR', 'FAILED']
         found = False
         for status in expected_states:
             if require_all_states or found or self._has_status(

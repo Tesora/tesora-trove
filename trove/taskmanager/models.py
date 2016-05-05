@@ -603,9 +603,9 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                              InstanceStatus.FAILED]:
             server_message = ''
             if server.fault:
-                server_message = "Server error: %s" % (
+                server_message = "\nServer error: %s" % (
                     server.fault.get('message', 'Unknown'))
-            raise TroveError(_("Server not active, status: %(status)s\n"
+            raise TroveError(_("Server not active, status: %(status)s"
                                "%(srv_msg)s") %
                              {'status': server_status,
                               'srv_msg': server_message})
@@ -831,7 +831,8 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                    "exc": exc,
                    "trace": traceback.format_exc()})
         self.update_db(task_status=task_status)
-        full_message = "%s\n%s" % (message, exc)
+        exc_message = '\n%s' % exc if exc else ''
+        full_message = "%s%s" % (message, exc_message)
         raise TroveError(message=full_message)
 
     def _create_volume(self, volume_size, volume_type, datastore_manager):

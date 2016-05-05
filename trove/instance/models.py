@@ -169,7 +169,8 @@ class SimpleInstance(object):
         self.db_info = db_info
         self.datastore_status = datastore_status
         self.root_pass = root_password
-        self.fault_details = None
+        self._fault = None
+        self._fault_loaded = False
         if ds_version is None:
             self.ds_version = (datastore_models.DatastoreVersion.
                                load_by_uuid(self.db_info.datastore_version_id))
@@ -397,13 +398,14 @@ class SimpleInstance(object):
 
     @property
     def fault(self):
-        if not self.fault_details:
+        # Fault can be non-existent, so we have a loaded flag
+        if not self._fault_loaded:
             try:
-                self.fault_details = DBInstanceFault.find_by(
-                    instance_id=self.id)
+                self._fault = DBInstanceFault.find_by(instance_id=self.id)
             except exception.ModelNotFoundError:
                 pass
-        return self.fault_details
+            self._fault_loaded = True
+        return self._fault
 
     @property
     def configuration(self):
@@ -1492,8 +1494,14 @@ def persist_instance_fault(notification, event_qualifier):
                 # Make sure it's a valid id - sometimes the error is related
                 # to an invalid id and we can't save those
                 DBInstance.find_by(id=instance_id, deleted=False)
-                message = notification.payload.get('message')
-                details = "".join(notification.payload.get('exception'))
+                message = notification.payload.get('message').replace(
+                    '. ', '.\n')
+                exc_list = [line.replace('. ', '.\n') for line in
+                            notification.payload.get('exception')]
+                details = "".join(exc_list)
+                server_type = notification.server_type
+                if server_type:
+                    details = "Server type: %s\n%s" % (server_type, details)
                 try:
                     fault = DBInstanceFault.find_by(instance_id=instance_id)
                     fault.set_info(message, details)
