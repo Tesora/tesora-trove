@@ -206,8 +206,10 @@ class OracleClient(object):
             else:
                 raise e
         finally:
-            del os.environ['ORACLE_HOME']
-            del os.environ['ORACLE_SID']
+            if 'ORACLE_HOME' in os.environ:
+                del os.environ['ORACLE_HOME']
+            if 'ORACLE_SID' in os.environ:
+                del os.environ['ORACLE_SID']
 
 
 class OracleCursor(OracleClient):

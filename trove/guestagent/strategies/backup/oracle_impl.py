@@ -104,7 +104,7 @@ class RmanBackup(base.BackupRunner):
                 ("backup current controlfile format '%s/%%I_%%u_%%s_%s.ctl'"
                  % (bkp_dir, self.backup_id))]
             script = self.app.rman_scripter(
-                cmds, self.db_name,
+                commands=cmds, sid=self.db_name,
                 t_user=self.app.admin_user_name,
                 t_pswd=self.app.admin.ora_config.admin_password)
             script.run(timeout=CONF.restore_usage_timeout)
@@ -180,8 +180,9 @@ class RmanBackupIncremental(RmanBackup):
 
         if delete_list:
             self.app.rman_scripter(
-                'delete force noprompt backupset %s' % ','.join(delete_list),
-                self.app.admin.database_name,
+                commands='delete force noprompt backupset %s'
+                         % ','.join(delete_list),
+                sid=self.app.admin.database_name,
                 t_user=self.app.admin_user_name,
                 t_pswd=self.app.admin.ora_config.admin_password).run()
 

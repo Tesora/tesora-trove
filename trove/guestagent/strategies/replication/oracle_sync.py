@@ -195,7 +195,7 @@ class OracleSyncReplication(base.Replication):
                  'service_name': service.admin.database_name})
             tns_entries[db['db_unique_name']] = tns_entry
         operating_system.write_file(tns_file, tns_entries,
-                                    codec=stream_codecs.KeyValueCodec,
+                                    codec=stream_codecs.KeyValueCodec(),
                                     as_root=True)
         operating_system.chown(tns_file,
                                service.instance_owner,
@@ -211,10 +211,10 @@ class OracleSyncReplication(base.Replication):
         settings = {
             'LOG_ARCHIVE_MAX_PROCESSES': max_processes,
             'STANDBY_FILE_MANAGEMENT': 'AUTO',
-            'REDO_TRANSPORT_USER': service.admin_user_name}
+            'REDO_TRANSPORT_USER': service.admin_user_name.upper()}
         self._update_parameters(service, cursor, settings)
         settings = {
-            'LOG_ARCHIVE_FORMAT': "'%t_%s_%r.arc'",
+            'LOG_ARCHIVE_FORMAT': '%t_%s_%r.arc',
             'REMOTE_LOGIN_PASSWORDFILE': 'EXCLUSIVE'}
         self._update_parameters(service, cursor, settings, deferred=True)
 
@@ -224,15 +224,15 @@ class OracleSyncReplication(base.Replication):
         """
         db_list = [db['db_unique_name'] for db in dbs]
         settings = {
-            'LOG_ARCHIVE_CONFIG': "'DG_CONFIG=(%s)'" % ",".join(db_list),
-            'FAL_SERVER': ",".join("'%s'" % db for db in db_list)}
+            'LOG_ARCHIVE_CONFIG': 'DG_CONFIG=(%s)' % ','.join(db_list),
+            'FAL_SERVER': ','.join("'%s'" % db for db in db_list)}
         # Set up a log destination for each slave
         log_index = 2
         for db in dbs:
             if db['db_unique_name'] != service.admin.ora_config.db_unique_name:
-                dest = ("'SERVICE=%(db)s NOAFFIRM ASYNC VALID_FOR="
-                        "(ONLINE_LOGFILES,PRIMARY_ROLE) "
-                        "DB_UNIQUE_NAME=%(db)s'" %
+                dest = ('SERVICE=%(db)s NOAFFIRM ASYNC VALID_FOR='
+                        '(ONLINE_LOGFILES,PRIMARY_ROLE) '
+                        'DB_UNIQUE_NAME=%(db)s' %
                         {'db': db['db_unique_name']})
                 settings['LOG_ARCHIVE_DEST_%s' % log_index] = dest
                 settings['LOG_ARCHIVE_DEST_STATE_%s' % log_index] = 'ENABLE'
@@ -268,14 +268,14 @@ class OracleSyncReplication(base.Replication):
             self._create_tns_file(service, dbs)
             self._update_dynamic_params(service, cursor, dbs)
             cursor.execute(str(sql_query.AlterSystem(
-                'ALTER SYSTEM SWITCH LOGFILE')))
+                'SWITCH LOGFILE')))
 
     def _complete_new_slave_setup(self, service, master_host, dbs):
         sys_password = service.admin.ora_config.root_password
         with service.client(service.admin.database_name,
                             mode=(cx_Oracle.SYSDBA |
-                                  cx_Oracle.PRELIM_AUTH)) as cursor:
-            cursor.startup()
+                                  cx_Oracle.PRELIM_AUTH)) as client:
+            client.startup()
         db_list = [db['db_unique_name'] for db in dbs]
         fal_server_list = ",".join("'%s'" % db for db in db_list)
         # The RMAN DUPLICATE command requires connecting to target with the
@@ -286,11 +286,11 @@ class OracleSyncReplication(base.Replication):
             "DUPLICATE TARGET DATABASE FOR STANDBY FROM ACTIVE DATABASE "
             "DORECOVER SPFILE SET db_unique_name='%(db_unique_name)s' COMMENT "
             "'Is standby' SET FAL_SERVER=%(fal_server_list)s COMMENT "
-            "'Is primary' NOFILENAMECHECK;}"
+            "'Is primary' NOFILENAMECHECK"
             % {'db_unique_name': service.admin.ora_config.db_unique_name,
                'fal_server_list': fal_server_list})
         script = service.rman_scripter(
-            duplicate_cmd,
+            commands=duplicate_cmd,
             t_user=service.root_user_name, t_pswd=sys_password,
             t_host=master_host, t_db=service.admin.database_name,
             a_user=service.root_user_name, a_pswd=sys_password,
@@ -300,7 +300,7 @@ class OracleSyncReplication(base.Replication):
             # This is set before the configuration manager is initialized so
             # set the parameter directly
             cursor.execute(str(sql_query.AlterSystem.set_parameter(
-                'REDO_TRANSPORT_USER', service.admin_user_name)))
+                'REDO_TRANSPORT_USER', service.admin_user_name.upper())))
             cursor.execute(str(sql_query.AlterDatabase('OPEN READ ONLY')))
             cursor.execute(str(sql_query.AlterDatabase(
                 'RECOVER MANAGED STANDBY DATABASE USING CURRENT LOGFILE '
@@ -337,6 +337,7 @@ class OracleSyncReplication(base.Replication):
         # Create necessary directories and set necessary permissions
         new_dirs = [service.paths.db_data_dir,
                     service.paths.db_fast_recovery_logs_dir,
+                    service.paths.db_fast_recovery_dir,
                     service.paths.audit_dir]
         for directory in new_dirs:
             operating_system.create_directory(directory,
@@ -371,9 +372,12 @@ class OracleSyncReplication(base.Replication):
                               service.paths.ctlfile2_file,
                               preserve=True, as_root=True)
 
-        # Set the db_unique_name via the PFILE which will be removed later
+        # Set the db_name and db_unique_name via the PFILE which will be
+        # removed later
         operating_system.write_file(service.paths.pfile,
-                                    "*.db_unique_name='%s'\n" % db_unique_name,
+                                    "*.db_unique_name='%s'\n"
+                                    "*.db_name='%s'\n"
+                                    % (db_unique_name, db_name),
                                     as_root=True)
         operating_system.chown(service.paths.pfile,
                                service.instance_owner,

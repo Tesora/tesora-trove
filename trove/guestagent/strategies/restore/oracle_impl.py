@@ -87,15 +87,15 @@ class RmanBackup(base.RestoreRunner):
             'delete noprompt expired backup',
             'restore database']
         script = self.app.rman_scripter(
-            cmds, self.db_name,
+            commands=cmds, sid=self.db_name,
             t_user=self.app.admin_user_name,
             t_pswd=self.app.admin.ora_config.admin_password)
         script.run(timeout=CONF.restore_usage_timeout)
 
     def _perform_recover(self):
         script = self.app.rman_scripter(
-            'recover database',
-            self.db_name,
+            commands='recover database',
+            sid=self.db_name,
             t_user=self.app.admin_user_name,
             t_pswd=self.app.admin.ora_config.admin_password)
         try:
@@ -114,8 +114,8 @@ class RmanBackup(base.RestoreRunner):
 
     def _open_database(self):
         self.app.rman_scripter(
-            'alter database open resetlogs',
-            self.db_name,
+            commands='alter database open resetlogs',
+            sid=self.db_name,
             t_user=self.app.admin_user_name,
             t_pswd=self.app.admin.ora_config.admin_password).run()
 
@@ -130,6 +130,7 @@ class RmanBackup(base.RestoreRunner):
 
         new_dirs = [self.app.paths.audit_dir,
                     self.app.paths.db_fast_recovery_logs_dir,
+                    self.app.paths.db_fast_recovery_dir,
                     self.app.paths.db_data_dir]
         for new_dir in new_dirs:
             operating_system.create_directory(

@@ -189,12 +189,14 @@ class OracleVMPaths(object):
             self.db_data_dir = path.join(self.data_dir, db_name)
             self.db_fast_recovery_logs_dir = path.join(
                 self.fast_recovery_area, db_name.upper())
+            self.db_fast_recovery_dir = path.join(
+                self.fast_recovery_area, db_name)
             self.redo_logs_backup_dir = path.join(
                 self.db_fast_recovery_logs_dir, 'backupset')
             self.audit_dir = path.join(self.admin_dir, db_name, 'adump')
             self.ctlfile1_file = path.join(self.db_data_dir, 'control01.ctl')
             self.ctlfile2_file = path.join(
-                self.fast_recovery_area, db_name, 'control02.ctl')
+                self.db_fast_recovery_dir, 'control02.ctl')
             self.diag_dir = path.join(
                 self.oracle_base, 'diag', 'rdbms', db_name.lower(), db_name)
             self.alert_log_file = path.join(self.diag_dir, 'alert', 'log.xml')
@@ -273,11 +275,11 @@ class RmanScript(object):
             if cmd[-1] != ';':
                 cmd += ';'
             self._commands.append(cmd)
-        if isinstance(commands, str):
-            _add_command(commands)
-        elif isinstance(commands, list):
+        if isinstance(commands, list):
             for command in commands:
                 _add_command(command)
+        else:
+            _add_command(commands)
 
     def _conn_str(self, conn_type, conn_dict):
         user = conn_dict['user']
@@ -399,7 +401,8 @@ class OracleVMAdmin(service.OracleAdmin):
         return result, next_marker
 
     def _create_parameter_file(self, source=None, target=None,
-                               create_system=False, cursor=None):
+                               from_memory=False, create_system=False,
+                               cursor=None):
         """Create a parameter file.
         :param source:          source file path, if None then default
         :param target:          target file path, if None then default
@@ -407,8 +410,9 @@ class OracleVMAdmin(service.OracleAdmin):
         :param cursor:          cx_Oracle connection cursor object to use,
                                     else created
         """
-        q = (sql_query.CreateSPFile(source, target) if create_system
-             else sql_query.CreatePFile(source, target))
+        q = (sql_query.CreateSPFile(source, target, from_memory)
+             if create_system
+             else sql_query.CreatePFile(source, target, from_memory))
         LOG.debug("Managing parameter files with '%s'" % q)
         if cursor:
             cursor.execute(str(q))
@@ -416,11 +420,13 @@ class OracleVMAdmin(service.OracleAdmin):
             with self.cursor(self.database_name) as cursor:
                 cursor.execute(str(q))
 
-    def create_pfile(self, source=None, target=None, cursor=None):
-        self._create_parameter_file(source, target, False, cursor)
+    def create_pfile(self, source=None, target=None,
+                     from_memory=False, cursor=None):
+        self._create_parameter_file(source, target, from_memory, False, cursor)
 
-    def create_spfile(self, source=None, target=None, cursor=None):
-        self._create_parameter_file(source, target, True, cursor)
+    def create_spfile(self, source=None, target=None,
+                      from_memory=False, cursor=None):
+        self._create_parameter_file(source, target, from_memory, True, cursor)
 
 
 class OracleVMApp(service.OracleApp):
@@ -452,8 +458,14 @@ class OracleVMApp(service.OracleApp):
             self.paths.os_pfile,
             self.instance_owner,
             self.instance_owner_group,
-            stream_codecs.PropertiesCodec(delimiter='=',
-                                          comment_markers=('#')),
+            stream_codecs.KeyValueCodec(
+                delimiter='=',
+                comment_marker='#',
+                line_terminator='\n',
+                value_quoting=True,
+                value_quote_char="'",
+                bool_case=stream_codecs.KeyValueCodec.BOOL_UPPER,
+                big_ints=True),
             requires_root=True,
             override_strategy=configuration.OneFileOverrideStrategy(conf_dir))
 
@@ -496,7 +508,7 @@ class OracleVMApp(service.OracleApp):
         """Generate the base PFILE from the original SPFILE and
         initialize the configuration manager to use it.
         """
-        self.admin.create_pfile(target=self.paths.os_pfile)
+        self.admin.create_pfile(target=self.paths.os_pfile, from_memory=True)
         self._init_configuration_manager()
 
     def generate_spfile(self):

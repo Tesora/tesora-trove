@@ -276,7 +276,7 @@ class Manager(manager.OracleManager):
         return 1
 
     def wait_for_txn(self, context, txn):
-        self.replication.wait_for_txn()
+        self.replication.wait_for_txn(self.app)
 
     def cleanup_source_on_replica_detach(self, context, replica_info):
         LOG.debug("Cleaning up the source on the detach of a replica.")

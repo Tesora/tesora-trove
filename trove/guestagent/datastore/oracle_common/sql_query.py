@@ -222,7 +222,10 @@ class AlterSystem(OracleSql):
     @classmethod
     def set_parameter(cls, k, v, deferred=False):
         scope = 'SPFILE' if deferred else 'BOTH'
-        q = cls('SET %s = %s SCOPE = %s' % (k, v, scope))
+        value = ("'%s'" % v
+                 if (isinstance(v, (str, unicode)) and "'" not in v)
+                 else v)
+        q = cls('SET %s = %s SCOPE = %s' % (k, value, scope))
         return q
 
     @property
@@ -241,25 +244,28 @@ class AlterDatabase(OracleSql):
 
 
 class CreatePFile(OracleSql):
-    _SOURCE_TYPE = 'SPFILE'
-    _TARGET_TYPE = 'PFILE'
+    source_type = 'SPFILE'
+    target_type = 'PFILE'
 
-    def __init__(self, source=None, target=None):
-        self.source = source
+    def __init__(self, source=None, target=None, from_memory=False):
+        self.source = None if from_memory else source
         self.target = target
+        self.from_memory = from_memory
+        self.source_type = 'MEMORY' if from_memory else self.source_type
+        self.target_type = self.target_type
 
     @property
     def statement(self):
         return ("CREATE %s%s FROM %s%s"
-                % (self._TARGET_TYPE,
+                % (self.target_type,
                    ("='%s'" % self.target if self.target else ''),
-                   self._SOURCE_TYPE,
+                   self.source_type,
                    ("='%s'" % self.source if self.source else '')))
 
 
 class CreateSPFile(CreatePFile):
-    _SOURCE_TYPE = 'PFILE'
-    _TARGET_TYPE = 'SPFILE'
+    source_type = 'PFILE'
+    target_type = 'SPFILE'
 
 
 class CreatePDB(OracleSql):
