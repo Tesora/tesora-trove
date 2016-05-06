@@ -36,6 +36,10 @@ class GaleraApp(service.BaseMySqlApp):
         super(GaleraApp, self).__init__(status, local_sql_client,
                                         keep_alive_connection_cls)
 
+    @property
+    def service_candidates(self):
+        return super(GaleraApp, self).service_candidates
+
     def _test_mysql(self):
         engine = sqlalchemy.create_engine("mysql://root:@localhost:3306",
                                           echo=True)
