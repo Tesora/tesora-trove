@@ -57,6 +57,10 @@ class RedisAPIStrategy(base.BaseAPIStrategy):
                 instance['name'] = node['name']
             if 'volume' in node:
                 instance['volume_size'] = int(node['volume']['size'])
+            if 'nics' in node:
+                instance['nics'] = node['nics']
+            if 'availability_zone' in node:
+                instance['availability_zone'] = node['availability_zone']
             instances.append(instance)
         return cluster.grow(instances)
 

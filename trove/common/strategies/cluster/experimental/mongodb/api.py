@@ -94,6 +94,8 @@ class MongoDbAPIStrategy(base.BaseAPIStrategy):
                                                     'query_router'])
         name = _check_option('name')
         related_to = _check_option('related_to')
+        nics = _check_option('nics')
+        availability_zone = _check_option('availability_zone')
 
         unused_keys = list(set(item.keys()).difference(set(used_keys)))
         if unused_keys:
@@ -109,6 +111,10 @@ class MongoDbAPIStrategy(base.BaseAPIStrategy):
             instance['name'] = name
         if related_to:
             instance['related_to'] = related_to
+        if nics:
+            instance['nics'] = nics
+        if availability_zone:
+            instance['availability_zone'] = availability_zone
         return instance
 
     @property
