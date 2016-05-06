@@ -97,6 +97,26 @@ class Manager(manager.Manager):
             LOG.debug('Root password provided. Enabling root.')
             service.MongoDBAdmin().enable_root(root_password)
 
+    def pre_upgrade(self, context):
+        LOG.debug('Preparing MongoDB for upgrade.')
+        self.app.status.begin_restart()
+        self.app.stop_db()
+        mount_point = system.MONGODB_MOUNT_POINT
+        upgrade_info = self.app.save_files_pre_upgrade(mount_point)
+        upgrade_info['mount_point'] = mount_point
+        return upgrade_info
+
+    def post_upgrade(self, context, upgrade_info):
+        LOG.debug('Finalizing MongoDB upgrade.')
+        self.app.stop_db()
+        if 'device' in upgrade_info:
+            self.mount_volume(context,
+                              mount_point=upgrade_info['mount_point'],
+                              device_path=upgrade_info['device'])
+        self.app.restore_files_post_upgrade(upgrade_info)
+        self.app.initialize_writable_run_dir()
+        self.app.start_db()
+
     def restart(self, context):
         LOG.debug("Restarting MongoDB.")
         self.app.restart()
