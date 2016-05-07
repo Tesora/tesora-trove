@@ -797,6 +797,33 @@ class CassandraApp(object):
         return len([user for user in found
                     if user.name != self._ADMIN_USER]) > 0
 
+    def save_files_pre_upgrade(self, mount_point):
+        LOG.debug('Saving files pre-upgrade.')
+        mnt_etc_dir = os.path.join(mount_point, 'save_etc')
+        mnt_cqlshrc = os.path.join(mount_point, 'save_cqlshrc')
+        for save_dir in [mnt_etc_dir, mnt_cqlshrc]:
+            operating_system.remove(save_dir, force=True, as_root=True)
+        operating_system.copy(self.cassandra_conf_dir, mnt_etc_dir,
+                              preserve=True, recursive=True, as_root=True)
+        operating_system.copy(os.path.dirname(self._get_cqlsh_conf_path()),
+                              mnt_cqlshrc, preserve=True, recursive=True,
+                              as_root=True)
+        return {'save_etc': mnt_etc_dir,
+                'save_cqlshrc': mnt_cqlshrc}
+
+    def restore_files_post_upgrade(self, upgrade_info):
+        LOG.debug('Restoring files post-upgrade.')
+        operating_system.copy('%s/.' % upgrade_info['save_etc'],
+                              self.cassandra_conf_dir,
+                              preserve=True, recursive=True,
+                              force=True, as_root=True)
+        operating_system.copy(upgrade_info['save_cqlshrc'],
+                              os.path.dirname(self._get_cqlsh_conf_path()),
+                              preserve=True, force=True, as_root=True)
+        for save_dir in [upgrade_info['save_etc'],
+                         upgrade_info['save_cqlshrc']]:
+            operating_system.remove(save_dir, force=True, as_root=True)
+
 
 class CassandraAppStatus(service.BaseDbStatus):
 
