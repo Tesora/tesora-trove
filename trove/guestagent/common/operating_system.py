@@ -20,6 +20,17 @@ import re
 import stat
 import tempfile
 
+# We need to import modules to grab the name from a given package
+# This is different on each platform, and probably don't exist on all
+try:
+    from apt import debfile
+except ImportError:
+    pass
+try:
+    import rpm
+except ImportError:
+    pass
+
 from functools import reduce
 from oslo_concurrency.processutils import UnknownArgumentError
 
@@ -825,3 +836,35 @@ def _build_command_options(options):
     """
 
     return ['-' + item[0] for item in options if item[1]]
+
+
+def get_package_command():
+    os_name = get_os()
+
+    pkg_cmd = {REDHAT: "rpm",
+               DEBIAN: "dpkg",
+               SUSE: "rpm"}[os_name]
+    install_options = {REDHAT: ["-i"],
+                       DEBIAN: ["-i"],
+                       SUSE: ["-i"]}[os_name]
+    uninstall_options = {REDHAT: ["-ev"],
+                         DEBIAN: ["-r"],
+                         SUSE: ["-ev"]}[os_name]
+    return pkg_cmd, install_options, uninstall_options
+
+
+def get_package_name(package_file):
+    pkg_cmd, install_options, uninstall_opts = get_package_command()
+    if "dpkg" == pkg_cmd:
+        deb_file = debfile.DebPackage(package_file)
+        package_name = deb_file.pkgname
+    elif "rpm" == pkg_cmd:
+        ts = rpm.ts()
+        ts.setVSFlags(rpm._RPMVSF_NOSIGNATURES)
+        with open(package_file) as fd:
+            pkg_hdr = ts.hdrFromFdno(fd)
+        package_name = pkg_hdr[rpm.RPMTAG_NAME]
+    else:
+        raise exception.UnprocessableEntity(
+            _("Unhandled package type: %s)") % pkg_cmd)
+    return package_name
