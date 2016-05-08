@@ -253,6 +253,33 @@ class CouchbaseApp(object):
         """
         return self.build_admin().get_cluster_rebalance_status()
 
+    def save_files_pre_upgrade(self, mount_point):
+        LOG.debug('Saving files pre-upgrade.')
+        mnt_opt_etc = os.path.join(mount_point, 'save_opt_etc')
+        mnt_etc = os.path.join(mount_point, 'save_etc')
+        for save_dir in [mnt_opt_etc, mnt_etc]:
+            operating_system.remove(save_dir, force=True, as_root=True)
+        operating_system.copy(system.COUCHBASE_OPT_ETC_DIR, mnt_opt_etc,
+                              preserve=True, recursive=True, as_root=True)
+        operating_system.copy(system.COUCHBASE_CONF_DIR,
+                              mnt_etc, preserve=True, recursive=True,
+                              as_root=True)
+        return {'save_opt_etc': mnt_opt_etc,
+                'save_etc': mnt_etc}
+
+    def restore_files_post_upgrade(self, upgrade_info):
+        LOG.debug('Restoring files post-upgrade.')
+        operating_system.copy('%s/.' % upgrade_info['save_opt_etc'],
+                              system.COUCHBASE_OPT_ETC_DIR,
+                              preserve=True, recursive=True,
+                              force=True, as_root=True)
+        operating_system.copy(upgrade_info['save_etc'],
+                              system.COUCHBASE_CONF_DIR,
+                              preserve=True, force=True, as_root=True)
+        for save_dir in [upgrade_info['save_opt_etc'],
+                         upgrade_info['save_etc']]:
+            operating_system.remove(save_dir, force=True, as_root=True)
+
 
 class CouchbaseAdmin(object):
 

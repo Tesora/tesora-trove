@@ -17,6 +17,7 @@ import os
 
 from oslo_log import log as logging
 
+from trove.common import cfg
 from trove.common.i18n import _
 from trove.common import instance as rd_instance
 from trove.common.notification import EndNotification
@@ -28,6 +29,7 @@ from trove.guestagent import volume
 
 
 LOG = logging.getLogger(__name__)
+CONF = cfg.CONF
 
 
 class Manager(manager.Manager):
@@ -181,3 +183,24 @@ class Manager(manager.Manager):
 
     def remove_nodes(self, context, nodes):
         self.app.rebalance_cluster(removed_nodes=nodes)
+
+    def pre_upgrade(self, context):
+        LOG.debug('Preparing Couchbase for upgrade.')
+        self.app.status.begin_restart()
+        self.app.stop_db()
+        mount_point = CONF.couchbase.mount_point
+        upgrade_info = self.app.save_files_pre_upgrade(mount_point)
+        upgrade_info['mount_point'] = mount_point
+        return upgrade_info
+
+    def post_upgrade(self, context, upgrade_info):
+        LOG.debug('Finalizing Couchbase upgrade.')
+        self.app.stop_db()
+        if 'device' in upgrade_info:
+            self.mount_volume(context, mount_point=upgrade_info['mount_point'],
+                              device_path=upgrade_info['device'])
+        self.app.restore_files_post_upgrade(upgrade_info)
+        # password file has been restored at this point, need to refresh the
+        # credentials stored in the app by resetting the app.
+        self._app = None
+        self.app.start_db()

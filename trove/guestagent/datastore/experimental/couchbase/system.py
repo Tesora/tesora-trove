@@ -16,6 +16,7 @@
 
 COUCHBASE_DUMP_DIR = '/tmp/backups'
 COUCHBASE_CONF_DIR = '/etc/couchbase'
+COUCHBASE_OPT_ETC_DIR = '/opt/couchbase/etc'
 COUCHBASE_WEBADMIN_PORT = '8091'
 COUCHBASE_REST_API = 'http://localhost:' + COUCHBASE_WEBADMIN_PORT
 BUCKETS_JSON = '/buckets.json'
