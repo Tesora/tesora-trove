@@ -1,4 +1,8 @@
-# mongodb.conf
+# Trove's mongodb.conf
 
-storage.mmapv1.smallFiles: false
+processManagement.fork: false
+processManagement.pidFilePath: /var/run/mongodb/mongodb.pid
 storage.journal.enabled: true
+systemLog.destination: file
+systemLog.logAppend: true
+systemLog.path: /var/log/mongodb/mongo.log

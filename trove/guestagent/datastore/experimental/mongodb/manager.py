@@ -25,9 +25,8 @@ from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.experimental.mongodb import service
 from trove.guestagent.datastore.experimental.mongodb import system
 from trove.guestagent.datastore import manager
-from trove.guestagent import dbaas
+from trove.guestagent import guest_log
 from trove.guestagent import volume
-
 
 LOG = logging.getLogger(__name__)
 
@@ -56,13 +55,12 @@ class Manager(manager.Manager):
             self.app.state_change_wait_time)
         self.app.stop_db()
         self.app.clear_storage()
-        mount_point = system.MONGODB_MOUNT_POINT
         if device_path:
             device = volume.VolumeDevice(device_path)
             # unmount if device is already mounted
             device.unmount_device(device_path)
             device.format()
-            if os.path.exists(system.MONGODB_MOUNT_POINT):
+            if os.path.exists(mount_point):
                 device.migrate_data(mount_point)
             device.mount(mount_point)
             operating_system.chown(mount_point,
@@ -94,6 +92,20 @@ class Manager(manager.Manager):
             if service.MongoDBAdmin().is_root_enabled():
                 self.app.status.report_root(context, 'root')
 
+    @property
+    def datastore_log_defs(self):
+        owner = 'mongodb'
+        systemlog_file = self.validate_log_file(
+            self.app.configuration_manager.get_value(
+                'systemLog.path'), owner)
+        return {
+            self.GUEST_LOG_DEFS_GENERAL_LABEL: {
+                self.GUEST_LOG_TYPE_LABEL: guest_log.LogType.USER,
+                self.GUEST_LOG_USER_LABEL: owner,
+                self.GUEST_LOG_FILE_LABEL: systemlog_file,
+            },
+        }
+
     def restart(self, context):
         LOG.debug("Restarting MongoDB.")
         self.app.restart()
@@ -105,12 +117,6 @@ class Manager(manager.Manager):
     def stop_db(self, context, do_not_start_on_reboot=False):
         LOG.debug("Stopping MongoDB.")
         self.app.stop_db(do_not_start_on_reboot=do_not_start_on_reboot)
-
-    def get_filesystem_stats(self, context, fs_path):
-        """Gets the filesystem stats for the path given."""
-        LOG.debug("Getting file system status.")
-        # TODO(peterstac) - why is this hard-coded?
-        return dbaas.get_filesystem_volume_stats(system.MONGODB_MOUNT_POINT)
 
     def change_passwords(self, context, users):
         LOG.debug("Changing password.")

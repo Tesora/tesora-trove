@@ -110,26 +110,17 @@ class MongoDBApp(object):
         self.configuration_manager.save_configuration(config_contents)
         # The configuration template has to be updated with
         # guestagent-controlled settings.
-        self.apply_initial_guestagent_configuration(
-            None, mount_point=system.MONGODB_MOUNT_POINT)
+        self.apply_initial_guestagent_configuration()
         self.start_db(True)
 
     def apply_initial_guestagent_configuration(
-            self, cluster_config, mount_point=None):
+            self, cluster_config=None, mount_point=None):
         LOG.debug("Applying initial configuration.")
 
         # Mongodb init scripts assume the PID-file path is writable by the
         # database service.
         # See: https://jira.mongodb.org/browse/SERVER-20075
         self._initialize_writable_run_dir()
-
-        self.configuration_manager.apply_system_override(
-            {'processManagement.fork': False,
-             'processManagement.pidFilePath': system.MONGO_PID_FILE,
-             'systemLog.destination': 'file',
-             'systemLog.path': system.MONGO_LOG_FILE,
-             'systemLog.logAppend': True
-             })
 
         if mount_point:
             self.configuration_manager.apply_system_override(
@@ -144,7 +135,8 @@ class MongoDBApp(object):
         """Create a writable directory for Mongodb's runtime data
         (e.g. PID-file).
         """
-        mongodb_run_dir = os.path.dirname(system.MONGO_PID_FILE)
+        mongodb_run_dir = os.path.dirname(self.configuration_manager.get_value(
+            'processManagement.pidFilePath'))
         LOG.debug("Initializing a runtime directory: %s" % mongodb_run_dir)
         operating_system.create_directory(
             mongodb_run_dir, user=system.MONGO_USER, group=system.MONGO_USER,
@@ -319,15 +311,6 @@ class MongoDBApp(object):
         # TODO(ramashri) see if hardcoded values can be removed
         utils.poll_until(check_rs_status, sleep_time=10, time_out=100)
 
-    def _set_localhost_auth_bypass(self, enabled):
-        """When active, the localhost exception allows connections from the
-        localhost interface to create the first user on the admin database.
-        The exception applies only when there are no users created in the
-        MongoDB instance.
-        """
-        self.configuration_manager.apply_system_override(
-            {'setParameter': {'enableLocalhostAuthBypass': enabled}})
-
     def list_all_dbs(self):
         return MongoDBAdmin().list_database_names()
 
@@ -389,16 +372,20 @@ class MongoDBApp(object):
             raise RuntimeError(_("Cannot secure the instance. "
                                  "The service is still running."))
 
+        temp_changeid = 'localhost_auth_bypass'
+        self.configuration_manager.apply_system_override(
+            {'setParameter': {'enableLocalhostAuthBypass': True}},
+            temp_changeid)
         try:
             self.configuration_manager.apply_system_override(
                 {'security.authorization': 'enabled'})
-            self._set_localhost_auth_bypass(True)
             self.start_db(update_db=False)
             password = utils.generate_random_password()
             self.create_admin_user(password)
             LOG.debug("MongoDB secure complete.")
         finally:
-            self._set_localhost_auth_bypass(False)
+            self.configuration_manager.remove_system_override(
+                temp_changeid)
             self.stop_db()
 
     def get_configuration_property(self, name, default=None):

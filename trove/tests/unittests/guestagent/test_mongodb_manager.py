@@ -17,7 +17,8 @@ import pymongo
 
 import trove.common.utils as utils
 import trove.guestagent.backup as backup
-from trove.guestagent.common.configuration import ImportOverrideStrategy
+from trove.guestagent.common import configuration
+from trove.guestagent.common import operating_system
 import trove.guestagent.datastore.experimental.mongodb.manager as manager
 import trove.guestagent.datastore.experimental.mongodb.service as service
 import trove.guestagent.db.models as models
@@ -27,7 +28,8 @@ import trove.tests.unittests.trove_testtools as trove_testtools
 
 class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
 
-    @mock.patch.object(ImportOverrideStrategy, '_initialize_import_directory')
+    @mock.patch.object(configuration.ImportOverrideStrategy,
+                       '_initialize_import_directory')
     def setUp(self, _):
         super(GuestAgentMongoDBManagerTest, self).setUp()
         self.context = trove_testtools.TroveTestContext(self)
@@ -45,8 +47,6 @@ class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
         self.addCleanup(self.pymongo_patch.stop)
         self.pymongo_patch.start()
 
-        self.mount_point = '/var/lib/mongodb'
-
     def tearDown(self):
         super(GuestAgentMongoDBManagerTest, self).tearDown()
 
@@ -59,7 +59,7 @@ class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
                         memory_mb='2048', users=None, device_path=None,
                         mount_point=None, backup_info=None,
                         config_contents=None, root_password=None,
-                        overrides=None, cluster_config=None,):
+                        overrides=None, cluster_config=None, *mocks):
         """self.manager.app must be correctly mocked before calling."""
 
         self.manager.app.status = mock.Mock()
@@ -80,21 +80,23 @@ class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
         self.manager.app.clear_storage.assert_any_call()
 
         (self.manager.app.apply_initial_guestagent_configuration.
-         assert_called_once_with(cluster_config, self.mount_point))
+         assert_called_once_with(cluster_config, mount_point))
 
-    @mock.patch.object(volume, 'VolumeDevice')
     @mock.patch('os.path.exists')
-    def test_prepare_for_volume(self, exists, mocked_volume):
+    @mock.patch.object(operating_system, 'chown')
+    @mock.patch.object(volume, 'VolumeDevice')
+    def test_prepare_for_volume(self, mocked_volume, *mocks):
         device_path = '/dev/vdb'
+        mount_point = '/var/lib/mongodb'
 
         self.manager.app = mock.Mock()
 
-        self._prepare_method(device_path=device_path)
+        self._prepare_method(device_path=device_path, mount_point=mount_point)
 
         mocked_volume().unmount_device.assert_called_with(device_path)
         mocked_volume().format.assert_any_call()
-        mocked_volume().migrate_data.assert_called_with(self.mount_point)
-        mocked_volume().mount.assert_called_with(self.mount_point)
+        mocked_volume().migrate_data.assert_called_with(mount_point)
+        mocked_volume().mount.assert_called_with(mount_point)
 
     def test_secure(self):
         self.manager.app = mock.Mock()
@@ -109,6 +111,8 @@ class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
     @mock.patch.object(backup, 'restore')
     @mock.patch.object(service.MongoDBAdmin, 'is_root_enabled')
     def test_prepare_from_backup(self, mocked_root_check, mocked_restore):
+        mount_point = '/var/lib/mongodb'
+
         self.manager.app = mock.Mock()
 
         backup_info = {'id': 'backup_id_123abc',
@@ -116,10 +120,11 @@ class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
                        'type': 'MongoDBDump',
                        'checksum': 'fake-checksum'}
 
-        self._prepare_method(backup_info=backup_info)
+        self._prepare_method(backup_info=backup_info,
+                             mount_point=mount_point)
 
         mocked_restore.assert_called_with(self.context, backup_info,
-                                          '/var/lib/mongodb')
+                                          mount_point)
         mocked_root_check.assert_any_call()
 
     def test_prepare_with_databases(self):
