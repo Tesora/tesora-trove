@@ -87,6 +87,27 @@ class Manager(manager.Manager):
 
         return False
 
+    def pre_upgrade(self, context):
+        LOG.debug('Preparing Cassandra for upgrade.')
+        self.app.status.begin_restart()
+        self.app.stop_db()
+        mount_point = self.app.cassandra_working_dir
+        upgrade_info = self.app.save_files_pre_upgrade(mount_point)
+        upgrade_info['mount_point'] = mount_point
+        return upgrade_info
+
+    def post_upgrade(self, context, upgrade_info):
+        LOG.debug('Finalizing Cassandra upgrade.')
+        self.app.stop_db()
+        if 'device' in upgrade_info:
+            self.mount_volume(context, mount_point=upgrade_info['mount_point'],
+                              device_path=upgrade_info['device'])
+        self.app.restore_files_post_upgrade(upgrade_info)
+        # cqlshrc has been restored at this point, need to refresh the
+        # credentials stored in the app by resetting the app.
+        self._app = None
+        self.app.start_db()
+
     def restart(self, context):
         self.app.restart()
 
