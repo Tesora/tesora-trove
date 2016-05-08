@@ -146,6 +146,7 @@ class MongoDbCluster(models.Cluster):
                                         nics=nics[i],
                                         configuration_id=None,
                                         cluster_config=member_config,
+                                        modules=instances[i].get('modules'),
                                         locality=locality)
 
         for i in range(1, num_configsvr + 1):
