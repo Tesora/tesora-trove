@@ -102,7 +102,7 @@ class Manager(manager.Manager):
         self._admin = self.app.build_admin()
 
         if not cluster_config:
-            if self.is_root_enabled(context):
+            if backup_info and self.is_root_enabled(context):
                 self.status.report_root(context, self.app.DEFAULT_ADMIN_NAME)
 
     def restart(self, context):
