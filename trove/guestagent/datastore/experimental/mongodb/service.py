@@ -544,7 +544,7 @@ class MongoDBApp(object):
                               force=True, as_root=True)
         for save_dir in [upgrade_info['save_confs'],
                          upgrade_info['save_creds']]:
-            operating_system.remove(save_dir, )
+            operating_system.remove(save_dir, force=True, as_root=True)
 
 
 class MongoDBAppStatus(service.BaseDbStatus):
