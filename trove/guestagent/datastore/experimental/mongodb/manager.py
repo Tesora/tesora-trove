@@ -25,7 +25,6 @@ from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.experimental.mongodb import service
 from trove.guestagent.datastore.experimental.mongodb import system
 from trove.guestagent.datastore import manager
-from trove.guestagent import guest_log
 from trove.guestagent import volume
 
 LOG = logging.getLogger(__name__)
@@ -91,20 +90,6 @@ class Manager(manager.Manager):
             self._perform_restore(backup_info, context, mount_point, self.app)
             if service.MongoDBAdmin().is_root_enabled():
                 self.app.status.report_root(context, 'root')
-
-    @property
-    def datastore_log_defs(self):
-        owner = 'mongodb'
-        systemlog_file = self.validate_log_file(
-            self.app.configuration_manager.get_value(
-                'systemLog.path'), owner)
-        return {
-            self.GUEST_LOG_DEFS_GENERAL_LABEL: {
-                self.GUEST_LOG_TYPE_LABEL: guest_log.LogType.USER,
-                self.GUEST_LOG_USER_LABEL: owner,
-                self.GUEST_LOG_FILE_LABEL: systemlog_file,
-            },
-        }
 
     def restart(self, context):
         LOG.debug("Restarting MongoDB.")
