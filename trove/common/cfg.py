@@ -1097,6 +1097,16 @@ cassandra_opts = [
                help='Character length of generated passwords.'),
 ]
 
+cassandra_3_group = cfg.OptGroup(
+    'cassandra_3', title='DSE options',
+    help="Oslo option group designed for Cassandra 3.x datastore")
+cassandra_3_opts = _update_options(cassandra_opts)
+
+cassandra_22_group = cfg.OptGroup(
+    'cassandra_22', title='DSE options',
+    help="Oslo option group designed for Cassandra 2.2 datastore")
+cassandra_22_opts = _update_options(cassandra_3_opts)
+
 # DSE (mostly uses same options as Cassandra community edition).
 # Extend the list of ignored keyspaces with DSE-specific names.
 dse_group = cfg.OptGroup(
@@ -1723,6 +1733,8 @@ CONF.register_group(percona_group)
 CONF.register_group(pxc_group)
 CONF.register_group(redis_group)
 CONF.register_group(cassandra_group)
+CONF.register_group(cassandra_22_group)
+CONF.register_group(cassandra_3_group)
 CONF.register_group(dse_group)
 CONF.register_group(couchbase_group)
 CONF.register_group(couchbase_4_group)
@@ -1740,6 +1752,8 @@ CONF.register_opts(percona_opts, percona_group)
 CONF.register_opts(pxc_opts, pxc_group)
 CONF.register_opts(redis_opts, redis_group)
 CONF.register_opts(cassandra_opts, cassandra_group)
+CONF.register_opts(cassandra_22_opts, cassandra_22_group)
+CONF.register_opts(cassandra_3_opts, cassandra_3_group)
 CONF.register_opts(dse_opts, dse_group)
 CONF.register_opts(couchbase_opts, couchbase_group)
 CONF.register_opts(couchbase_4_opts, couchbase_4_group)

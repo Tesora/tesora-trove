@@ -180,7 +180,7 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
                 _CassandraApp__enable_remote_access=DEFAULT,
                 _CassandraApp__disable_authentication=DEFAULT,
                 _CassandraApp__enable_authentication=DEFAULT,
-                _CassandraApp__reset_user_password_to_default=DEFAULT,
+                _reset_user_password_to_default=DEFAULT,
                 secure=DEFAULT) as calls:
 
             test_app._reset_admin_password()
@@ -200,7 +200,7 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
             ].assert_called_once_with()
 
             pw_reset_mock = calls[
-                '_CassandraApp__reset_user_password_to_default'
+                '_reset_user_password_to_default'
             ]
             pw_reset_mock.assert_called_once_with(test_app._ADMIN_USER)
             calls['secure'].assert_called_once_with(
@@ -439,8 +439,7 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
 
     def test_get_available_keyspaces(self):
         self.manager.list_databases(self.context)
-        self.conn.execute.assert_called_once_with(
-            self.__LIST_DB_FORMAT)
+        self.conn.list_keyspaces.assert_called_once_with()
 
     def test_list_databases(self):
         db1 = models.CassandraSchema('db1')

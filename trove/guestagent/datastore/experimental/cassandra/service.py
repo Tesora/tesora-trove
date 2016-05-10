@@ -367,7 +367,7 @@ class CassandraApp(object):
             # and restart the service to get user functions back.
             self.start_db(update_db=False, enable_on_boot=False)
             self.__enable_authentication()
-            os_admin = self.__reset_user_password_to_default(self._ADMIN_USER)
+            os_admin = self._reset_user_password_to_default(self._ADMIN_USER)
             self.status = CassandraAppStatus(os_admin)
             self.restart()
 
@@ -382,7 +382,7 @@ class CassandraApp(object):
         self.__enable_remote_access()
         operating_system.enable_service_on_boot(self.service_candidates)
 
-    def __reset_user_password_to_default(self, username):
+    def _reset_user_password_to_default(self, username):
         LOG.debug("Resetting the password of user '%s' to '%s'."
                   % (username, self.default_superuser_password))
 
@@ -1163,10 +1163,9 @@ class CassandraAdmin(object):
         Return a set of unique keyspace instances.
         Omit keyspace names on the ignore list.
         """
-        return {models.CassandraSchema(db.keyspace_name)
-                for db in client.execute("SELECT * FROM "
-                                         "system.schema_keyspaces;")
-                if db.keyspace_name not in self.ignore_dbs}
+        return {models.CassandraSchema(db)
+                for db in client.list_keyspaces()
+                if db not in self.ignore_dbs}
 
     def list_access(self, context, username, hostname):
         user = self._find_user(self.client, username)
@@ -1276,6 +1275,11 @@ class CassandraConnection(object):
         if identifiers:
             return query.format(*identifiers)
         return query
+
+    def list_keyspaces(self):
+        """List names of all available keyspaces.
+        """
+        return self._cluster.metadata.keyspaces.keys()
 
     def _connect(self):
         if not self._cluster.is_shutdown:
