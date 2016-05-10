@@ -63,3 +63,6 @@ class Manager(community_manager.Manager):
     @property
     def app(self):
         return self._app
+
+    def build_app(self):
+        return service.DSEApp()

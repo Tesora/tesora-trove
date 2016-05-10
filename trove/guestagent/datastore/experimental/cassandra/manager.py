@@ -88,6 +88,9 @@ class Manager(manager.Manager):
         upgrade_info['mount_point'] = mount_point
         return upgrade_info
 
+    def build_app(self):
+        return service.CassandraApp()
+
     def post_upgrade(self, context, upgrade_info):
         LOG.debug('Finalizing Cassandra upgrade.')
         self.app.stop_db()
@@ -97,7 +100,7 @@ class Manager(manager.Manager):
         self.app.restore_files_post_upgrade(upgrade_info)
         # cqlshrc has been restored at this point, need to refresh the
         # credentials stored in the app by resetting the app.
-        self._app = service.CassandraApp()
+        self._app = self.build_app()
         self.app.start_db()
 
     def restart(self, context):
