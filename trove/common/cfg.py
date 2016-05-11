@@ -758,9 +758,11 @@ oracle_opts = [
                help='Default Oracle listener port'),
     cfg.StrOpt('cloud_user_role', default='CLOUD_USER_ROLE',
                help='Default role name of all regular cloud db users'),
-    cfg.IntOpt('db_ram_size', default=500,
-               help='Default memory size (MB) of each Oracle database '
-                    'instance.'),
+    cfg.IntOpt('db_ram', default=50,
+               help='Default percentage of physical memory to allocate '
+                    'for Oracle.'),
+    cfg.StrOpt('db_charset', default='AL32UTF8',
+               help='Default database character set.'),
     cfg.StrOpt('guest_log_exposed_logs', default='alert',
                help='List of Guest Logs to expose for publishing.'),
     cfg.StrOpt('template', default='General_Purpose_ArchiveLog.dbc',

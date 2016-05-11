@@ -352,10 +352,12 @@ class OracleVMAdmin(service.OracleAdmin):
                  "-sysPassword %(pswd)s "
                  "-systemPassword %(pswd)s "
                  "-storageType FS "
-                 "-totalMemory %(db_ram)s" %
+                 "-characterSet %(db_charset)s "
+                 "-memoryPercentage %(db_ram)s" %
                  {'gdbname': db_name, 'sid': db_name,
                   'pswd': sys_pwd,
-                  'db_ram': CONF.get(MANAGER).db_ram_size,
+                  'db_charset': CONF.get(MANAGER).db_charset,
+                  'db_ram': CONF.get(MANAGER).db_ram,
                   'template': CONF.get(MANAGER).template}))
         except exception.ProcessExecutionError:
             LOG.exception(_(
