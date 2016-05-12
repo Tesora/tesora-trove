@@ -13,6 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import base64
+
 from novaclient import exceptions as nova_exceptions
 from oslo_log import log as logging
 
@@ -188,7 +190,7 @@ class MongoDbCluster(models.Cluster):
             task_status=ClusterTasks.BUILDING_INITIAL)
 
         replica_set_name = "rs1"
-        key = utils.generate_random_password()
+        key = base64.b64encode(utils.generate_random_password())
 
         member_config = {"id": db_info.id,
                          "shard_id": utils.generate_uuid(),
