@@ -52,14 +52,21 @@ class MongoDBApp(object):
     def __init__(self):
         self.state_change_wait_time = CONF.state_change_wait_time
 
-        revision_dir = system.CONFIG_OVERRIDES_DIR
-
-        self.configuration_manager = ConfigurationManager(
-            system.CONFIG_FILE, system.MONGO_USER, system.MONGO_USER,
+        self.mongod_configuration_manager = ConfigurationManager(
+            system.MONGOD_CONFIG_FILE, system.MONGO_USER, system.MONGO_USER,
             SafeYamlCodec(default_flow_style=False),
             requires_root=True,
-            override_strategy=OneFileOverrideStrategy(revision_dir))
+            override_strategy=OneFileOverrideStrategy(
+                system.MONGOD_CONFIG_OVERRIDES_DIR))
 
+        self.mongos_configuration_manager = ConfigurationManager(
+            system.MONGOS_CONFIG_FILE, system.MONGO_USER, system.MONGO_USER,
+            SafeYamlCodec(default_flow_style=False),
+            requires_root=True,
+            override_strategy=OneFileOverrideStrategy(
+                system.MONGOS_CONFIG_OVERRIDES_DIR))
+
+        self.configuration_manager = self.mongod_configuration_manager
         self.is_query_router = False
         self.is_cluster_member = False
         self.status = MongoDBAppStatus()
@@ -115,11 +122,6 @@ class MongoDBApp(object):
             self, cluster_config=None, mount_point=None):
         LOG.debug("Applying initial configuration.")
 
-        # Mongodb init scripts assume the PID-file path is writable by the
-        # database service.
-        # See: https://jira.mongodb.org/browse/SERVER-20075
-        self.initialize_writable_run_dir()
-
         if mount_point:
             self.configuration_manager.apply_system_override(
                 {'storage.dbPath': mount_point})
@@ -128,17 +130,6 @@ class MongoDBApp(object):
             self._configure_as_cluster_instance(cluster_config)
         else:
             self._configure_network(MONGODB_PORT)
-
-    def initialize_writable_run_dir(self):
-        """Create a writable directory for Mongodb's runtime data
-        (e.g. PID-file).
-        """
-        mongodb_run_dir = os.path.dirname(self.configuration_manager.get_value(
-            'processManagement.pidFilePath'))
-        LOG.debug("Initializing a runtime directory: %s" % mongodb_run_dir)
-        operating_system.create_directory(
-            mongodb_run_dir, user=system.MONGO_USER, group=system.MONGO_USER,
-            force=True, as_root=True)
 
     def _configure_as_cluster_instance(self, cluster_config):
         """Configure this guest as a cluster instance and return its
@@ -162,23 +153,7 @@ class MongoDBApp(object):
     def _configure_as_query_router(self):
         LOG.info(_("Configuring instance as a cluster query router."))
         self.is_query_router = True
-
-        # FIXME(pmalik): We should really have a separate configuration
-        # template for the 'mongos' process.
-        # Remove all storage configurations from the template.
-        # They apply only to 'mongod' processes.
-        # Already applied overrides will be integrated into the base file and
-        # their current groups removed.
-        config = guestagent_utils.expand_dict(
-            self.configuration_manager.parse_configuration())
-        if 'storage' in config:
-            LOG.debug("Removing 'storage' directives from the configuration "
-                      "template.")
-            del config['storage']
-            self.configuration_manager.save_configuration(
-                guestagent_utils.flatten_dict(config))
-
-        # Apply 'mongos' configuration.
+        self.configuration_manager = self.mongos_configuration_manager
         self._configure_network(MONGODB_PORT)
         self.configuration_manager.apply_system_override(
             {'sharding.configDB': ''}, CNF_CLUSTER)
@@ -225,8 +200,7 @@ class MongoDBApp(object):
         self.configuration_manager.apply_system_override(options)
         self.status.set_host(instance_ip, port=port)
 
-    def clear_storage(self):
-        mount_point = "/var/lib/mongodb/*"
+    def clear_storage(self, mount_point):
         LOG.debug("Clearing storage at %s." % mount_point)
         try:
             operating_system.remove(mount_point, force=True, as_root=True)
@@ -426,9 +400,10 @@ class MongoDBApp(object):
                 operating_system.create_directory(save_dir,
                                                   force=True,
                                                   as_root=True)
-        operating_system.copy(system.CONFIG_FILE, mnt_confs_dir,
+        operating_system.copy(system.MONGOD_CONFIG_FILE, mnt_confs_dir,
                               preserve=True, as_root=True)
-        operating_system.copy(system.CONFIG_OVERRIDES_DIR, mnt_confs_dir,
+        operating_system.copy(system.MONGOD_CONFIG_OVERRIDES_DIR,
+                              mnt_confs_dir,
                               preserve=True, recursive=True, as_root=True)
         operating_system.copy(system.MONGO_ADMIN_CREDS_FILE, mnt_creds_dir,
                               preserve=True, as_root=True)
@@ -714,18 +689,7 @@ class MongoDBAdmin(object):
         return user.databases
 
     def create_database(self, databases):
-        """Forces creation of databases.
-        For each new database creates a dummy document in a dummy collection,
-        then drops the collection.
-        """
-        tmp = 'dummy'
-        with MongoDBClient(self._admin_user()) as admin_client:
-            for item in databases:
-                db_name = models.MongoDBSchema.deserialize_schema(item).name
-                LOG.debug('Creating MongoDB database %s' % db_name)
-                db = admin_client[db_name]
-                db[tmp].insert({'dummy': True})
-                db.drop_collection(tmp)
+        LOG.info('MongoDB create_database called but is a no-op.')
 
     def delete_database(self, database):
         """Deletes the database."""

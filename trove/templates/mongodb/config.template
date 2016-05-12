@@ -1,8 +1,5 @@
-# Trove's mongodb.conf
-
-processManagement.fork: false
-processManagement.pidFilePath: /var/run/mongodb/mongodb.pid
+# Trove's mongod.conf
 storage.journal.enabled: true
 systemLog.destination: file
 systemLog.logAppend: true
-systemLog.path: /var/log/mongodb/mongo.log
+systemLog.path: /var/log/mongodb/mongod.log
