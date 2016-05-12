@@ -111,14 +111,6 @@ class Manager(manager.OracleManager):
             app.create_ra_status_file('ERROR')
             raise e
 
-        try:
-            if users:
-                admin.create_user(context, users)
-        except Exception as e:
-            app.create_ra_status_file('ERROR')
-            LOG.exception(_(error_msg))
-            raise e
-
         app.create_ra_status_file('OK')
 
     def apply_overrides_on_prepare(self, context, overrides):
@@ -127,8 +119,8 @@ class Manager(manager.OracleManager):
 
     def get_filesystem_stats(self, context, fs_path):
         """Gets the filesystem stats for the path given."""
-        raise exception.DatastoreOperationNotSupported(
-            operation='get_filesystem_stats', datastore=self.manager)
+        # Oracle remote agent don't have any filesystem info to report
+        return {}
 
     def mount_volume(self, context, device_path=None, mount_point=None):
         raise exception.DatastoreOperationNotSupported(
