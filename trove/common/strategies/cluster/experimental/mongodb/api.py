@@ -13,6 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import base64
+
 from novaclient import exceptions as nova_exceptions
 from oslo_log import log as logging
 
@@ -129,7 +131,7 @@ class MongoDbCluster(models.Cluster):
                          "instance_type": "query_router"}
 
         if mongo_conf.cluster_secure:
-            cluster_key = utils.generate_random_password()
+            cluster_key = base64.b64encode(utils.generate_random_password())
             member_config['key'] = cluster_key
             configsvr_config['key'] = cluster_key
             mongos_config['key'] = cluster_key
