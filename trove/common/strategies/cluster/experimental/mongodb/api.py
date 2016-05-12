@@ -110,6 +110,9 @@ class MongoDbCluster(models.Cluster):
         azs = [instance.get('availability_zone', None)
                for instance in instances]
 
+        regions = [instance.get('region_name', None)
+                   for instance in instances]
+
         db_info = models.DBCluster.create(
             name=name, tenant_id=context.tenant,
             datastore_version_id=datastore_version.id,
@@ -147,6 +150,7 @@ class MongoDbCluster(models.Cluster):
                                         configuration_id=None,
                                         cluster_config=member_config,
                                         modules=instances[i].get('modules'),
+                                        region_name=regions[i],
                                         locality=locality)
 
         for i in range(1, num_configsvr + 1):
@@ -161,6 +165,7 @@ class MongoDbCluster(models.Cluster):
                                         nics=None,
                                         configuration_id=None,
                                         cluster_config=configsvr_config,
+                                        region_name=regions[i],
                                         locality=locality)
 
         for i in range(1, num_mongos + 1):
@@ -175,6 +180,7 @@ class MongoDbCluster(models.Cluster):
                                         nics=None,
                                         configuration_id=None,
                                         cluster_config=mongos_config,
+                                        region_name=regions[i],
                                         locality=locality)
 
         task_api.load(context, datastore_version.manager).create_cluster(

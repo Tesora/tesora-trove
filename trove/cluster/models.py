@@ -304,12 +304,11 @@ def get_flavors_from_instance_defs(context, instances,
                                    volume_enabled, ephemeral_enabled):
     """Load and validate flavors for given instance definitions."""
     flavors = dict()
-    nova_client = remote.create_nova_client(context)
     for instance in instances:
         flavor_id = instance['flavor_id']
         if flavor_id not in flavors:
             try:
-                flavor = nova_client.flavors.get(flavor_id)
+                flavor = instance.nova_client.flavors.get(flavor_id)
                 if (not volume_enabled and
                         (ephemeral_enabled and flavor.ephemeral == 0)):
                     raise exception.LocalStorageNotSpecified(

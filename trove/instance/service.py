@@ -289,6 +289,7 @@ class InstanceController(wsgi.Controller):
                     'Cannot specify locality when adding replicas to existing '
                     'master.')
                 raise exception.BadRequest(msg=dupe_locality_msg)
+        region_name = body['instance'].get('region_name', CONF.os_region_name)
 
         instance = models.Instance.create(context, name, flavor_id,
                                           image_id, databases, users,
@@ -299,7 +300,8 @@ class InstanceController(wsgi.Controller):
                                           replica_count=replica_count,
                                           volume_type=volume_type,
                                           modules=modules,
-                                          locality=locality)
+                                          locality=locality,
+                                          region_name=region_name)
 
         view = views.InstanceDetailView(instance, req=req)
         return wsgi.Result(view.data(), 200)
