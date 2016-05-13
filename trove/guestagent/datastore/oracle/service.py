@@ -49,6 +49,7 @@
 # the logo is not reasonably feasible for technical reasons.
 
 from os import path
+import socket
 
 import cx_Oracle
 from oslo_log import log as logging
@@ -567,3 +568,30 @@ class OracleVMApp(service.OracleApp):
                                self.instance_owner,
                                self.instance_owner_group,
                                as_root=True)
+
+    def create_lsnr_file(self):
+        """Create the listener.ora file"""
+        content = ('SID_LIST_LISTENER=(SID_LIST=(SID_DESC='
+                   '(GLOBAL_DBNAME=%(db_name)s)'
+                   '(ORACLE_HOME=%(ora_home)s)'
+                   '(SID_NAME=%(db_name)s)))\n' %
+                   {'db_name': self.admin.database_name,
+                    'ora_home': self.paths.oracle_home})
+        content += ('LISTENER=(DESCRIPTION_LIST=(DESCRIPTION=(ADDRESS='
+                    '(PROTOCOL=TCP)(HOST=%(host)s)(PORT=%(port)s))))\n' %
+                    {'host': socket.gethostname(),
+                     'port': CONF.get(MANAGER).listener_port})
+        content += ('ADR_BASE_LISTENER=%s\n' %
+                    self.paths.oracle_base)
+        content += ('SECURE_REGISTER_LISTENER = (TCP)\n')
+        operating_system.write_file(self.paths.lsnr_file,
+                                    content,
+                                    as_root=True)
+        operating_system.chown(self.paths.lsnr_file,
+                               self.instance_owner,
+                               self.instance_owner_group,
+                               as_root=True)
+
+    def configure_listener(self):
+        self.create_lsnr_file()
+        self.run_oracle_sys_command('lsnrctl reload')

@@ -202,29 +202,6 @@ class OracleSyncReplication(base.Replication):
                                service.instance_owner_group,
                                force=True, as_root=True)
 
-    def _create_lsnr_file(self, service):
-        """Create the listener.ora file"""
-        content = ('SID_LIST_LISTENER=(SID_LIST=(SID_DESC='
-                   '(GLOBAL_DBNAME=%(db_name)s)'
-                   '(ORACLE_HOME=%(ora_home)s)'
-                   '(SID_NAME=%(db_name)s)))\n' %
-                   {'db_name': service.admin.database_name,
-                    'ora_home': service.paths.oracle_home})
-        content += ('LISTENER=(DESCRIPTION_LIST=(DESCRIPTION=(ADDRESS='
-                    '(PROTOCOL=TCP)(HOST=%(host)s)(PORT=%(port)s))'
-                    '(ADDRESS=(PROTOCOL=IPC)(KEY=EXTPROC1521))))\n' %
-                    {'host': socket.gethostname(),
-                     'port': CONF.get(MANAGER).listener_port})
-        content += ('ADR_BASE_LISTENER=%s\n' %
-                    service.paths.oracle_base)
-        operating_system.write_file(service.paths.lsnr_file,
-                                    content,
-                                    as_root=True)
-        operating_system.chown(service.paths.lsnr_file,
-                               service.instance_owner,
-                               service.instance_owner_group,
-                               as_root=True)
-
     def _create_static_params(self, service, cursor):
         """Create replication system parameters that only needs to be
         setup once.
@@ -273,17 +250,19 @@ class OracleSyncReplication(base.Replication):
                 {'log_file': standby_log_file,
                  'log_size': CONF.get(MANAGER).standby_log_size})))
 
-    def _is_new_replication_node(self, service):
-        return not (path.isfile(service.paths.lsnr_file) and
-                    path.isfile(service.paths.tns_file))
+    def _is_new_slave_node(self, service):
+        return not path.isfile(service.paths.tns_file)
+
+    def _is_new_master_node(self, service):
+        standby_log_file = service.paths.standby_log_file % "1"
+        return not operating_system.exists(standby_log_file, as_root=True)
 
     def complete_master_setup(self, service, slave_detail):
         """Finalize master setup and start the master Oracle processes."""
         dbs = [self.get_replication_detail(service)]
         dbs.extend(slave_detail)
         with service.cursor(service.admin.database_name) as cursor:
-            if self._is_new_replication_node(service):
-                self._create_lsnr_file(service)
+            if self._is_new_master_node(service):
                 self._create_standby_log_files(service, cursor)
                 self._create_static_params(service, cursor)
             self._create_tns_file(service, dbs)
@@ -330,7 +309,7 @@ class OracleSyncReplication(base.Replication):
 
     def complete_slave_setup(self, service, master_detail, slave_detail):
         """Finalize slave setup and start the slave Oracle processes."""
-        if self._is_new_replication_node(service):
+        if self._is_new_slave_node(service):
             dbs = [master_detail]
             dbs.extend(slave_detail)
             self._create_tns_file(service, dbs)
@@ -412,8 +391,7 @@ class OracleSyncReplication(base.Replication):
                                as_root=True, force=True)
 
         # Create the listener.ora file and restart
-        self._create_lsnr_file(service)
-        self._restart_listener(service)
+        service.configure_listener()
 
     def _restart_listener(self, service):
         service.run_oracle_sys_command('lsnrctl reload')

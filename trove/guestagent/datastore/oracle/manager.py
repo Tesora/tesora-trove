@@ -92,7 +92,6 @@ class Manager(manager.OracleManager):
                                    service.OracleVMApp.instance_owner_group,
                                    recursive=False, as_root=True)
             LOG.debug('Mounted the volume.')
-
         if snapshot:
             self.attach_replica(context, snapshot, snapshot['config'])
         else:
@@ -100,9 +99,11 @@ class Manager(manager.OracleManager):
                 self._perform_restore(backup_info, context, mount_point,
                                       self.app)
             else:
+                self.app.configure_listener()
                 if databases:
                     # only create 1 database
                     self.admin.create_database(databases[:1])
+                    database = databases[:1]
                 else:
                     # using ValidatedMySQLDatabase here for to simulate the
                     # object that would normally be passed in via --databases,
@@ -112,7 +113,8 @@ class Manager(manager.OracleManager):
                     # no database name provided so default to first 8 valid
                     # characters of instance name (alphanumeric, no '_')
                     db.name = re.sub(r'[\W_]', '', CONF.guest_name[:8])
-                    self.admin.create_database([db.serialize()])
+                    database = [db.serialize()]
+                self.admin.create_database(database)
                 self.app.set_db_start_flag_in_oratab()
 
             self.refresh_guest_log_defs()
