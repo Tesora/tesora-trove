@@ -539,6 +539,29 @@ class PgSqlApp(object):
     def backup_strategy(self):
         return cfg.get_configuration_property('backup_strategy')
 
+    def save_files_pre_upgrade(self, mount_point):
+        LOG.debug('Saving files pre-upgrade.')
+        mnt_etc_dir = os.path.join(mount_point, 'save_etc')
+        if self.OS != operating_system.REDHAT:
+            # No need to store the config files away for Redhat because
+            # they are already stored in the data volume.
+            operating_system.remove(mnt_etc_dir, force=True, as_root=True)
+            operating_system.copy(self.pgsql_config_dir, mnt_etc_dir,
+                                  preserve=True, recursive=True, as_root=True)
+        return {'save_etc': mnt_etc_dir}
+
+    def restore_files_post_upgrade(self, upgrade_info):
+        LOG.debug('Restoring files post-upgrade.')
+        if self.OS != operating_system.REDHAT:
+            # No need to restore the config files for Redhat because
+            # they are already in the data volume.
+            operating_system.copy('%s/.' % upgrade_info['save_etc'],
+                                  self.pgsql_config_dir,
+                                  preserve=True, recursive=True,
+                                  force=True, as_root=True)
+            operating_system.remove(upgrade_info['save_etc'], force=True,
+                                    as_root=True)
+
 
 class PgSqlAppStatus(service.BaseDbStatus):
 

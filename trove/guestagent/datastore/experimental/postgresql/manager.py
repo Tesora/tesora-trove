@@ -145,6 +145,24 @@ class Manager(manager.Manager):
         self.app.restart()
         self.set_guest_log_status(guest_log.LogStatus.Restart_Completed)
 
+    def pre_upgrade(self, context):
+        LOG.debug('Preparing Postgresql for upgrade.')
+        self.app.status.begin_restart()
+        self.app.stop_db()
+        mount_point = self.app.pgsql_base_data_dir
+        upgrade_info = self.app.save_files_pre_upgrade(mount_point)
+        upgrade_info['mount_point'] = mount_point
+        return upgrade_info
+
+    def post_upgrade(self, context, upgrade_info):
+        LOG.debug('Finalizing Postgresql upgrade.')
+        self.app.stop_db()
+        if 'device' in upgrade_info:
+            self.mount_volume(context, mount_point=upgrade_info['mount_point'],
+                              device_path=upgrade_info['device'])
+        self.app.restore_files_post_upgrade(upgrade_info)
+        self.app.start_db()
+
     def is_root_enabled(self, context):
         return self.app.is_root_enabled(context)
 
