@@ -394,6 +394,7 @@ class TestDBaaSNotification(trove_testtools.TestCase):
             fn(*args, **kwargs)
             self.assertTrue(notifier().info.called)
             self.assertTrue(mock_callback.called)
+            self.test_n.register_notify_callback(None)
 
     def test_notify_callback(self):
         required_keys = {
