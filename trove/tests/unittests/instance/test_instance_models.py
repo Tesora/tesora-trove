@@ -22,6 +22,7 @@ from trove.common.instance import ServiceStatuses
 from trove.datastore import models as datastore_models
 from trove.instance import models
 from trove.instance.models import DBInstance
+from trove.instance.models import DBInstanceFault
 from trove.instance.models import filter_ips
 from trove.instance.models import Instance
 from trove.instance.models import InstanceServiceStatus
@@ -105,6 +106,21 @@ class SimpleInstanceTest(trove_testtools.TestCase):
 
     def test_locality(self):
         self.assertEqual('affinity', self.instance.locality)
+
+    def test_fault(self):
+        fault_message = 'Error'
+        fault_details = 'details'
+        fault_date = 'now'
+        temp_fault = Mock()
+        temp_fault.message = fault_message
+        temp_fault.details = fault_details
+        temp_fault.updated = fault_date
+        fault_mock = Mock(return_value=temp_fault)
+        with patch.object(DBInstanceFault, 'find_by', fault_mock):
+            fault = self.instance.fault
+            self.assertEqual(fault_message, fault.message)
+            self.assertEqual(fault_details, fault.details)
+            self.assertEqual(fault_date, fault.updated)
 
 
 class CreateInstanceTest(trove_testtools.TestCase):

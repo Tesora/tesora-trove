@@ -133,7 +133,8 @@ class InstanceDetailView(InstanceView):
         return {
             "message": self.instance.fault.message,
             "created": self.instance.fault.updated,
-            "details": self.instance.fault.details}
+            "details": self.instance.fault.details,
+        }
 
     def _build_slaves_info(self):
         data = []
