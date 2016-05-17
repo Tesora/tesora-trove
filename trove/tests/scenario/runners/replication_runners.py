@@ -453,4 +453,5 @@ class MysqlReplicationRunner(ReplicationRunner):
 
 class PerconaReplicationRunner(MysqlReplicationRunner):
 
-    pass
+    def _validate_binlog_fmt(self, instance_id, client):
+        pass
