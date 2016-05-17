@@ -20,7 +20,12 @@ from trove.guestagent import pkg
 
 OS_NAME = operating_system.get_os()
 
-CONFIG_CANDIDATES = ["/etc/mongodb.conf", "/etc/mongod.conf"]
+CONFIG_DIR = "/etc"
+CONFIG_CANDIDATES = [path.join(CONFIG_DIR, name) for name in
+                     ['mongodb.conf', 'mongod.conf', 'mongos.conf']]
+CONFIG_FILE = operating_system.file_discovery(CONFIG_CANDIDATES)
+CONFIG_OVERRIDES_DIR = path.join(CONFIG_DIR, 'mongo_conf_overrides')
+
 MONGO_ADMIN_NAME = 'os_admin'
 MONGO_ADMIN_ROLES = [{'db': 'admin', 'role': 'userAdminAnyDatabase'},
                      {'db': 'admin', 'role': 'dbAdminAnyDatabase'},
