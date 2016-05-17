@@ -80,7 +80,8 @@ class MongoDbCluster(models.Cluster):
         except nova_exceptions.NotFound:
             raise exception.FlavorNotFound(uuid=flavor_id)
         mongo_conf = CONF.get(datastore_version.manager)
-        num_configsvr = mongo_conf.num_config_servers_per_cluster
+        num_configsvr = (1 if mongo_conf.num_config_servers_per_cluster == 1
+                         else 3)
         num_mongos = mongo_conf.num_query_routers_per_cluster
         delta_instances = num_instances + num_configsvr + num_mongos
         deltas = {'instances': delta_instances}
@@ -108,6 +109,12 @@ class MongoDbCluster(models.Cluster):
         check_quotas(context.tenant, deltas)
 
         nics = [instance.get('nics', None) for instance in instances]
+        nic = nics[0]
+        for n in nics[1:]:
+            if n != nic:
+                raise ValueError(_('All cluster nics must be the same. '
+                                   '%(nic)s != %(n)s')
+                                 % {'nic': nic, 'n': n})
 
         azs = [instance.get('availability_zone', None)
                for instance in instances]
@@ -145,7 +152,7 @@ class MongoDbCluster(models.Cluster):
                                         datastore_version,
                                         volume_size, None,
                                         availability_zone=azs[i],
-                                        nics=nics[i],
+                                        nics=nic,
                                         configuration_id=None,
                                         cluster_config=member_config,
                                         modules=instances[i].get('modules'),
@@ -159,8 +166,8 @@ class MongoDbCluster(models.Cluster):
                                         [], [], datastore,
                                         datastore_version,
                                         volume_size, None,
-                                        availability_zone=None,
-                                        nics=None,
+                                        availability_zone=azs[i],
+                                        nics=nic,
                                         configuration_id=None,
                                         cluster_config=configsvr_config,
                                         locality=locality)
@@ -173,8 +180,8 @@ class MongoDbCluster(models.Cluster):
                                         [], [], datastore,
                                         datastore_version,
                                         volume_size, None,
-                                        availability_zone=None,
-                                        nics=None,
+                                        availability_zone=azs[i % 3],
+                                        nics=nic,
                                         configuration_id=None,
                                         cluster_config=mongos_config,
                                         locality=locality)
