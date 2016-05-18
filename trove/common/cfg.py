@@ -758,7 +758,7 @@ oracle_opts = [
                help='Default Oracle listener port'),
     cfg.StrOpt('cloud_user_role', default='CLOUD_USER_ROLE',
                help='Default role name of all regular cloud db users'),
-    cfg.IntOpt('db_ram', default=50,
+    cfg.IntOpt('db_ram', default=40,
                help='Default percentage of physical memory to allocate '
                     'for Oracle.'),
     cfg.StrOpt('db_charset', default='AL32UTF8',
