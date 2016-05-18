@@ -68,15 +68,18 @@ class Manager(manager.Manager):
             LOG.debug('Mounted the volume (%s).' % device_path)
 
         self.app.start_db(update_db=False)
-        self.app.apply_initial_guestagent_configuration(cluster_config)
 
-        if root_password:
-            LOG.debug('Enabling root user (with password).')
-            self.app.secure(password=root_password)
-        elif cluster_config:
-            self.app.secure(password=cluster_config['cluster_password'])
+        self.app.initialize_node()
+
+        if cluster_config:
+            # If cluster configuration is provided retrieve the cluster
+            # password and store it on the filesystem. Skip the cluster
+            # initialization as it will be performed later from the
+            # task manager.
+            self.app.secure(password=cluster_config['cluster_password'],
+                            initialize=False)
         else:
-            self.app.secure()
+            self.app.secure(password=root_password, initialize=True)
 
         if backup_info:
             LOG.debug('Now going to perform restore.')

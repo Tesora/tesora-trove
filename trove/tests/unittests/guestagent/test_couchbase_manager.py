@@ -71,7 +71,7 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
                     install_if_needed=DEFAULT,
                     start_db_with_conf_changes=DEFAULT,
                     init_storage_structure=DEFAULT,
-                    apply_initial_guestagent_configuration=DEFAULT,
+                    initialize_node=DEFAULT,
                     apply_post_restore_updates=DEFAULT,
                     secure=DEFAULT)
     @patch.multiple(volume.VolumeDevice,
@@ -117,7 +117,9 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
                                                    mount_point)
             kwmocks['apply_post_restore_updates'].assert_called_once_with(
                 backup_info)
-        kwmocks['secure'].assert_called_once_with()
+        kwmocks['initialize_node'].assert_called_once_with()
+        kwmocks['secure'].assert_called_once_with(initialize=True,
+                                                  password=None)
 
     def test_restart(self):
         mock_status = MagicMock()
