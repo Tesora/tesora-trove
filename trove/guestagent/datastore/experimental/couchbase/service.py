@@ -111,22 +111,10 @@ class CouchbaseApp(object):
             LOG.debug('Installing Couchbase.')
             self._install_couchbase(packages)
 
-    def apply_initial_guestagent_configuration(self, cluster_config=False):
-        """Configure this node.
-
-        Initialize the node as a single-server cluster if no cluster
-        configuration is provided.
-
-        If cluster configuration is provided retrieve the cluster password and
-        store it on the filesystem. Skip the cluster initialization as
-        it will be performed later from the task manager.
-        """
+    def initialize_node(self):
         ip_address = netutils.get_my_ipv4()
         mount_point = CONF.couchbase.mount_point
         self.build_admin().run_node_init(mount_point, mount_point, ip_address)
-
-        if not cluster_config:
-            self.initialize_cluster()
 
     def apply_post_restore_updates(self, backup_info):
         self.status = CouchbaseAppStatus(self.build_admin())
@@ -140,11 +128,12 @@ class CouchbaseApp(object):
         cluster_password = self.get_password()
         return models.CouchbaseUser(self._ADMIN_USER, cluster_password)
 
-    def secure(self, password=None):
-        admin = self.update_admin_credentials(password=password)
+    def secure(self, password=None, initialize=True):
+        admin = self.store_admin_credentials(password=password)
+        if initialize:
+            self.initialize_cluster()
         # Update the internal status with the new user.
-        self.status = CouchbaseAppStatus(self.build_admin())
-        return admin
+        self.status = CouchbaseAppStatus(admin)
 
     @property
     def ramsize_quota_mb(self):
@@ -188,7 +177,10 @@ class CouchbaseApp(object):
             enable_on_boot=True, update_db=update_db)
 
     def enable_root(self, root_password=None):
-        return self.secure(password=root_password).serialize()
+        admin = self.reset_admin_credentials(password=root_password)
+        # Update the internal status with the new user.
+        self.status = CouchbaseAppStatus(admin)
+        return admin.serialize()
 
     def start_db_with_conf_changes(self, config_contents):
         self.start_db(update_db=True)
@@ -204,20 +196,21 @@ class CouchbaseApp(object):
         """
         return self.build_admin().get_cluster_rebalance_status()
 
-    def update_admin_credentials(self, password=None):
+    def store_admin_credentials(self, password=None):
         admin = models.CouchbaseRootUser(password=password)
-        if password:
-            self.write_password_to_file(admin.password)
-        else:
-            self.set_password(admin.password)
-
+        self._write_password_to_file(admin.password)
         return admin
 
-    def set_password(self, root_password):
-        self.build_admin().reset_root_password(root_password)
-        self.write_password_to_file(root_password)
+    def reset_admin_credentials(self, password=None):
+        admin = models.CouchbaseRootUser(password=password)
+        self._set_password(admin.password)
+        return admin
 
-    def write_password_to_file(self, root_password):
+    def _set_password(self, root_password):
+        self.build_admin().reset_root_password(root_password)
+        self._write_password_to_file(root_password)
+
+    def _write_password_to_file(self, root_password):
         operating_system.create_directory(self.couchbase_conf_dir,
                                           as_root=True)
         try:

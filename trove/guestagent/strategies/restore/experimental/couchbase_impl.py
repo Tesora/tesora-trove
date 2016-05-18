@@ -58,7 +58,7 @@ class CbBackup(base.RestoreRunner):
             if os.path.exists(pwd_file):
                 with open(pwd_file, "r") as f:
                     pw = f.read().rstrip("\n")
-                    self.app.set_password(pw)
+                    self.app.reset_admin_credentials(password=pw)
 
             # Get current root password
             root_pwd = self.app.get_password()
