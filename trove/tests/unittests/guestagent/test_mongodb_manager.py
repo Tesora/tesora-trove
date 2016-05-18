@@ -77,7 +77,7 @@ class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
         self.manager.app.status.begin_install.assert_any_call()
         self.manager.app.install_if_needed.assert_called_with(packages)
         self.manager.app.stop_db.assert_any_call()
-        self.manager.app.clear_storage.assert_any_call()
+        self.manager.app.clear_storage.assert_called_with(mount_point)
 
         (self.manager.app.apply_initial_guestagent_configuration.
          assert_called_once_with(cluster_config, mount_point))
@@ -324,17 +324,6 @@ class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
 
         self.assertEqual(['db1', 'db2', 'db3'],
                          [db['_name'] for db in accessible_databases])
-
-    @mock.patch.object(service, 'MongoDBClient')
-    @mock.patch.object(service.MongoDBAdmin, '_admin_user')
-    def test_create_databases(self, mocked_admin_user, mocked_client):
-        schema = models.MongoDBSchema('testdb').serialize()
-        db_client = mocked_client().__enter__()['testdb']
-
-        self.manager.create_database(self.context, [schema])
-
-        db_client['dummy'].insert.assert_called_with({'dummy': True})
-        db_client.drop_collection.assert_called_with('dummy')
 
     @mock.patch.object(service, 'MongoDBClient')
     @mock.patch.object(service.MongoDBAdmin, '_admin_user')
