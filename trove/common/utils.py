@@ -305,7 +305,7 @@ def generate_random_password(password_length=None, datastore=None,
         'password_special_charset', datastore)
     password_length = (
         password_length or
-        cfg.get_configuration_property('default_password_length')
+        cfg.get_configuration_property('default_password_length', datastore)
     )
     choices = [lower_case, upper_case, numbers, special_chars]
     mins = [min_lower_case, min_upper_case, min_numbers, min_special_chars]
