@@ -102,7 +102,6 @@ class Manager(manager.OracleManager):
                 self.app.configure_listener()
                 if databases:
                     # only create 1 database
-                    self.admin.create_database(databases[:1])
                     database = databases[:1]
                 else:
                     # using ValidatedMySQLDatabase here for to simulate the
