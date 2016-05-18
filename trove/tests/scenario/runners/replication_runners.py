@@ -48,6 +48,9 @@ class ReplicationRunner(TestRunner):
         self.test_helper.add_data(data_type, host)
         self.used_data_sets.add(data_type)
 
+    def run_add_data_after_replica(self, data_type=DataType.micro):
+        self.assert_add_replication_data(data_type, self.master_host)
+
     def run_verify_data_for_replication(self, data_type=DataType.small):
         self.assert_verify_replication_data(data_type, self.master_host)
 
