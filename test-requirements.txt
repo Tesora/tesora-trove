@@ -13,7 +13,7 @@ openstack.nose-plugin>=0.7
 WebTest>=2.0
 wsgi-intercept>=0.6.1 # MIT License
 proboscis>=1.2.5.3
-http://tarballs.elasticdb.org/tesora-python-troveclient/tesora-python-troveclient-dev-EE-1.7.tar.gz#egg=python-troveclient
+python-troveclient>=1.2.0,!=2.1.0
 mock>=1.2
 mox3>=0.7.0
 testtools>=1.4.0
