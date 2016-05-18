@@ -290,8 +290,13 @@ common_opts = [
                 deprecated_name='hostname_require_ipv4'),
     cfg.BoolOpt('trove_security_groups_support', default=True,
                 help='Whether Trove should add Security Groups on create.'),
-    cfg.StrOpt('trove_security_group_name_prefix', default='SecGroup',
+    cfg.StrOpt('trove_security_group_name_prefix', default='dbaas_secgroup',
                help='Prefix to use when creating Security Groups.'),
+    cfg.StrOpt('trove_security_group_description', default='Created by Trove '
+                                                           'DBaaS, Do Not '
+                                                           'Delete.\nSecurity '
+                                                           'Group for',
+               help='Description to use when creating Security Groups.'),
     cfg.StrOpt('trove_security_group_rule_cidr', default='0.0.0.0/0',
                help='CIDR to use when creating Security Group Rules.'),
     cfg.IntOpt('trove_api_workers',
