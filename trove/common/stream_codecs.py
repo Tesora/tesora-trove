@@ -426,14 +426,18 @@ class KeyValueCodec(StreamCodec):
         result = {}
         for line in lines:
             line = line.lstrip().rstrip()
-            if line.startswith(self._comment_marker):
-                pass
+            if line == '' or line.startswith(self._comment_marker):
+                continue
             k, v = re.split(re.escape(self._delimeter), line, 1)
             if self._value_quoting and v.startswith(self._value_quote_char):
+                # remove trailing comments
+                v = re.sub(r'%s *%s.*$' % ("'", '#'), '', v)
                 result[k] = v.lstrip(
                     self._value_quote_char).rstrip(
                     self._value_quote_char)
             else:
+                # remove trailing comments
+                v = re.sub('%s.*$' % self._comment_marker, '', v)
                 result[k] = v
         return result
 
