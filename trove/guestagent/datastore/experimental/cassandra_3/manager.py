@@ -21,8 +21,8 @@ from trove.guestagent.datastore.experimental.cassandra_3 import service
 
 class Manager(community_manager.Manager):
 
-    def __init__(self):
-        super(Manager, self).__init__(manager_name='cassandra_3')
+    def __init__(self, manager_name='cassandra_3'):
+        super(Manager, self).__init__(manager_name)
 
     def build_app(self):
         return service.Cassandra3App()
