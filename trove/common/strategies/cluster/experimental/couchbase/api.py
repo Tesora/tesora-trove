@@ -192,6 +192,7 @@ class CouchbaseCluster(models.Cluster):
                 availability_zone=instance_az,
                 configuration_id=None,
                 cluster_config=member_config,
+                region_name=instance.get('region_name'),
                 locality=locality)
 
             new_instances.append(new_instance)

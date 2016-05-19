@@ -535,7 +535,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                 LOG.error(msg_create)
                 # Make sure we log any unexpected errors from the create
                 if not isinstance(e_create, TroveError):
-                    LOG.error(e_create)
+                    LOG.exception(e_create)
                 msg_delete = (
                     _("An error occurred while deleting a bad "
                       "replication snapshot from instance %(source)s.") %
@@ -837,7 +837,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
 
     def _create_volume(self, volume_size, volume_type, datastore_manager):
         LOG.debug("Begin _create_volume for id: %s" % self.id)
-        volume_client = create_cinder_client(self.context)
+        volume_client = create_cinder_client(self.context, self.region_name)
         volume_desc = ("datastore volume for %s" % self.id)
         volume_ref = volume_client.volumes.create(
             volume_size, name="datastore-%s" % self.id,
@@ -982,7 +982,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
 
     def _create_secgroup(self, datastore_manager):
         security_group = SecurityGroup.create_for_instance(
-            self.id, self.context)
+            self.id, self.context, self.region_name)
         tcp_ports = CONF.get(datastore_manager).tcp_ports
         udp_ports = CONF.get(datastore_manager).udp_ports
         self._create_rules(security_group, tcp_ports, 'tcp')
@@ -1009,7 +1009,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                 cidr = CONF.trove_security_group_rule_cidr
                 SecurityGroupRule.create_sec_group_rule(
                     s_group, protocol, int(from_), int(to_),
-                    cidr, self.context)
+                    cidr, self.context, self.region_name)
             except (ValueError, TroveError):
                 set_error_and_raise([from_, to_])
 
@@ -1114,7 +1114,8 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         # If volume has been resized it must be manually removed in cinder
         try:
             if self.volume_id:
-                volume_client = create_cinder_client(self.context)
+                volume_client = create_cinder_client(self.context,
+                                                     self.region_name)
                 volume = volume_client.volumes.get(self.volume_id)
                 if volume.status == "available":
                     LOG.info(_("Deleting volume %(v)s for instance: %(i)s.")

@@ -444,7 +444,7 @@ class DBaaSInstanceCreate(DBaaSAPINotification):
 
     def required_start_traits(self):
         return ['name', 'flavor_id', 'datastore', 'datastore_version',
-                'image_id', 'availability_zone']
+                'image_id', 'availability_zone', 'region_name']
 
     def optional_start_traits(self):
         return ['databases', 'users', 'volume_size', 'restore_point',
@@ -776,3 +776,14 @@ class DBaaSInstanceUpgrade(DBaaSAPINotification):
     @abc.abstractmethod
     def required_start_traits(self):
         return ['instance_id', 'datastore_version_id']
+
+
+class DBaaSInstanceMigrate(DBaaSAPINotification):
+
+    @abc.abstractmethod
+    def event_type(self):
+        return 'migrate'
+
+    @abc.abstractmethod
+    def required_start_traits(self):
+        return ['host']
