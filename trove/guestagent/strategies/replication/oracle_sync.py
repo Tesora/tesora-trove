@@ -226,8 +226,10 @@ class OracleSyncReplication(base.Replication):
         settings = {
             'LOG_ARCHIVE_CONFIG': 'DG_CONFIG=(%s)' % ','.join(db_list),
             'FAL_SERVER': ','.join("'%s'" % db for db in db_list)}
+        self._update_parameters(service, cursor, settings)
         # Set up a log destination for each slave
         log_index = 2
+        settings = dict()
         for db in dbs:
             if db['db_unique_name'] != service.admin.ora_config.db_unique_name:
                 dest = ('SERVICE=%(db)s NOAFFIRM ASYNC VALID_FOR='
