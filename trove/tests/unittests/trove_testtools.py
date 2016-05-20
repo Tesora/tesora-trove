@@ -96,6 +96,9 @@ class TestCase(testtools.TestCase):
         self._mocks_before = self._find_mock_refs()
         root_logger.DefaultRootHandler.set_info(self.id())
 
+        # Default manager used by all unittsest unless explicitly overriden.
+        self.patch_datastore_manager('mysql')
+
     def tearDown(self):
         # yes, this is gross and not thread aware.
         # but the only way to make it thread aware would require that

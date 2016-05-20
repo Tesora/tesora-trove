@@ -153,8 +153,8 @@ class CouchbaseCluster(models.Cluster):
         vol_enabled = couchbase_conf.volume_support
 
         # Validate instance flavors.
-        models.get_flavors_from_instance_defs(context, instances,
-                                              vol_enabled, eph_enabled)
+        models.validate_instance_flavors(context, instances,
+                                         vol_enabled, eph_enabled)
 
         # Compute the total volume allocation.
         req_volume_size = models.get_required_volume_size(instances,
