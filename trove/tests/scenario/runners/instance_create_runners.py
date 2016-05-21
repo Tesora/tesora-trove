@@ -28,6 +28,7 @@ class InstanceCreateRunner(TestRunner):
     def __init__(self):
         super(InstanceCreateRunner, self).__init__()
         self.error_inst_id = None
+        self.error2_inst_id = None
         self.init_inst_id = None
         self.init_inst_dbs = None
         self.init_inst_users = None
@@ -112,13 +113,13 @@ class InstanceCreateRunner(TestRunner):
             # the empty instance test.
             raise SkipTest("No testable initial properties provided.")
 
-    def _get_instance_flavor(self, fault=False):
+    def _get_instance_flavor(self, fault_num=None):
         name_format = 'instance%s%s_flavor_name'
-        default = 'mi.tiny'
+        default = 'm1.tiny'
         fault_str = ''
         eph_str = ''
-        if fault:
-            fault_str = '_fault'
+        if fault_num:
+            fault_str = '_fault_%d' % fault_num
         if self.EPHEMERAL_SUPPORT:
             eph_str = '_eph'
             default = 'eph.rd-tiny'
@@ -136,7 +137,7 @@ class InstanceCreateRunner(TestRunner):
             database_definitions, user_definitions,
             configuration_id, root_password, datastore, datastore_version,
             expected_states, expected_http_code, create_helper_user=False,
-            locality=None, fault=False):
+            locality=None):
         """This assert method executes a 'create' call and verifies the server
         response. It neither waits for the instance to become available
         nor it performs any other validations itself.
@@ -192,10 +193,11 @@ class InstanceCreateRunner(TestRunner):
                            'datastore version': datastore_version})
 
         instance = self.get_existing_instance()
-        if instance and not fault:
+        if instance:
             self.report.log("Using an existing instance: %s" % instance.id)
             self.assert_equal(expected_states[-1], instance.status,
                               "Given instance is in a bad state.")
+            instance_info.name = instance.name
         else:
             self.report.log("Creating a new instance.")
             instance = self.auth_client.instances.create(
@@ -245,9 +247,11 @@ class InstanceCreateRunner(TestRunner):
 
     def run_create_error_instance(
             self, expected_states=['BUILD', 'ERROR'], expected_http_code=200):
-        name = self.instance_info.name + '_error'
+        if self.is_using_existing_instance:
+            raise SkipTest("Using an existing instance.")
 
-        flavor = self._get_instance_flavor(fault=True)
+        name = self.instance_info.name + '_error'
+        flavor = self._get_instance_flavor(fault_num=1)
         trove_volume_size = CONFIG.get('trove_volume_size', 1)
 
         inst = self.assert_instance_create(
@@ -257,28 +261,67 @@ class InstanceCreateRunner(TestRunner):
         self.assert_client_code(expected_http_code)
         self.error_inst_id = inst.id
 
-    def run_wait_for_error_instance(self, expected_states=['ERROR']):
-        self._assert_instance_states(self.error_inst_id, expected_states,
-                                     fast_fail_status=[])
+    def run_create_error2_instance(
+            self, expected_states=['BUILD', 'ERROR'], expected_http_code=200):
+        if self.is_using_existing_instance:
+            raise SkipTest("Using an existing instance.")
+
+        name = self.instance_info.name + '_error2'
+        flavor = self._get_instance_flavor(fault_num=2)
+        trove_volume_size = CONFIG.get('trove_volume_size', 1)
+
+        inst = self.assert_instance_create(
+            name, flavor, trove_volume_size, [], [], None, None,
+            CONFIG.dbaas_datastore, CONFIG.dbaas_datastore_version,
+            expected_states, expected_http_code, create_helper_user=False)
+        self.assert_client_code(expected_http_code)
+        self.error2_inst_id = inst.id
+
+    def run_wait_for_error_instances(self, expected_states=['ERROR']):
+        error_ids = []
+        if self.error_inst_id:
+            error_ids.append(self.error_inst_id)
+        if self.error2_inst_id:
+            error_ids.append(self.error2_inst_id)
+
+        if error_ids:
+            self.assert_all_instance_states(
+                error_ids, expected_states, fast_fail_status=[])
 
     def run_validate_error_instance(self):
-        inst = self.get_instance(self.error_inst_id)
+        if not self.error_inst_id:
+            raise SkipTest("No error instance created.")
 
-        if not hasattr(inst, 'fault'):
-            self.fail("'fault' not found in instance.")
-        else:
-            allowed_attrs = ['message', 'created', 'details']
-            for attr in inst.fault:
-                if attr not in allowed_attrs:
-                    self.fail("Fault should not contain '%s'" % attr)
-        err_msg = "Quota exceeded for ram"
-        self.assert_true(err_msg in inst.fault['message'],
+        instance = self.get_instance(self.error_inst_id)
+        with CheckInstance(instance._info) as check:
+            check.fault()
+
+        err_msg = "disk is too small for requested image"
+        self.assert_true(err_msg in instance.fault['message'],
                          "Message '%s' does not contain '%s'" %
-                         (inst.fault['message'], err_msg))
+                         (instance.fault['message'], err_msg))
 
-    def run_delete_error_instance(self, expected_http_code=202):
-        self.auth_client.instances.delete(self.error_inst_id)
-        self.assert_client_code(expected_http_code)
+    def run_validate_error2_instance(self):
+        if not self.error2_inst_id:
+            raise SkipTest("No error2 instance created.")
+
+        instance = self.get_instance(
+            self.error2_inst_id, client=self.admin_client)
+        with CheckInstance(instance._info) as check:
+            check.fault(is_admin=True)
+
+        err_msg = "Quota exceeded for ram"
+        self.assert_true(err_msg in instance.fault['message'],
+                         "Message '%s' does not contain '%s'" %
+                         (instance.fault['message'], err_msg))
+
+    def run_delete_error_instances(self, expected_http_code=202):
+        if self.error_inst_id:
+            self.auth_client.instances.delete(self.error_inst_id)
+            self.assert_client_code(expected_http_code)
+        if self.error2_inst_id:
+            self.auth_client.instances.delete(self.error2_inst_id)
+            self.assert_client_code(expected_http_code)
 
     def wait_for_created_instances(self, expected_states=['BUILD', 'ACTIVE']):
         instances = [self.instance_info.id]
@@ -370,6 +413,8 @@ class InstanceCreateRunner(TestRunner):
         delete_ids = []
         if self.error_inst_id:
             delete_ids.append(self.error_inst_id)
+        if self.error2_inst_id:
+            delete_ids.append(self.error2_inst_id)
         if self.init_inst_id:
             delete_ids.append(self.init_inst_id)
         if delete_ids:

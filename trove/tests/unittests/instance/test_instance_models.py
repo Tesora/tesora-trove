@@ -40,12 +40,14 @@ class SimpleInstanceTest(trove_testtools.TestCase):
 
     def setUp(self):
         super(SimpleInstanceTest, self).setUp()
+        self.context = trove_testtools.TroveTestContext(self, is_admin=True)
         db_info = DBInstance(
             InstanceTasks.BUILDING, name="TestInstance")
         self.instance = SimpleInstance(
             None, db_info, InstanceServiceStatus(
                 ServiceStatuses.BUILDING), ds_version=Mock(), ds=Mock(),
             locality='affinity')
+        self.instance.context = self.context
         db_info.addresses = {"private": [{"addr": "123.123.123.123"}],
                              "internal": [{"addr": "10.123.123.123"}],
                              "public": [{"addr": "15.123.123.123"}]}
