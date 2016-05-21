@@ -73,7 +73,9 @@ class SecurityGroup(DatabaseModelBase):
     def create_for_instance(cls, instance_id, context, region_name):
         # Create a new security group
         name = "%s_%s" % (CONF.trove_security_group_name_prefix, instance_id)
-        description = _("Security Group for %s") % instance_id
+        description = (_("%(desc)s %(id)s")
+                       % {'desc': CONF.trove_security_group_description,
+                       'id': instance_id})
         sec_group = cls.create_sec_group(name, description, context,
                                          region_name)
 

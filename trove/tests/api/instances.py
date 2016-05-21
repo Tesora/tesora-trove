@@ -946,8 +946,10 @@ class SecurityGroupsTest(object):
     def setUp(self):
         self.testSecurityGroup = dbaas.security_groups.get(
             instance_info.id)
-        self.secGroupName = "SecGroup_%s" % instance_info.id
-        self.secGroupDescription = "Security Group for %s" % instance_info.id
+        self.secGroupName = "dbaas_secgroup_%s" % instance_info.id
+        self.secGroupDescription = "Created by Trove DBaaS, Do Not " \
+                                   "Delete.\nSecurity Group for %s" \
+                                   % instance_info.id
 
     @test
     def test_created_security_group(self):
@@ -992,8 +994,10 @@ class SecurityGroupsRulesTest(object):
     def setUp(self):
         self.testSecurityGroup = dbaas.security_groups.get(
             instance_info.id)
-        self.secGroupName = "SecGroup_%s" % instance_info.id
-        self.secGroupDescription = "Security Group for %s" % instance_info.id
+        self.secGroupName = "dbaas_secgroup_%s" % instance_info.id
+        self.secGroupDescription = "Created by Trove DBaaS, Do Not " \
+                                   "Delete.\nSecurity Group for %s" \
+                                   % instance_info.id
         self.orig_allowable_empty_sleeps = (event_simulator.
                                             allowable_empty_sleeps)
         event_simulator.allowable_empty_sleeps = 2
