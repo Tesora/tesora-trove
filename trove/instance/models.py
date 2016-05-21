@@ -654,7 +654,8 @@ class BaseInstance(SimpleInstance):
         self.set_instance_fault_deleted()
         # Delete associated security group
         if CONF.trove_security_groups_support:
-            SecurityGroup.delete_for_instance(self.db_info.id, self.context)
+            SecurityGroup.delete_for_instance(self.db_info.id, self.context,
+                                              self.db_info.region_id)
 
     @property
     def guest(self):

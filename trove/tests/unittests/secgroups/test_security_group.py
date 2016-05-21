@@ -101,7 +101,7 @@ class fake_RemoteSecGr(object):
         self.id = uuid.uuid4()
         return {'id': self.id}
 
-    def delete(self, context):
+    def delete(self, context, region_name):
         pass
 
 
@@ -143,7 +143,7 @@ class SecurityGroupDeleteTest(trove_testtools.TestCase):
         sec_mod.SecurityGroupInstanceAssociation.find_by = self.fException
         self.assertIsNone(
             sec_mod.SecurityGroup.delete_for_instance(
-                uuid.uuid4(), self.context))
+                uuid.uuid4(), self.context, CONF.os_region_name))
 
     def test_get_security_group_from_assoc_with_db_exception(self):
 
@@ -164,7 +164,7 @@ class SecurityGroupDeleteTest(trove_testtools.TestCase):
             return_value=new_fake_RemoteSecGrAssoc())
         self.assertIsNone(
             sec_mod.SecurityGroup.delete_for_instance(
-                i_id, self.context))
+                i_id, self.context, CONF.os_region_name))
 
     def test_delete_secgr_assoc_with_db_exception(self):
 
@@ -179,4 +179,4 @@ class SecurityGroupDeleteTest(trove_testtools.TestCase):
                                 get_security_group(), 'delete'))
         self.assertIsNone(
             sec_mod.SecurityGroup.delete_for_instance(
-                i_id, self.context))
+                i_id, self.context, CONF.os_region_name))

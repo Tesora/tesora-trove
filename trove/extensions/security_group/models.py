@@ -116,7 +116,7 @@ class SecurityGroup(DatabaseModelBase):
             raise exception.TroveError("Failed to delete Security Group")
 
     @classmethod
-    def delete_for_instance(cls, instance_id, context):
+    def delete_for_instance(cls, instance_id, context, region_name):
         try:
             association = SecurityGroupInstanceAssociation.find_by(
                 instance_id=instance_id,
@@ -124,7 +124,7 @@ class SecurityGroup(DatabaseModelBase):
             if association:
                 sec_group = association.get_security_group()
                 if sec_group:
-                    sec_group.delete(context)
+                    sec_group.delete(context, region_name)
                 association.delete()
         except (exception.ModelNotFoundError,
                 exception.TroveError):
