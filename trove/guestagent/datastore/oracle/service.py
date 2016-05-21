@@ -548,14 +548,10 @@ class OracleVMApp(service.OracleApp):
         if read_only:
             db_name = self.admin.database_name
             LOG.debug("Making database %s read only." % db_name)
+            if self.admin.database_open_mode.startswith('READ ONLY'):
+                LOG.debug("Database already read only.")
+                return
             with self.cursor(db_name) as cursor:
-                cursor.execute(str(sql_query.Query(
-                    columns=['OPEN_MODE'],
-                    tables=['V$DATABASE'])))
-                row = cursor.fetchone()
-                if row[0].startswith('READ ONLY'):
-                    LOG.debug("Database already read only.")
-                    return
                 cursor.execute(str(sql_query.AlterDatabase(
                     'COMMIT TO SWITCHOVER TO STANDBY')))
             # The COMMIT TO SWITCHOVER TO STANDBY command has the side effect

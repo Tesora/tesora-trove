@@ -55,6 +55,7 @@ import cx_Oracle
 from oslo_log import log as logging
 
 from trove.common import cfg
+from trove.common import exception
 from trove.common.i18n import _
 from trove.common import pagination
 from trove.common import stream_codecs
@@ -268,6 +269,9 @@ class OracleAdmin(object):
            reset the sys password.
         """
         LOG.debug("Enabling root.")
+        if self.database_open_mode.startswith('READ ONLY'):
+            raise exception.TroveError(
+                _("Cannot root enable a read only database."))
         if not root_password:
             root_password = new_oracle_password()
         with self.cursor(self.database_name) as cursor:
@@ -301,6 +305,14 @@ class OracleAdmin(object):
     @property
     def database_name(self):
         return self.ora_config.db_name
+
+    @property
+    def database_open_mode(self):
+        with self.cursor(self.database_name) as cursor:
+            cursor.execute(str(sql_query.Query(
+                columns=['OPEN_MODE'], tables=['V$DATABASE'])))
+            row = cursor.fetchone()
+        return row[0]
 
     def create_user(self, users):
         for item in users:
