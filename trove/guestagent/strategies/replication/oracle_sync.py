@@ -202,11 +202,20 @@ class OracleSyncReplication(base.Replication):
                                service.instance_owner_group,
                                force=True, as_root=True)
 
+    def _force_logging_enabled(self, cursor):
+        """Checking whether the database is in force logging mode.
+        """
+        cursor.execute(str(sql_query.Query(
+            columns=['FORCE_LOGGING'], tables=['V$DATABASE'])))
+        row = cursor.fetchone()
+        return (row[0] == 'YES')
+
     def _create_static_params(self, service, cursor):
         """Create replication system parameters that only needs to be
         setup once.
         """
-        cursor.execute(str(sql_query.AlterDatabase('FORCE LOGGING')))
+        if not self._force_logging_enabled(cursor):
+            cursor.execute(str(sql_query.AlterDatabase('FORCE LOGGING')))
         max_processes = CONF.get(MANAGER).log_archive_max_process
         settings = {
             'LOG_ARCHIVE_MAX_PROCESSES': max_processes,
