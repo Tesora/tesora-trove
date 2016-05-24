@@ -23,6 +23,7 @@ from oslo_log import log as logging
 from trove.common import exception
 from trove.common import utils
 from trove.guestagent.common import operating_system, guestagent_utils
+from trove.guestagent.common.operating_system import FileMode
 from trove.guestagent.datastore.experimental.couchbase import service
 from trove.guestagent.datastore.experimental.couchbase import system
 from trove.guestagent import dbaas
@@ -52,6 +53,9 @@ class CbBackup(base.RestoreRunner):
 
     def post_restore(self):
         try:
+            operating_system.chmod(system.COUCHBASE_DUMP_DIR,
+                                   FileMode.SET_ALL_RW, force=True)
+
             # Root enabled for the backup
             pwd_file = guestagent_utils.build_file_path(
                 system.COUCHBASE_DUMP_DIR, self.app.SECRET_KEY_FILE)
