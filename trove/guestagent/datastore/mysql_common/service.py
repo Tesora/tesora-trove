@@ -687,21 +687,25 @@ class BaseMySqlApp(object):
 
     def secure(self, config_contents):
         LOG.info(_("Generating admin password."))
+        connection_str_format = "mysql://%s:%s@localhost:3306"
         admin_password = utils.generate_random_password()
         clear_expired_password()
-        engine = sqlalchemy.create_engine("mysql://root:@localhost:3306",
-                                          echo=True)
+        engine = sqlalchemy.create_engine(
+            connection_str_format % ('root', ''), echo=True)
         with self.local_sql_client(engine) as client:
-            self._remove_anonymous_user(client)
             self._create_admin_user(client, admin_password)
 
+        # Switch to the new admin user for the rest
         self.clear_engine_cache()
+        engine = sqlalchemy.create_engine(
+            connection_str_format % (ADMIN_USER_NAME, admin_password),
+            echo=True)
+        with self.local_sql_client(engine) as client:
+            self._remove_anonymous_user(client)
 
         self.stop_db()
-
         self._reset_configuration(config_contents, admin_password)
         self.start_mysql()
-
         LOG.debug("MySQL secure complete.")
 
     def _reset_configuration(self, configuration, admin_password=None):

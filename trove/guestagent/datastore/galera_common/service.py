@@ -17,7 +17,6 @@
 import abc
 
 from oslo_log import log as logging
-import sqlalchemy
 from sqlalchemy.sql.expression import text
 
 from trove.common.i18n import _
@@ -39,21 +38,6 @@ class GaleraApp(service.BaseMySqlApp):
     @property
     def service_candidates(self):
         return super(GaleraApp, self).service_candidates
-
-    def _test_mysql(self):
-        engine = sqlalchemy.create_engine("mysql://root:@localhost:3306",
-                                          echo=True)
-        try:
-            with self.local_sql_client(engine) as client:
-                out = client.execute(text("select 1;"))
-                for line in out:
-                    LOG.debug("line: %s" % line)
-                return True
-        except Exception:
-            return False
-
-    def _wait_for_mysql_to_be_really_alive(self, max_time):
-        utils.poll_until(self._test_mysql, sleep_time=3, time_out=max_time)
 
     def _grant_cluster_replication_privilege(self, replication_user):
         LOG.info(_("Granting Replication Slave privilege."))
