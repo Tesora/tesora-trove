@@ -376,27 +376,6 @@ class ReplicationRunner(TestRunner):
         pass
 
 
-class MariadbReplicationRunner(ReplicationRunner):
-
-    def run_promote_original_source(self):
-        raise SkipTest("Not supported by MariaDB 10.0")
-
-    def run_verify_replica_data_new_master(self):
-        raise SkipTest("Not supported by MariaDB 10.0")
-
-    def run_add_data_to_replicate2(self):
-        raise SkipTest("Not supported by MariaDB 10.0")
-
-    def run_verify_data_to_replicate2(self):
-        raise SkipTest("Not supported by MariaDB 10.0")
-
-    def run_verify_replica_data_new2(self):
-        raise SkipTest("Not supported by MariaDB 10.0")
-
-    def run_promote_to_replica_source(self):
-        raise SkipTest("Not supported by MariaDB 10.0")
-
-
 class PostgresqlReplicationRunner(ReplicationRunner):
 
     def run_promote_original_source(self):
@@ -440,8 +419,11 @@ class MysqlReplicationRunner(ReplicationRunner):
 
     def _validate_binlog_fmt(self, instance_id, client):
         binlog_fmt = self._get_mysql_variable(client, 'binlog_format')
-        self.assert_equal('MIXED', binlog_fmt,
+        self.assert_equal(self._get_expected_binlog_format(), binlog_fmt,
                           'Wrong binlog format detected for %s' % instance_id)
+
+    def _get_expected_binlog_format(self):
+        return 'MIXED'
 
     def _validate_read_only(self, instance_id, client):
         read_only = self._get_mysql_variable(client, 'read_only')
@@ -455,6 +437,28 @@ class MysqlReplicationRunner(ReplicationRunner):
 
 
 class PerconaReplicationRunner(MysqlReplicationRunner):
+    pass
 
-    def _validate_binlog_fmt(self, instance_id, client):
-        pass
+
+class MariadbReplicationRunner(MysqlReplicationRunner):
+
+    def run_promote_original_source(self):
+        raise SkipTest("Not supported by MariaDB 10.0")
+
+    def run_verify_replica_data_new_master(self):
+        raise SkipTest("Not supported by MariaDB 10.0")
+
+    def run_add_data_to_replicate2(self):
+        raise SkipTest("Not supported by MariaDB 10.0")
+
+    def run_verify_data_to_replicate2(self):
+        raise SkipTest("Not supported by MariaDB 10.0")
+
+    def run_verify_replica_data_new2(self):
+        raise SkipTest("Not supported by MariaDB 10.0")
+
+    def run_promote_to_replica_source(self):
+        raise SkipTest("Not supported by MariaDB 10.0")
+
+    def _get_expected_binlog_format(self):
+        return 'STATEMENT'
