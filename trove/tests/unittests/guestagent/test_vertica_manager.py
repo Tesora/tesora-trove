@@ -40,6 +40,11 @@ class GuestAgentManagerTest(trove_testtools.TestCase):
                     chown=DEFAULT, chmod=DEFAULT)
     def setUp(self, *args, **kwargs):
         super(GuestAgentManagerTest, self).setUp()
+
+        # TODO(pmalik): Remove this line when
+        # https://review.openstack.org/#/c/308707/ merges.
+        self.patch_datastore_manager('vertica')
+
         self.context = trove_testtools.TroveTestContext(self)
         self.manager = Manager()
         self.origin_format = volume.VolumeDevice.format

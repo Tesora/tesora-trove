@@ -20,6 +20,7 @@ import os
 import sys
 import testtools
 
+from trove.common import cfg
 from trove.common.context import TroveContext
 from trove.common.notification import DBaaSAPINotification
 from trove.tests import root_logger
@@ -87,6 +88,10 @@ class TestCase(testtools.TestCase):
                           "references from a previous test case.")
 
         super(TestCase, self).setUp()
+
+        # Default manager used by all unittsest unless explicitly overriden.
+        self.patch_datastore_manager('mysql')
+
         self.addCleanup(self._assert_modules_unmocked)
         self._mocks_before = self._find_mock_refs()
         root_logger.DefaultRootHandler.set_info(self.id())
@@ -150,3 +155,13 @@ class TestCase(testtools.TestCase):
 
     def _get_loaded_modules(self):
         return {name: obj for name, obj in sys.modules.items() if obj}
+
+    def patch_datastore_manager(self, manager_name):
+        return self.patch_conf_property('datastore_manager', manager_name)
+
+    def patch_conf_property(self, property_name, value):
+        conf_patcher = mock.patch.object(
+            cfg.CONF, property_name,
+            new_callable=mock.PropertyMock(return_value=value))
+        self.addCleanup(conf_patcher.stop)
+        return conf_patcher.start()
