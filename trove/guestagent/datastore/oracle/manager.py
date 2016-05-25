@@ -114,7 +114,8 @@ class Manager(manager.OracleManager):
                     db.name = re.sub(r'[\W_]', '', CONF.guest_name[:8])
                     database = [db.serialize()]
                 self.admin.create_database(database)
-                self.app.set_db_start_flag_in_oratab()
+
+            self.app.set_db_start_flag_in_oratab()
 
             self.refresh_guest_log_defs()
 

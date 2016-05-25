@@ -397,7 +397,8 @@ class KeyValueCodec(StreamCodec):
                  value_quoting=False,
                  value_quote_char="'",
                  bool_case=BOOL_PYTHON,
-                 big_ints=False):
+                 big_ints=False,
+                 hidden_marker=None):
         """
         :param delimiter:        string placed between key and value
         :param comment_marker:   string indicating comment line in file
@@ -406,6 +407,7 @@ class KeyValueCodec(StreamCodec):
         :param value_quote_char: character used to quote string values
         :param bool_case:        BOOL_* setting case of bool values
         :param big_ints:         treat K/M/G at the end of ints as an int
+        :param hidden_marker:    pattern prefixing hidden param
         """
         self._delimeter = delimiter
         self._comment_marker = comment_marker
@@ -414,6 +416,7 @@ class KeyValueCodec(StreamCodec):
         self._value_quote_char = value_quote_char
         self._bool_case = bool_case
         self._big_ints = big_ints
+        self._hidden_marker = hidden_marker
 
     def serialize(self, dict_data):
         lines = []
@@ -432,13 +435,15 @@ class KeyValueCodec(StreamCodec):
             if self._value_quoting and v.startswith(self._value_quote_char):
                 # remove trailing comments
                 v = re.sub(r'%s *%s.*$' % ("'", '#'), '', v)
-                result[k] = v.lstrip(
+                v = v.lstrip(
                     self._value_quote_char).rstrip(
                     self._value_quote_char)
             else:
                 # remove trailing comments
                 v = re.sub('%s.*$' % self._comment_marker, '', v)
-                result[k] = v
+            if self._hidden_marker and v.startswith(self._hidden_marker):
+                continue
+            result[k] = v
         return result
 
     def serialize_value(self, value):
