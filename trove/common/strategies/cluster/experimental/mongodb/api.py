@@ -204,7 +204,7 @@ class MongoDbCluster(models.Cluster):
                          "instance_type": "member",
                          "replica_set_name": replica_set_name,
                          "key": key}
-        for i in range(0, num_instances):
+        for i in range(num_instances):
             instance_name = "%s-%s-%s" % (name, replica_set_name, str(i + 1))
             inst_models.Instance.create(context, instance_name,
                                         flavor_id,
@@ -221,15 +221,16 @@ class MongoDbCluster(models.Cluster):
         configsvr_config = {"id": db_info.id,
                             "instance_type": "config_server",
                             "key": key}
-        for i in range(1, num_configsvr + 1):
-            instance_name = "%s-%s-%s" % (name, "configsvr", str(i))
+        for i in range(num_configsvr):
+            instance_name = "%s-%s-%s" % (name, "configsvr", str(i + 1))
             inst_models.Instance.create(context, instance_name,
                                         flavor_id,
                                         datastore_version.image_id,
                                         [], [], datastore,
                                         datastore_version,
                                         volume_size, None,
-                                        availability_zone=azs[i],
+                                        availability_zone=azs[i %
+                                                              num_instances],
                                         nics=nic,
                                         configuration_id=None,
                                         cluster_config=configsvr_config,
@@ -238,15 +239,16 @@ class MongoDbCluster(models.Cluster):
         mongos_config = {"id": db_info.id,
                          "instance_type": "query_router",
                          "key": key}
-        for i in range(1, num_mongos + 1):
-            instance_name = "%s-%s-%s" % (name, "mongos", str(i))
+        for i in range(num_mongos):
+            instance_name = "%s-%s-%s" % (name, "mongos", str(i + 1))
             inst_models.Instance.create(context, instance_name,
                                         flavor_id,
                                         datastore_version.image_id,
                                         [], [], datastore,
                                         datastore_version,
                                         volume_size, None,
-                                        availability_zone=azs[i % 3],
+                                        availability_zone=azs[i %
+                                                              num_instances],
                                         nics=nic,
                                         configuration_id=None,
                                         cluster_config=mongos_config,
