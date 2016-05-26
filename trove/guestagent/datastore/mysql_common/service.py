@@ -48,6 +48,7 @@ from trove.guestagent.db import models
 from trove.guestagent import pkg
 
 ADMIN_USER_NAME = "os_admin"
+CONNECTION_STR_FORMAT = "mysql://%s:%s@127.0.0.1:3306"
 LOG = logging.getLogger(__name__)
 FLUSH = text(sql_query.FLUSH)
 ENGINE = None
@@ -605,10 +606,10 @@ class BaseMySqlApp(object):
             return ENGINE
 
         pwd = self.get_auth_password()
-        ENGINE = sqlalchemy.create_engine("mysql://%s:%s@127.0.0.1:3306" %
+        ENGINE = sqlalchemy.create_engine(CONNECTION_STR_FORMAT %
                                           (ADMIN_USER_NAME,
                                            urllib.quote(pwd.strip())),
-                                          pool_recycle=7200,
+                                          pool_recycle=120,
                                           echo=CONF.sql_query_logging,
                                           listeners=[
                                               self.keep_alive_connection_cls()]
@@ -653,11 +654,13 @@ class BaseMySqlApp(object):
         Create a os_admin user with a random password
         with all privileges similar to the root user.
         """
+        LOG.debug("Creating Trove admin user '%s'." % ADMIN_USER_NAME)
         localhost = "localhost"
         g = sql_query.Grant(permissions='ALL', user=ADMIN_USER_NAME,
                             host=localhost, grant_option=True, clear=password)
         t = text(str(g))
         client.execute(t)
+        LOG.debug("Trove admin user '%s' created." % ADMIN_USER_NAME)
 
     @staticmethod
     def _generate_root_password(client):
@@ -686,19 +689,20 @@ class BaseMySqlApp(object):
         self.start_mysql()
 
     def secure(self, config_contents):
-        LOG.info(_("Generating admin password."))
-        connection_str_format = "mysql://%s:%s@localhost:3306"
-        admin_password = utils.generate_random_password()
+        LOG.debug("Securing MySQL now.")
         clear_expired_password()
+        LOG.debug("Generating admin password.")
+        admin_password = utils.generate_random_password()
         engine = sqlalchemy.create_engine(
-            connection_str_format % ('root', ''), echo=True)
-        with self.local_sql_client(engine) as client:
+            CONNECTION_STR_FORMAT % ('root', ''), echo=True)
+        with self.local_sql_client(engine, use_flush=False) as client:
             self._create_admin_user(client, admin_password)
 
-        # Switch to the new admin user for the rest
+        LOG.debug("Switching to the '%s' user now." % ADMIN_USER_NAME)
         self.clear_engine_cache()
         engine = sqlalchemy.create_engine(
-            connection_str_format % (ADMIN_USER_NAME, admin_password),
+            CONNECTION_STR_FORMAT % (ADMIN_USER_NAME,
+                                     urllib.quote(admin_password)),
             echo=True)
         with self.local_sql_client(engine) as client:
             self._remove_anonymous_user(client)
@@ -786,12 +790,16 @@ class BaseMySqlApp(object):
             raise RuntimeError("Could not stop MySQL!")
 
     def _remove_anonymous_user(self, client):
+        LOG.debug("Removing anonymous user.")
         t = text(sql_query.REMOVE_ANON)
         client.execute(t)
+        LOG.debug("Anonymous user removed.")
 
     def _remove_remote_root_access(self, client):
+        LOG.debug("Removing root access.")
         t = text(sql_query.REMOVE_ROOT)
         client.execute(t)
+        LOG.debug("Root access removed.")
 
     def restart(self):
         try:
