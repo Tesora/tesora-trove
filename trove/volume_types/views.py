@@ -26,9 +26,10 @@ class VolumeTypeView(object):
             'id': self.volume_type.id,
             'name': self.volume_type.name,
             'is_public': self.volume_type.is_public,
-            'description': self.volume_type.description
         }
-
+        volume_type['description'] = getattr(self.volume_type,
+                                             'description',
+                                             '')
         return {"volume_type": volume_type}
 
 
