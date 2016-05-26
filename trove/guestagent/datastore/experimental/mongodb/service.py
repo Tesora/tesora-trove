@@ -115,7 +115,8 @@ class MongoDBApp(object):
         self.configuration_manager.save_configuration(config_contents)
         # The configuration template has to be updated with
         # guestagent-controlled settings.
-        self.apply_initial_guestagent_configuration()
+        self.apply_initial_guestagent_configuration(
+            mount_point=CONF.mongodb.mount_point)
         self.start_db(True)
 
     def apply_initial_guestagent_configuration(
@@ -124,7 +125,7 @@ class MongoDBApp(object):
 
         if mount_point:
             self.configuration_manager.apply_system_override(
-                {'storage.dbPath': mount_point})
+                {'storage': {'dbPath': mount_point}})
 
         if cluster_config is not None:
             self._configure_as_cluster_instance(cluster_config)
@@ -155,14 +156,12 @@ class MongoDBApp(object):
         self.is_query_router = True
         self.configuration_manager = self.mongos_configuration_manager
         self._configure_network(MONGODB_PORT)
-        self.configuration_manager.apply_system_override(
-            {'sharding.configDB': ''}, CNF_CLUSTER)
 
     def _configure_as_config_server(self):
         LOG.info(_("Configuring instance as a cluster config server."))
         self._configure_network(CONFIGSVR_PORT)
         self.configuration_manager.apply_system_override(
-            {'sharding.clusterRole': 'configsvr'}, CNF_CLUSTER)
+            {'sharding': {'clusterRole': 'configsvr'}}, CNF_CLUSTER)
 
     def _configure_as_cluster_member(self, replica_set_name):
         LOG.info(_("Configuring instance as a cluster member."))
@@ -174,7 +173,7 @@ class MongoDBApp(object):
         # mongo will be started by the cluster taskmanager
         self.start_db()
         self.configuration_manager.apply_system_override(
-            {'replication.replSetName': replica_set_name}, CNF_CLUSTER)
+            {'replication': {'replSetName': replica_set_name}}, CNF_CLUSTER)
 
     def _configure_cluster_security(self, key_value):
         """Force cluster key-file-based authentication.
@@ -185,17 +184,19 @@ class MongoDBApp(object):
         self.store_key(key_value)
 
         self.configuration_manager.apply_system_override(
-            {'security.clusterAuthMode': 'keyFile',
-             'security.keyFile': self.get_key_file()}, CNF_CLUSTER)
+            {'security': {
+                'clusterAuthMode': 'keyFile',
+                'keyFile': self.get_key_file()}},
+            CNF_CLUSTER)
 
     def _configure_network(self, port=None):
         """Make the service accessible at a given (or default if not) port.
         """
         instance_ip = netutils.get_my_ipv4()
         bind_interfaces_string = ','.join([instance_ip, '127.0.0.1'])
-        options = {'net.bindIp': bind_interfaces_string}
+        options = {'net': {'bindIp': bind_interfaces_string}}
         if port is not None:
-            guestagent_utils.update_dict({'net.port': port}, options)
+            guestagent_utils.update_dict({'net': {'port': port}}, options)
 
         self.configuration_manager.apply_system_override(options)
         self.status.set_host(instance_ip, port=port)
@@ -223,7 +224,7 @@ class MongoDBApp(object):
                                           for host in config_server_hosts])
         LOG.info(_("Setting config servers: %s") % config_servers_string)
         self.configuration_manager.apply_system_override(
-            {'sharding.configDB': config_servers_string}, CNF_CLUSTER)
+            {'sharding': {'configDB': config_servers_string}}, CNF_CLUSTER)
         self.start_db(True)
 
     def add_shard(self, replica_set_name, replica_set_member):
@@ -350,7 +351,7 @@ class MongoDBApp(object):
             temp_changeid)
         try:
             self.configuration_manager.apply_system_override(
-                {'security.authorization': 'enabled'})
+                {'security': {'authorization': 'enabled'}})
             self.start_db(update_db=False)
             password = utils.generate_random_password()
             self.create_admin_user(password)

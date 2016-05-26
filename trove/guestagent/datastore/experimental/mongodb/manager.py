@@ -55,6 +55,7 @@ class Manager(manager.Manager):
         self.status.wait_for_database_service_start(
             self.app.state_change_wait_time)
         self.app.stop_db()
+        mount_point = CONF.mongodb.mount_point
         self.app.clear_storage(mount_point)
         if device_path:
             device = volume.VolumeDevice(device_path)
