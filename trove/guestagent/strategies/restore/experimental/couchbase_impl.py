@@ -54,7 +54,8 @@ class CbBackup(base.RestoreRunner):
     def post_restore(self):
         try:
             operating_system.chmod(system.COUCHBASE_DUMP_DIR,
-                                   FileMode.SET_ALL_RW, force=True)
+                                   FileMode.SET_ALL_RW, force=True,
+                                   as_root=True)
 
             # Root enabled for the backup
             pwd_file = guestagent_utils.build_file_path(
