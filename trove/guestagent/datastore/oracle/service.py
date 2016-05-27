@@ -108,21 +108,21 @@ class OracleVMAppStatus(ds_service.BaseDbStatus):
             LOG.exception(_("Error getting the Oracle server status."))
             return rd_instance.ServiceStatuses.CRASHED
 
-    def _run_dbora_service(self, mode):
-        cmd = 'systemctl %s dbora.service' % mode
-        utils.execute_with_timeout(
-            cmd,
-            run_as_root=True, root_helper='sudo',
-            timeout=CONF.get(MANAGER).service_start_timeout,
-            shell=True, log_output_on_error=True)
-
-    def start_db_service(self, service_candidates=None, timeout=None,
+    def start_db_service(self, service_candidates=None,
+                         timeout=CONF.state_change_wait_time,
                          enable_on_boot=True, update_db=False):
-        self._run_dbora_service(mode='start')
+        if not service_candidates:
+            service_candidates = ['dbora']
+        super(OracleVMAppStatus, self).start_db_service(
+            service_candidates, timeout, enable_on_boot, update_db)
 
-    def stop_db_service(self, service_candidates=None, timeout=None,
+    def stop_db_service(self, service_candidates=None,
+                        timeout=CONF.state_change_wait_time,
                         disable_on_boot=False, update_db=False):
-        self._run_dbora_service(mode='stop')
+        if not service_candidates:
+            service_candidates = ['dbora']
+        super(OracleVMAppStatus, self).stop_db_service(
+            service_candidates, timeout, disable_on_boot, update_db)
 
 
 class OracleVMConfig(service.OracleConfig):
@@ -185,6 +185,8 @@ class OracleVMPaths(object):
             self.orapw_file = path.join(self.dbs_dir, 'orapw%s' % db_name)
             self.pfile = path.join(self.dbs_dir, 'init%s.ora' % db_name)
             self.spfile = path.join(self.dbs_dir, 'spfile%s.ora' % db_name)
+            self.base_spfile = path.join(
+                self.dbs_dir, 'spfile%s.ora.bak' % db_name)
             self.db_backup_dir = path.join(self.backup_dir, db_name)
             self.db_data_dir = path.join(self.data_dir, db_name)
             self.db_fast_recovery_logs_dir = path.join(
@@ -465,7 +467,8 @@ class OracleVMApp(service.OracleApp):
                 value_quoting=True,
                 value_quote_char="'",
                 bool_case=stream_codecs.KeyValueCodec.BOOL_UPPER,
-                big_ints=True),
+                big_ints=True,
+                hidden_marker='_'),
             requires_root=True,
             override_strategy=configuration.OneFileOverrideStrategy(conf_dir))
 
@@ -505,9 +508,13 @@ class OracleVMApp(service.OracleApp):
             self.status.end_restart()
 
     def prep_pfile_management(self):
-        """Generate the base PFILE from the original SPFILE and
+        """Create a backup of the original SPFILE and cleanse it of internal
+        settings.
+        Generate the base PFILE from the original SPFILE and
         initialize the configuration manager to use it.
         """
+        operating_system.copy(self.paths.spfile, self.paths.base_spfile,
+                              preserve=True, as_root=True)
         self.admin.create_pfile(target=self.paths.os_pfile, from_memory=True)
         self._init_configuration_manager()
 

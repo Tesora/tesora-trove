@@ -121,7 +121,7 @@ class RmanBackup(base.BackupRunner):
             self.app.paths.backup_dir,
             self.app.paths.redo_logs_backup_dir,
             self.app.paths.orapw_file,
-            self.app.paths.spfile,
+            self.app.paths.base_spfile,
             CONF.get(MANAGER).conf_file)
         return cmd + self.zip_cmd + self.encrypt_cmd
 

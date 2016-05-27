@@ -142,6 +142,11 @@ class RmanBackup(base.RestoreRunner):
         # the backup set will restore directly to ORADATA/backupset_files
         self._unpack_backup_files(self.location, self.checksum)
 
+        if operating_system.exists(self.app.paths.base_spfile, as_root=True):
+            operating_system.copy(self.app.paths.base_spfile,
+                                  self.app.paths.spfile,
+                                  preserve=True, as_root=True)
+
         # the conf file was just restored by the unpack so sync now
         self.app.admin.delete_conf_cache()
         self.app.admin.ora_config.db_name = self.db_name
