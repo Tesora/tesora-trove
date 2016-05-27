@@ -57,7 +57,7 @@ class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
 
     def _prepare_method(self, packages=['packages'], databases=None,
                         memory_mb='2048', users=None, device_path=None,
-                        mount_point=None, backup_info=None,
+                        mount_point='/var/lib/mongodb', backup_info=None,
                         config_contents=None, root_password=None,
                         overrides=None, cluster_config=None, *mocks):
         """self.manager.app must be correctly mocked before calling."""

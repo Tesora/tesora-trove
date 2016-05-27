@@ -104,7 +104,7 @@ class GuestAgentMongoDBClusterManagerTest(trove_testtools.TestCase):
                                         ["cfg_server1",
                                          "cfg_server2"])
         self.conf_mgr.apply_system_override.assert_called_once_with(
-            {'sharding.configDB': "cfg_server1:27019,cfg_server2:27019"},
+            {'sharding': {'configDB': "cfg_server1:27019,cfg_server2:27019"}},
             'clustering')
         mock_start_db.assert_called_with(True)
 
@@ -138,9 +138,6 @@ class GuestAgentMongoDBClusterManagerTest(trove_testtools.TestCase):
 
     @mock.patch.object(service.MongoDBApp, '_configure_network')
     def test_configure_as_query_router(self, net_conf):
-        self.conf_mgr.parse_configuration = mock.Mock(
-            return_value={'storage.mmapv1.smallFiles': False,
-                          'storage.journal.enabled': True})
         self.manager.app._configure_as_query_router()
         net_conf.assert_called_once_with(service.MONGODB_PORT)
         self.assertTrue(self.manager.app.is_query_router)
@@ -150,7 +147,7 @@ class GuestAgentMongoDBClusterManagerTest(trove_testtools.TestCase):
         self.manager.app._configure_as_config_server()
         net_conf.assert_called_once_with(service.CONFIGSVR_PORT)
         self.conf_mgr.apply_system_override.assert_called_once_with(
-            {'sharding.clusterRole': 'configsvr'}, 'clustering')
+            {'sharding': {'clusterRole': 'configsvr'}}, 'clustering')
 
     @mock.patch.object(service.MongoDBApp, 'start_db')
     @mock.patch.object(service.MongoDBApp, '_configure_network')
@@ -158,7 +155,7 @@ class GuestAgentMongoDBClusterManagerTest(trove_testtools.TestCase):
         self.manager.app._configure_as_cluster_member('rs1')
         net_conf.assert_called_once_with(service.MONGODB_PORT)
         self.conf_mgr.apply_system_override.assert_called_once_with(
-            {'replication.replSetName': 'rs1'}, 'clustering')
+            {'replication': {'replSetName': 'rs1'}}, 'clustering')
 
     @mock.patch.object(service.MongoDBApp, 'store_key')
     @mock.patch.object(service.MongoDBApp, 'get_key_file',
@@ -171,14 +168,14 @@ class GuestAgentMongoDBClusterManagerTest(trove_testtools.TestCase):
     def test_configure_network(self, ip_mock):
         self.manager.app._configure_network()
         self.conf_mgr.apply_system_override.assert_called_once_with(
-            {'net.bindIp': '10.0.0.2,127.0.0.1'})
+            {'net': {'bindIp': '10.0.0.2,127.0.0.1'}})
         self.manager.app.status.set_host.assert_called_once_with(
             '10.0.0.2', port=None)
 
         self.manager.app._configure_network(10000)
         self.conf_mgr.apply_system_override.assert_called_with(
-            {'net.bindIp': '10.0.0.2,127.0.0.1',
-             'net.port': 10000})
+            {'net': {'bindIp': '10.0.0.2,127.0.0.1',
+                     'port': 10000}})
         self.manager.app.status.set_host.assert_called_with(
             '10.0.0.2', port=10000)
 

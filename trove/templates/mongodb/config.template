@@ -1,5 +1,8 @@
 # Trove's mongod.conf
-storage.journal.enabled: true
-systemLog.destination: file
-systemLog.logAppend: true
-systemLog.path: /var/log/mongodb/mongod.log
+storage:
+    journal:
+        enabled: true
+systemLog:
+    destination: file
+    logAppend: true
+    path: /var/log/mongodb/mongod.log
