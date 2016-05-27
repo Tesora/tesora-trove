@@ -146,7 +146,7 @@ class MongoDbCluster(models.Cluster):
             configsvr_config['key'] = cluster_key
             mongos_config['key'] = cluster_key
 
-        for i in range(0, num_instances):
+        for i in range(num_instances):
             instance_name = "%s-%s-%s" % (name, replica_set_name, str(i + 1))
             inst_models.Instance.create(context, instance_name,
                                         flavor_id,
@@ -162,34 +162,36 @@ class MongoDbCluster(models.Cluster):
                                         region_name=regions[i],
                                         locality=locality)
 
-        for i in range(1, num_configsvr + 1):
-            instance_name = "%s-%s-%s" % (name, "configsvr", str(i))
+        for i in range(num_configsvr):
+            instance_name = "%s-%s-%s" % (name, "configsvr", str(i + 1))
             inst_models.Instance.create(context, instance_name,
                                         flavor_id,
                                         datastore_version.image_id,
                                         [], [], datastore,
                                         datastore_version,
                                         volume_size, None,
-                                        availability_zone=azs[i],
+                                        availability_zone=azs[i %
+                                                              num_instances],
                                         nics=nic,
                                         configuration_id=None,
                                         cluster_config=configsvr_config,
-                                        region_name=regions[i],
+                                        region_name=regions[i % num_instances],
                                         locality=locality)
 
-        for i in range(1, num_mongos + 1):
-            instance_name = "%s-%s-%s" % (name, "mongos", str(i))
+        for i in range(num_mongos):
+            instance_name = "%s-%s-%s" % (name, "mongos", str(i + 1))
             inst_models.Instance.create(context, instance_name,
                                         flavor_id,
                                         datastore_version.image_id,
                                         [], [], datastore,
                                         datastore_version,
                                         volume_size, None,
-                                        availability_zone=azs[i % 3],
+                                        availability_zone=azs[i %
+                                                              num_instances],
                                         nics=nic,
                                         configuration_id=None,
                                         cluster_config=mongos_config,
-                                        region_name=regions[i],
+                                        region_name=regions[i % num_instances],
                                         locality=locality)
 
         task_api.load(context, datastore_version.manager).create_cluster(
