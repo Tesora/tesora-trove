@@ -71,7 +71,7 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
                     install_if_needed=DEFAULT,
                     start_db_with_conf_changes=DEFAULT,
                     init_storage_structure=DEFAULT,
-                    apply_initial_guestagent_configuration=DEFAULT,
+                    initialize_node=DEFAULT,
                     apply_post_restore_updates=DEFAULT,
                     secure=DEFAULT)
     @patch.multiple(volume.VolumeDevice,
@@ -112,8 +112,8 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
         mock_status.begin_install.assert_any_call()
 
         storage_mock = kwmocks['init_storage_structure']
-        init_mock = kwmocks['apply_initial_guestagent_configuration']
-        init_mock.assert_called_once_with(None)
+        init_mock = kwmocks['initialize_node']
+        init_mock.assert_called_once_with()
         storage_mock.assert_called_once_with(mount_point)
         kwmocks['install_if_needed'].assert_any_call(self.packages)
 
@@ -123,7 +123,8 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
                                                    mount_point)
             kwmocks['apply_post_restore_updates'].assert_called_once_with(
                 backup_info)
-        kwmocks['secure'].assert_called_once_with()
+        kwmocks['secure'].assert_called_once_with(initialize=True,
+                                                  password=None)
 
     def test_restart(self):
         mock_status = MagicMock()
@@ -167,7 +168,7 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
             self.addCleanup(self.__cleanup_tempfile)
 
             app = couch_service.CouchbaseApp()
-            app.write_password_to_file('mypassword')
+            app._write_password_to_file('mypassword')
 
             filepermissions = os.stat(self.tempname).st_mode
             self.assertEqual(stat.S_IRUSR, filepermissions & 0o777)
@@ -187,7 +188,7 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
             app = couch_service.CouchbaseApp()
 
             self.assertRaises(RuntimeError,
-                              app.write_password_to_file,
+                              app._write_password_to_file,
                               'mypassword')
 
     @mock.patch.object(operating_system, 'create_directory')
