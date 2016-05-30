@@ -1087,7 +1087,8 @@ class Instance(BuiltInstance):
 
                 if cls.get_root_on_create(
                         datastore_version.manager) and not backup_id:
-                    root_password = utils.generate_random_password()
+                    root_password = utils.generate_random_password(
+                        datastore=datastore_version.manager)
                     root_passwords[instance_index] = root_password
 
             if instance_count > 1:
