@@ -113,11 +113,12 @@ class RmanBackup(base.RestoreRunner):
                 raise p
 
     def _open_database(self):
-        self.app.rman_scripter(
+        script = self.app.rman_scripter(
             commands='alter database open resetlogs',
             sid=self.db_name,
             t_user=self.app.admin_user_name,
-            t_pswd=self.app.admin.ora_config.admin_password).run()
+            t_pswd=self.app.admin.ora_config.admin_password)
+        script.run(timeout=CONF.get(MANAGER).usage_timeout)
 
     def _unpack_backup_files(self, location, checksum):
         LOG.debug("Restoring full backup files.")
