@@ -129,11 +129,11 @@ class CouchbaseApp(object):
         return models.CouchbaseUser(self._ADMIN_USER, cluster_password)
 
     def secure(self, password=None, initialize=True):
-        admin = self.store_admin_credentials(password=password)
+        self.store_admin_credentials(password=password)
         if initialize:
             self.initialize_cluster()
         # Update the internal status with the new user.
-        self.status = CouchbaseAppStatus(admin)
+        self.status = CouchbaseAppStatus(self.build_admin())
 
     @property
     def ramsize_quota_mb(self):
@@ -179,7 +179,7 @@ class CouchbaseApp(object):
     def enable_root(self, root_password=None):
         admin = self.reset_admin_credentials(password=root_password)
         # Update the internal status with the new user.
-        self.status = CouchbaseAppStatus(admin)
+        self.status = CouchbaseAppStatus(self.build_admin())
         return admin.serialize()
 
     def start_db_with_conf_changes(self, config_contents):
