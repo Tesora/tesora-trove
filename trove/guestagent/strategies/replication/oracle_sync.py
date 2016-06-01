@@ -227,6 +227,12 @@ class OracleSyncReplication(base.Replication):
             'REMOTE_LOGIN_PASSWORDFILE': 'EXCLUSIVE'}
         self._update_parameters(service, cursor, settings, deferred=True)
 
+    def _clear_log_archive_dests(self, service, cursor):
+        settings = dict()
+        for index in range(2, 31):
+            settings['LOG_ARCHIVE_DEST_%s' % index] = "''"
+        self._update_parameters(service, cursor, settings)
+
     def _update_dynamic_params(self, service, cursor, dbs):
         """Update replication system parameters that changes according to
         the current topology.
@@ -237,6 +243,7 @@ class OracleSyncReplication(base.Replication):
             'FAL_SERVER': ','.join("'%s'" % db for db in db_list)}
         self._update_parameters(service, cursor, settings)
         # Set up a log destination for each slave
+        self._clear_log_archive_dests(service, cursor)
         log_index = 2
         settings = dict()
         for db in dbs:
@@ -248,9 +255,6 @@ class OracleSyncReplication(base.Replication):
                 settings['LOG_ARCHIVE_DEST_%s' % log_index] = dest
                 settings['LOG_ARCHIVE_DEST_STATE_%s' % log_index] = 'ENABLE'
                 log_index += 1
-        # Clear the remaining destinations
-        for index in range(log_index, 31):
-            settings['LOG_ARCHIVE_DEST_%s' % index] = "''"
         self._update_parameters(service, cursor, settings)
 
     def _create_standby_log_files(self, service, cursor):
@@ -432,9 +436,8 @@ class OracleSyncReplication(base.Replication):
             settings = {
                 'LOG_ARCHIVE_CONFIG': "''",
                 'FAL_SERVER': "''"}
-            for index in range(2, 31):
-                settings['LOG_ARCHIVE_DEST_%s' % index] = "''"
             with service.cursor(service.admin.database_name) as cursor:
+                self._clear_log_archive_dests(service, cursor)
                 cursor.execute(str(sql_query.AlterDatabase(
                     'RECOVER MANAGED STANDBY DATABASE CANCEL')))
                 cursor.execute(str(sql_query.AlterDatabase(
