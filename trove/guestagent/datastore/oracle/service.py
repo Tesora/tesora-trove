@@ -451,6 +451,17 @@ class OracleVMApp(service.OracleApp):
     def run_oracle_sys_command(self, *args, **kwargs):
         run_sys_command(*args, **kwargs)
 
+    def pfile_codec(self):
+        return stream_codecs.KeyValueCodec(
+            delimiter='=',
+            comment_marker='#',
+            line_terminator='\n',
+            value_quoting=True,
+            value_quote_char="'",
+            bool_case=stream_codecs.KeyValueCodec.BOOL_UPPER,
+            big_ints=True,
+            hidden_marker='_')
+
     def _init_configuration_manager(self):
         cm = configuration.ConfigurationManager
         conf_dir = path.join(
@@ -460,15 +471,7 @@ class OracleVMApp(service.OracleApp):
             self.paths.os_pfile,
             self.instance_owner,
             self.instance_owner_group,
-            stream_codecs.KeyValueCodec(
-                delimiter='=',
-                comment_marker='#',
-                line_terminator='\n',
-                value_quoting=True,
-                value_quote_char="'",
-                bool_case=stream_codecs.KeyValueCodec.BOOL_UPPER,
-                big_ints=True,
-                hidden_marker='_'),
+            self.pfile_codec(),
             requires_root=True,
             override_strategy=configuration.OneFileOverrideStrategy(conf_dir))
 
@@ -508,14 +511,30 @@ class OracleVMApp(service.OracleApp):
             self.status.end_restart()
 
     def prep_pfile_management(self):
-        """Create a backup of the original SPFILE and cleanse it of internal
-        settings.
-        Generate the base PFILE from the original SPFILE and
-        initialize the configuration manager to use it.
+        """Generate the base PFILE from the original SPFILE,
+        cleanse it of internal settings,
+        create a backup spfile,
+        and initialize the configuration manager to use it.
         """
-        operating_system.copy(self.paths.spfile, self.paths.base_spfile,
-                              preserve=True, as_root=True)
         self.admin.create_pfile(target=self.paths.os_pfile, from_memory=True)
+        parameters = operating_system.read_file(
+            self.paths.os_pfile,
+            codec=self.pfile_codec(),
+            as_root=True)
+        cleansed_parameters = dict()
+        for k, v in parameters.items():
+            if k.startswith('_'):
+                continue
+            if v.find('rdbms') != -1:
+                continue
+            cleansed_parameters[k] = v
+        operating_system.write_file(
+            self.paths.os_pfile,
+            cleansed_parameters,
+            codec=self.pfile_codec(),
+            as_root=True)
+        self.admin.create_spfile(target=self.paths.base_spfile,
+                                 source=self.paths.os_pfile)
         self._init_configuration_manager()
 
     def generate_spfile(self):
