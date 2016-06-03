@@ -36,6 +36,8 @@ LOG = logging.getLogger(__name__)
 defaults = {
     'mysql':
     'trove.guestagent.datastore.mysql.manager.Manager',
+    'mysql_ee':
+    'trove.guestagent.datastore.mysql_ee.manager.Manager',
     'percona':
     'trove.guestagent.datastore.experimental.percona.manager.Manager',
     'pxc':
