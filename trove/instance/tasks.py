@@ -118,6 +118,7 @@ class InstanceTasks(object):
     UPGRADING_ERROR = InstanceTask(0x59, 'UPGRADING',
                                          'Upgrading Cluster Error.',
                                          is_error=True)
+    UPGRADING = InstanceTask(0x59, 'UPGRADING', 'Upgrading the instance.')
 
 # Dissuade further additions at run-time.
 InstanceTask.__init__ = None

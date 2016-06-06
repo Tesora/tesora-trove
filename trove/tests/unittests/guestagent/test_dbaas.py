@@ -1590,7 +1590,7 @@ class MySqlAppMockTest(trove_testtools.TestCase):
     @patch.object(mysql_common_service, 'clear_expired_password')
     @patch.object(mysql_common_service.BaseMySqlApp,
                   'get_auth_password', return_value='some_password')
-    def test_secure_with_mycnf_error(self, auth_pwd_mock, clear_pwd_mock, _):
+    def test_secure_with_mycnf_error(self, *args):
         with patch.object(self.mock_client,
                           'execute', return_value=None) as mock_execute:
             with patch.object(operating_system, 'service_discovery',

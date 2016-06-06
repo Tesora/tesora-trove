@@ -744,33 +744,6 @@ class BaseInstance(SimpleInstance):
                  self.id)
         self.update_db(task_status=InstanceTasks.NONE)
 
-    def get_injected_files(self, datastore_manager):
-        injected_config_location = CONF.get('injected_config_location')
-        guest_info = CONF.get('guest_info')
-
-        if ('/' in guest_info):
-            # Set guest_info_file to exactly guest_info from the conf file.
-            # This should be /etc/guest_info for pre-Kilo compatibility.
-            guest_info_file = guest_info
-        else:
-            guest_info_file = os.path.join(injected_config_location,
-                                           guest_info)
-
-        files = {guest_info_file: (
-            "[DEFAULT]\n"
-            "guest_id=%s\n"
-            "guest_name=%s\n"
-            "datastore_manager=%s\n"
-            "tenant_id=%s\n"
-            % (self.id, self.name, datastore_manager, self.tenant_id))}
-
-        if os.path.isfile(CONF.get('guest_config')):
-            with open(CONF.get('guest_config'), "r") as f:
-                files[os.path.join(injected_config_location,
-                                   "trove-guestagent.conf")] = f.read()
-
-        return files
-
     @property
     def server_group(self):
         # The server group could be empty, so we need a flag to cache it
@@ -793,6 +766,32 @@ class BaseInstance(SimpleInstance):
             raise exception.UnprocessableEntity(
                 "Instance %s status can only be reset in BUILD or ERROR "
                 "state." % self.id)
+
+    def get_injected_files(self, datastore_manager):
+        injected_config_location = CONF.get('injected_config_location')
+        guest_info = CONF.get('guest_info')
+
+        if ('/' in guest_info):
+            # Set guest_info_file to exactly guest_info from the conf file.
+            # This should be /etc/guest_info for pre-Kilo compatibility.
+            guest_info_file = guest_info
+        else:
+            guest_info_file = os.path.join(injected_config_location,
+                                           guest_info)
+
+        files = {guest_info_file: (
+            "[DEFAULT]\n"
+            "guest_id=%s\n"
+            "datastore_manager=%s\n"
+            "tenant_id=%s\n"
+            % (self.id, datastore_manager, self.tenant_id))}
+
+        if os.path.isfile(CONF.get('guest_config')):
+            with open(CONF.get('guest_config'), "r") as f:
+                files[os.path.join(injected_config_location,
+                                   "trove-guestagent.conf")] = f.read()
+
+        return files
 
 
 class FreshInstance(BaseInstance):
