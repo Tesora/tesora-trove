@@ -2,4 +2,4 @@
 host=review.elasticdb.org
 port=29418
 project=tesora/tesora-trove.git
-defaultbranch=dev/EE-1.8
+defaultbranch=dev/EE-1.9
