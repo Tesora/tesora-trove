@@ -138,7 +138,7 @@ class CouchbaseApp(object):
     @property
     def ramsize_quota_mb(self):
         ramsize_quota_pc = CONF.couchbase.cluster_ramsize_pc / 100.0
-        return max(round(ramsize_quota_pc * self.available_ram_mb),
+        return max(int(ramsize_quota_pc * self.available_ram_mb),
                    self.MIN_RAMSIZE_QUOTA_MB)
 
     def init_storage_structure(self, mount_point):
