@@ -211,3 +211,12 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
                                       'ramQuota': '268435456'},
                           'bucket2': {'saslPassword': 'password2',
                                       'ramQuota': '134217728'}}, bucket_list)
+
+    def test_ramsize_quota_mb(self):
+        app = couch_service.CouchbaseApp(Mock())
+
+        app.available_ram_mb = 1024
+        self.assertEqual(819, app.ramsize_quota_mb)
+
+        app.available_ram_mb = 128
+        self.assertEqual(256, app.ramsize_quota_mb)
