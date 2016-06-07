@@ -238,3 +238,12 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
                 self.assertRaises(ProcessExecutionError, app.enable_root)
                 app.status.begin_restart.assert_called_once_with()
                 app.status.end_restart.assert_called_once_with()
+
+    def test_ramsize_quota_mb(self):
+        app = couch_service.CouchbaseApp(Mock())
+
+        app.available_ram_mb = 1024
+        self.assertEqual(819, app.ramsize_quota_mb)
+
+        app.available_ram_mb = 128
+        self.assertEqual(256, app.ramsize_quota_mb)
