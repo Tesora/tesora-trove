@@ -156,7 +156,6 @@ class RmanBackupIncremental(RmanBackup):
 
     def __init__(self, *args, **kwargs):
         super(RmanBackupIncremental, self).__init__(*args, **kwargs)
-        self.app = service.OracleVMApp(service.OracleVMAppStatus)
         self.parent_id = kwargs.get('parent_id')
         self.parent_location = kwargs.get('parent_location')
         self.parent_checksum = kwargs.get('parent_checksum')
@@ -182,7 +181,7 @@ class RmanBackupIncremental(RmanBackup):
             self.app.rman_scripter(
                 commands='delete force noprompt backupset %s'
                          % ','.join(delete_list),
-                sid=self.app.admin.database_name,
+                sid=self.db_name,
                 t_user=self.app.admin_user_name,
                 t_pswd=self.app.admin.ora_config.admin_password).run()
 
