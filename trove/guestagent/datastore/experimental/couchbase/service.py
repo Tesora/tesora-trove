@@ -173,10 +173,14 @@ class CouchbaseApp(object):
             enable_on_boot=True, update_db=update_db)
 
     def enable_root(self, root_password=None):
-        admin = self.reset_admin_credentials(password=root_password)
-        # Update the internal status with the new user.
-        self.status = CouchbaseAppStatus(self.build_admin())
-        return admin.serialize()
+        self.status.begin_restart()
+        try:
+            admin = self.reset_admin_credentials(password=root_password)
+            # Update the internal status with the new user.
+            self.status = CouchbaseAppStatus(self.build_admin())
+            return admin.serialize()
+        finally:
+            self.status.end_restart()
 
     def start_db_with_conf_changes(self, config_contents):
         self.start_db(update_db=True)
