@@ -16,20 +16,21 @@
 
 import json
 import os.path
-import time
 
 from oslo_log import log as logging
 
+from trove.common import cfg
 from trove.common import exception
 from trove.common import utils
-from trove.guestagent.common import operating_system, guestagent_utils
+from trove.guestagent.common import guestagent_utils
+from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.experimental.couchbase import service
 from trove.guestagent.datastore.experimental.couchbase import system
-from trove.guestagent import dbaas
 from trove.guestagent.strategies.restore import base
 
 
 LOG = logging.getLogger(__name__)
+CONF = cfg.CONF
 
 
 class CbBackup(base.RestoreRunner):
@@ -60,9 +61,6 @@ class CbBackup(base.RestoreRunner):
                     pw = f.read().rstrip("\n")
                     self.app.reset_admin_credentials(password=pw)
 
-            # Get current root password
-            root_pwd = self.app.get_password()
-
             # Iterate through each bucket config
             buckets_json = system.COUCHBASE_DUMP_DIR + system.BUCKETS_JSON
             with open(buckets_json, "r") as f:
@@ -76,126 +74,53 @@ class CbBackup(base.RestoreRunner):
                     bucket_type = d[i]["bucketType"]
                     if bucket_type == "membase":
                         bucket_type = "couchbase"
-                    ram = int(dbaas.to_mb(d[i]["quota"]["ram"]))
-                    auth_type = d[i]["authType"]
-                    password = d[i]["saslPassword"]
-                    port = d[i]["proxyPort"]
-                    replica_number = d[i]["replicaNumber"]
-                    replica_index = 1 if d[i]["replicaIndex"] else 0
-                    threads = d[i]["threadsNumber"]
-                    flush = 1 if "flush" in d[i]["controllers"] else 0
+                    if d[i]["authType"] != "none":
+                        bucket_password = d[i]["saslPassword"]
+                        # SASL buckets can be only on this port.
+                        bucket_port = "11211"
+                    else:
+                        bucket_password = None
+                        bucket_port = d[i]["proxyPort"]
+                    replica_count = d[i]["replicaNumber"]
+                    enable_index_replica = 1 if d[i]["replicaIndex"] else 0
 
-                    # cbrestore requires you to manually create dest buckets
-                    create_bucket_cmd = ('curl -X POST -u root:' + root_pwd +
-                                         ' -d name="' +
-                                         bucket_name + '"' +
-                                         ' -d bucketType="' +
-                                         bucket_type + '"' +
-                                         ' -d ramQuotaMB="' +
-                                         str(ram) + '"' +
-                                         ' -d authType="' +
-                                         auth_type + '"' +
-                                         ' -d saslPassword="' +
-                                         password + '"' +
-                                         ' -d proxyPort="' +
-                                         str(port) + '"' +
-                                         ' -d replicaNumber="' +
-                                         str(replica_number) + '"' +
-                                         ' -d replicaIndex="' +
-                                         str(replica_index) + '"' +
-                                         ' -d threadsNumber="' +
-                                         str(threads) + '"' +
-                                         ' -d flushEnabled="' +
-                                         str(flush) + '" ' +
-                                         system.COUCHBASE_REST_API +
-                                         '/pools/default/buckets')
-                    utils.execute_with_timeout(create_bucket_cmd,
-                                               shell=True, timeout=300)
+                    self._create_restore_bucket(
+                        bucket_name, bucket_password, bucket_port, bucket_type,
+                        enable_index_replica, CONF.couchbase.eviction_policy,
+                        replica_count)
 
-                    if bucket_type == "memcached":
-                        continue
+                    self.run_cbrestore(bucket_name)
 
-                    # Wait for couchbase (membase) bucket creation to complete
-                    # (follows same logic as --wait for couchbase-cli)
-                    timeout_in_seconds = 120
-                    start = time.time()
-                    bucket_exist = False
-                    while ((time.time() - start) <= timeout_in_seconds and
-                            not bucket_exist):
-                        url = (system.COUCHBASE_REST_API +
-                               '/pools/default/buckets/')
-                        outfile = system.COUCHBASE_DUMP_DIR + '/buckets.all'
-                        utils.execute_with_timeout('curl -u root:' + root_pwd +
-                                                   ' ' + url + ' > ' + outfile,
-                                                   shell=True, timeout=300)
-                        with open(outfile, "r") as file:
-                            out = file.read()
-                            buckets = json.loads(out)
-                            for bucket in buckets:
-                                if bucket["name"] == bucket_name:
-                                    bucket_exist = True
-                                    break
-                        if not bucket_exist:
-                            time.sleep(2)
-
-                    if not bucket_exist:
-                        raise base.RestoreError("Failed to create bucket '%s' "
-                                                "within %s seconds"
-                                                % (bucket_name,
-                                                   timeout_in_seconds))
-
-                    # Query status
-                    # (follows same logic as --wait for couchbase-cli)
-                    healthy = False
-                    while ((time.time() - start) <= timeout_in_seconds):
-                        url = (system.COUCHBASE_REST_API +
-                               '/pools/default/buckets/' +
-                               bucket_name)
-                        outfile = system.COUCHBASE_DUMP_DIR + '/' + bucket_name
-                        utils.execute_with_timeout('curl -u root:' + root_pwd +
-                                                   ' ' + url + ' > ' + outfile,
-                                                   shell=True, timeout=300)
-                        all_node_ready = True
-                        with open(outfile, "r") as file:
-                            out = file.read()
-                            bucket = json.loads(out)
-                            for node in bucket["nodes"]:
-                                if node["status"] != "healthy":
-                                    all_node_ready = False
-                                    break
-                        if not all_node_ready:
-                            time.sleep(2)
-                        else:
-                            healthy = True
-                            break
-
-                    if not healthy:
-                        raise base.RestoreError("Bucket '%s' is created but "
-                                                "not ready to use within %s "
-                                                "seconds"
-                                                % (bucket_name,
-                                                   timeout_in_seconds))
-
-                    # Restore
-                    restore_cmd = ('/opt/couchbase/bin/cbrestore ' +
-                                   system.COUCHBASE_DUMP_DIR + ' ' +
-                                   system.COUCHBASE_REST_API +
-                                   ' --bucket-source=' + bucket_name +
-                                   ' --bucket-destination=' + bucket_name +
-                                   ' -u root' + ' -p ' + root_pwd)
-                    try:
-                        utils.execute_with_timeout(restore_cmd,
-                                                   shell=True,
-                                                   timeout=300)
-                    except exception.ProcessExecutionError as p:
-                        # cbrestore fails or hangs at times:
-                        # http://www.couchbase.com/issues/browse/MB-10832
-                        # Retrying typically works
-                        LOG.error(p)
-                        LOG.error(_("cbrestore failed. Retrying..."))
-                        utils.execute_with_timeout(restore_cmd,
-                                                   shell=True,
-                                                   timeout=300)
         except exception.ProcessExecutionError as p:
             LOG.error(p)
             raise base.RestoreError("Couchbase restore failed.")
+
+    def _create_restore_bucket(self, bucket_name, bucket_password, bucket_port,
+                               bucket_type, enable_index_replica,
+                               eviction_policy, replica_count):
+        admin = self.app.build_admin()
+        bucket_ramsize_quota_mb = admin.get_memory_quota_mb()
+        num_cluster_nodes = admin.get_num_cluster_nodes()
+        replica_count = min(replica_count, num_cluster_nodes - 1)
+
+        admin.run_bucket_create(
+            bucket_name, bucket_password, bucket_port,
+            bucket_type, bucket_ramsize_quota_mb,
+            enable_index_replica, eviction_policy, replica_count)
+
+    def run_cbrestore(self, bucket_name):
+        host_and_port = 'localhost:%d' % CONF.couchbase.couchbase_port
+        admin_user = self.app.get_cluster_admin()
+        cmd_tokens = [self.cbrestore_bin,
+                      system.COUCHBASE_DUMP_DIR,
+                      'http://' + host_and_port,
+                      '-u', admin_user.name,
+                      '-p', admin_user.password,
+                      '--bucket-source=' + bucket_name]
+        return utils.execute(' '.join(cmd_tokens), shell=True)
+
+    @property
+    def cbrestore_bin(self):
+        admin = self.app.build_admin()
+        return guestagent_utils.build_file_path(admin.couchbase_bin_dir,
+                                                'cbrestore')

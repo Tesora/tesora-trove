@@ -324,18 +324,19 @@ class CouchbaseAdmin(object):
                           enable_index_replica, eviction_policy,
                           replica_count):
         LOG.debug("Creating a new bucket: %s" % bucket_name)
-        self._run_couchbase_command(
-            'bucket-create', {'bucket': bucket_name,
-                              'bucket-type': bucket_type,
-                              'bucket-password': bucket_password,
-                              'bucket-port': bucket_port,
-                              'bucket-ramsize': bucket_ramsize_quota_mb,
-                              'enable-flush': 0,
-                              'enable-index-replica': enable_index_replica,
-                              'bucket-eviction-policy': eviction_policy,
-                              'bucket-replica': replica_count,
-                              'wait': None,
-                              'force': None})
+        options = {'bucket': bucket_name,
+                   'bucket-type': bucket_type,
+                   'bucket-port': bucket_port,
+                   'bucket-ramsize': bucket_ramsize_quota_mb,
+                   'enable-flush': 0,
+                   'enable-index-replica': enable_index_replica,
+                   'bucket-eviction-policy': eviction_policy,
+                   'bucket-replica': replica_count,
+                   'wait': None,
+                   'force': None}
+        if bucket_password is not None:
+            options.update({'bucket-password': bucket_password})
+        self._run_couchbase_command('bucket-create', options)
 
     def run_bucket_edit(self, bucket_name, bucket_password, bucket_port,
                         bucket_type, bucket_ramsize_quota_mb,
