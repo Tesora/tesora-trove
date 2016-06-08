@@ -24,6 +24,7 @@ from mock import patch
 from mock import PropertyMock
 from oslo_utils import netutils
 
+from trove.common.exception import ProcessExecutionError
 from trove.common import utils
 from trove.guestagent import backup
 from trove.guestagent.common import operating_system
@@ -31,6 +32,7 @@ from trove.guestagent.datastore.experimental.couchbase import (
     manager as couch_manager)
 from trove.guestagent.datastore.experimental.couchbase import (
     service as couch_service)
+from trove.guestagent.datastore.service import BaseDbStatus
 from trove.guestagent import volume
 from trove.tests.unittests import trove_testtools
 
@@ -218,3 +220,21 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
                                       'ramQuota': '268435456'},
                           'bucket2': {'saslPassword': 'password2',
                                       'ramQuota': '134217728'}}, bucket_list)
+
+    def test_enable_root(self):
+        app = couch_service.CouchbaseApp(Mock())
+
+        with patch.multiple(BaseDbStatus, begin_restart=DEFAULT,
+                            end_restart=DEFAULT):
+            with patch.object(app, 'reset_admin_credentials'):
+                app.enable_root()
+                app.status.begin_restart.assert_called_once_with()
+                app.status.end_restart.assert_called_once_with()
+
+        with patch.multiple(BaseDbStatus, begin_restart=DEFAULT,
+                            end_restart=DEFAULT):
+            with patch.object(app, 'reset_admin_credentials',
+                              side_effect=ProcessExecutionError):
+                self.assertRaises(ProcessExecutionError, app.enable_root)
+                app.status.begin_restart.assert_called_once_with()
+                app.status.end_restart.assert_called_once_with()
