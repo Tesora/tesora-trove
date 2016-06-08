@@ -1149,7 +1149,7 @@ couchbase_opts = [
                '.couchbase.guestagent.CouchbaseGuestAgentStrategy',
                help='Class that implements datastore-specific Guest Agent API '
                     'logic.'),
-    cfg.IntOpt('cluster_ramsize_pc', default=80, min=0, max=80,
+    cfg.IntOpt('cluster_ramsize_pc', default=75, min=0, max=75,
                help='Per node RAM quota in for the Data service expressed as a'
                ' percentage of the available memory.'
                ' Minimum of 256MB will be used if the given percentage amounts'

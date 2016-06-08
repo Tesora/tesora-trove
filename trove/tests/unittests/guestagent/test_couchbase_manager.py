@@ -216,7 +216,7 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
         app = couch_service.CouchbaseApp(Mock())
 
         app.available_ram_mb = 1024
-        self.assertEqual('819', str(app.ramsize_quota_mb))
+        self.assertEqual('768', str(app.ramsize_quota_mb))
 
         app.available_ram_mb = 128
         self.assertEqual('256', str(app.ramsize_quota_mb))
