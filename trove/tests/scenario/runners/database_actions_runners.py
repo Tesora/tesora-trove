@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from oslo_config.cfg import NoSuchOptError
 from proboscis import SkipTest
 
 from trove.common import exception
@@ -227,4 +228,12 @@ class DatabaseActionsRunner(TestRunner):
                            instance_id, database_name)
 
     def get_system_databases(self):
-        return self.get_datastore_config_property('ignore_dbs')
+        try:
+            values = self.get_datastore_config_property('ignore_dbs')
+            if not values:
+                self.report.log("The 'ignore_dbs' list is empty.")
+            return values
+        except NoSuchOptError:
+            self.report.log("This datastore does not define 'ignore_dbs' "
+                            "configuration property.")
+            return []

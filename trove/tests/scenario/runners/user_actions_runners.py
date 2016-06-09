@@ -15,6 +15,7 @@
 
 from six.moves.urllib import parse as urllib_parse
 
+from oslo_config.cfg import NoSuchOptError
 from proboscis import SkipTest
 
 from trove.common import exception
@@ -392,7 +393,15 @@ class UserActionsRunner(TestRunner):
                     expected_exception, expected_http_code)
 
     def get_system_users(self):
-        return self.get_datastore_config_property('ignore_users')
+        try:
+            values = self.get_datastore_config_property('ignore_users')
+            if not values:
+                self.report.log("The 'ignore_users' list is empty.")
+            return values
+        except NoSuchOptError:
+            self.report.log("This datastore does not define 'ignore_users' "
+                            "configuration property.")
+            return []
 
 
 class MysqlUserActionsRunner(UserActionsRunner):
