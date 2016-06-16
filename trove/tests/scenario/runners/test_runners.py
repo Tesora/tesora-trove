@@ -172,12 +172,6 @@ class TestRunner(object):
         return create_dbaas_client(other_user)
 
     @property
-    def nova_client(self):
-        if not self._nova_client:
-            self._nova_client = create_nova_client(self.instance_info.user)
-        return self._nova_client
-
-    @property
     def admin_client(self):
         if not self._admin_client:
             self._admin_client = self._create_admin_client()
@@ -207,6 +201,12 @@ class TestRunner(object):
             tenant_name=user.tenant,
             auth_version='2.0',
             os_options=os_options)
+
+    @property
+    def nova_client(self):
+        if not self._nova_client:
+            self._nova_client = create_nova_client(self.instance_info.user)
+        return self._nova_client
 
     def get_client_tenant(self, client):
         tenant_name = client.real_client.client.tenant
@@ -405,9 +405,9 @@ class TestRunner(object):
                 self._servers[instance_id] = server
         return server
 
-    def assert_server_group(self, instance_id, should_exist):
+    def assert_server_group_exists(self, instance_id):
         """Check that the Nova instance associated with instance_id
-        belongs to a server group, based on the 'should_exist' flag.
+        belongs to a server group, and return the id.
         """
         server = self.get_server(instance_id)
         self.assert_is_not_none(server, "Could not find Nova server for '%s'" %
@@ -417,11 +417,22 @@ class TestRunner(object):
         for sg in server_groups:
             if server.id in sg.members:
                 server_group = sg
-        if should_exist and server_group is None:
-            raise ("Could not find server group for Nova instance %s" %
-                   server.id)
-        if server_group and not should_exist:
-            raise ("Found left-over server group: %s" % server_group)
+                break
+        if server_group is None:
+            self.fail("Could not find server group for Nova instance %s" %
+                      server.id)
+        return server_group.id
+
+    def assert_server_group_gone(self, srv_grp_id):
+        """Ensure that the server group is no longer present."""
+        server_group = None
+        server_groups = self.nova_client.server_groups.list()
+        for sg in server_groups:
+            if sg.id == srv_grp_id:
+                server_group = sg
+                break
+        if server_group:
+            self.fail("Found left-over server group: %s" % server_group)
 
     def get_instance(self, instance_id, client=None):
         client = client or self.auth_client

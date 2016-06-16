@@ -42,22 +42,24 @@ class InstanceCreateRunner(TestRunner):
         flavor = self._get_instance_flavor()
         trove_volume_size = CONFIG.get('trove_volume_size', 1)
 
-        info = self.assert_instance_create(
+        instance_info = self.assert_instance_create(
             name, flavor, trove_volume_size, [], [], None, None,
             CONFIG.dbaas_datastore, CONFIG.dbaas_datastore_version,
             expected_states, expected_http_code, create_helper_user=True,
             locality='affinity')
 
         # Update the shared instance info.
-        self.instance_info.databases = info.databases
-        self.instance_info.users = info.users
-        self.instance_info.dbaas_datastore = info.dbaas_datastore
-        self.instance_info.dbaas_datastore_version = (info.
-                                                      dbaas_datastore_version)
-        self.instance_info.dbaas_flavor_href = info.dbaas_flavor_href
-        self.instance_info.volume = info.volume
-        self.instance_info.id = info.id
-        self.assert_server_group(self.instance_info.id, True)
+        self.instance_info.id = instance_info.id
+        self.instance_info.name = instance_info.name
+        self.instance_info.databases = instance_info.databases
+        self.instance_info.users = instance_info.users
+        self.instance_info.dbaas_datastore = instance_info.dbaas_datastore
+        self.instance_info.dbaas_datastore_version = (
+            instance_info.dbaas_datastore_version)
+        self.instance_info.dbaas_flavor_href = instance_info.dbaas_flavor_href
+        self.instance_info.volume = instance_info.volume
+        self.instance_info.srv_grp_id = self.assert_server_group_exists(
+            self.instance_info.id)
 
     def run_initial_configuration_create(self, expected_http_code=200):
         dynamic_config = self.test_helper.get_dynamic_group()

@@ -71,6 +71,16 @@ class ReplicationGroup(TestGroup):
         self.test_runner.run_verify_replica_data_after_single()
 
     @test(runs_after=[verify_replica_data_after_single])
+    def wait_for_non_affinity_master(self):
+        """Wait for non-affinity master to complete."""
+        self.test_runner.run_wait_for_non_affinity_master()
+
+    @test(runs_after=[wait_for_non_affinity_master])
+    def create_non_affinity_replica(self):
+        """Test creating a non-affinity replica."""
+        self.test_runner.run_create_non_affinity_replica()
+
+    @test(runs_after=[create_non_affinity_replica])
     def create_multiple_replicas(self):
         """Test creating multiple replicas."""
         self.test_runner.run_create_multiple_replicas()

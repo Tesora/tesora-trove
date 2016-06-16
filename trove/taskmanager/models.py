@@ -1094,8 +1094,7 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
             LOG.exception(_("Error during dns entry of instance %(id)s: "
                             "%(ex)s") % {'id': self.db_info.id, 'ex': ex})
         try:
-            srv_grp.ServerGroup.delete(
-                self.context, self.server_group, self.id)
+            srv_grp.ServerGroup.delete(self.context, self.server_group)
         except Exception:
             LOG.exception(_("Error during delete server group for %s")
                           % self.id)

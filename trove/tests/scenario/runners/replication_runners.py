@@ -37,6 +37,10 @@ class ReplicationRunner(TestRunner):
         self.non_affinity_repl_id = None
         self.locality = 'affinity'
         self.used_data_sets = set()
+        self.non_affinity_master_id = None
+        self.non_affinity_srv_grp_id = None
+        self.non_affinity_repl_id = None
+        self.locality = 'affinity'
 
     def run_add_data_for_replication(self, data_type=DataType.small):
         self.assert_add_replication_data(data_type, self.master_host)
@@ -135,7 +139,8 @@ class ReplicationRunner(TestRunner):
                                          expected_states=['BUILD', 'ACTIVE']):
         self._assert_instance_states(self.non_affinity_master_id,
                                      expected_states)
-        self.assert_server_group(self.non_affinity_master_id, True)
+        self.non_affinity_srv_grp_id = self.assert_server_group_exists(
+            self.non_affinity_master_id)
 
     def run_create_non_affinity_replica(self, expected_http_code=200):
         self.non_affinity_repl_id = self.auth_client.instances.create(
@@ -185,7 +190,7 @@ class ReplicationRunner(TestRunner):
             self.non_affinity_master_id,
             expected_last_state=expected_last_state,
             expected_http_code=expected_http_code)
-        self.assert_server_group(self.non_affinity_master_id, False)
+        self.assert_server_group_gone(self.non_affinity_srv_grp_id)
 
     def run_add_data_to_replicate(self):
         self.assert_add_replication_data(DataType.tiny, self.master_host)
