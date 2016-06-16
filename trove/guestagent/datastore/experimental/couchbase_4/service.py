@@ -16,6 +16,7 @@
 from oslo_log import log as logging
 
 from trove.common import cfg
+from trove.common.exception import TroveError
 from trove.common.i18n import _
 from trove.guestagent.datastore.experimental.couchbase import (
     service as community_service
@@ -40,11 +41,46 @@ class Couchbase4App(community_service.CouchbaseApp):
 
 class Couchbase4Admin(community_service.CouchbaseAdmin):
 
+    # How much of the total cluster memory quota will be allocated to the
+    # indexing service.
+    INDEX_MEM_RATIO = 0.25
+
     def run_cluster_init(self, ramsize_quota_mb, enabled_services):
         LOG.debug("Configuring cluster parameters.")
-        self._run_couchbase_command(
-            'cluster-init', {'cluster-init-username': self._user.name,
-                             'cluster-init-password': self._user.password,
-                             'cluster-init-port': self._http_client_port,
-                             'cluster-ramsize': ramsize_quota_mb,
-                             'services': ','.join(enabled_services)})
+        data_quota_mb, index_quota_mb = self._compute_mem_allocations_mb(
+            ramsize_quota_mb, enabled_services)
+
+        options = {'cluster-init-username': self._user.name,
+                   'cluster-init-password': self._user.password,
+                   'cluster-init-port': self._http_client_port,
+                   'cluster-ramsize': data_quota_mb,
+                   'services': ','.join(enabled_services)}
+
+        if index_quota_mb > 0:
+            options.update({'cluster-index-ramsize': index_quota_mb})
+
+        self._run_couchbase_command('cluster-init', options)
+
+    def _compute_mem_allocations_mb(self, ramsize_quota_mb, enabled_services):
+        """Couchbase 4.x and higher split the available memory quota between
+        data and index services.
+        If the indexing service is turned on the quota value must be at least
+        256MB.
+
+        Compute the index quota as 25% of the total and use the rest for data
+        services. Return '0' quota if the service is not enabled.
+        """
+        if 'index' in enabled_services:
+            index_quota_mb = max(int(self.INDEX_MEM_RATIO * ramsize_quota_mb),
+                                 Couchbase4App.MIN_RAMSIZE_QUOTA_MB)
+        else:
+            index_quota_mb = 0
+
+        data_quota_mb = ramsize_quota_mb - index_quota_mb
+
+        if data_quota_mb < Couchbase4App.MIN_RAMSIZE_QUOTA_MB:
+            required = Couchbase4App.MIN_RAMSIZE_QUOTA_MB - data_quota_mb
+            raise TroveError(_("Not enough memory for Couchbase services. "
+                               "Additional %dMB is required.") % required)
+
+        return data_quota_mb, index_quota_mb
