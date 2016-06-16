@@ -415,6 +415,28 @@ class PerconaUserActionsRunner(MysqlUserActionsRunner):
 
 class CouchbaseUserActionsRunner(UserActionsRunner):
 
+    # Couchbase supports only one user per instance.
+    # Since we have already created the helper user, we need to
+    # delete it before and re-create after the tests.
+
+    def run_users_create(self, expected_http_code=202):
+        _, user_def, _ = self.build_helper_defs()
+        self.report.log("Deleting the helper user before proceeding.")
+        self.assert_user_delete(self.instance_info.id, user_def, None)
+        self.report.log("The helper user has been removed. "
+                        "Creating the test user now.")
+        super(CouchbaseUserActionsRunner, self).run_users_create(
+            expected_http_code=expected_http_code)
+
+    def run_user_delete(self, expected_http_code=202):
+        self.report.log("Deleting the test user now.")
+        super(CouchbaseUserActionsRunner, self).run_user_delete(
+            expected_http_code=expected_http_code)
+        self.report.log("The test user has been removed. "
+                        "Re-creating the helper user now.")
+        self.create_test_helper_on_instance(self.instance_info.id)
+        self.report.log("The helper user has been created.")
+
     def run_user_attribute_update(self, expected_http_code=202):
         # Couchbase users cannot be renamed.
         # We only test changing the password here.
