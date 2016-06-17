@@ -70,7 +70,6 @@ class Manager(manager.Manager):
                    cluster_config, snapshot):
         """This is called from prepare in the base class."""
         self.app.install_if_needed(packages)
-        self.app.available_ram_mb = memory_mb
 
         if device_path:
             device = volume.VolumeDevice(device_path)
