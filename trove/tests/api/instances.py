@@ -277,7 +277,7 @@ class CreateInstanceQuotaTest(unittest.TestCase):
                                               quota_dict)
 
         set_quota = dbaas_admin.quota.show(self.test_info.user.tenant_id)
-        verify_quota = {q['resource']: q['limit'] for q in set_quota}
+        verify_quota = {q.resource: q.limit for q in set_quota}
 
         assert_equal(new_quotas['instances'], quota_dict['instances'])
         assert_equal(0, verify_quota['instances'])
