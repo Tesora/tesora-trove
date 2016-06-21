@@ -77,10 +77,6 @@ ADMIN_USER_NAME = 'os_admin'
 INSTANCE_OWNER = 'oracle'
 INSTANCE_OWNER_GROUP = 'oinstall'
 ORATAB_FILE = '/etc/oratab'
-ORACLE_HOME = CONF.get(MANAGER).oracle_home
-ORACLE_BASE = CONF.get(MANAGER).oracle_base
-DATA_DIR = CONF.get(MANAGER).mount_point
-FAST_RECOVERY_AREA = CONF.get(MANAGER).fast_recovery_area
 
 
 def run_sys_command(command, user=INSTANCE_OWNER, **kwargs):
@@ -166,11 +162,11 @@ class OracleVMCursor(service.OracleCursor, OracleVMClient):
 class OracleVMPaths(object):
     """Definitions of paths for the Oracle in-VM datastore."""
     oratab_file = ORATAB_FILE
-    oracle_home = ORACLE_HOME
-    oracle_base = ORACLE_BASE
-    fast_recovery_area = FAST_RECOVERY_AREA
-    data_dir = DATA_DIR
-    dbs_dir = path.join(ORACLE_HOME, 'dbs')
+    oracle_home = CONF.get(MANAGER).oracle_home
+    oracle_base = CONF.get(MANAGER).oracle_base
+    fast_recovery_area = CONF.get(MANAGER).fast_recovery_area
+    data_dir = CONF.get(MANAGER).mount_point
+    dbs_dir = path.join(oracle_home, 'dbs')
     os_pfile = path.join(dbs_dir, 'os_pfile.ora')
     os_spfile = path.join(dbs_dir, 'os_spfile.ora')
     backup_dir = path.join(data_dir, 'backupset_files')
