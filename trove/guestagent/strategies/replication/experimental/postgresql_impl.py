@@ -238,7 +238,7 @@ class PostgresqlReplicationStreaming(base.Replication):
            switch.
            """
         service.stop_db()
-        self._rewind_against_master()
+        self._rewind_against_master(service)
         service.start_db()
 
     def connect_to_master(self, service, snapshot):
