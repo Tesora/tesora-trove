@@ -91,5 +91,5 @@ class NewRelicLicenseDriver(module_driver.ModuleDriver):
         success_message=_('New Relic license key removed'),
         fail_message=_('New Relic license key not removed'))
     def remove(self, name, datastore, ds_version, data_file):
-        self._add_license_key("bad_key")
+        self._add_license_key("bad_key_that_is_exactly_40_characters_xx")
         self._server_control('stop')

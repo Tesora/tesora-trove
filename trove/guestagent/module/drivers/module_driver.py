@@ -186,8 +186,12 @@ def output(log_message=None, success_message=None,
                     success = True
                     message = success_msg
             except exception.ProcessExecutionError as ex:
-                message = (_("%(msg)s: %(err)s") %
-                           {'msg': fail_msg, 'err': ex.stderr})
+                message = (_("%(msg)s: %(out)s\n%(err)s") %
+                           {'msg': fail_msg,
+                            'out': ex.stdout,
+                            'err': ex.stderr})
+                message = message.replace(': \n', ': ')
+                message = message.rstrip()
                 LOG.exception(message)
             except exception.TroveError as ex:
                 message = (_("%(msg)s: %(err)s") %

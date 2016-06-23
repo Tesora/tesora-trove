@@ -72,6 +72,7 @@ class ModuleManager():
             message = ex.message
         finally:
             status = 'OK' if applied else 'ERROR'
+            result['removed'] = None
             result['status'] = status
             result['message'] = message
             result['updated'] = now
