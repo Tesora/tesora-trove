@@ -15,7 +15,6 @@
 #
 
 import os
-import re
 
 from oslo_log import log as logging
 from oslo_utils import netutils
@@ -211,11 +210,11 @@ class PostgresqlReplicationStreaming(base.Replication):
         """Call pg_rewind to resync datadir against state of new master
         We should already have a recovery.conf file in PGDATA
         """
-        rconf = operating_system.read_file(service.pgsql_recovery_config,
-                                           as_root=True)
-        regex = re.compile("primary_conninfo = (.*)")
-        m = regex.search(rconf)
-        conninfo = m.group(1)
+        rconf = operating_system.read_file(
+            service.pgsql_recovery_config,
+            codec=stream_codecs.KeyValueCodec(line_terminator='\n'),
+            as_root=True)
+        conninfo = rconf['primary_conninfo'].strip()
 
         # The recovery.conf file we want should already be there, but pg_rewind
         # will delete it, so copy it out first
@@ -224,6 +223,7 @@ class PostgresqlReplicationStreaming(base.Replication):
         operating_system.move(rec, tmprec, as_root=True)
 
         cmd_full = " ".join(["pg_rewind", "-D", service.pgsql_data_dir,
+                             '--source-pgdata=' + service.pgsql_data_dir,
                              '--source-server=' + conninfo])
         out, err = utils.execute("sudo", "su", "-", service.pgsql_owner,
                                  "-c", "%s" % cmd_full, check_exit_code=0)
