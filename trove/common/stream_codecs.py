@@ -443,7 +443,7 @@ class KeyValueCodec(StreamCodec):
                 v = re.sub('%s.*$' % self._comment_marker, '', v)
             if self._hidden_marker and v.startswith(self._hidden_marker):
                 continue
-            result[k] = v
+            result[k.strip()] = v
         return result
 
     def serialize_value(self, value):
