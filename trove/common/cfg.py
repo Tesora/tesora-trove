@@ -374,6 +374,7 @@ common_opts = [
                help='Seconds to wait between pushing events.'),
     cfg.DictOpt('notification_service_id',
                 default={'mysql': '2f3ff068-2bfb-4f70-9a9d-a6bb65bc084b',
+                         'mysql_ee': '6d7d0900-f453-4497-9ae6-47d282bd637c',
                          'percona': 'fd1723f5-68d2-409c-994f-a4a197892a17',
                          'pxc': '75a628c3-f81b-4ffb-b10a-4087c26bc854',
                          'redis': 'b216ffc5-1947-456c-a4cf-70f94c05f7d0',
@@ -623,6 +624,44 @@ mysql_opts = [
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
 ]
+
+# MySQL EE (mostly uses same options as MySQL community edition).
+# Extend the list of ignored keyspaces with MySQL-EE specific names.
+mysql_ee_group = cfg.OptGroup(
+    'mysql_ee', title='MySQL Enterprise Edition options',
+    help="Oslo option group designed for MySQL Enterprise Edition datastore")
+mysql_ee_opts = _update_options(
+    mysql_opts,
+    cfg.StrOpt('backup_strategy', default='MySqlBackup',
+               help='Default strategy to perform backups.',
+               deprecated_name='backup_strategy',
+               deprecated_group='DEFAULT'),
+    cfg.DictOpt('backup_incremental_strategy',
+                default={'MySqlBackup': 'MySqlBackupIncremental'},
+                help='Incremental Backup Runner based on the default '
+                     'strategy. For strategies that do not implement an '
+                     'incremental backup, the runner will use the default '
+                     'full backup.',
+                deprecated_name='backup_incremental_strategy',
+                deprecated_group='DEFAULT'),
+    cfg.StrOpt('backup_namespace',
+               default='trove.guestagent.strategies.backup.mysql_ee_impl',
+               help='Namespace to load backup strategies from.',
+               deprecated_name='backup_namespace',
+               deprecated_group='DEFAULT'),
+    cfg.StrOpt('restore_namespace',
+               default='trove.guestagent.strategies.restore.mysql_ee_impl',
+               help='Namespace to load restore strategies from.',
+               deprecated_name='restore_namespace',
+               deprecated_group='DEFAULT'),
+    cfg.StrOpt('backup_dir',
+               default='/tmp/mysqlbackup',
+               help='Default directory for mysqlbackup to store temp data.'),
+    cfg.StrOpt('replication_strategy', default='MysqlEEGTIDReplication',
+               help='Default strategy for replication.'),
+    cfg.StrOpt('replication_namespace',
+               default='trove.guestagent.strategies.replication.mysql_ee_gtid',
+               help='Namespace to load replication strategies from.'))
 
 # Oracle remote agent
 oracle_ra_group = cfg.OptGroup(
@@ -1745,13 +1784,13 @@ rpcapi_cap_opts = [
 ]
 
 CONF = cfg.CONF
-
 CONF.register_opts(path_opts)
 CONF.register_opts(common_opts)
 
 CONF.register_opts(database_opts, 'database')
 
 CONF.register_group(mysql_group)
+CONF.register_group(mysql_ee_group)
 CONF.register_group(oracle_ra_group)
 CONF.register_group(oracle_group)
 CONF.register_group(percona_group)
@@ -1771,6 +1810,7 @@ CONF.register_group(db2_group)
 CONF.register_group(mariadb_group)
 
 CONF.register_opts(mysql_opts, mysql_group)
+CONF.register_opts(mysql_ee_opts, mysql_ee_group)
 CONF.register_opts(oracle_ra_opts, oracle_ra_group)
 CONF.register_opts(oracle_opts, oracle_group)
 CONF.register_opts(percona_opts, percona_group)
