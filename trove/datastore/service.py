@@ -16,6 +16,7 @@
 #    under the License.
 #
 
+from trove.common import policy
 from trove.common import wsgi
 from trove.datastore import models, views
 from trove.flavor import views as flavor_views
@@ -24,7 +25,16 @@ from trove.volume_types import views as volume_type_view
 
 class DatastoreController(wsgi.Controller):
 
+    @classmethod
+    def authorize_request(cls, req, rule_name):
+        """Datastores are not owned by any particular tenant so we only check
+        the current tenant is allowed to perform the action.
+        """
+        context = req.environ[wsgi.CONTEXT_KEY]
+        policy.authorize_on_tenant(context, 'datastore:%s' % rule_name)
+
     def show(self, req, tenant_id, id):
+        self.authorize_request(req, 'show')
         datastore = models.Datastore.load(id)
         datastore_versions = (models.DatastoreVersions.load(datastore.id))
         return wsgi.Result(views.
@@ -32,6 +42,7 @@ class DatastoreController(wsgi.Controller):
                                          req).data(), 200)
 
     def index(self, req, tenant_id):
+        self.authorize_request(req, 'index')
         context = req.environ[wsgi.CONTEXT_KEY]
         only_active = True
         if context.is_admin:
@@ -43,17 +54,20 @@ class DatastoreController(wsgi.Controller):
                                           req).data(), 200)
 
     def version_show(self, req, tenant_id, datastore, id):
+        self.authorize_request(req, 'version_show')
         datastore = models.Datastore.load(datastore)
         datastore_version = models.DatastoreVersion.load(datastore, id)
         return wsgi.Result(views.DatastoreVersionView(datastore_version,
                                                       req).data(), 200)
 
     def version_show_by_uuid(self, req, tenant_id, uuid):
+        self.authorize_request(req, 'version_show_by_uuid')
         datastore_version = models.DatastoreVersion.load_by_uuid(uuid)
         return wsgi.Result(views.DatastoreVersionView(datastore_version,
                                                       req).data(), 200)
 
     def version_index(self, req, tenant_id, datastore):
+        self.authorize_request(req, 'version_index')
         context = req.environ[wsgi.CONTEXT_KEY]
         only_active = True
         if context.is_admin:
@@ -71,6 +85,7 @@ class DatastoreController(wsgi.Controller):
         one or more entries are found in datastore_version_metadata,
         in which case only those are returned.
         """
+        self.authorize_request(req, 'list_associated_flavors')
         context = req.environ[wsgi.CONTEXT_KEY]
         flavors = (models.DatastoreVersionMetadata.
                    list_datastore_version_flavor_associations(
@@ -84,6 +99,7 @@ class DatastoreController(wsgi.Controller):
         established in datastore_version_metadata, otherwise return
         that restricted set.
         """
+        self.authorize_request(req, 'list_associated_volume_types')
         context = req.environ[wsgi.CONTEXT_KEY]
         volume_types = (models.DatastoreVersionMetadata.
                         allowed_datastore_version_volume_types(
