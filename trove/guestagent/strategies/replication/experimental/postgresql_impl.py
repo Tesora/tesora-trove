@@ -236,6 +236,7 @@ class PostgresqlReplicationStreaming(base.Replication):
         operating_system.move(rec, tmprec, as_root=True)
 
         cmd_full = " ".join(["pg_rewind", "-D", self.app.pgsql_data_dir,
+                             '--source-pgdata=' + self.app.pgsql_data_dir,
                              '--source-server=' + conninfo])
         out, err = utils.execute("sudo", "su", "-", self.app.pgsql_owner,
                                  "-c", "%s" % cmd_full, check_exit_code=0)
