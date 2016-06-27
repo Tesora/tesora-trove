@@ -14,6 +14,7 @@
 #    under the License.
 #
 
+from distutils import spawn
 import glob
 import os
 import re
@@ -71,6 +72,18 @@ class MySQLRestoreMixin(object):
         except exception.PollTimeOut:
             raise exc
 
+    def _start_mysqld_with_init_file(self, init_file):
+        utils.execute_with_timeout('sudo', 'systemctl', 'set-environment',
+                                   'MYSQLD_OPTS="--init-file=%s"' %
+                                   init_file.name)
+        app = dbaas.MySqlApp(dbaas.MySqlAppStatus.get())
+        utils.execute_with_timeout(app.mysql_service['cmd_start'],
+                                   shell=True)
+        utils.execute_with_timeout(app.mysql_service['cmd_stop'],
+                                   shell=True)
+        utils.execute_with_timeout('sudo', 'systemctl', 'unset-environment',
+                                   'MYSQLD_OPTS')
+
     def _start_mysqld_safe_with_init_file(self, init_file, err_log_file):
         child = pexpect.spawn(
             "sudo mysqld_safe --init-file=%s --log-error=%s" %
@@ -117,6 +130,9 @@ class MySQLRestoreMixin(object):
                     base.RestoreError("Reset root password failed: "
                                       "mysqld did not stop!"))
 
+    def _mysqld_safe_cmd_exists(self):
+        return spawn.find_executable('mysqld_safe') is not None
+
     def reset_root_password(self):
         with tempfile.NamedTemporaryFile() as init_file:
             operating_system.write_file(init_file.name,
@@ -131,7 +147,16 @@ class MySQLRestoreMixin(object):
                 suffix=self._ERROR_LOG_SUFFIX,
                 delete=False)
             try:
-                self._start_mysqld_safe_with_init_file(init_file, err_log_file)
+                # As of MySQL 5.7.6, for MySQL installation using an RPM
+                # distribution, server startup and shutdown is managed by
+                # systemd on several Linux platforms. On these platforms,
+                # mysqld_safe is no longer installed because it is
+                # unnecessary.
+                if self._mysqld_safe_cmd_exists():
+                    self._start_mysqld_safe_with_init_file(
+                        init_file, err_log_file)
+                else:
+                    self._start_mysqld_with_init_file(init_file)
             finally:
                 err_log_file.close()
                 operating_system.remove(

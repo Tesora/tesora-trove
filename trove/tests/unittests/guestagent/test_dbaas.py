@@ -1296,6 +1296,22 @@ class MySqlAppTest(trove_testtools.TestCase):
 
     @patch.object(dbaas, 'get_engine',
                   return_value=MagicMock(name='get_engine'))
+    def test__wait_for_slave_status_perf_schema(self, *args):
+        mock_client = Mock()
+        mock_client.execute = Mock()
+        result = None
+        mock_client.execute.return_value.first = Mock(return_value=result)
+        self.mySqlApp._wait_for_slave_status('OFF', mock_client, 5)
+        args, _ = mock_client.execute.call_args_list[1]
+        expected = ("SELECT a.service_state, c.service_state"
+                    " FROM performance_schema.replication_applier_status a,"
+                    " performance_schema.replication_connection_status c"
+                    " WHERE a.channel_name = '' AND c.channel_name = '';")
+        self.assertEqual(expected, str(args[0]),
+                         "Sql statements are not the same")
+
+    @patch.object(dbaas, 'get_engine',
+                  return_value=MagicMock(name='get_engine'))
     @patch.object(utils, 'poll_until', side_effect=PollTimeOut)
     def test_fail__wait_for_slave_status(self, *args):
         self.assertRaisesRegexp(RuntimeError,
