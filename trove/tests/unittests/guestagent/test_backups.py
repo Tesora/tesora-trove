@@ -11,6 +11,7 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+import hashlib
 import mock
 import os
 
@@ -44,6 +45,14 @@ BACKUP_SQLDUMP_CLS = ("trove.guestagent.strategies.backup."
                       "mysql_impl.MySQLDump")
 RESTORE_SQLDUMP_CLS = ("trove.guestagent.strategies.restore."
                        "mysql_impl.MySQLDump")
+BACKUP_MYSQLEE_CLS = ("trove.guestagent.strategies.backup."
+                      "mysql_ee_impl.MySqlBackup")
+RESTORE_MYSQLEE_CLS = ("trove.guestagent.strategies.restore."
+                       "mysql_ee_impl.MySqlBackup")
+BACKUP_MYSQLEE_INCR_CLS = ("trove.guestagent.strategies.backup."
+                           "mysql_ee_impl.MySqlBackupIncremental")
+RESTORE_MYSQLEE_INCR_CLS = ("trove.guestagent.strategies.restore."
+                            "mysql_ee_impl.MySqlBackupIncremental")
 BACKUP_CBBACKUP_CLS = ("trove.guestagent.strategies.backup."
                        "experimental.couchbase_impl.CbBackup")
 RESTORE_CBBACKUP_CLS = ("trove.guestagent.strategies.restore."
@@ -124,6 +133,53 @@ DB2BACKUP_RESTORE = "sudo tar xPf -"
 
 COUCHDB_BACKUP_CMD = "sudo tar cpPf - /var/lib/couchdb"
 COUCHDB_RESTORE_CMD = "sudo tar xPf -"
+
+MYSQLEE_BACKUP_KEY = hashlib.sha256('default_aes_cbc_key').hexdigest()
+MYSQLEE_BACKUP_CMD = ("sudo mysqlbackup --with-timestamp --backup-image=-"
+                      " --backup_dir=/tmp/mysqlbackup --compress "
+                      " --user=os_admin --password='password'"
+                      "  backup-to-image 2>/tmp/mysqlbackup.log")
+MYSQLEE_BACKUP_ENCRYPT_CMD = ("sudo mysqlbackup --with-timestamp"
+                              " --backup-image=-"
+                              " --backup_dir=/tmp/mysqlbackup"
+                              " --compress --encrypt --key=%s"
+                              "  --user=os_admin --password='password'"
+                              "  backup-to-image 2>/tmp/mysqlbackup.log" %
+                              MYSQLEE_BACKUP_KEY)
+MYSQLEE_BACKUP_INCR_CMD = ("sudo mysqlbackup --incremental --start-lsn=54321"
+                           " --with-timestamp --backup-image=-"
+                           " --backup_dir=/tmp/mysqlbackup  --user=os_admin"
+                           " --password='password'"
+                           "  backup-to-image 2>/tmp/mysqlbackup.log | gzip")
+MYSQLEE_BACKUP_INCR_ENCRYPT_CMD = ("sudo mysqlbackup --incremental"
+                                   " --start-lsn=54321 --with-timestamp"
+                                   " --backup-image=-"
+                                   " --backup_dir=/tmp/mysqlbackup --encrypt"
+                                   " --key=%s  --user=os_admin"
+                                   " --password='password'"
+                                   "  backup-to-image 2>/tmp/mysqlbackup.log"
+                                   " | gzip" % MYSQLEE_BACKUP_KEY)
+MYSQLEE_RESTORE_CMD = ("sudo mysqlbackup --backup-image=-"
+                       " --backup-dir=/tmp/mysqlbackup"
+                       " --datadir=/var/lib/mysql/data --uncompress"
+                       " copy-back-and-apply-log 2>/tmp/mysqlrestore.log")
+MYSQLEE_RESTORE_DECRYPT_CMD = ("sudo mysqlbackup --backup-image=-"
+                               " --backup-dir=/tmp/mysqlbackup"
+                               " --datadir=/var/lib/mysql/data --uncompress"
+                               " --decrypt --key=%s"
+                               " copy-back-and-apply-log"
+                               " 2>/tmp/mysqlrestore.log" % MYSQLEE_BACKUP_KEY)
+MYSQLEE_RESTORE_INCR_CMD = ("sudo mysqlbackup --backup-image=- --incremental"
+                            " --incremental-backup-dir=/foo/bar/"
+                            " --datadir=/var/lib/mysql/data"
+                            " copy-back-and-apply-log 2>/tmp/mysqlrestore.log")
+MYSQLEE_RESTORE_INCR_DECRYPT_CMD = ("sudo mysqlbackup --backup-image=-"
+                                    " --incremental"
+                                    " --incremental-backup-dir=/foo/bar/"
+                                    " --datadir=/var/lib/mysql/data --decrypt"
+                                    " --key=%s copy-back-and-apply-log"
+                                    " 2>/tmp/mysqlrestore.log" %
+                                    MYSQLEE_BACKUP_KEY)
 
 
 class GuestAgentBackupTest(trove_testtools.TestCase):
@@ -341,6 +397,70 @@ class GuestAgentBackupTest(trove_testtools.TestCase):
                             location="filename", checksum="md5")
         self.assertEqual(DECRYPT + PIPE + UNZIP + PIPE + CBBACKUP_RESTORE,
                          restr.restore_cmd)
+
+    def test_backup_mysqlee_command(self):
+        backupBase.BackupRunner.is_encrypted = False
+        RunnerClass = utils.import_class(BACKUP_MYSQLEE_CLS)
+        bkup = RunnerClass(12345, extra_opts="")
+        self.assertEqual(MYSQLEE_BACKUP_CMD, bkup.command)
+        self.assertEqual("12345.gz", bkup.manifest)
+
+    def test_backup_encrypted_mysqlee_command(self):
+        backupBase.BackupRunner.encrypt_key = CRYPTO_KEY
+        RunnerClass = utils.import_class(BACKUP_MYSQLEE_CLS)
+        bkup = RunnerClass(12345, extra_opts="")
+        self.assertEqual(MYSQLEE_BACKUP_ENCRYPT_CMD,
+                         bkup.command)
+        self.assertEqual("12345.gz.enc", bkup.manifest)
+
+    def test_backup_mysqlee_incremental(self):
+        backupBase.BackupRunner.is_encrypted = False
+        RunnerClass = utils.import_class(BACKUP_MYSQLEE_INCR_CLS)
+        expected = MYSQLEE_BACKUP_INCR_CMD
+        bkup = RunnerClass(12345, extra_opts="", lsn="54321")
+        self.assertEqual(expected, bkup.command)
+        self.assertEqual("12345.gz", bkup.manifest)
+
+    def test_backup_encrypted_mysqlee_incremental(self):
+        backupBase.BackupRunner.encrypt_key = CRYPTO_KEY
+        RunnerClass = utils.import_class(BACKUP_MYSQLEE_INCR_CLS)
+        expected = MYSQLEE_BACKUP_INCR_ENCRYPT_CMD
+        bkup = RunnerClass(12345, extra_opts="", lsn="54321")
+        self.assertEqual(expected, bkup.command)
+        self.assertEqual("12345.gz.enc", bkup.manifest)
+
+    def test_restore_mysqlee_command(self):
+        restoreBase.RestoreRunner.is_encrypted = False
+        RunnerClass = utils.import_class(RESTORE_MYSQLEE_CLS)
+        restr = RunnerClass(None, restore_location="/var/lib/mysql/data",
+                            location="filename", checksum="md5")
+        self.assertEqual(MYSQLEE_RESTORE_CMD, restr.restore_cmd)
+
+    def test_restore_encrypted_mysqlee_command(self):
+        restoreBase.RestoreRunner.decrypt_key = CRYPTO_KEY
+        RunnerClass = utils.import_class(RESTORE_MYSQLEE_CLS)
+        restr = RunnerClass(None, restore_location="/var/lib/mysql/data",
+                            location="filename", checksum="md5")
+        self.assertEqual(MYSQLEE_RESTORE_DECRYPT_CMD,
+                         restr.restore_cmd)
+
+    def test_restore_mysqlee_incremental_command(self):
+        restoreBase.RestoreRunner.is_encrypted = False
+        RunnerClass = utils.import_class(RESTORE_MYSQLEE_INCR_CLS)
+        restr = RunnerClass(None, restore_location="/var/lib/mysql/data",
+                            location="filename", checksum="m5d")
+        expected = UNZIP + PIPE + MYSQLEE_RESTORE_INCR_CMD
+        observed = restr._incremental_restore_cmd('/foo/bar/')
+        self.assertEqual(expected, observed)
+
+    def test_restore_encrypted_mysqlee_incremental_command(self):
+        restoreBase.RestoreRunner.decrypt_key = CRYPTO_KEY
+        RunnerClass = utils.import_class(RESTORE_MYSQLEE_INCR_CLS)
+        restr = RunnerClass(None, restore_location="/var/lib/mysql/data",
+                            location="filename", checksum="md5")
+        expected = UNZIP + PIPE + MYSQLEE_RESTORE_INCR_DECRYPT_CMD
+        observed = restr._incremental_restore_cmd('/foo/bar/')
+        self.assertEqual(expected, observed)
 
     @patch.multiple('trove.guestagent.common.operating_system',
                     chmod=DEFAULT, remove=DEFAULT)

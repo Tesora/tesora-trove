@@ -36,6 +36,7 @@ from trove.guestagent.strategies.backup.experimental import couchbase_impl
 from trove.guestagent.strategies.backup.experimental import db2_impl
 from trove.guestagent.strategies.backup.experimental import mongo_impl
 from trove.guestagent.strategies.backup.experimental import redis_impl
+from trove.guestagent.strategies.backup import mysql_ee_impl
 from trove.guestagent.strategies.backup import mysql_impl
 from trove.guestagent.strategies.backup.mysql_impl import MySqlApp
 from trove.guestagent.strategies.restore.base import RestoreRunner
@@ -245,6 +246,26 @@ class BackupAgentTest(trove_testtools.TestCase):
         self.assertIsNotNone(inno_backup_ex.manifest)
         str_innobackup_manifest = 'innobackupex.xbstream.gz.enc'
         self.assertEqual(str_innobackup_manifest, inno_backup_ex.manifest)
+
+    def test_backup_impl_MySqlBackup(self):
+        """This test is for
+           guestagent/strategies/backup/mysql_ee_impl
+        """
+        mysql_backup = mysql_ee_impl.MySqlBackup('mysqlbackup', extra_opts='')
+        self.assertIsNotNone(mysql_backup.cmd)
+        key = hashlib.sha256('default_aes_cbc_key').hexdigest()
+        str_mysqlbackup_cmd = ("sudo mysqlbackup --with-timestamp"
+                               " --backup-image=-"
+                               " --backup_dir=/tmp/mysqlbackup"
+                               " --compress --encrypt"
+                               " --key=" + key +
+                               " %(extra_opts)s --user=os_admin"
+                               " --password='123'  backup-to-image"
+                               " 2>/tmp/mysqlbackup.log")
+        self.assertEqual(str_mysqlbackup_cmd, mysql_backup.cmd)
+        self.assertIsNotNone(mysql_backup.manifest)
+        str_mysqlbackup_manifest = 'mysqlbackup.gz.enc'
+        self.assertEqual(str_mysqlbackup_manifest, mysql_backup.manifest)
 
     @patch.object(CouchbaseApp, 'get_password', return_value='password')
     def test_backup_impl_CbBackup(self, _):
