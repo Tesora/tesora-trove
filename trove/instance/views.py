@@ -17,6 +17,7 @@ from oslo_log import log as logging
 
 from trove.common import cfg
 from trove.common.views import create_links
+from trove.common import wsgi
 from trove.instance import models
 
 LOG = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ class InstanceView(object):
     def __init__(self, instance, req=None):
         self.instance = instance
         self.req = req
+        self.context = req.environ[wsgi.CONTEXT_KEY]
 
     def data(self):
         instance_dict = {
@@ -127,6 +129,12 @@ class InstanceDetailView(InstanceView):
 
         if self.instance.shard_id:
             result['instance']['shard_id'] = self.instance.shard_id
+
+        if self.context.is_admin:
+            if self.instance.server_id:
+                result['instance']['server_id'] = self.instance.server_id
+            if self.instance.volume_support and self.instance.volume_id:
+                result['instance']['volume_id'] = self.instance.volume_id
 
         return result
 
