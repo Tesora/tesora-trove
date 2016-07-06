@@ -60,8 +60,9 @@ import trove.guestagent.strategies.restore.mysql_impl as mysql_restore
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
-MYSQL_BACKUP_DIR = cfg.get_configuration_property('backup_dir')
-MYSQL_DATA_DIR = '%s/data' % cfg.get_configuration_property('mount_point')
+MANAGER = 'mysql_ee'
+MYSQL_BACKUP_DIR = CONF.get(MANAGER).backup_dir
+MYSQL_DATA_DIR = '%s/data' % CONF.get(MANAGER).mount_point
 RESTORE_LOG = '/tmp/mysqlrestore.log'
 BACKUP_KEY = hashlib.sha256(CONF.backup_aes_cbc_key).hexdigest()
 
@@ -73,14 +74,18 @@ class MySqlBackup(mysql_restore.InnoBackupEx):
     def __init__(self, *args, **kwargs):
         self._app = None
         super(MySqlBackup, self).__init__(*args, **kwargs)
-        self.restore_cmd = ('sudo mysqlbackup --backup-image=-'
-                            ' --backup-dir=%(bkp_dir)s '
-                            ' --datadir=%(data_dir)s --uncompress --decrypt'
-                            ' --key=%(key)s copy-back-and-apply-log'
-                            ' 2>%(restore_log)s' %
+        self.decrypt_param = (' --decrypt --key=%s' % BACKUP_KEY
+                              if self.is_encrypted else '')
+        self.uncompress_param = (' --uncompress' if self.is_zipped else '')
+        self.restore_cmd = (('sudo mysqlbackup --backup-image=-'
+                             ' --backup-dir=%(bkp_dir)s'
+                             ' --datadir=%(data_dir)s' +
+                             self.uncompress_param +
+                             self.decrypt_param +
+                             ' copy-back-and-apply-log'
+                             ' 2>%(restore_log)s') %
                             {'bkp_dir': MYSQL_BACKUP_DIR,
                              'data_dir': MYSQL_DATA_DIR,
-                             'key': BACKUP_KEY,
                              'restore_log': RESTORE_LOG})
 
     def check_process(self):
@@ -118,14 +123,14 @@ class MySqlBackupIncremental(mysql_restore.InnoBackupExIncremental,
 
     def _incremental_restore_cmd(self, incremental_dir):
         """Return a command for a restore with a incremental location."""
-        cmd = ('sudo mysqlbackup --backup-image=-'
-               ' --incremental --incremental-backup-dir=%(bkp_dir)s'
-               ' --datadir=%(data_dir)s --decrypt'
-               ' --key=%(key)s copy-back-and-apply-log'
-               ' 2>%(restore_log)s' %
+        cmd = (('sudo mysqlbackup --backup-image=-'
+                ' --incremental --incremental-backup-dir=%(bkp_dir)s'
+                ' --datadir=%(data_dir)s' +
+                self.decrypt_param +
+                ' copy-back-and-apply-log'
+                ' 2>%(restore_log)s') %
                {'bkp_dir': incremental_dir,
                 'data_dir': MYSQL_DATA_DIR,
-                'key': BACKUP_KEY,
                 'restore_log': RESTORE_LOG})
         return self.unzip_cmd + cmd
 

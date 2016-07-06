@@ -60,13 +60,17 @@ import trove.guestagent.strategies.backup.mysql_impl as mysql_backup
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
-MYSQL_BACKUP_DIR = cfg.get_configuration_property('backup_dir')
+MANAGER = 'mysql_ee'
+MYSQL_BACKUP_DIR = CONF.get(MANAGER).backup_dir
 
 
 class MySqlBackup(mysql_backup.InnoBackupEx):
     """Implementation of full backup strategy for mysqlbackup."""
     __strategy_name__ = 'mysqlbackup'
     log_file_path = '/tmp/mysqlbackup.log'
+    encrypt_param = ' --encrypt --key=%s' % hashlib.sha256(
+        CONF.backup_aes_cbc_key).hexdigest()
+    compress_param = ' --compress'
 
     @property
     def cmd(self):
@@ -78,10 +82,10 @@ class MySqlBackup(mysql_backup.InnoBackupEx):
         cmd = ("sudo mysqlbackup"
                " --with-timestamp"
                " --backup-image=-"
-               " --compress --encrypt"
-               " --backup_dir=%(bkp_dir)s"
-               " --key=%(bkp_key)s"
-               " %(extra_opts)s " +
+               " --backup_dir=%(bkp_dir)s" +
+               (self.compress_param if self.is_zipped else '') +
+               (self.encrypt_param if self.is_encrypted else '') +
+               " %(extra_opts)s" +
                self.user_and_pass +
                " backup-to-image"
                " 2>%(log_path)s") % args
@@ -139,13 +143,14 @@ class MySqlBackupIncremental(MySqlBackup):
                " --incremental --start-lsn=%(lsn)s"
                " --with-timestamp"
                " --backup-image=-"
-               " --encrypt"
-               " --backup_dir=%(bkp_dir)s"
-               " --key=%(bkp_key)s"
-               " %(extra_opts)s " +
+               " --backup_dir=%(bkp_dir)s" +
+               (self.encrypt_param if self.is_encrypted else '') +
+               " %(extra_opts)s" +
                self.user_and_pass +
                " backup-to-image"
                " 2>%(log_path)s") % args
+        # MySql Enterprise Backup do not natively support compression of
+        # incremental backups
         return cmd + self.zip_cmd
 
     def metadata(self):
