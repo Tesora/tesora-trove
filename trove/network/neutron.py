@@ -18,6 +18,7 @@ from neutronclient.common import exceptions as neutron_exceptions
 from oslo_log import log as logging
 
 from trove.common import exception
+from trove.common.i18n import _
 from trove.common import remote
 from trove.network import base
 
@@ -142,3 +143,161 @@ class NeutronDriver(base.NetworkDriver):
         nova_rule['group_id'] = rule['remote_group_id']
         nova_rule['cidr'] = rule.get('remote_ip_prefix')
         return NovaNetworkStruct(**nova_rule)
+
+    @property
+    def subnet_support(self):
+        return True
+
+    def get_network_by_id(self, network_id):
+        try:
+            return self.client.show_network(network_id)['network']
+        except neutron_exceptions.NeutronClientException as e:
+            LOG.exception(_("Failed to get network "
+                            "{id}").format(id=network_id))
+            raise exception.TroveError(str(e))
+
+    def list_networks(self):
+        try:
+            return self.client.list_networks()['networks']
+        except neutron_exceptions.NeutronClientException as e:
+            LOG.exception(_("Failed to get networks list"))
+            raise exception.TroveError(str(e))
+
+    def create_network(self, network_name, **kwargs):
+        try:
+            body = {'network': {'name': network_name, 'admin_state_up': True}}
+            body['network'].update(kwargs)
+            return self.client.create_network(body=body)['network']
+        except neutron_exceptions.NeutronClientException as e:
+            LOG.exception(_("Failed to create network "
+                            "{name}").format(name=network_name))
+            raise exception.TroveError(str(e))
+
+    def delete_network(self, network_id):
+        try:
+            return self.client.delete_network(network_id)
+        except neutron_exceptions.NeutronClientException as e:
+            LOG.exception(_("Failed to delete network "
+                            "{id}").format(id=network_id))
+            raise exception.TroveError(str(e))
+
+    def get_subnet_by_id(self, subnet_id):
+        try:
+            return self.client.show_subnet(subnet_id)['subnet']
+        except neutron_exceptions.NeutronClientException as e:
+            LOG.exception(_("Failed to get subnet {id}").format(id=subnet_id))
+            raise exception.TroveError(str(e))
+
+    def list_subnets(self):
+        try:
+            return self.client.list_subnets()['subnets']
+        except neutron_exceptions.NeutronClientException as e:
+            LOG.exception(_("Failed to get subnets list"))
+            raise exception.TroveError(str(e))
+
+    def create_subnet(self, network_id, **kwargs):
+        try:
+            body = {'subnet': {'network_id': network_id}}
+            body['subnet'].update(kwargs)
+            return self.client.create_subnet(body=body)['subnet']
+        except neutron_exceptions.NeutronClientException as e:
+            LOG.exception(_("Failed to create subnet on network "
+                            "{id}").format(id=network_id))
+            raise exception.TroveError(str(e))
+
+    def update_subnet(self, subnet_id, **kwargs):
+        try:
+            body = {'subnet': dict()}
+            body['subnet'].update(kwargs)
+            return self.client.update_subnet(subnet_id, body=body)['subnet']
+        except neutron_exceptions.NeutronClientException as e:
+            LOG.exception(_("Failed to update subnet "
+                            "{id}").format(id=subnet_id))
+            raise exception.TroveError(str(e))
+
+    def delete_subnet(self, subnet_id):
+        try:
+            return self.client.delete_subnet(subnet_id)
+        except neutron_exceptions.NeutronClientException as e:
+            LOG.exception(_("Failed to delete subnet "
+                            "{id}").format(id=subnet_id))
+            raise exception.TroveError(str(e))
+
+    def get_subnetpool_by_id(self, subnetpool_id):
+        try:
+            return self.client.show_subnetpool(subnetpool_id)['subnetpool']
+        except neutron_exceptions.NeutronClientException as e:
+            LOG.exception(_("Failed to get subnet pool "
+                            "{id}").format(id=subnetpool_id))
+            raise exception.TroveError(str(e))
+
+    def list_ports(self):
+        try:
+            return self.client.list_ports()['ports']
+        except neutron_exceptions.NeutronClientException as e:
+            LOG.exception(_("Failed to get ports list"))
+            raise exception.TroveError(str(e))
+
+    def create_port(self, network_id, **kwargs):
+        try:
+            body = {'port': {'network_id': network_id}}
+            body['port'].update(kwargs)
+            return self.client.create_port(body=body)['port']
+        except neutron_exceptions.NeutronClientException as e:
+            LOG.exception(_("Failed to create port on network "
+                            "{id}").format(id=network_id))
+            raise exception.TroveError(str(e))
+
+    def update_port(self, port_id, **kwargs):
+        try:
+            body = {'port': dict()}
+            body['port'].update(kwargs)
+            return self.client.update_port(port_id, body=body)['port']
+        except neutron_exceptions.NeutronClientException as e:
+            LOG.exception(_("Failed to update port {id}").format(id=port_id))
+            raise exception.TroveError(str(e))
+
+    def delete_port(self, port_id):
+        try:
+            return self.client.delete_port(port_id)
+        except neutron_exceptions.NeutronClientException as e:
+            LOG.exception(_("Failed to delete port {id}").format(id=port_id))
+            raise exception.TroveError(str(e))
+
+    def get_router_by_id(self, router_id):
+        try:
+            return self.client.show_router(router_id)['router']
+        except neutron_exceptions.NeutronClientException as e:
+            LOG.exception(_("Failed to get router {id}").format(id=router_id))
+            raise exception.TroveError(str(e))
+
+    def connect_subnet_to_router(self, router_id, subnet_id):
+        try:
+            return self.client.add_interface_router(
+                router_id, body={'subnet_id': subnet_id})
+        except neutron_exceptions.NeutronClientException as e:
+            LOG.exception(_("Failed to connect subnet {subnet} to router "
+                            "{router}").format(subnet=subnet_id,
+                                               router=router_id))
+            raise exception.TroveError(str(e))
+
+    def disconnect_subnet_from_router(self, router_id, subnet_id):
+        try:
+            return self.client.remove_interface_router(
+                router_id, body={'subnet_id': subnet_id})
+        except neutron_exceptions.NeutronClientException as e:
+            LOG.exception(_("Failed to disconnect subnet {subnet} from router "
+                            "{router}").format(subnet=subnet_id,
+                                               router=router_id))
+            raise exception.TroveError(str(e))
+
+    def create_security_group_rule(self, secgroup_id, **kwargs):
+        try:
+            body = {'security_group_rule': {'security_group_id': secgroup_id}}
+            body['security_group_rule'].update(kwargs)
+            return self.client.create_security_group_rule(
+                body=body)['security_group_rule']
+        except neutron_exceptions.NeutronClientException as e:
+            LOG.exception(_("Failed to create security group rule for group "
+                            "{id}").format(id=secgroup_id))
+            raise exception.TroveError(str(e))
