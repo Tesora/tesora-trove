@@ -260,6 +260,32 @@ class InstanceCreateRunner(TestRunner):
         self.assert_client_code(expected_http_code)
         self.error2_inst_id = inst.id
 
+    def run_create_build_error_instance(self, expected_states=['BUILD'],
+                                        expected_http_code=200):
+        if self.is_using_existing_instance:
+            raise SkipTest("Using an existing instance.")
+
+        name = self.instance_info.name + '_build'
+        flavor = self._get_instance_flavor()
+        volume_size = CONFIG.get('trove_volume_size', 1)
+
+        inst = self.assert_instance_create(
+            name, flavor, volume_size, [], [], None, None,
+            CONFIG.dbaas_datastore, CONFIG.dbaas_datastore_version,
+            expected_states, expected_http_code, create_helper_user=False)
+        self.assert_client_code(expected_http_code)
+        self.build_inst_id = inst.id
+
+    def run_wait_for_build_instance(self, expected_states=['BUILD']):
+        if self.build_inst_id:
+            self.assert_all_instance_states([self.build_inst_id],
+                                            expected_states)
+
+    def run_delete_build_instance(self, expected_http_code=202):
+        if self.build_inst_id:
+            self.auth_client.instances.force_delete(self.build_inst_id)
+            self.assert_client_code(expected_http_code)
+
     def run_wait_for_error_instances(self, expected_states=['ERROR']):
         error_ids = []
         if self.error_inst_id:

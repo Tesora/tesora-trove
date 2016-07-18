@@ -86,6 +86,7 @@ class InstanceController(wsgi.Controller):
             'promote_to_replica_source':
             self._action_promote_to_replica_source,
             'eject_replica_source': self._action_eject_replica_source,
+            'reset_status': self._action_reset_status,
         }
         selected_action = None
         action_name = None
@@ -161,6 +162,17 @@ class InstanceController(wsgi.Controller):
                                                                  request=req)
         with StartNotification(context, instance_id=instance.id):
             instance.eject_replica_source()
+        return wsgi.Result(None, 202)
+
+    def _action_reset_status(self, context, req, instance, body):
+        context.notification = notification.DBaaSInstanceResetStatus(
+            context, request=req)
+        with StartNotification(context, instance_id=instance.id):
+            instance.reset_status()
+
+            LOG.debug("Failing backups for instance %s." % instance.id)
+            backup_model.fail_for_instance(instance.id)
+
         return wsgi.Result(None, 202)
 
     def index(self, req, tenant_id):
