@@ -21,8 +21,8 @@ from trove.cluster.tasks import ClusterTasks
 from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
-from trove.common.notification import DBaaSClusterGrow, DBaaSClusterShrink, \
-    DBaaSClusterResetStatus
+from trove.common.notification import (DBaaSClusterGrow, DBaaSClusterShrink,
+                                       DBaaSClusterResetStatus)
 from trove.common.notification import StartNotification
 from trove.common import remote
 from trove.common import server_group as srv_grp

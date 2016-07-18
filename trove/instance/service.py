@@ -84,7 +84,6 @@ class InstanceController(wsgi.Controller):
         if not body:
             raise exception.BadRequest(_("Invalid request body."))
         context = req.environ[wsgi.CONTEXT_KEY]
-        instance = models.Instance.load(context, id)
         _actions = {
             'restart': self._action_restart,
             'resize': self._action_resize,
@@ -104,6 +103,10 @@ class InstanceController(wsgi.Controller):
                      "instance %(instance_id)s for tenant '%(tenant_id)s'"),
                  {'action_name': action_name, 'instance_id': id,
                   'tenant_id': tenant_id})
+        needs_server = True
+        if action_name in ['reset_status']:
+            needs_server = False
+        instance = models.Instance.load(context, id, needs_server=needs_server)
         return selected_action(context, req, instance, body)
 
     def _action_restart(self, context, req, instance, body):

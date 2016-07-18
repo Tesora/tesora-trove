@@ -312,6 +312,10 @@ class SimpleInstance(object):
         if self.db_info.task_status.is_error:
             return InstanceStatus.ERROR
 
+        # If we've reset the status, show it as an error
+        if tr_instance.ServiceStatuses.UNKNOWN == self.datastore_status.status:
+            return InstanceStatus.ERROR
+
         # Check for taskmanager status.
         action = self.db_info.task_status.action
         if 'BUILDING' == action:
@@ -622,8 +626,9 @@ class BaseInstance(SimpleInstance):
     def delete(self):
         def _delete_resources():
             if self.is_building:
-                raise exception.UnprocessableEntity("Instance %s is not ready."
-                                                    % self.id)
+                raise exception.UnprocessableEntity(
+                    "Instance %s is not ready. (Status is %s)." %
+                    (self.id, self.status))
             LOG.debug("Deleting instance with compute id = %s.",
                       self.db_info.compute_instance_id)
 
@@ -748,7 +753,7 @@ class BaseInstance(SimpleInstance):
 
     def reset_status(self):
         if self.is_building or self.is_error:
-            LOG.info(_LI("Resetting the status to NONE on instance %s."),
+            LOG.info(_LI("Resetting the status to ERROR on instance %s."),
                      self.id)
             self.reset_task_status()
 
@@ -769,8 +774,8 @@ class FreshInstance(BaseInstance):
 
 class BuiltInstance(BaseInstance):
     @classmethod
-    def load(cls, context, id):
-        return load_instance(cls, context, id, needs_server=True)
+    def load(cls, context, id, needs_server=True):
+        return load_instance(cls, context, id, needs_server=needs_server)
 
 
 class Instance(BuiltInstance):
