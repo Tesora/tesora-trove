@@ -38,7 +38,8 @@ class MariaDBApp(galera_service.GaleraApp):
         return {
             operating_system.DEBIAN: service_candidates,
             operating_system.REDHAT: ["mariadb"],
-            operating_system.SUSE: service_candidates
+            operating_system.SUSE: service_candidates,
+            operating_system.ORACLE: ["mariadb"],
         }[self.OS]
 
     @property

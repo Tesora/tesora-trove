@@ -69,7 +69,8 @@ INCLUDE_MARKER_OPERATORS = {
 OS_NAME = operating_system.get_os()
 MYSQL_CONFIG = {operating_system.REDHAT: "/etc/my.cnf",
                 operating_system.DEBIAN: "/etc/mysql/my.cnf",
-                operating_system.SUSE: "/etc/my.cnf"}[OS_NAME]
+                operating_system.SUSE: "/etc/my.cnf",
+                operating_system.ORACLE: "/etc/my.cnf"}[OS_NAME]
 MYSQL_BIN_CANDIDATES = ["/usr/sbin/mysqld", "/usr/libexec/mysqld"]
 MYSQL_OWNER = 'mysql'
 CNF_EXT = 'cnf'

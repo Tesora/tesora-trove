@@ -83,7 +83,8 @@ class EDBApp(community_service.PgSqlApp):
         return {
             operating_system.DEBIAN: '/etc/postgresql/',
             operating_system.REDHAT: '/var/lib/ppas/',
-            operating_system.SUSE: '/var/lib/pgsql/'
+            operating_system.SUSE: '/var/lib/pgsql/',
+            operating_system.ORACLE: '/var/lib/ppas/'
         }[self.OS]
 
     @property
@@ -91,7 +92,8 @@ class EDBApp(community_service.PgSqlApp):
         return {
             operating_system.DEBIAN: '/usr/lib/postgresql/%s/bin/',
             operating_system.REDHAT: '/usr/ppas-%s/bin/',
-            operating_system.SUSE: '/usr/bin/'
+            operating_system.SUSE: '/usr/bin/',
+            operating_system.ORACLE: '/usr/ppas-%s/bin/'
         }[self.OS] % self.pg_version[1]
 
     def secure(self, context):

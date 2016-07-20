@@ -103,7 +103,8 @@ class PgSqlApp(object):
         return {
             operating_system.DEBIAN: '/usr/lib/postgresql/%s/bin/',
             operating_system.REDHAT: '/usr/pgsql-%s/bin/',
-            operating_system.SUSE: '/usr/bin/'
+            operating_system.SUSE: '/usr/bin/',
+            operating_system.ORACLE: '/usr/pgsql-%s/bin/'
         }[self.OS] % self.pg_version[1]
 
     @property
@@ -130,7 +131,8 @@ class PgSqlApp(object):
         return {
             operating_system.DEBIAN: '/etc/postgresql/',
             operating_system.REDHAT: '/var/lib/postgresql/',
-            operating_system.SUSE: '/var/lib/pgsql/'
+            operating_system.SUSE: '/var/lib/pgsql/',
+            operating_system.ORACLE: '/var/lib/postgresql/'
         }[self.OS]
 
     @property
@@ -542,7 +544,7 @@ class PgSqlApp(object):
     def save_files_pre_upgrade(self, mount_point):
         LOG.debug('Saving files pre-upgrade.')
         mnt_etc_dir = os.path.join(mount_point, 'save_etc')
-        if self.OS != operating_system.REDHAT:
+        if self.OS not in [operating_system.REDHAT, operating_system.ORACLE]:
             # No need to store the config files away for Redhat because
             # they are already stored in the data volume.
             operating_system.remove(mnt_etc_dir, force=True, as_root=True)
@@ -552,7 +554,7 @@ class PgSqlApp(object):
 
     def restore_files_post_upgrade(self, upgrade_info):
         LOG.debug('Restoring files post-upgrade.')
-        if self.OS != operating_system.REDHAT:
+        if self.OS not in [operating_system.REDHAT, operating_system.ORACLE]:
             # No need to restore the config files for Redhat because
             # they are already in the data volume.
             operating_system.copy('%s/.' % upgrade_info['save_etc'],

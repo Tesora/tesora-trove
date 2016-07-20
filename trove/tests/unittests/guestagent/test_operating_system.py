@@ -926,8 +926,16 @@ class TestOperatingSystem(trove_testtools.TestCase):
             find_os = operating_system.get_os()
         self.assertEqual('suse', find_os)
 
+    def test_get_os_oracle(self):
+        with patch.object(os.path, 'isfile', side_effect=[False, False, True]):
+            find_os = operating_system.get_os()
+        self.assertEqual('oracle', find_os)
+
     def test_get_os_debian(self):
-        with patch.object(os.path, 'isfile', side_effect=[False, False]):
+        with patch.object(os.path, 'isfile', side_effect=[False,
+                                                          False,
+                                                          False,
+                                                          True]):
             find_os = operating_system.get_os()
         self.assertEqual('debian', find_os)
 
