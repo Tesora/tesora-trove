@@ -13,8 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import time
-
 from oslo_log import log as logging
 
 from trove.guestagent.datastore.experimental.cassandra import (
@@ -38,18 +36,6 @@ class Cassandra3App(community_service.CassandraApp):
         updates = {'role_manager': 'CassandraRoleManager',
                    'listen_on_broadcast_address': False}
         self.configuration_manager.apply_system_override(updates)
-
-    def secure(self, update_user=None, password=None):
-
-        # There is an error raised from the server on executing ALTER USER
-        # command before 'role_manager' (Cassandra > 2.1) is properly
-        # initialized.
-        # Sleep here for 5s to allow the 'role_manager' to initiliaze.
-        LOG.debug('Waiting for the Role Manager to initialize.')
-        time.sleep(5)
-
-        return super(Cassandra3App, self).secure(
-            update_user=update_user, password=password)
 
     def _reset_user_password_to_default(self, username):
         LOG.debug("Resetting the password of user '%s' to '%s'."
