@@ -42,6 +42,7 @@ from trove.common import utils
 REDHAT = 'redhat'
 DEBIAN = 'debian'
 SUSE = 'suse'
+ORACLE = 'oracle'
 
 # A newline character for writing into text files (default).
 # Do not use 'os.linesep' when writing files in the text mode.
@@ -350,6 +351,8 @@ def get_os():
         return REDHAT
     elif os.path.isfile("/etc/SuSE-release"):
         return SUSE
+    elif os.path.isfile("/etc/oracle-release"):
+        return ORACLE
     else:
         return DEBIAN
 
@@ -843,13 +846,16 @@ def get_package_command():
 
     pkg_cmd = {REDHAT: "rpm",
                DEBIAN: "dpkg",
-               SUSE: "rpm"}[os_name]
+               SUSE: "rpm",
+               ORACLE: "rpm"}[os_name]
     install_options = {REDHAT: ["-i"],
                        DEBIAN: ["-i"],
-                       SUSE: ["-i"]}[os_name]
+                       SUSE: ["-i"],
+                       ORACLE: ["-i"]}[os_name]
     uninstall_options = {REDHAT: ["-ev"],
                          DEBIAN: ["-r"],
-                         SUSE: ["-ev"]}[os_name]
+                         SUSE: ["-ev"],
+                         ORACLE: ["-ev"]}[os_name]
     return pkg_cmd, install_options, uninstall_options
 
 

@@ -102,7 +102,8 @@ class CassandraApp(object):
         return {
             operating_system.REDHAT: "/etc/cassandra/default.conf/",
             operating_system.DEBIAN: "/etc/cassandra/",
-            operating_system.SUSE: "/etc/cassandra/default.conf/"
+            operating_system.SUSE: "/etc/cassandra/default.conf/",
+            operating_system.ORACLE: "/etc/cassandra/default.conf/"
         }[operating_system.get_os()]
 
     @property
