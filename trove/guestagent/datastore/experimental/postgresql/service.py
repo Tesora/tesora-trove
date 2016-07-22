@@ -26,7 +26,6 @@ from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance
-from trove.common import pagination
 from trove.common.stream_codecs import PropertiesCodec
 from trove.common import utils
 from trove.guestagent.common.configuration import ConfigurationManager
@@ -269,36 +268,37 @@ class PgSqlApp(object):
         """Apply necessary changes to config to enable WAL-based backups
         if we are using the PgBaseBackup strategy
         """
-        LOG.info("Checking if we need to apply changes to WAL config")
+        LOG.info(_("Checking if we need to apply changes to WAL config"))
         if 'PgBaseBackup' not in self.backup_strategy:
             return
         if self.configuration_manager.has_system_override(BACKUP_CFG_OVERRIDE):
             return
 
         LOG.info("Applying changes to WAL config for use by base backups")
+        wal_arch_loc = self.wal_archive_location
+        if not os.path.isdir(wal_arch_loc):
+            raise RuntimeError(_("Cannot enable backup as WAL dir '%s' does "
+                                 "not exist.") % wal_arch_loc)
         arch_cmd = "'test ! -f {wal_arch}/%f && cp %p {wal_arch}/%f'".format(
-            wal_arch=self.wal_archive_location
+            wal_arch=wal_arch_loc
         )
         opts = {
-            # FIXME(atomic77) These spaces after the options are needed until
-            # DBAAS-949 is fixed
-            'wal_level ': 'hot_standby',
-            'archive_mode ': 'on',
+            'wal_level': 'hot_standby',
+            'archive_mode': 'on',
             'max_wal_senders': 8,
-            # 'checkpoint_segments ': 8,
+            'checkpoint_segments': 8,
             'wal_keep_segments': 8,
             'archive_command': arch_cmd
         }
-        if self.pg_version[1] in ('9.4', '9.5'):
+        if not self.pg_version[1] in ('9.3'):
             opts['wal_log_hints'] = 'on'
 
-        self.configuration_manager.apply_system_override(opts,
-                                                         BACKUP_CFG_OVERRIDE)
-        # self.enable_debugging(level=1)
+        self.configuration_manager.apply_system_override(
+            opts, BACKUP_CFG_OVERRIDE)
         self.restart()
 
     def disable_debugging(self, level=1):
-        """Enable debug-level logging in postgres"""
+        """Disable debug-level logging in postgres"""
         self.configuration_manager.remove_system_override(DEBUG_MODE_OVERRIDE)
 
     def enable_debugging(self, level=1):
@@ -489,7 +489,7 @@ class PgSqlApp(object):
         called 'postgres'.
         This system account has no password and is *locked* by default,
         so that it can be used by *local* users only.
-        It should *never* be enabled (or it's password set)!!!
+        It should *never* be enabled (or its password set)!!!
         That would just open up a new attack vector on the system account.
 
         Remote clients should use a build-in *database* account of the same
@@ -650,20 +650,11 @@ class PgSqlAdmin(object):
         """List database for which the given user as access.
         Return a list of serialized Postgres databases.
         """
-        if self.user_exists(username):
-            return [db.serialize() for db in self._get_databases_for(username)]
+        user = self._find_user(context, username)
+        if user is not None:
+            return user.databases
 
         raise exception.UserNotFound(username)
-
-    def _get_databases_for(self, username):
-        """Return all Postgres databases accessible by a given user."""
-        results = self.query(
-            pgsql_query.AccessQuery.list(user=username),
-            timeout=30,
-        )
-        return [models.PostgreSQLSchema(
-            row[0].strip(), character_set=row[1], collate=row[2])
-            for row in results]
 
     def create_database(self, context, databases):
         """Create the list of specified databases.
@@ -725,10 +716,9 @@ class PgSqlAdmin(object):
         Return a paginated list of serialized Postgres databases.
         """
 
-        dbs = [db.serialize() for db in self._get_databases()]
-        dblist, marker = pagination.paginate_dict_list(dbs, limit, marker,
-                                                       include_marker)
-        return dblist, marker
+        return guestagent_utils.serialize_list(
+            self._get_databases(),
+            limit=limit, marker=marker, include_marker=include_marker)
 
     def _get_databases(self):
         """Return all non-system Postgres databases on the instance."""
@@ -806,9 +796,9 @@ class PgSqlAdmin(object):
         """List all users on the instance along with their access permissions.
         Return a paginated list of serialized Postgres users.
         """
-        users = [user.serialize() for user in self._get_users(context)]
-        return pagination.paginate_dict_list(users, limit, marker,
-                                             include_marker)
+        return guestagent_utils.serialize_list(
+            self._get_users(context),
+            limit=limit, marker=marker, include_marker=include_marker)
 
     def _get_users(self, context):
         """Return all non-system Postgres users on the instance."""
@@ -816,24 +806,30 @@ class PgSqlAdmin(object):
             pgsql_query.UserQuery.list(ignore=self.ignore_users),
             timeout=30,
         )
-        return [self._build_user(context, row[0].strip()) for row in results]
 
-    def _build_user(self, context, username):
+        names = set([row[0].strip() for row in results])
+        return [self._build_user(context, name, results) for name in names]
+
+    def _build_user(self, context, username, acl=None):
         """Build a model representation of a Postgres user.
         Include all databases it has access to.
         """
         user = models.PostgreSQLUser(username)
-        # The setter for DatastoreScema.databases is broken; manually
-        # rebuild the list of dbs this user has access to
-        dbs = self.list_access(context, username, None)
-        for d in dbs:
-            user.databases.append(d)
+        if acl:
+            dbs = [models.PostgreSQLSchema(row[1].strip(),
+                                           character_set=row[2],
+                                           collate=row[3])
+                   for row in acl if row[0] == username and row[1] is not None]
+            for d in dbs:
+                user.databases.append(d.serialize())
+
         return user
 
     def delete_user(self, context, user):
         """Delete the specified user.
         """
-        self._drop_user(context, models.PostgreSQLUser.deserialize_user(user))
+        self._drop_user(
+            context, models.PostgreSQLUser.deserialize_user(user))
 
     def _drop_user(self, context, user):
         """Drop a given Postgres user.
@@ -866,7 +862,7 @@ class PgSqlAdmin(object):
 
     def _find_user(self, context, username):
         """Lookup a user with a given username.
-        Return a new Postgres user instance or raise if no match is found.
+        Return a new Postgres user instance or None if no match is found.
         """
         results = self.query(
             pgsql_query.UserQuery.get(name=username),
@@ -874,7 +870,7 @@ class PgSqlAdmin(object):
         )
 
         if results:
-            return self._build_user(context, username)
+            return self._build_user(context, username, results)
 
         return None
 

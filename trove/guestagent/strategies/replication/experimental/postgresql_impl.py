@@ -140,7 +140,7 @@ class PostgresqlReplicationStreaming(base.Replication):
         operating_system.write_file(pwfile, pw, as_root=True)
         operating_system.chown(pwfile, user=service.pgsql_owner,
                                group=service.pgsql_owner, as_root=True)
-        operating_system.chmod(pwfile, FileMode.OCTAL_MODE("0600"),
+        operating_system.chmod(pwfile, FileMode.SET_USR_RWX(),
                                as_root=True)
 
         repl_user = models.PostgreSQLUser(name=REPL_USER, password=pw)
@@ -170,7 +170,7 @@ class PostgresqlReplicationStreaming(base.Replication):
         operating_system.copy(tmp_hba, service.pgsql_hba_config,
                               force=True, as_root=True)
         operating_system.chmod(service.pgsql_hba_config,
-                               FileMode.OCTAL_MODE("0600"),
+                               FileMode.SET_USR_RWX(),
                                as_root=True)
         operating_system.remove(tmp_hba, as_root=True)
         service.reload_configuration()

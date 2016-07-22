@@ -24,8 +24,8 @@ from trove.common.i18n import _
 from trove.common import instance as trove_instance
 from trove.common.notification import EndNotification
 from trove.guestagent import backup
-from trove.guestagent.datastore.experimental.postgresql.service import \
-    PgSqlAdmin
+from trove.guestagent.datastore.experimental.postgresql.service import (
+    PgSqlAdmin)
 from trove.guestagent.datastore.experimental.postgresql.service import PgSqlApp
 from trove.guestagent.datastore import manager
 from trove.guestagent.db import models
@@ -79,14 +79,14 @@ class Manager(manager.Manager):
         return {
             self.GUEST_LOG_DEFS_GENERAL_LABEL: {
                 self.GUEST_LOG_TYPE_LABEL: guest_log.LogType.USER,
-                self.GUEST_LOG_USER_LABEL: self.PGSQL_OWNER,
+                self.GUEST_LOG_USER_LABEL: owner,
                 self.GUEST_LOG_FILE_LABEL: general_log_file,
                 self.GUEST_LOG_ENABLE_LABEL: {
                     'logging_collector': 'on',
-                    'log_destination': self._quote('stderr'),
-                    'log_directory': self._quote(general_log_dir),
-                    'log_filename': self._quote(general_log_filename),
-                    'log_statement': self._quote('all'),
+                    'log_destination': self._quote_str('stderr'),
+                    'log_directory': self._quote_str(general_log_dir),
+                    'log_filename': self._quote_str(general_log_filename),
+                    'log_statement': self._quote_str('all'),
                     'debug_print_plan': 'on',
                     'log_min_duration_statement': long_query_time,
                 },

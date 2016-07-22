@@ -79,15 +79,6 @@ class PgBaseBackupUtil(object):
                      if walre.search(wal_file) and wal_file >= last_wal]
         return wal_files
 
-    @staticmethod
-    def recreate_wal_archive_dir():
-        operating_system.remove(WAL_ARCHIVE_DIR, force=True, recursive=True,
-                                as_root=True)
-        operating_system.create_directory(WAL_ARCHIVE_DIR,
-                                          user=PgSqlProcess.PGSQL_OWNER,
-                                          group=PgSqlProcess.PGSQL_OWNER,
-                                          force=True, as_root=True)
-
 
 class PgBaseBackup(base.BackupRunner, PgBaseBackupUtil):
     """Base backups are taken with the pg_basebackup filesystem-level backup
@@ -100,6 +91,7 @@ class PgBaseBackup(base.BackupRunner, PgBaseBackupUtil):
     __strategy_name__ = 'pg_basebackup'
 
     def __init__(self, *args, **kwargs):
+        self._app = None
         super(PgBaseBackup, self).__init__(*args, **kwargs)
         self._app = None
         self.label = None
@@ -121,10 +113,10 @@ class PgBaseBackup(base.BackupRunner, PgBaseBackupUtil):
 
     @property
     def cmd(self):
-        cmd = "pg_basebackup -h %s -U %s --pgdata=-" \
-              " --label=%s --format=tar --xlog " % \
-              (self.app.pgsql_run_dir, self.app.ADMIN_USER,
-               self.base_filename)
+        cmd = ("pg_basebackup -h %s -U %s --pgdata=-"
+               " --label=%s --format=tar --xlog " %
+               (self.app.pgsql_run_dir, self.app.ADMIN_USER,
+                self.base_filename))
 
         return cmd + self.zip_cmd + self.encrypt_cmd
 
@@ -216,7 +208,7 @@ class PgBaseBackup(base.BackupRunner, PgBaseBackupUtil):
                                         "pg_archivecleanup")
         bk_file = os.path.basename(self.most_recent_backup_file())
         cmd_full = " ".join((arch_cleanup_bin, WAL_ARCHIVE_DIR, bk_file))
-        utils.execute("sudo", "su", "-", self.PGSQL_OWNER, "-c",
+        utils.execute("sudo", "su", "-", self.app.pgsql_owner, "-c",
                       "%s" % cmd_full)
 
 
