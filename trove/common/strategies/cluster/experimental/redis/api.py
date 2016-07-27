@@ -90,28 +90,27 @@ class RedisCluster(models.Cluster):
         check_quotas(context.tenant, quota_request)
 
         # Creating member instances
-        return map(lambda instance:
-                   inst_models.Instance.create(context,
-                                               instance['name'],
-                                               instance['flavor_id'],
-                                               datastore_version.image_id,
-                                               [], [],
-                                               datastore, datastore_version,
-                                               instance.get('volume_size'),
-                                               None,
-                                               instance.get(
-                                                   'availability_zone', None),
-                                               instance.get('nics', None),
-                                               configuration_id=None,
-                                               cluster_config={
-                                                   "id": db_info.id,
-                                                   "instance_type": "member"},
-                                               region_name=instance.get(
-                                                   'region_name'),
-                                               modules=instance.get('modules'),
-                                               locality=locality
-                                               ),
-                   instances)
+        return [inst_models.Instance.create(context,
+                                            instance['name'],
+                                            instance['flavor_id'],
+                                            datastore_version.image_id,
+                                            [], [],
+                                            datastore, datastore_version,
+                                            instance.get('volume_size'),
+                                            None,
+                                            instance.get(
+                                                'availability_zone', None),
+                                            instance.get('nics', None),
+                                            configuration_id=None,
+                                            cluster_config={
+                                                "id": db_info.id,
+                                                "instance_type": "member"},
+                                            locality=locality,
+                                            modules=instance.get('modules'),
+                                            region_name=instance.get(
+                                                'region_name')
+                                            )
+                for instance in instances]
 
     @classmethod
     def create(cls, context, name, datastore, datastore_version,

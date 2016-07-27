@@ -158,9 +158,9 @@ class MongoDbCluster(models.Cluster):
                                         nics=nic,
                                         configuration_id=None,
                                         cluster_config=member_config,
+                                        locality=locality,
                                         modules=instances[i].get('modules'),
-                                        region_name=regions[i],
-                                        locality=locality)
+                                        region_name=regions[i])
 
         for i in range(num_configsvr):
             instance_name = "%s-%s-%s" % (name, "configsvr", str(i + 1))
@@ -175,8 +175,8 @@ class MongoDbCluster(models.Cluster):
                                         nics=nic,
                                         configuration_id=None,
                                         cluster_config=configsvr_config,
-                                        region_name=regions[i % num_instances],
-                                        locality=locality)
+                                        locality=locality,
+                                        region_name=regions[i % num_instances])
 
         for i in range(num_mongos):
             instance_name = "%s-%s-%s" % (name, "mongos", str(i + 1))
@@ -191,8 +191,8 @@ class MongoDbCluster(models.Cluster):
                                         nics=nic,
                                         configuration_id=None,
                                         cluster_config=mongos_config,
-                                        region_name=regions[i % num_instances],
-                                        locality=locality)
+                                        locality=locality,
+                                        region_name=regions[i % num_instances])
 
         task_api.load(context, datastore_version.manager).create_cluster(
             db_info.id)
