@@ -16,7 +16,6 @@
 from oslo_log import log as logging
 
 from trove.common import cfg
-from trove.common import server_group as srv_grp
 from trove.common.strategies.cluster import strategy
 from trove.common.views import create_links
 from trove.instance.views import InstanceDetailView
@@ -54,12 +53,8 @@ class ClusterView(object):
         if extended_properties:
             cluster_dict["extended_properties"] = extended_properties
 
-        if hasattr(self.cluster, 'locality'):
+        if self.cluster.locality:
             cluster_dict['locality'] = self.cluster.locality
-        elif self.cluster.server_group:
-            cluster_dict['locality'] = srv_grp.ServerGroup.get_locality(
-                self.cluster.server_group)
-
         LOG.debug(cluster_dict)
         return {"cluster": cluster_dict}
 
