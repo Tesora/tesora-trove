@@ -372,20 +372,6 @@ class MariadbClusterActionsRunner(ClusterActionsRunner):
 
 class PxcClusterActionsRunner(ClusterActionsRunner):
 
-    def run_cluster_create(self, num_nodes=3, expected_task_name='BUILDING',
-                           expected_instance_states=['BUILD', 'ACTIVE'],
-                           expected_http_code=200):
-        super(PxcClusterActionsRunner, self).run_cluster_create(
-            num_nodes=num_nodes, expected_task_name=expected_task_name,
-            expected_instance_states=expected_instance_states,
-            expected_http_code=expected_http_code)
-
-    def run_cluster_shrink(self):
-        raise SkipTest("Operation not supported by the datastore.")
-
-    def run_cluster_grow(self):
-        raise SkipTest("Operation not supported by the datastore.")
-
     @property
     def min_cluster_node_count(self):
         return self.get_datastore_config_property('min_cluster_member_count')

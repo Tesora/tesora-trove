@@ -436,50 +436,11 @@ class MysqlReplicationRunner(ReplicationRunner):
                           'for %s' % instance_id)
 
 
-class PostgresqlReplicationRunner(ReplicationRunner):
-
-    def run_promote_original_source(self):
-        raise SkipTest("Not supported by Postgresql")
-
-    def run_verify_replica_data_new_master(self):
-        raise SkipTest("Not supported by Postgresql")
-
-    def run_add_data_to_replicate2(self):
-        raise SkipTest("Not supported by Postgresql")
-
-    def run_verify_data_to_replicate2(self):
-        raise SkipTest("Not supported by Postgresql")
-
-    def run_verify_replica_data_new2(self):
-        raise SkipTest("Not supported by Postgresql")
-
-    def run_promote_to_replica_source(self):
-        raise SkipTest("Not supported by Postgresql")
-
-
 class PerconaReplicationRunner(MysqlReplicationRunner):
     pass
 
 
 class MariadbReplicationRunner(MysqlReplicationRunner):
-
-    def run_promote_original_source(self):
-        raise SkipTest("Not supported by MariaDB 10.0")
-
-    def run_verify_replica_data_new_master(self):
-        raise SkipTest("Not supported by MariaDB 10.0")
-
-    def run_add_data_to_replicate2(self):
-        raise SkipTest("Not supported by MariaDB 10.0")
-
-    def run_verify_data_to_replicate2(self):
-        raise SkipTest("Not supported by MariaDB 10.0")
-
-    def run_verify_replica_data_new2(self):
-        raise SkipTest("Not supported by MariaDB 10.0")
-
-    def run_promote_to_replica_source(self):
-        raise SkipTest("Not supported by MariaDB 10.0")
 
     def _get_expected_binlog_format(self):
         return 'STATEMENT'
