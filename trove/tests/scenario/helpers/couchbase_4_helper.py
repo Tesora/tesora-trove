@@ -18,5 +18,5 @@ from trove.tests.scenario.helpers.couchbase_helper import CouchbaseHelper
 
 class Couchbase4Helper(CouchbaseHelper):
 
-    def __init__(self, expected_override_name):
-        super(Couchbase4Helper, self).__init__(expected_override_name)
+    def __init__(self, expected_override_name, report):
+        super(Couchbase4Helper, self).__init__(expected_override_name, report)

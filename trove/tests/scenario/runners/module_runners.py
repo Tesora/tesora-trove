@@ -30,10 +30,7 @@ from trove.tests.scenario.runners.test_runners import TestRunner
 class ModuleRunner(TestRunner):
 
     def __init__(self):
-        self.TIMEOUT_MODULE_APPLY = 60 * 10
-
-        super(ModuleRunner, self).__init__(
-            sleep_time=10, timeout=self.TIMEOUT_MODULE_APPLY)
+        super(ModuleRunner, self).__init__()
 
         self.MODULE_CONTENTS_PATTERN = 'Message=%s\n'
         self.MODULE_MESSAGE_PATTERN = 'Hello World from: %s'
@@ -846,7 +843,7 @@ class ModuleRunner(TestRunner):
 
     def run_create_inst_with_mods(self, expected_http_code=200):
         self.mod_inst_id = self.assert_inst_mod_create(
-            self.main_test_module.id, 'module_1', expected_http_code)
+            self.main_test_module.id, '_module', expected_http_code)
 
     def assert_inst_mod_create(self, module_id, name_suffix,
                                expected_http_code):
@@ -962,17 +959,16 @@ class ModuleRunner(TestRunner):
             expected_exception, expected_http_code,
             self.auth_client.modules.delete, module.id)
 
-    def run_delete_inst_with_mods(self, expected_last_state=['SHUTDOWN'],
-                                  expected_http_code=202):
-        self.assert_delete_instance(
-            self.mod_inst_id,
-            expected_last_state, expected_http_code)
+    def run_delete_inst_with_mods(self, expected_http_code=202):
+        self.assert_delete_instance(self.mod_inst_id, expected_http_code)
 
-    def assert_delete_instance(
-            self, instance_id, expected_last_state, expected_http_code):
+    def assert_delete_instance(self, instance_id, expected_http_code):
         self.auth_client.instances.delete(instance_id)
         self.assert_client_code(expected_http_code)
-        self.assert_all_gone(instance_id, expected_last_state)
+
+    def run_wait_for_delete_inst_with_mods(
+            self, expected_last_state=['SHUTDOWN']):
+        self.assert_all_gone(self.mod_inst_id, expected_last_state)
 
     # ModuleDeleteGroup methods
     def run_module_delete_non_existent(

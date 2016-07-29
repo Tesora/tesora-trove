@@ -41,6 +41,13 @@ class UserActionsRunner(TestRunner):
             return self.user_defs[0]
         raise SkipTest("No valid user definitions provided.")
 
+    @property
+    def non_existing_user_def(self):
+        user_def = self.test_helper.get_non_existing_user_definition()
+        if user_def:
+            return user_def
+        raise SkipTest("No valid user definitions provided.")
+
     def run_users_create(self, expected_http_code=202):
         users = self.test_helper.get_valid_user_definitions()
         if users:
@@ -152,6 +159,74 @@ class UserActionsRunner(TestRunner):
     def as_pagination_marker(self, user):
         return urllib_parse.quote(user.name)
 
+    def run_user_access_show(self, expected_http_code=200):
+        for user_def in self.user_defs:
+            self.assert_user_access_show(
+                self.instance_info.id, user_def, expected_http_code)
+
+    def assert_user_access_show(self, instance_id, user_def,
+                                expected_http_code):
+        user_name, user_host = self._get_user_name_host_pair(user_def)
+        user_dbs = self.auth_client.users.list_access(instance_id, user_name,
+                                                      hostname=user_host)
+        self.assert_client_code(expected_http_code)
+
+        expected_dbs = {db_def['name'] for db_def in user_def['databases']}
+        listed_dbs = [db.name for db in user_dbs]
+
+        self.assert_equal(len(expected_dbs), len(listed_dbs),
+                          "Unexpected number of databases on the user access "
+                          "list.")
+
+        for database in expected_dbs:
+            self.assert_true(
+                database in listed_dbs,
+                "Database not found in the user access list: %s" % database)
+
+    def run_user_access_revoke(self, expected_http_code=202):
+        self._apply_on_all_databases(
+            self.instance_info.id, self.assert_user_access_revoke,
+            expected_http_code)
+
+    def _apply_on_all_databases(self, instance_id, action, expected_http_code):
+        if any(user_def['databases'] for user_def in self.user_defs):
+            for user_def in self.user_defs:
+                user_name, user_host = self._get_user_name_host_pair(user_def)
+                db_defs = user_def['databases']
+                for db_def in db_defs:
+                    db_name = db_def['name']
+                    action(instance_id, user_name, user_host,
+                           db_name, expected_http_code)
+        else:
+            raise SkipTest("No user databases defined.")
+
+    def assert_user_access_revoke(self, instance_id, user_name, user_host,
+                                  database, expected_http_code):
+        self.auth_client.users.revoke(
+            instance_id, user_name, database, hostname=user_host)
+        self.assert_client_code(expected_http_code)
+        user_dbs = self.auth_client.users.list_access(
+            instance_id, user_name, hostname=user_host)
+        self.assert_false(any(db.name == database for db in user_dbs),
+                          "Database should no longer be included in the user "
+                          "access list after revoke: %s" % database)
+
+    def run_user_access_grant(self, expected_http_code=202):
+        self._apply_on_all_databases(
+            self.instance_info.id, self.assert_user_access_grant,
+            expected_http_code)
+
+    def assert_user_access_grant(self, instance_id, user_name, user_host,
+                                 database, expected_http_code):
+        self.auth_client.users.grant(
+            instance_id, user_name, [database], hostname=user_host)
+        self.assert_client_code(expected_http_code)
+        user_dbs = self.auth_client.users.list_access(
+            instance_id, user_name, hostname=user_host)
+        self.assert_true(any(db.name == database for db in user_dbs),
+                         "Database should be included in the user "
+                         "access list after granting access: %s" % database)
+
     def run_user_create_with_no_attributes(
             self, expected_exception=exceptions.BadRequest,
             expected_http_code=400):
@@ -161,15 +236,15 @@ class UserActionsRunner(TestRunner):
     def run_user_create_with_blank_name(
             self, expected_exception=exceptions.BadRequest,
             expected_http_code=400):
-        usr_def = self.test_helper.get_non_existing_user_definition()
         # Test with missing user name attribute.
-        no_name_usr_def = self.copy_dict(usr_def, ignored_keys=['name'])
+        no_name_usr_def = self.copy_dict(self.non_existing_user_def,
+                                         ignored_keys=['name'])
         self.assert_users_create_failure(
             self.instance_info.id, no_name_usr_def,
             expected_exception, expected_http_code)
 
         # Test with empty user name attribute.
-        blank_name_usr_def = self.copy_dict(usr_def)
+        blank_name_usr_def = self.copy_dict(self.non_existing_user_def)
         blank_name_usr_def.update({'name': ''})
         self.assert_users_create_failure(
             self.instance_info.id, blank_name_usr_def,
@@ -178,15 +253,16 @@ class UserActionsRunner(TestRunner):
     def run_user_create_with_blank_password(
             self, expected_exception=exceptions.BadRequest,
             expected_http_code=400):
-        usr_def = self.test_helper.get_non_existing_user_definition()
         # Test with missing password attribute.
-        no_pass_usr_def = self.copy_dict(usr_def, ignored_keys=['password'])
+        no_pass_usr_def = self.copy_dict(self.non_existing_user_def,
+                                         ignored_keys=['password'])
         self.assert_users_create_failure(
             self.instance_info.id, no_pass_usr_def,
             expected_exception, expected_http_code)
 
         # Test with missing databases attribute.
-        no_db_usr_def = self.copy_dict(usr_def, ignored_keys=['databases'])
+        no_db_usr_def = self.copy_dict(self.non_existing_user_def,
+                                       ignored_keys=['databases'])
         self.assert_users_create_failure(
             self.instance_info.id, no_db_usr_def,
             expected_exception, expected_http_code)
@@ -302,11 +378,6 @@ class UserActionsRunner(TestRunner):
 
         self.auth_client.users.delete(instance_id, user_name, user_host)
         self.assert_client_code(expected_http_code)
-
-        self.assert_raises(exceptions.NotFound, 404,
-                           self.auth_client.users.get,
-                           instance_id, user_name, user_host)
-
         self._wait_for_user_delete(instance_id, user_name)
 
     def _wait_for_user_delete(self, instance_id, deleted_user_name):
@@ -327,9 +398,9 @@ class UserActionsRunner(TestRunner):
     def run_nonexisting_user_show(
             self, expected_exception=exceptions.NotFound,
             expected_http_code=404):
-        usr_def = self.test_helper.get_non_existing_user_definition()
         self.assert_user_show_failure(
-            self.instance_info.id, {'name': usr_def['name']},
+            self.instance_info.id,
+            {'name': self.non_existing_user_def['name']},
             expected_exception, expected_http_code)
 
     def assert_user_show_failure(self, instance_id, user_def,
@@ -355,8 +426,7 @@ class UserActionsRunner(TestRunner):
 
     def run_nonexisting_user_update(self, expected_http_code=404):
         # Test valid update on a non-existing user.
-        usr_def = self.test_helper.get_non_existing_user_definition()
-        update_def = {'name': usr_def['name']}
+        update_def = {'name': self.non_existing_user_def['name']}
         self.assert_user_attribute_update_failure(
             self.instance_info.id, update_def, update_def,
             exceptions.NotFound, expected_http_code)
@@ -364,9 +434,9 @@ class UserActionsRunner(TestRunner):
     def run_nonexisting_user_delete(
             self, expected_exception=exceptions.NotFound,
             expected_http_code=404):
-        usr_def = self.test_helper.get_non_existing_user_definition()
         self.assert_user_delete_failure(
-            self.instance_info.id, {'name': usr_def['name']},
+            self.instance_info.id,
+            {'name': self.non_existing_user_def['name']},
             expected_exception, expected_http_code)
 
     def assert_user_delete_failure(
@@ -411,6 +481,12 @@ class PerconaUserActionsRunner(MysqlUserActionsRunner):
 
     def __init__(self):
         super(PerconaUserActionsRunner, self).__init__()
+
+
+class PxcUserActionsRunner(MysqlUserActionsRunner):
+
+    def __init__(self):
+        super(PxcUserActionsRunner, self).__init__()
 
 
 class CouchbaseUserActionsRunner(UserActionsRunner):

@@ -22,8 +22,8 @@ from trove.tests.scenario.runners.test_runners import TestRunner
 
 class RedisHelper(TestHelper):
 
-    def __init__(self, expected_override_name):
-        super(RedisHelper, self).__init__(expected_override_name)
+    def __init__(self, expected_override_name, report):
+        super(RedisHelper, self).__init__(expected_override_name, report)
 
         self.key_patterns = ['user_a:%s', 'user_b:%s']
         self.value_pattern = 'id:%s'
@@ -48,7 +48,8 @@ class RedisHelper(TestHelper):
 
     def create_client(self, host, *args, **kwargs):
         user = self.get_helper_credentials()
-        client = redis.StrictRedis(password=user['password'], host=host)
+        password = kwargs.get('password', user['password'])
+        client = redis.StrictRedis(password=password, host=host)
         return client
 
     # Add data overrides
@@ -175,3 +176,10 @@ class RedisHelper(TestHelper):
 
     def get_invalid_groups(self):
         return [{'hz': 600}, {'databases': -1}, {'databases': 'string_value'}]
+
+    def ping(self, host, *args, **kwargs):
+        try:
+            client = self.get_client(host, *args, **kwargs)
+            return client.ping() == 'PONG'
+        except Exception:
+            return False
