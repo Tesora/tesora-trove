@@ -13,7 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from oslo_config.cfg import NoSuchOptError
 from proboscis import SkipTest
 
 from trove.common import exception
@@ -24,12 +23,6 @@ from troveclient.compat import exceptions
 
 class DatabaseActionsRunner(TestRunner):
 
-    # TODO(pmalik): I believe the 202 (Accepted) should be replaced by
-    # 200 (OK) as the actions are generally very fast and their results
-    # available immediately upon execution of the request. This would
-    # likely require replacing GA casts with calls which I believe are
-    # more appropriate anyways.
-
     def __init__(self):
         super(DatabaseActionsRunner, self).__init__()
         self.db_defs = []
@@ -38,6 +31,13 @@ class DatabaseActionsRunner(TestRunner):
     def first_db_def(self):
         if self.db_defs:
             return self.db_defs[0]
+        raise SkipTest("No valid database definitions provided.")
+
+    @property
+    def non_existing_db_def(self):
+        db_def = self.test_helper.get_non_existing_database_definition()
+        if db_def:
+            return db_def
         raise SkipTest("No valid database definitions provided.")
 
     def run_databases_create(self, expected_http_code=202):
@@ -203,9 +203,9 @@ class DatabaseActionsRunner(TestRunner):
     def run_nonexisting_database_delete(self, expected_http_code=202):
         # Deleting a non-existing database is expected to succeed as if the
         # database was deleted.
-        db_def = self.test_helper.get_non_existing_database_definition()
         self.assert_database_delete(
-            self.instance_info.id, db_def['name'], expected_http_code)
+            self.instance_info.id, self.non_existing_db_def['name'],
+            expected_http_code)
 
     def run_system_database_delete(
             self, expected_exception=exceptions.BadRequest,
@@ -228,12 +228,4 @@ class DatabaseActionsRunner(TestRunner):
                            instance_id, database_name)
 
     def get_system_databases(self):
-        try:
-            values = self.get_datastore_config_property('ignore_dbs')
-            if not values:
-                self.report.log("The 'ignore_dbs' list is empty.")
-            return values
-        except NoSuchOptError:
-            self.report.log("This datastore does not define 'ignore_dbs' "
-                            "configuration property.")
-            return []
+        return self.get_datastore_config_property('ignore_dbs')

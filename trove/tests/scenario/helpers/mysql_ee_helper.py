@@ -18,5 +18,5 @@ from trove.tests.scenario.helpers.mysql_helper import MysqlHelper
 
 class MySqlEEHelper(MysqlHelper):
 
-    def __init__(self, expected_override_name):
-        super(MySqlEEHelper, self).__init__(expected_override_name)
+    def __init__(self, expected_override_name, report):
+        super(MySqlEEHelper, self).__init__(expected_override_name, report)

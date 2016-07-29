@@ -23,14 +23,96 @@ from trove.tests.scenario.helpers.test_helper import DataType
 from trove.tests.scenario.runners.test_runners import TestRunner
 
 
-class BackupRunner(TestRunner):
+class BackupRunnerMixin(TestRunner):
+    def _verify_backup(self, backup_id):
+        def _result_is_active():
+            backup = self.auth_client.backups.get(backup_id)
+            if backup.status == 'COMPLETED':
+                return True
+            else:
+                self.assert_not_equal('FAILED', backup.status,
+                                      'Backup status should not be')
+                return False
+
+        poll_until(_result_is_active, time_out=self.TIMEOUT_BACKUP_CREATE)
+
+    def _wait_until_backup_is_gone(self, backup_id):
+        def _backup_is_gone():
+            try:
+                self.auth_client.backups.get(backup_id)
+                return False
+            except exceptions.NotFound:
+                return True
+
+        poll_until(_backup_is_gone,
+                   time_out=self.TIMEOUT_BACKUP_DELETE)
+
+    def assert_restore_from_backup(self, backup_ref):
+        result = self._restore_from_backup(backup_ref)
+        # TODO(peterstac) - This should probably return code 202
+        self.assert_client_code(200)
+        self.assert_equal('BUILD', result.status,
+                          'Unexpected instance status')
+        self.restore_instance_id = result.id
+
+    def _restore_from_backup(self, backup_ref):
+        restore_point = {'backupRef': backup_ref}
+        result = self.auth_client.instances.create(
+            self.instance_info.name + '_restore',
+            self.instance_info.dbaas_flavor_href,
+            self.instance_info.volume,
+            nics=self.instance_info.nics,
+            restorePoint=restore_point,
+            datastore=self.instance_info.dbaas_datastore,
+            datastore_version=self.instance_info.dbaas_datastore_version)
+        return result
+
+    def run_restore_from_backup_completed(
+            self, expected_states=['BUILD', 'ACTIVE'],
+            # TODO(peterstac) - This should probably return code 202
+            expected_http_code=200):
+        self.assert_restore_from_backup_completed(
+            self.restore_instance_id, expected_states, expected_http_code)
+        self.restore_host = self.get_instance_host(self.restore_instance_id)
+
+    def assert_restore_from_backup_completed(
+            self, instance_id, expected_states, expected_http_code):
+        self.assert_instance_action(instance_id, expected_states,
+                                    expected_http_code)
+
+    def run_verify_data_in_restored_instance(self):
+        self.assert_verify_backup_data(self.restore_host)
+
+    def run_verify_data_for_backup(self):
+        self.assert_verify_backup_data(self.backup_host)
+
+    def assert_verify_backup_data(self, host):
+        """In order for this to work, the corresponding datastore
+        'helper' class should implement the 'verify_large_data' method.
+        """
+        self.test_helper.verify_data(DataType.large, host)
+
+    def run_delete_restored_instance(
+            self, expected_states=['SHUTDOWN'],
+            expected_http_code=202):
+        self.assert_delete_restored_instance(
+            self.restore_instance_id, expected_states, expected_http_code)
+
+    def assert_delete_restored_instance(
+            self, instance_id, expected_states, expected_http_code):
+        self.auth_client.instances.delete(instance_id)
+        self.assert_instance_action(instance_id, expected_states,
+                                    expected_http_code)
+        self.assert_all_gone(instance_id, expected_states[-1])
+
+
+class BackupRunner(BackupRunnerMixin):
 
     def __init__(self):
         self.TIMEOUT_BACKUP_CREATE = 60 * 30
         self.TIMEOUT_BACKUP_DELETE = 120
 
-        super(BackupRunner, self).__init__(sleep_time=20,
-                                           timeout=self.TIMEOUT_BACKUP_CREATE)
+        super(BackupRunner, self).__init__(timeout=self.TIMEOUT_BACKUP_CREATE)
 
         self.BACKUP_NAME = 'backup_test'
         self.BACKUP_DESC = 'test description'
@@ -41,9 +123,13 @@ class BackupRunner(TestRunner):
         self.backup_count_for_ds_prior_to_create = 0
         self.backup_count_for_instance_prior_to_create = 0
 
-        self.incremental_backup_info = None
-        self.restore_instance_id = 0
+        self.backup_inc_1_info = None
+        self.backup_inc_2_info = None
+        self.data_types_added = []
+        self.restore_instance_id = None
         self.restore_host = None
+        self.restore_inc_1_instance_id = None
+        self.restore_inc_1_host = None
 
     def run_backup_create_instance_invalid(
             self, expected_exception=exceptions.BadRequest,
@@ -64,27 +150,25 @@ class BackupRunner(TestRunner):
 
     def run_add_data_for_backup(self):
         self.backup_host = self.get_instance_host()
-        self.assert_add_data_for_backup(self.backup_host)
+        self.assert_add_data_for_backup(self.backup_host, DataType.large)
 
-    def assert_add_data_for_backup(self, host):
+    def assert_add_data_for_backup(self, host, data_type):
         """In order for this to work, the corresponding datastore
-        'helper' class should implement the 'add_large_data' method.
+        'helper' class should implement the 'add_actual_data' method.
         """
-        self.test_helper.add_data(DataType.large, host)
+        self.test_helper.add_data(data_type, host)
+        self.data_types_added.append(data_type)
 
     def run_verify_data_for_backup(self):
-        self.assert_verify_backup_data(self.backup_host)
+        self.assert_verify_backup_data(self.backup_host, DataType.large)
 
-    def assert_verify_backup_data(self, host):
+    def assert_verify_backup_data(self, host, data_type):
         """In order for this to work, the corresponding datastore
-        'helper' class should implement the 'verify_large_data' method.
+        'helper' class should implement the 'verify_actual_data' method.
         """
-        self.test_helper.verify_data(DataType.large, host)
+        self.test_helper.verify_data(data_type, host)
 
-    def run_backup_create(self):
-        self.assert_backup_create()
-
-    def assert_backup_create(self):
+    def run_save_backup_counts(self):
         # Necessary to test that the count increases.
         self.backup_count_prior_to_create = len(
             self.auth_client.backups.list())
@@ -94,20 +178,26 @@ class BackupRunner(TestRunner):
         self.backup_count_for_instance_prior_to_create = len(
             self.auth_client.instances.backups(self.instance_info.id))
 
+    def run_backup_create(self):
+        self.backup_info = self.assert_backup_create(
+            self.BACKUP_NAME, self.BACKUP_DESC, self.instance_info.id)
+
+    def assert_backup_create(self, name, desc, instance_id, parent_id=None):
         result = self.auth_client.backups.create(
-            self.BACKUP_NAME, self.instance_info.id, self.BACKUP_DESC)
-        self.backup_info = result
-        self.assert_equal(self.BACKUP_NAME, result.name,
+            name, instance_id, desc, parent_id=parent_id)
+        self.assert_equal(name, result.name,
                           'Unexpected backup name')
-        self.assert_equal(self.BACKUP_DESC, result.description,
+        self.assert_equal(desc, result.description,
                           'Unexpected backup description')
-        self.assert_equal(self.instance_info.id, result.instance_id,
+        self.assert_equal(instance_id, result.instance_id,
                           'Unexpected instance ID for backup')
         self.assert_equal('NEW', result.status,
                           'Unexpected status for backup')
-        instance = self.auth_client.instances.get(
-            self.instance_info.id)
+        if parent_id:
+            self.assert_equal(parent_id, result.parent_id,
+                              'Unexpected status for backup')
 
+        instance = self.auth_client.instances.get(instance_id)
         datastore_version = self.auth_client.datastore_versions.get(
             self.instance_info.dbaas_datastore,
             self.instance_info.dbaas_datastore_version)
@@ -122,6 +212,7 @@ class BackupRunner(TestRunner):
                           'Unexpected datastore version')
         self.assert_equal(datastore_version.id, result.datastore['version_id'],
                           'Unexpected datastore version id')
+        return result
 
     def run_restore_instance_from_not_completed_backup(
             self, expected_exception=exceptions.Conflict,
@@ -167,6 +258,9 @@ class BackupRunner(TestRunner):
                 return False
 
         poll_until(_result_is_active, time_out=self.TIMEOUT_BACKUP_CREATE)
+
+    def run_instance_goes_active(self, expected_states=['BACKUP', 'ACTIVE']):
+        self._assert_instance_states(self.instance_info.id, expected_states)
 
     def run_backup_list(self):
         backup_list = self.auth_client.backups.list()
@@ -239,21 +333,55 @@ class BackupRunner(TestRunner):
         self.assert_client_code(expected_http_code=expected_http_code,
                                 client=self.unauth_client)
 
-    def run_restore_from_backup(self):
-        self.assert_restore_from_backup(self.backup_info.id)
+    def run_add_data_for_inc_backup_1(self):
+        self.backup_host = self.get_instance_host()
+        self.assert_add_data_for_backup(self.backup_host, DataType.tiny)
 
-    def assert_restore_from_backup(self, backup_ref):
-        result = self._restore_from_backup(backup_ref)
-        # TODO(peterstac) - This should probably return code 202
-        self.assert_client_code(200)
+    def run_verify_data_for_inc_backup_1(self):
+        self.assert_verify_backup_data(self.backup_host, DataType.tiny)
+
+    def run_inc_backup_1(self):
+        suffix = '_inc_1'
+        self.backup_inc_1_info = self.assert_backup_create(
+            self.BACKUP_NAME + suffix, self.BACKUP_DESC + suffix,
+            self.instance_info.id, parent_id=self.backup_info.id)
+
+    def run_wait_for_inc_backup_1(self):
+        self._verify_backup(self.backup_inc_1_info.id)
+
+    def run_add_data_for_inc_backup_2(self):
+        self.backup_host = self.get_instance_host()
+        self.assert_add_data_for_backup(self.backup_host, DataType.tiny2)
+
+    def run_verify_data_for_inc_backup_2(self):
+        self.assert_verify_backup_data(self.backup_host, DataType.tiny2)
+
+    def run_inc_backup_2(self):
+        suffix = '_inc_2'
+        self.backup_inc_2_info = self.assert_backup_create(
+            self.BACKUP_NAME + suffix, self.BACKUP_DESC + suffix,
+            self.instance_info.id, parent_id=self.backup_inc_1_info.id)
+
+    def run_wait_for_inc_backup_2(self):
+        self._verify_backup(self.backup_inc_2_info.id)
+
+    def run_restore_from_backup(self, expected_http_code=200, suffix=''):
+        self.restore_instance_id = self.assert_restore_from_backup(
+            self.backup_info.id, suffix=suffix,
+            expected_http_code=expected_http_code)
+
+    def assert_restore_from_backup(self, backup_ref, suffix='',
+                                   expected_http_code=200):
+        result = self._restore_from_backup(backup_ref, suffix=suffix)
+        self.assert_client_code(expected_http_code)
         self.assert_equal('BUILD', result.status,
                           'Unexpected instance status')
-        self.restore_instance_id = result.id
+        return result.id
 
-    def _restore_from_backup(self, backup_ref):
+    def _restore_from_backup(self, backup_ref, suffix=''):
         restore_point = {'backupRef': backup_ref}
         result = self.auth_client.instances.create(
-            self.instance_info.name + '_restore',
+            self.instance_info.name + '_restore' + suffix,
             self.instance_info.dbaas_flavor_href,
             self.instance_info.volume,
             nics=self.instance_info.nics,
@@ -262,34 +390,63 @@ class BackupRunner(TestRunner):
             datastore_version=self.instance_info.dbaas_datastore_version)
         return result
 
+    def run_restore_from_inc_1_backup(self, expected_http_code=200):
+        self.restore_inc_1_instance_id = self.assert_restore_from_backup(
+            self.backup_inc_1_info.id, suffix='_inc_1',
+            expected_http_code=expected_http_code)
+
     def run_restore_from_backup_completed(
-            self, expected_states=['BUILD', 'ACTIVE'],
-            # TODO(peterstac) - This should probably return code 202
-            expected_http_code=200):
+            self, expected_states=['BUILD', 'ACTIVE']):
         self.assert_restore_from_backup_completed(
-            self.restore_instance_id, expected_states, expected_http_code)
+            self.restore_instance_id, expected_states)
         self.restore_host = self.get_instance_host(self.restore_instance_id)
 
     def assert_restore_from_backup_completed(
-            self, instance_id, expected_states, expected_http_code):
-        self.assert_instance_action(instance_id, expected_states,
-                                    expected_http_code)
+            self, instance_id, expected_states):
+        self._assert_instance_states(instance_id, expected_states)
+
+    def run_restore_from_inc_1_backup_completed(
+            self, expected_states=['BUILD', 'ACTIVE']):
+        self.assert_restore_from_backup_completed(
+            self.restore_inc_1_instance_id, expected_states)
+        self.restore_inc_1_host = self.get_instance_host(
+            self.restore_inc_1_instance_id)
 
     def run_verify_data_in_restored_instance(self):
-        self.assert_verify_backup_data(self.restore_host)
+        self.assert_verify_backup_data(self.restore_host, DataType.large)
 
-    def run_delete_restored_instance(
-            self, expected_states=['SHUTDOWN'],
-            expected_http_code=202):
+    def run_verify_data_in_restored_inc_1_instance(self):
+        self.assert_verify_backup_data(self.restore_inc_1_host, DataType.large)
+        self.assert_verify_backup_data(self.restore_inc_1_host, DataType.tiny)
+
+    def run_delete_restored_instance(self, expected_http_code=202):
         self.assert_delete_restored_instance(
-            self.restore_instance_id, expected_states, expected_http_code)
+            self.restore_instance_id, expected_http_code)
 
     def assert_delete_restored_instance(
-            self, instance_id, expected_states, expected_http_code):
+            self, instance_id, expected_http_code):
         self.auth_client.instances.delete(instance_id)
-        self.assert_instance_action(instance_id, expected_states,
-                                    expected_http_code)
-        self.assert_all_gone(instance_id, expected_states[-1])
+        self.assert_client_code(expected_http_code)
+
+    def run_delete_restored_inc_1_instance(self, expected_http_code=202):
+        self.assert_delete_restored_instance(
+            self.restore_inc_1_instance_id, expected_http_code)
+
+    def run_wait_for_restored_instance_delete(self, expected_state='SHUTDOWN'):
+        self.assert_restored_instance_deleted(
+            self.restore_instance_id, expected_state)
+        self.restore_instance_id = None
+        self.restore_host = None
+
+    def assert_restored_instance_deleted(self, instance_id, expected_state):
+        self.assert_all_gone(instance_id, expected_state)
+
+    def run_wait_for_restored_inc_1_instance_delete(
+            self, expected_state='SHUTDOWN'):
+        self.assert_restored_instance_deleted(
+            self.restore_inc_1_instance_id, expected_state)
+        self.restore_inc_1_instance_id = None
+        self.restore_inc_1_host = None
 
     def run_delete_unknown_backup(
             self, expected_exception=exceptions.NotFound,
@@ -310,8 +467,10 @@ class BackupRunner(TestRunner):
         self.assert_client_code(expected_http_code=expected_http_code,
                                 client=self.unauth_client)
 
-    def run_delete_backup(self, expected_http_code=202):
-        self.assert_delete_backup(self.backup_info.id, expected_http_code)
+    def run_delete_inc_2_backup(self, expected_http_code=202):
+        self.assert_delete_backup(
+            self.backup_inc_2_info.id, expected_http_code)
+        self.backup_inc_2_info = None
 
     def assert_delete_backup(
             self, backup_id, expected_http_code):
@@ -330,12 +489,21 @@ class BackupRunner(TestRunner):
         poll_until(_backup_is_gone,
                    time_out=self.TIMEOUT_BACKUP_DELETE)
 
+    def run_delete_backup(self, expected_http_code=202):
+        self.assert_delete_backup(self.backup_info.id, expected_http_code)
+
     def run_check_for_incremental_backup(
             self, expected_exception=exceptions.NotFound,
             expected_http_code=404):
-        if self.incremental_backup_info is None:
+        if self.backup_inc_1_info is None:
             raise SkipTest("Incremental Backup not created")
         self.assert_raises(
             expected_exception, expected_http_code,
             self.auth_client.backups.get,
-            self.incremental_backup_info.id)
+            self.backup_inc_1_info.id)
+        self.backup_inc_1_info = None
+
+    def run_remove_backup_data_from_instance(self):
+        for data_type in self.data_types_added:
+            self.test_helper.remove_data(data_type, self.backup_host)
+        self.data_types_added = []
