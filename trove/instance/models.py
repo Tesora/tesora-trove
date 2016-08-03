@@ -265,6 +265,10 @@ class SimpleInstance(object):
         return self.status in [InstanceStatus.BUILD]
 
     @property
+    def is_error(self):
+        return self.status in [InstanceStatus.ERROR]
+
+    @property
     def is_datastore_running(self):
         """True if the service status indicates datastore is up and running."""
         return self.datastore_status.status in MYSQL_RESPONSIVE_STATUSES
@@ -743,6 +747,20 @@ class BaseInstance(SimpleInstance):
                 self.context, self.db_info.compute_instance_id)
             self._server_group_loaded = True
         return self._server_group
+
+    def reset_status(self):
+        if self.is_building or self.is_error:
+            LOG.info(_LI("Resetting the status to NONE on instance %s."),
+                     self.id)
+            self.reset_task_status()
+
+            reset_instance = InstanceServiceStatus.find_by(instance_id=self.id)
+            reset_instance.set_status(tr_instance.ServiceStatuses.UNKNOWN)
+            reset_instance.save()
+        else:
+            raise exception.UnprocessableEntity(
+                "Instance %s status can only be reset in BUILD or ERROR "
+                "state." % self.id)
 
 
 class FreshInstance(BaseInstance):

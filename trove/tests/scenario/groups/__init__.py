@@ -73,6 +73,8 @@ INST_CREATE = "scenario.inst_create_grp"
 INST_CREATE_WAIT = "scenario.inst_create_wait_grp"
 INST_INIT_DELETE = "scenario.inst_init_delete_grp"
 INST_INIT_DELETE_WAIT = "scenario.inst_init_delete_wait_grp"
+INST_INIT_FORCE_DELETE = "scenario.inst_init_force_delete_grp"
+INST_INIT_FORCE_DELETE_WAIT = "scenario.inst_init_force_delete_wait_grp"
 
 
 # Instance Delete Group
