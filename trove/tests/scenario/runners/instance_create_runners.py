@@ -266,7 +266,7 @@ class InstanceCreateRunner(TestRunner):
             raise SkipTest("Using an existing instance.")
 
         name = self.instance_info.name + '_build'
-        flavor = self._get_instance_flavor()
+        flavor = self.get_instance_flavor()
         volume_size = CONFIG.get('trove_volume_size', 1)
 
         inst = self.assert_instance_create(
