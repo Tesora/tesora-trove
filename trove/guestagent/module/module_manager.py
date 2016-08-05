@@ -31,7 +31,7 @@ LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 
 
-class ModuleManager():
+class ModuleManager(object):
     """This is a Manager utility class (mixin) for managing module-related
     tasks.
     """
