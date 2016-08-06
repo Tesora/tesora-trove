@@ -231,7 +231,7 @@ common_opts = [
                'will be the number of CPUs available.'),
     cfg.StrOpt('use_nova_key_name', default=None,
                help='Use key_name for for nova instances'),
-    cfg.BoolOpt('use_nova_server_config_drive', default=False,
+    cfg.BoolOpt('use_nova_server_config_drive', default=True,
                 help='Use config drive for file injection when booting '
                 'instance.'),
     cfg.BoolOpt('use_nova_server_volume', default=False,
