@@ -27,6 +27,7 @@ from trove.common import utils
 from trove.common.utils import poll_until, build_polling_task
 from trove.tests.api.instances import instance_info
 from trove.tests.config import CONFIG
+from trove.tests.util.check import AttrCheck
 from trove.tests.util import create_dbaas_client
 from trove.tests.util import create_nova_client
 from trove.tests.util.users import Requirements
