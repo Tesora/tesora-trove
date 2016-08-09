@@ -193,8 +193,13 @@ class CassandraClusterTasks(task_models.ClusterTasks):
             cluster_node_ids = self.find_cluster_node_ids(cluster_id)
             cluster_nodes = self.load_cluster_nodes(context, cluster_node_ids)
 
+            old_nodes = [node for node in cluster_nodes
+                         if node['id'] not in new_instance_ids]
+
             # Recompute the seed nodes based on the updated cluster geometry.
-            seeds = self.choose_seed_nodes(cluster_nodes)
+            # Make sure that old running nodes are included as seeds as well.
+            seeds = self.choose_seed_nodes(old_nodes)
+            seeds = seeds.union(self.choose_seed_nodes(added_nodes))
 
             # Configure each cluster node with the updated list of seeds.
             # Since we are adding to an existing cluster, ensure that the
@@ -210,7 +215,8 @@ class CassandraClusterTasks(task_models.ClusterTasks):
                 for node in cluster_nodes:
                     LOG.debug("Configuring node: %s." % node['id'])
                     node['guest'].set_seeds(seeds)
-                    if (admin_creds is None) and (node not in added_nodes):
+                    if (admin_creds is None) and (
+                            node['id'] not in new_instance_ids):
                         admin_creds = node['guest'].get_admin_credentials()
 
                 # Start any seeds from the added nodes first.
@@ -236,16 +242,15 @@ class CassandraClusterTasks(task_models.ClusterTasks):
                 # Wait for cleanup to complete on one node before running
                 # it on the next node.
                 LOG.debug("Cleaning up orphan data on old cluster nodes.")
-                for node in cluster_nodes:
-                    if node not in added_nodes:
-                        nid = node['id']
-                        node['guest'].node_cleanup_begin()
-                        node['guest'].node_cleanup()
-                        LOG.debug("Waiting for node to finish its "
-                                  "cleanup: %s" % nid)
-                        if not self._all_instances_running([nid], cluster_id):
-                            LOG.warning(_("Node did not complete cleanup "
-                                          "successfully: %s") % nid)
+                for node in old_nodes:
+                    nid = node['id']
+                    node['guest'].node_cleanup_begin()
+                    node['guest'].node_cleanup()
+                    LOG.debug("Waiting for node to finish its "
+                              "cleanup: %s" % nid)
+                    if not self._all_instances_running([nid], cluster_id):
+                        LOG.warning(_("Node did not complete cleanup "
+                                      "successfully: %s") % nid)
 
                 LOG.debug("Cluster configuration finished successfully.")
             except Exception:
@@ -307,7 +312,7 @@ class CassandraClusterTasks(task_models.ClusterTasks):
                         context, cluster_node_ids)
 
                     remaining_nodes = [node for node in cluster_nodes
-                                       if node not in removed_nodes]
+                                       if node['id'] not in removal_ids]
                     seeds = self.choose_seed_nodes(remaining_nodes)
                     LOG.debug("Selected seed nodes: %s" % seeds)
                     for node in remaining_nodes:
