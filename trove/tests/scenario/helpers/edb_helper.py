@@ -18,5 +18,6 @@ from trove.tests.scenario.helpers.postgresql_helper import PostgresqlHelper
 
 class EdbHelper(PostgresqlHelper):
 
-    def __init__(self, expected_override_name, port=5444):
-        super(EdbHelper, self).__init__(expected_override_name, port=port)
+    def __init__(self, expected_override_name, report, port=5444):
+        super(EdbHelper, self).__init__(expected_override_name, report,
+                                        port=port)

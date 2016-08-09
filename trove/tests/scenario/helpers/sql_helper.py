@@ -27,8 +27,8 @@ class SqlHelper(TestHelper):
 
     DATA_COLUMN_NAME = 'value'
 
-    def __init__(self, expected_override_name, protocol, port=None):
-        super(SqlHelper, self).__init__(expected_override_name)
+    def __init__(self, expected_override_name, report, protocol, port=None):
+        super(SqlHelper, self).__init__(expected_override_name, report)
 
         self.protocol = protocol
         self.port = port
@@ -43,14 +43,12 @@ class SqlHelper(TestHelper):
         return self.credentials['database']
 
     def create_client(self, host, *args, **kwargs):
-        username = kwargs.get("username")
-        password = kwargs.get("password")
-        if username and password:
-            creds = {"name": username, "password": password}
-            return sqlalchemy.create_engine(
-                self._build_connection_string(host, creds))
+        username = kwargs.get('username', self.credentials['name'])
+        password = kwargs.get('password', self.credentials['password'])
+        database = kwargs.get('database', self.credentials['database'])
+        creds = {"name": username, "password": password, "database": database}
         return sqlalchemy.create_engine(
-            self._build_connection_string(host, self.credentials))
+            self._build_connection_string(host, creds))
 
     def _build_connection_string(self, host, creds):
         if self.port:
@@ -136,5 +134,15 @@ class SqlHelper(TestHelper):
         return client.execute(data_table.select()).fetchall()
 
     def ping(self, host, *args, **kwargs):
-        root_client = self.get_client(host, *args, **kwargs)
-        root_client.execute("SELECT 1;")
+        try:
+            root_client = self.get_client(host, *args, **kwargs)
+            root_client.execute("SELECT 1;")
+            return True
+        except Exception:
+            return False
+
+    def get_configuration_value(self, property_name, host, *args, **kwargs):
+        client = self.get_client(host, *args, **kwargs)
+        cmd = "SHOW GLOBAL VARIABLES LIKE '%s';" % property_name
+        row = client.execute(cmd).fetchone()
+        return row['Value']

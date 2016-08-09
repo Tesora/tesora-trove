@@ -16,6 +16,7 @@
 import os
 
 from proboscis import SkipTest
+import six
 import time as timer
 
 from trove.common import cfg
@@ -68,9 +69,11 @@ class ClusterActionsRunner(TestRunner):
         if not num_nodes:
             num_nodes = self.min_cluster_node_count
 
+        instance_flavor = self.get_instance_flavor()
+
         instances_def = [
             self.build_flavor(
-                flavor_id=self.instance_info.dbaas_flavor_href,
+                flavor_id=self.get_flavor_href(instance_flavor),
                 volume_size=self.instance_info.volume['size'])] * num_nodes
 
         self.cluster_id = self.assert_cluster_create(
@@ -168,11 +171,13 @@ class ClusterActionsRunner(TestRunner):
             root_enabled_test = self.auth_client.root.is_instance_root_enabled(
                 instance['id'])
             self.assert_true(root_enabled_test.rootEnabled)
-        self.test_helper.ping(
+
+        ping_response = self.test_helper.ping(
             cluster.ip[0],
             username=self.current_root_creds[0],
             password=self.current_root_creds[1]
         )
+        self.assert_true(ping_response)
 
     def run_add_initial_cluster_data(self, data_type=DataType.tiny):
         self.assert_add_cluster_data(data_type, self.cluster_id)
@@ -360,17 +365,11 @@ class ClusterActionsRunner(TestRunner):
     def _assert_cluster_values(self, cluster, expected_task_name,
                                check_locality=True):
         with TypeCheck('Cluster', cluster) as check:
-            check.has_field("id", basestring)
-            check.has_field("name", basestring)
+            check.has_field("id", six.string_types)
+            check.has_field("name", six.string_types)
             check.has_field("datastore", dict)
             check.has_field("instances", list)
             check.has_field("links", list)
-            check.has_field("created", unicode)
-            check.has_field("updated", unicode)
-            check.has_field("created", six.text_type)
-            check.has_field("updated", six.text_type)
-            if check_locality:
-                check.has_field("locality", unicode)
             for instance in cluster.instances:
                 isinstance(instance, dict)
                 self.assert_is_not_none(instance['id'])
@@ -456,6 +455,10 @@ class MongodbClusterActionsRunner(ClusterActionsRunner):
 
     def run_cluster_root_enable(self):
         raise SkipTest("Operation is currently not supported.")
+
+    @property
+    def min_cluster_node_count(self):
+        return 3
 
 
 class CouchbaseClusterActionsRunner(ClusterActionsRunner):

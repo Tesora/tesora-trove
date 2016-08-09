@@ -72,17 +72,19 @@ class RunnerFactory(object):
             runner_module_name, class_prefix, runner_base_name,
             TEST_RUNNERS_NS)
         runner = runner_cls(*args, **kwargs)
-        runner._test_helper = cls._get_helper()
+        runner._test_helper = cls._get_helper(runner.report)
         return runner
 
     @classmethod
-    def _get_helper(cls):
+    def _get_helper(cls, report):
         class_prefix = cls._get_test_datastore()
         helper_cls = cls._load_dynamic_class(
             TEST_HELPER_MODULE_NAME, class_prefix,
             TEST_HELPER_BASE_NAME, TEST_HELPERS_NS)
-        return helper_cls(cls._build_class_name(
-            class_prefix, TEST_HELPER_BASE_NAME, strip_test=True))
+        return helper_cls(
+            cls._build_class_name(class_prefix,
+                                  TEST_HELPER_BASE_NAME, strip_test=True),
+            report)
 
     @classmethod
     def _get_test_datastore(cls):
@@ -151,10 +153,12 @@ class InstanceTestInfo(object):
         self.dbaas_flavor_href = None  # The flavor of the instance.
         self.dbaas_datastore = None  # The datastore id
         self.dbaas_datastore_version = None  # The datastore version id
+        self.volume_size = None  # The size of volume the instance will have.
         self.volume = None  # The volume the instance will have.
         self.nics = None  # The dict of type/id for nics used on the intance.
         self.user = None  # The user instance who owns the instance.
         self.users = None  # The users created on the instance.
+        self.databases = None  # The databases created on the instance.
 
 
 class TestRunner(object):
@@ -205,9 +209,11 @@ class TestRunner(object):
             CONFIG.dbaas_datastore_version)
         self.instance_info.user = CONFIG.users.find_user_by_name('alt_demo')
         if self.VOLUME_SUPPORT:
+            self.instance_info.volume_size = CONFIG.get('trove_volume_size', 1)
             self.instance_info.volume = {
-                'size': CONFIG.get('trove_volume_size', 1)}
+                'size': self.instance_info.volume_size}
         else:
+            self.instance_info.volume_size = None
             self.instance_info.volume = None
 
         self._auth_client = None
@@ -224,6 +230,13 @@ class TestRunner(object):
 
     @classmethod
     def assert_is_sublist(cls, sub_list, full_list, message=None):
+        if not message:
+            message = 'Unexpected sublist'
+        try:
+            message += ": sub_list '%s' (full_list '%s')." % (
+                sub_list, full_list)
+        except TypeError:
+            pass
         return cls.assert_true(set(sub_list).issubset(full_list), message)
 
     @classmethod
@@ -396,7 +409,7 @@ class TestRunner(object):
         return self.has_env_flag(self.DO_NOT_DELETE_INSTANCE_FLAG)
 
     def assert_instance_action(
-            self, instance_ids, expected_states, expected_http_code):
+            self, instance_ids, expected_states, expected_http_code=None):
         self.assert_client_code(expected_http_code)
         if expected_states:
             self.assert_all_instance_states(
@@ -412,13 +425,18 @@ class TestRunner(object):
     def assert_all_instance_states(self, instance_ids, expected_states,
                                    fast_fail_status=None,
                                    require_all_states=False):
-        tasks = [build_polling_task(
-            lambda: self._assert_instance_states(
-                instance_id, expected_states,
+        self.report.log("Waiting for states (%s) for instances: %s" %
+                        (expected_states, instance_ids))
+
+        def _make_fn(inst_id):
+            return lambda: self._assert_instance_states(
+                inst_id, expected_states,
                 fast_fail_status=fast_fail_status,
-                require_all_states=require_all_states),
-            sleep_time=self.def_sleep_time, time_out=self.def_timeout)
-            for instance_id in instance_ids]
+                require_all_states=require_all_states)
+
+        tasks = [build_polling_task(_make_fn(instance_id),
+                 sleep_time=self.def_sleep_time, time_out=self.def_timeout)
+                 for instance_id in instance_ids]
         poll_until(lambda: all(poll_task.ready() for poll_task in tasks),
                    sleep_time=self.def_sleep_time, time_out=self.def_timeout)
 
@@ -441,6 +459,10 @@ class TestRunner(object):
         instance had already acquired before and moves to the next expected
         state.
         """
+
+        self.report.log("Waiting for states (%s) for instance: %s" %
+                        (expected_states, instance_id))
+
         if fast_fail_status is None:
             fast_fail_status = ['ERROR', 'FAILED']
         found = False
@@ -455,8 +477,9 @@ class TestRunner(object):
                         fast_fail_status=fast_fail_status),
                         sleep_time=self.def_sleep_time,
                         time_out=self.def_timeout)
-                    self.report.log("Instance has gone '%s' in %s." %
-                                    (status, self._time_since(start_time)))
+                    self.report.log("Instance '%s' has gone '%s' in %s." %
+                                    (instance_id, status,
+                                     self._time_since(start_time)))
                 except exception.PollTimeOut:
                     self.report.log(
                         "Status of instance '%s' did not change to '%s' "
@@ -485,10 +508,15 @@ class TestRunner(object):
                           "list section.")
 
     def _wait_all_deleted(self, instance_ids, expected_last_status):
-        tasks = [build_polling_task(
-            lambda: self._wait_for_delete(instance_id, expected_last_status),
-            sleep_time=self.def_sleep_time, time_out=self.def_timeout)
-            for instance_id in instance_ids]
+        self.report.log("Waiting for instances to be gone: %s (status %s)" %
+                        (instance_ids, expected_last_status))
+
+        def _make_fn(inst_id):
+            return lambda: self._wait_for_delete(inst_id, expected_last_status)
+
+        tasks = [build_polling_task(_make_fn(instance_id),
+                 sleep_time=self.def_sleep_time, time_out=self.def_timeout)
+                 for instance_id in instance_ids]
         poll_until(lambda: all(poll_task.ready() for poll_task in tasks),
                    sleep_time=self.def_sleep_time, time_out=self.def_timeout)
 
@@ -501,13 +529,14 @@ class TestRunner(object):
                 self.fail(str(task.poll_exception()))
 
     def _wait_for_delete(self, instance_id, expected_last_status):
+        self.report.log("Waiting for instance to be gone: %s (status %s)" %
+                        (instance_id, expected_last_status))
         start_time = timer.time()
         try:
             self._poll_while(instance_id, expected_last_status,
                              sleep_time=self.def_sleep_time,
                              time_out=self.def_timeout)
         except exceptions.NotFound:
-            self.assert_client_code(404)
             self.report.log("Instance was removed in %s." %
                             self._time_since(start_time))
             return True
@@ -601,6 +630,25 @@ class TestRunner(object):
 
         return flavor
 
+    def get_instance_flavor(self, fault_num=None):
+        name_format = 'instance%s%s_flavor_name'
+        default = 'm1.tiny'
+        fault_str = ''
+        eph_str = ''
+        if fault_num:
+            fault_str = '_fault_%d' % fault_num
+        if self.EPHEMERAL_SUPPORT:
+            eph_str = '_eph'
+            default = 'eph.rd-tiny'
+
+        name = name_format % (fault_str, eph_str)
+        flavor_name = CONFIG.values.get(name, default)
+
+        return self.get_flavor(flavor_name)
+
+    def get_flavor_href(self, flavor):
+        return self.auth_client.find_flavor_self_href(flavor)
+
     def copy_dict(self, d, ignored_keys=None):
         return {k: v for k, v in d.items()
                 if not ignored_keys or k not in ignored_keys}
@@ -640,12 +688,8 @@ class TestRunner(object):
                 username = creds.get('name')
                 if username:
                     password = creds.get('password', '')
-                    databases = []
-                    if database_def:
-                        databases.append(database_def)
-
                     return {'name': username, 'password': password,
-                            'databases': databases}
+                            'databases': [{'name': database}]}
             return None
 
         credentials = self.test_helper.get_helper_credentials()

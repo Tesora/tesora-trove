@@ -31,7 +31,7 @@ LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 
 
-class ModuleManager():
+class ModuleManager(object):
     """This is a Manager utility class (mixin) for managing module-related
     tasks.
     """
@@ -72,6 +72,7 @@ class ModuleManager():
             message = ex.message
         finally:
             status = 'OK' if applied else 'ERROR'
+            result['removed'] = None
             result['status'] = status
             result['message'] = message
             result['updated'] = now

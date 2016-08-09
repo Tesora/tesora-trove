@@ -18,5 +18,6 @@ from trove.tests.scenario.helpers.cassandra_helper import CassandraHelper
 
 class Cassandra_22Helper(CassandraHelper):
 
-    def __init__(self, expected_override_name):
-        super(Cassandra_22Helper, self).__init__(expected_override_name)
+    def __init__(self, expected_override_name, report):
+        super(Cassandra_22Helper, self).__init__(
+            expected_override_name, report)

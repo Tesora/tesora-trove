@@ -41,11 +41,11 @@ class InstanceCreateRunner(TestRunner):
     def run_empty_instance_create(
             self, expected_states=['BUILD', 'ACTIVE'], expected_http_code=200):
         name = self.instance_info.name
-        flavor = self._get_instance_flavor()
-        trove_volume_size = CONFIG.get('trove_volume_size', 1)
+        flavor = self.get_instance_flavor()
+        volume_size = self.instance_info.volume_size
 
         instance_info = self.assert_instance_create(
-            name, flavor, trove_volume_size, [], [], None, None,
+            name, flavor, volume_size, [], [], None, None,
             CONFIG.dbaas_datastore, CONFIG.dbaas_datastore_version,
             expected_states, expected_http_code, create_helper_user=True,
             locality='affinity')
@@ -84,7 +84,7 @@ class InstanceCreateRunner(TestRunner):
     def run_initialized_instance_create(
             self, with_dbs=True, with_users=True, configuration_id=None,
             expected_states=['BUILD', 'ACTIVE'], expected_http_code=200,
-            create_helper_user=True):
+            create_helper_user=True, name_suffix='_init'):
         if self.is_using_existing_instance:
             # The user requested to run the tests using an existing instance.
             # We therefore skip any scenarios that involve creating new
@@ -92,9 +92,9 @@ class InstanceCreateRunner(TestRunner):
             raise SkipTest("Using an existing instance.")
 
         configuration_id = configuration_id or self.config_group_id
-        name = self.instance_info.name + '_init'
-        flavor = self._get_instance_flavor()
-        trove_volume_size = CONFIG.get('trove_volume_size', 1)
+        name = self.instance_info.name + name_suffix
+        flavor = self.get_instance_flavor()
+        volume_size = self.instance_info.volume_size
         self.init_inst_dbs = (self.test_helper.get_valid_database_definitions()
                               if with_dbs else [])
         self.init_inst_users = (self.test_helper.get_valid_user_definitions()
@@ -102,7 +102,7 @@ class InstanceCreateRunner(TestRunner):
         self.init_inst_config_group_id = configuration_id
         if (self.init_inst_dbs or self.init_inst_users or configuration_id):
             info = self.assert_instance_create(
-                name, flavor, trove_volume_size,
+                name, flavor, volume_size,
                 self.init_inst_dbs, self.init_inst_users,
                 configuration_id, None,
                 CONFIG.dbaas_datastore, CONFIG.dbaas_datastore_version,
@@ -114,25 +114,6 @@ class InstanceCreateRunner(TestRunner):
             # There is no need to run this test as it's effectively the same as
             # the empty instance test.
             raise SkipTest("No testable initial properties provided.")
-
-    def _get_instance_flavor(self, fault_num=None):
-        name_format = 'instance%s%s_flavor_name'
-        default = 'm1.tiny'
-        fault_str = ''
-        eph_str = ''
-        if fault_num:
-            fault_str = '_fault_%d' % fault_num
-        if self.EPHEMERAL_SUPPORT:
-            eph_str = '_eph'
-            default = 'eph.rd-tiny'
-
-        name = name_format % (fault_str, eph_str)
-        flavor_name = CONFIG.values.get(name, default)
-
-        return self.get_flavor(flavor_name)
-
-    def _get_flavor_href(self, flavor):
-        return self.auth_client.find_flavor_self_href(flavor)
 
     def assert_instance_create(
             self, name, flavor, trove_volume_size,
@@ -172,7 +153,7 @@ class InstanceCreateRunner(TestRunner):
         instance_info.users = users
         instance_info.dbaas_datastore = CONFIG.dbaas_datastore
         instance_info.dbaas_datastore_version = CONFIG.dbaas_datastore_version
-        instance_info.dbaas_flavor_href = self._get_flavor_href(flavor)
+        instance_info.dbaas_flavor_href = self.get_flavor_href(flavor)
         if self.VOLUME_SUPPORT:
             instance_info.volume = {'size': trove_volume_size}
         else:
@@ -253,11 +234,11 @@ class InstanceCreateRunner(TestRunner):
             raise SkipTest("Using an existing instance.")
 
         name = self.instance_info.name + '_error'
-        flavor = self._get_instance_flavor(fault_num=1)
-        trove_volume_size = CONFIG.get('trove_volume_size', 1)
+        flavor = self.get_instance_flavor(fault_num=1)
+        volume_size = self.instance_info.volume_size
 
         inst = self.assert_instance_create(
-            name, flavor, trove_volume_size, [], [], None, None,
+            name, flavor, volume_size, [], [], None, None,
             CONFIG.dbaas_datastore, CONFIG.dbaas_datastore_version,
             expected_states, expected_http_code, create_helper_user=False)
         self.assert_client_code(expected_http_code)
@@ -269,11 +250,11 @@ class InstanceCreateRunner(TestRunner):
             raise SkipTest("Using an existing instance.")
 
         name = self.instance_info.name + '_error2'
-        flavor = self._get_instance_flavor(fault_num=2)
-        trove_volume_size = CONFIG.get('trove_volume_size', 1)
+        flavor = self.get_instance_flavor(fault_num=2)
+        volume_size = self.instance_info.volume_size
 
         inst = self.assert_instance_create(
-            name, flavor, trove_volume_size, [], [], None, None,
+            name, flavor, volume_size, [], [], None, None,
             CONFIG.dbaas_datastore, CONFIG.dbaas_datastore_version,
             expected_states, expected_http_code, create_helper_user=False)
         self.assert_client_code(expected_http_code)
@@ -325,7 +306,8 @@ class InstanceCreateRunner(TestRunner):
             self.auth_client.instances.delete(self.error2_inst_id)
             self.assert_client_code(expected_http_code)
 
-    def wait_for_created_instances(self, expected_states=['BUILD', 'ACTIVE']):
+    def run_wait_for_created_instances(
+            self, expected_states=['BUILD', 'ACTIVE']):
         instances = [self.instance_info.id]
         if self.init_inst_id:
             instances.append(self.init_inst_id)
@@ -333,7 +315,7 @@ class InstanceCreateRunner(TestRunner):
 
     def run_add_initialized_instance_data(self):
         self.init_inst_data = DataType.small
-        self.init_inst_host = self.get_instance_host(self.instance_info.id)
+        self.init_inst_host = self.get_instance_host(self.init_inst_id)
         self.test_helper.add_data(self.init_inst_data, self.init_inst_host)
 
     def run_validate_initialized_instance(self):
@@ -434,9 +416,9 @@ class InstanceCreateRunner(TestRunner):
         if self.config_group_id:
             self.auth_client.configurations.delete(self.config_group_id)
             self.assert_client_code(expected_http_code)
-            self.config_group_id = None
         else:
             raise SkipTest("Cleanup is not required.")
+        self.config_group_id = None
 
 
 class CouchbaseInstanceCreateRunner(InstanceCreateRunner):
