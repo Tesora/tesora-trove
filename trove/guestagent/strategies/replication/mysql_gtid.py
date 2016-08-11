@@ -45,6 +45,14 @@ class MysqlGTIDReplication(mysql_base.MysqlReplicationBase):
             # before executing the CHANGE MASTER TO command
             last_gtid = self._read_last_master_gtid()
             if last_gtid:
+                # gtid_purged can only be set when gtid_executed is empty.
+                # Use the RESET MASTER statement to reset gtid_executed.
+                # The use_flush=False parameter on the execute_on_client call
+                # is to prevent the "FLUSH PRIVILEGES" statement from being
+                # executed after RESET MASTER. "FLUSH PRIVILEGES" causes the
+                # gtid_executed value to be set in MySql 5.7, negating the
+                # effect of RESET MASTER.
+                service.execute_on_client('RESET MASTER', use_flush=False)
                 set_gtid_cmd = "SET GLOBAL gtid_purged='%s'" % last_gtid
                 service.execute_on_client(set_gtid_cmd)
 
@@ -71,10 +79,13 @@ class MysqlGTIDReplication(mysql_base.MysqlReplicationBase):
         LOG.info(_("Setting read permissions on %s") % INFO_FILE)
         operating_system.chmod(INFO_FILE, FileMode.ADD_READ_ALL, as_root=True)
         LOG.info(_("Reading last master GTID from %s") % INFO_FILE)
+        gtids = ''
         try:
             with open(INFO_FILE, 'rb') as f:
                 row = f.read().split('\t')
-                return row[2]
+                if row[2]:
+                    gtids = row[2].replace('\n', '')
+                return gtids
         except (IOError, IndexError) as ex:
             LOG.exception(ex)
             raise self.UnableToDetermineLastMasterGTID(

@@ -913,9 +913,10 @@ class BaseMySqlApp(object):
             }
             return binlog_position
 
-    def execute_on_client(self, sql_statement):
+    def execute_on_client(self, sql_statement, use_flush=True):
         LOG.debug("Executing SQL: %s" % sql_statement)
-        with self.local_sql_client(self.get_engine()) as client:
+        with self.local_sql_client(self.get_engine(),
+                                   use_flush=use_flush) as client:
             return client.execute(sql_statement)
 
     def start_slave(self):
