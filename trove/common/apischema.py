@@ -562,7 +562,7 @@ guest_log = {
 module_contents = {
     "type": "string",
     "minLength": 1,
-    "maxLength": 16777215,
+    "maxLength": 4294967295,
     "pattern": "^.*.+.*$"
 }
 
