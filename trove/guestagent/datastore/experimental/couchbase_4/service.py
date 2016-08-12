@@ -35,6 +35,14 @@ class Couchbase4App(community_service.CouchbaseApp):
         self.build_admin().run_cluster_init(self.ramsize_quota_mb,
                                             enabled_services)
 
+    def rebalance_cluster(self, added_nodes=None, removed_nodes=None,
+                          enabled_services=None):
+        enabled_services = (enabled_services or
+                            cfg.get_configuration_property('default_services'))
+        LOG.info(_("Enabling Couchbase services: %s") % enabled_services)
+        self.build_admin().run_rebalance(added_nodes, removed_nodes,
+                                         enabled_services)
+
     def build_admin(self):
         return Couchbase4Admin(self.get_cluster_admin())
 
@@ -84,3 +92,20 @@ class Couchbase4Admin(community_service.CouchbaseAdmin):
                                "Additional %dMB is required.") % required)
 
         return data_quota_mb, index_quota_mb
+
+    def run_rebalance(self, added_nodes, removed_nodes, enabled_services):
+        LOG.debug("Rebalancing the cluster.")
+        options = {}
+        if added_nodes:
+            for ip in added_nodes:
+                options.update({'server-add': ip,
+                                'server-add-username': self._user.name,
+                                'server-add-password': self._user.password,
+                                'services': ','.join(enabled_services)})
+        if removed_nodes:
+            options.update({'server-remove': ip for ip in removed_nodes})
+
+        if options:
+            self._run_couchbase_command('rebalance', options)
+        else:
+            LOG.info(_("No changes to the topology, skipping rebalance."))
