@@ -29,3 +29,7 @@ class Manager(community_manager.Manager):
 
     def initialize_cluster(self, context, enabled_services=None):
         self.app.initialize_cluster(enabled_services=enabled_services)
+
+    def add_nodes(self, context, nodes, enabled_services=None):
+        self.app.rebalance_cluster(
+            added_nodes=nodes, enabled_services=enabled_services)
