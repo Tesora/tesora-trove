@@ -70,6 +70,8 @@ defaults = {
     'trove.guestagent.datastore.oracle.manager.Manager',
     'oracle_ra':
     'trove.guestagent.datastore.oracle_ra.manager.Manager',
+    'oracle_rac':
+    'trove.guestagent.datastore.oracle_rac.manager.Manager',
     'mariadb':
     'trove.guestagent.datastore.experimental.mariadb.manager.Manager',
     'edb':

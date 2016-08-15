@@ -17,6 +17,7 @@ import datetime
 
 from mock import Mock
 from mock import patch
+from oslo_utils import importutils
 
 from trove.cluster.models import ClusterTasks as ClusterTaskStatus
 from trove.cluster.models import DBCluster
@@ -259,10 +260,12 @@ class MongoDbClusterTasksTest(trove_testtools.TestCase):
         mock_guest.return_value.cluster_complete.assert_called_with()
         mock_reset_task.assert_called_with()
 
+    @patch.object(importutils, 'import_class')
     @patch.object(DBCluster, 'save')
     @patch.object(DBCluster, 'find_by')
     @patch.object(DBInstance, 'find_all')
-    def test_delete_cluster(self, mock_find_all, mock_find_by, mock_save):
+    def test_delete_cluster(self, mock_find_all, mock_find_by, mock_save,
+                            *args):
         mock_find_all.return_value.all.return_value = []
         mock_find_by.return_value = self.db_cluster
         self.clustertasks.delete_cluster(Mock(), self.cluster_id)

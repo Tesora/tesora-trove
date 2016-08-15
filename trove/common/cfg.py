@@ -389,6 +389,7 @@ common_opts = [
                          'mariadb': '7a4f82cc-10d2-4bc6-aadc-d9aacc2a3cb5',
                          'oracle': 'dc43ae4f-9480-4f52-a818-ceb06594893d',
                          'oracle_ra': '94d3fe48-3927-4041-8944-457a2fac86ce',
+                         'oracle_rac': '984cb45a-4ab6-11e6-beb8-9e71128cae77',
                          },
                 help='Unique ID to tag notification events.'),
     cfg.StrOpt('nova_proxy_admin_user', default='',
@@ -743,6 +744,96 @@ oracle_ra_opts = [
                help='Root controller implementation for Oracle Remote Agent.'),
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
+]
+
+# Oracle RAC
+oracle_rac_group = cfg.OptGroup(
+    'oracle_rac', title='Oracle Real Application Cluster options',
+    help="Oslo option group designed for the Oracle RAC datastore")
+oracle_rac_opts = [
+    cfg.ListOpt('tcp_ports', default=["1521"],
+                help='List of TCP ports and/or port ranges to open '
+                     'in the security group (only applicable '
+                     'if trove_security_groups_support is True).'),
+    cfg.ListOpt('udp_ports', default=[],
+                help='List of UDP ports and/or port ranges to open '
+                     'in the security group (only applicable '
+                     'if trove_security_groups_support is True).'),
+    cfg.StrOpt('backup_strategy', default=None,
+               help='Default strategy to perform backups.',
+               deprecated_name='backup_strategy',
+               deprecated_group='DEFAULT'),
+    cfg.StrOpt('replication_strategy', default=None,
+               help='Default strategy for replication.'),
+    cfg.StrOpt('replication_namespace', default=None,
+               help='Namespace to load replication strategies from.'),
+    cfg.StrOpt('mount_point', default=None,
+               help="Filesystem path for mounting "
+                    "volumes if volume support is enabled."),
+    cfg.BoolOpt('root_on_create', default=False,
+                help='Enable the automatic creation of the root user for the '
+                'service during instance-create. The generated password for '
+                'the root user is immediately returned in the response of '
+                "instance-create as the 'password' field."),
+    cfg.IntOpt('usage_timeout', default=400,
+               help='Maximum time (in seconds) to wait for a Guest to become '
+                    'active.'),
+    cfg.StrOpt('backup_namespace', default=None,
+               help='Namespace to load backup strategies from.',
+               deprecated_name='backup_namespace',
+               deprecated_group='DEFAULT'),
+    cfg.StrOpt('restore_namespace', default=None,
+               help='Namespace to load restore strategies from.',
+               deprecated_name='restore_namespace',
+               deprecated_group='DEFAULT'),
+    cfg.BoolOpt('volume_support', default=False,
+                help='Whether to provision a Cinder volume for datadir.'),
+    cfg.StrOpt('device_path', default=None,
+               help='Device path for volume if volume support is enabled.'),
+    cfg.DictOpt('backup_incremental_strategy', default=None,
+                help='Incremental Backup Runner based on the default '
+                'strategy. For strategies that do not implement an '
+                'incremental backup, the runner will use the default full '
+                'backup.',
+                deprecated_name='backup_incremental_strategy',
+                deprecated_group='DEFAULT'),
+    cfg.BoolOpt('cluster_support', default=True,
+                help='Enable clusters to be created and managed.'),
+    cfg.StrOpt('api_strategy',
+               default='trove.common.strategies.cluster.oracle_rac.'
+                       'api.OracleRACAPIStrategy',
+               help='Class that implements datastore-specific API logic.'),
+    cfg.StrOpt('taskmanager_strategy',
+               default='trove.common.strategies.cluster.oracle_rac.'
+                       'taskmanager.OracleRACTaskManagerStrategy',
+               help='Class that implements datastore-specific task manager '
+                    'logic.'),
+    cfg.StrOpt('guestagent_strategy',
+               default='trove.common.strategies.cluster.oracle_rac.'
+                       'guestagent.OracleRACGuestAgentStrategy',
+               help='Class that implements datastore-specific Guest Agent API '
+                    'logic.'),
+    cfg.IntOpt('default_password_length', default=30,
+               help='Character length of generated passwords.'),
+    cfg.StrOpt('cloud_user_role', default='CLOUD_USER_ROLE',
+               help='Default role name of all regular cloud db users'),
+    cfg.IntOpt('db_ram', default=40,
+               help='Default percentage of physical memory to allocate '
+                    'for Oracle.'),
+    cfg.StrOpt('db_charset', default='AL32UTF8',
+               help='Default database character set.'),
+    cfg.StrOpt('template', default='General_Purpose.dbc',
+               help='Template file name used by dbca.'),
+    cfg.IntOpt('default_prefixlen', default=24,
+               help="Subnet length to be used if no length if given. Set to 0 "
+                    "to defer to the subnetpool's default length."),
+    cfg.StrOpt('network_object_name_prefix', default='dbaas_rac',
+               help="Prefix to use when creating the RAC network objects."),
+    cfg.StrOpt('interconnect_subnet_cidr', default='192.168.70.0/24',
+               help="CIDR of the interconnect subnet."),
+    cfg.IntOpt('configuration_timeout', default=3600,
+               help="Maximum time (in seconds) guest should wait for Oracle "
+                    "RAC installation and configuration operations."),
 ]
 
 # Oracle
@@ -1812,6 +1903,7 @@ CONF.register_opts(database_opts, 'database')
 CONF.register_group(mysql_group)
 CONF.register_group(mysql_ee_group)
 CONF.register_group(oracle_ra_group)
+CONF.register_group(oracle_rac_group)
 CONF.register_group(oracle_group)
 CONF.register_group(percona_group)
 CONF.register_group(pxc_group)
@@ -1832,6 +1924,7 @@ CONF.register_group(mariadb_group)
 CONF.register_opts(mysql_opts, mysql_group)
 CONF.register_opts(mysql_ee_opts, mysql_ee_group)
 CONF.register_opts(oracle_ra_opts, oracle_ra_group)
+CONF.register_opts(oracle_rac_opts, oracle_rac_group)
 CONF.register_opts(oracle_opts, oracle_group)
 CONF.register_opts(percona_opts, percona_group)
 CONF.register_opts(pxc_opts, pxc_group)
