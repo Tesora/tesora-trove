@@ -464,3 +464,7 @@ class CouchbaseInstanceCreateRunner(InstanceCreateRunner):
             expected_states=expected_states,
             expected_http_code=expected_http_code,
             create_helper_user=create_helper_user)
+
+
+class Couchbase_4InstanceCreateRunner(CouchbaseInstanceCreateRunner):
+    pass

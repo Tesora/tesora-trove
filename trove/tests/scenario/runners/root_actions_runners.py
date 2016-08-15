@@ -204,3 +204,7 @@ class CouchbaseRootActionsRunner(RootActionsRunner):
 
     def run_enable_root_with_password(self):
         raise SkipTest("Operation is currently not supported.")
+
+
+class Couchbase_4RootActionsRunner(CouchbaseRootActionsRunner):
+    pass

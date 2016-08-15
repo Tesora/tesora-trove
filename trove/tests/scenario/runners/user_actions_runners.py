@@ -526,3 +526,7 @@ class CouchbaseUserActionsRunner(UserActionsRunner):
             self, expected_exception=exceptions.BadRequest,
             expected_http_code=400):
         raise SkipTest("Couchbase users cannot be renamed.")
+
+
+class Couchbase_4UserActionsRunner(CouchbaseUserActionsRunner):
+    pass
