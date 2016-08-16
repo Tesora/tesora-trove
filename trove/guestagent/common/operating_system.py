@@ -128,7 +128,7 @@ def _read_file_as_root(path, codec, decode=True):
     :type decode:              boolean
     """
     with tempfile.NamedTemporaryFile() as fp:
-        copy(path, fp.name, force=True, as_root=True)
+        copy(path, fp.name, force=True, dereference=True, as_root=True)
         chmod(fp.name, FileMode.ADD_READ_ALL(), as_root=True)
         if decode:
             return codec.deserialize(fp.read())
@@ -719,7 +719,7 @@ def move(source, destination, force=False, **kwargs):
 
 
 def copy(source, destination, force=False, preserve=False, recursive=True,
-         **kwargs):
+         dereference=False, **kwargs):
     """Copy a given file or directory to another location.
     Copy does NOT attempt to preserve ownership, permissions and timestamps
     unless the 'preserve' option is enabled.
@@ -742,6 +742,9 @@ def copy(source, destination, force=False, preserve=False, recursive=True,
     :param recursive:       Copy directories recursively.
     :type recursive:        boolean
 
+    :param dereference:     Follow symbolic links when copying from them.
+    :type dereference:      boolean
+
     :raises:                :class:`UnprocessableEntity` if source or
                             destination not given.
     """
@@ -751,7 +754,8 @@ def copy(source, destination, force=False, preserve=False, recursive=True,
     elif not destination:
         raise exception.UnprocessableEntity(_("Missing destination path."))
 
-    options = (('f', force), ('p', preserve), ('R', recursive))
+    options = (('f', force), ('p', preserve), ('R', recursive),
+               ('L', dereference))
     _execute_shell_cmd('cp', options, source, destination, **kwargs)
 
 
