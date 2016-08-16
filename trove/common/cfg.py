@@ -671,6 +671,8 @@ oracle_ra_group = cfg.OptGroup(
     'oracle_ra', title='Oracle Remote Agent options',
     help="Oslo option group designed for the Oracle Remote Agent datastore")
 oracle_ra_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports', default=[],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
@@ -751,6 +753,8 @@ oracle_rac_group = cfg.OptGroup(
     'oracle_rac', title='Oracle Real Application Cluster options',
     help="Oslo option group designed for the Oracle RAC datastore")
 oracle_rac_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports', default=["1521"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
@@ -841,6 +845,8 @@ oracle_group = cfg.OptGroup(
     'oracle', title='Oracle options',
     help="Oslo option group designed for Oracle datastore")
 oracle_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports',
                 default=["1521"],
                 help='List of TCP ports and/or port ranges to open '
@@ -1020,6 +1026,8 @@ pxc_group = cfg.OptGroup(
     'pxc', title='Percona XtraDB Cluster options',
     help="Oslo option group designed for Percona XtraDB Cluster datastore")
 pxc_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports', default=["3306", "4444", "4567", "4568"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
@@ -1782,6 +1790,8 @@ mariadb_group = cfg.OptGroup(
     'mariadb', title='MariaDB options',
     help="Oslo option group designed for MariaDB datastore")
 mariadb_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports', default=["3306", "4444", "4567", "4568"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
