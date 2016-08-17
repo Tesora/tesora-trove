@@ -404,3 +404,7 @@ class CouchbaseClusterActionsRunner(ClusterActionsRunner):
 
     def run_cluster_root_enable(self):
         raise SkipTest("Operation is currently not supported.")
+
+
+class Couchbase_4ClusterActionsRunner(ClusterActionsRunner):
+    pass
