@@ -465,9 +465,10 @@ class GuestAgentBackupTest(trove_testtools.TestCase):
     @patch.multiple('trove.guestagent.common.operating_system',
                     chmod=DEFAULT, remove=DEFAULT)
     def test_reset_root_password_on_mysql_restore(self, chmod, remove):
-        with patch.object(MySQLRestoreMixin,
-                          '_start_mysqld_safe_with_init_file',
-                          return_value=True):
+        with patch.multiple(
+                MySQLRestoreMixin,
+                _start_mysqld_safe_with_init_file=Mock(return_value=True),
+                _start_mysqld_with_init_file=Mock(return_value=True)):
             inst = MySQLRestoreMixin()
             inst.reset_root_password()
 
