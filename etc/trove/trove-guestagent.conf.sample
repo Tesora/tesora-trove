@@ -132,6 +132,23 @@ rabbit_password=f7999d1955c5014aa32c
 # Databases to ignore for db create/list/delete operations
 # ignore_dbs = mysql, information_schema, performance_schema
 
+[mysql_ee]
+# For mysql_ee, the following are the defaults for backup, and restore:
+# backup_strategy = MySqlBackup
+# backup_namespace = trove.guestagent.strategies.backup.mysql_ee_impl
+# restore_namespace = trove.guestagent.strategies.restore.mysql_ee_impl
+# Default configuration for mysql_ee replication
+# replication_strategy = MysqlEEGTIDReplication
+# replication_namespace = trove.guestagent.strategies.replication.mysql_ee_gtid
+# replication_user = slave_user
+# replication_password = slave_password
+
+# Users to ignore for user create/list/delete operations
+# ignore_users = os_admin
+
+# Databases to ignore for db create/list/delete operations
+# ignore_dbs = mysql, information_schema, performance_schema
+
 [vertica]
 # For vertica, following are the defaults needed:
 # mount_point = /var/lib/vertica
