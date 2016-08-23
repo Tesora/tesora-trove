@@ -125,6 +125,10 @@ rabbit_password=f7999d1955c5014aa32c
 volume_support = True
 device_path = /dev/vdb
 
+[mysql_ee]
+volume_support = True
+device_path = /dev/vdb
+
 [redis]
 # redis uses local storage
 volume_support = False
