@@ -14,7 +14,9 @@
 #    under the License.
 
 from couchbase.bucket import Bucket
+from couchbase import exceptions as cb_except
 
+from trove.common import utils
 from trove.tests.scenario.helpers.test_helper import TestHelper
 from trove.tests.scenario.runners.test_runners import TestRunner
 
@@ -48,9 +50,11 @@ class CouchbaseHelper(TestHelper):
             self._set_data_point(client, data_label,
                                  self._get_dataset(data_start, data_size))
 
+    @utils.retry((cb_except.TemporaryFailError, cb_except.BusyError))
     def _key_exists(self, client, key, *args, **kwargs):
         return client.get(key, quiet=True).success
 
+    @utils.retry((cb_except.TemporaryFailError, cb_except.BusyError))
     def _set_data_point(self, client, key, value, *args, **kwargs):
         client.insert(key, value)
 
@@ -70,6 +74,7 @@ class CouchbaseHelper(TestHelper):
         if self._key_exists(client, data_label, *args, **kwargs):
             self._remove_data_point(client, data_label, *args, **kwargs)
 
+    @utils.retry((cb_except.TemporaryFailError, cb_except.BusyError))
     def _remove_data_point(self, client, key, *args, **kwargs):
         client.remove(key)
 
@@ -86,6 +91,7 @@ class CouchbaseHelper(TestHelper):
                                 "Unexpected value '%s' returned from "
                                 "Couchbase key '%s'" % (value, key))
 
+    @utils.retry((cb_except.TemporaryFailError, cb_except.BusyError))
     def _get_data_point(self, client, key, *args, **kwargs):
         return client.get(key).value
 

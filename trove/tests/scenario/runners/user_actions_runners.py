@@ -527,6 +527,19 @@ class CouchbaseUserActionsRunner(UserActionsRunner):
             expected_http_code=400):
         raise SkipTest("Couchbase users cannot be renamed.")
 
+    def run_user_access_show(self):
+        raise SkipTest("Operation is currently not supported.")
+
+    def run_user_access_revoke(self):
+        raise SkipTest("Operation is currently not supported.")
+
+    def run_user_access_grant(self):
+        raise SkipTest("Operation is currently not supported.")
+
+    def get_system_users(self):
+        # Couchbase does not define 'ignore_users' property.
+        return []
+
 
 class Couchbase_4UserActionsRunner(CouchbaseUserActionsRunner):
     pass

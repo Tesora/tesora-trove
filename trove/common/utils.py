@@ -26,6 +26,7 @@ import types
 import uuid
 
 from eventlet.timeout import Timeout
+from functools import wraps
 import jinja2
 from oslo_concurrency import processutils
 from oslo_log import log as logging
@@ -435,3 +436,35 @@ def format_output(message, format_len=79, truncate_len=None, replace_index=0):
     if truncate_len and len(msg_str) > truncate_len:
         msg_str = msg_str[:truncate_len - 3] + '...'
     return msg_str
+
+
+def retry(expected_exception_cls, retries=3, delay_fun=lambda n: 3 * n):
+    """Retry decorator.
+    Executes the decorated function N times with a variable timeout
+    on a given exception(s).
+
+    :param expected_exception_cls: Handled exception classes.
+    :type expected_exception_cls:  class or tuple of classes
+
+    :param delay_fun:              The time delay in sec as a function of the
+                                   number of attempts (n) already executed.
+    :type delay_fun:               callable
+    """
+    def retry_deco(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            remaining_attempts = retries
+            while remaining_attempts > 1:
+                try:
+                    return f(*args, **kwargs)
+                except expected_exception_cls:
+                    remaining_attempts -= 1
+                    delay = delay_fun(retries - remaining_attempts)
+                    LOG.exception(_(
+                        "Retrying in %(delay)d seconds "
+                        "(remaining attempts: %(remaining)d)...") %
+                        {'delay': delay, 'remaining': remaining_attempts})
+                    time.sleep(delay)
+            return f(*args, **kwargs)
+        return wrapper
+    return retry_deco
