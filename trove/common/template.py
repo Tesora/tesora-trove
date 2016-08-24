@@ -32,6 +32,7 @@ ENV = utils.ENV
 SERVICE_PARSERS = {
     'mongodb': configurations.MongoDBConfParser,
     'mysql': configurations.MySQLConfParser,
+    'mysql_ee': configurations.MySQLConfParser,
     'percona': configurations.MySQLConfParser,
     'mariadb': configurations.MySQLConfParser,
     'pxc': configurations.MySQLConfParser,
