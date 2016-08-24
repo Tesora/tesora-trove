@@ -375,11 +375,7 @@ def create_public_subnet_from_pool(conf, driver, cluster_id, subnetpool,
                                   ip_version=4,
                                   subnetpool_id=subnetpool['id'],
                                   prefixlen=prefixlen)
-    interface_id = driver.connect_subnet_to_router(router_id,
-                                                   subnet['id'])['port_id']
-    interface_name = rac_utils.make_object_name(
-        conf, ['public', 'interface', 'port'], cluster_id)
-    driver.update_port(interface_id, name=interface_name)
+    driver.connect_subnet_to_router(router_id, subnet['id'])
     return subnet
 
 
@@ -401,10 +397,19 @@ def configure_public_subnet(conf, driver, cluster_id, subnet, ip_range):
     allocation_pools = [{'start': ip_range[0], 'end': ip_range[-1]}]
     subnet_name = rac_utils.make_object_name(
         conf, ['public', 'subnet'], cluster_id)
-    return driver.update_subnet(subnet['id'],
-                                name=subnet_name,
-                                enable_dhcp=True,
-                                allocation_pools=allocation_pools)
+    subnet = driver.update_subnet(subnet['id'],
+                                  name=subnet_name,
+                                  enable_dhcp=True,
+                                  allocation_pools=allocation_pools)
+    # find and rename the subnet's interface to the router
+    ports = driver.list_ports()
+    for port in ports:
+        if port.get('device_owner') == 'network:router_interface':
+            if port.get('fixed_ips')[0].get('subnet_id') == subnet['id']:
+                interface_name = rac_utils.make_object_name(
+                    conf, ['public', 'interface', 'port'], cluster_id)
+                driver.update_port(port['id'], name=interface_name)
+    return subnet
 
 
 def create_port(driver, port_name, instance_number, subnet,
