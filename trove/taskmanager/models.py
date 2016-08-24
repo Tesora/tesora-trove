@@ -315,42 +315,46 @@ class ClusterTasks(Cluster):
         if network_driver.subnet_support:
             LOG.debug("searching for any network resources owned by the "
                       "cluster")
+            try:
+                def _find(items):
+                    matches = []
+                    for item in items:
+                        name = item.get('name')
+                        if name and name.endswith(cluster_id):
+                            matches.append(item)
+                    return matches
 
-            def _find(items):
-                matches = []
-                for item in items:
-                    name = item.get('name')
-                    if name and name.endswith(cluster_id):
-                        matches.append(item)
-                return matches
+                ports = _find(network_driver.list_ports())
+                subnets = _find(network_driver.list_subnets())
+                networks = _find(network_driver.list_networks())
 
-            ports = _find(network_driver.list_ports())
-            subnets = _find(network_driver.list_subnets())
-            networks = _find(network_driver.list_networks())
+                # Detach subnets from routers
+                if subnets:
+                    for port in ports:
+                        if (port.get('device_owner') ==
+                                'network:router_interface'):
+                            subnet = port['fixed_ips'][0]['subnet_id']
+                            router = port['device_id']
+                            LOG.debug("detaching subnet {subnet} from router "
+                                      "{router}".format(subnet=subnet,
+                                                        router=router))
+                            network_driver.disconnect_subnet_from_router(
+                                router, subnet)
 
-            # Detach subnets from routers
-            if subnets:
                 for port in ports:
-                    if port.get('device_owner') == 'network:router_interface':
-                        subnet = port['fixed_ips'][0]['subnet_id']
-                        router = port['device_id']
-                        LOG.debug("detaching subnet {subnet} from router "
-                                  "{router}".format(subnet=subnet,
-                                                    router=router))
-                        network_driver.disconnect_subnet_from_router(
-                            router, subnet)
-
-            for port in ports:
-                # Don't try and delete the interface - we did that earlier
-                if not port.get('device_owner') == 'network:router_interface':
-                    LOG.debug("deleting port " + port['id'])
-                    network_driver.delete_port(port['id'])
-            for subnet in subnets:
-                LOG.debug("deleting subnet " + subnet['id'])
-                network_driver.delete_subnet(subnet['id'])
-            for network in networks:
-                LOG.debug("deleting network " + network['id'])
-                network_driver.delete_network(network['id'])
+                    # Don't try and delete the interface - we did that earlier
+                    if port.get('device_owner') != 'network:router_interface':
+                        LOG.debug("deleting port " + port['id'])
+                        network_driver.delete_port(port['id'])
+                for subnet in subnets:
+                    LOG.debug("deleting subnet " + subnet['id'])
+                    network_driver.delete_subnet(subnet['id'])
+                for network in networks:
+                    LOG.debug("deleting network " + network['id'])
+                    network_driver.delete_network(network['id'])
+            except TroveError:
+                LOG.exception("Failed to clean up all cluster network "
+                              "resources. Skipping network cleanup.")
         LOG.debug("setting cluster %s as deleted." % cluster_id)
         cluster = DBCluster.find_by(id=cluster_id)
         cluster.deleted = True
