@@ -111,7 +111,6 @@ class Manager(manager.Manager):
                               mount_point=upgrade_info['mount_point'],
                               device_path=upgrade_info['device'])
         self.app.restore_files_post_upgrade(upgrade_info)
-        self.app.initialize_writable_run_dir()
         self.app.start_db()
 
     def restart(self, context):
