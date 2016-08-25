@@ -8,12 +8,12 @@ description: Trove Workflows
 workflows:
 
   backup_create:
-    input: [instance, name, description, parent_id]
+    input: [instance, name, description, incremental]
     output:
       status: <% $.message %>
 
     tasks:
       backup_create:
-        action: trove.backups_create instance=<% $.instance %> name=<% $.name %> description=<% $.description %> parent_id=<% $.parent_id %>
+        action: trove.backups_create instance=<% $.instance %> name=<% $.name %> description=<% $.description %> incremental=<% $.incremental %>
         publish:
           message: <% 'Backup complete' %>
