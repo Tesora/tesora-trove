@@ -33,7 +33,10 @@ class GuestAgentMongoDBClusterManagerTest(trove_testtools.TestCase):
         super(GuestAgentMongoDBClusterManagerTest, self).setUp()
         self.context = trove_testtools.TroveTestContext(self)
         self.manager = manager.Manager()
-        self.manager.app.configuration_manager = mock.MagicMock()
+        self.manager.app.mongod_configuration_manager = mock.MagicMock()
+        self.manager.app.mongos_configuration_manager = mock.MagicMock()
+        self.manager.app.configuration_manager = (
+            self.manager.app.mongod_configuration_manager)
         self.manager.app.status.set_status = mock.MagicMock()
         self.manager.app.status.set_host = mock.MagicMock()
         self.conf_mgr = self.manager.app.configuration_manager
@@ -101,39 +104,33 @@ class GuestAgentMongoDBClusterManagerTest(trove_testtools.TestCase):
                                         ["cfg_server1",
                                          "cfg_server2"])
         self.conf_mgr.apply_system_override.assert_called_once_with(
-            {'sharding.configDB': "cfg_server1:27019,cfg_server2:27019"},
+            {'sharding': {'configDB': "cfg_server1:27019,cfg_server2:27019"}},
             'clustering')
         mock_start_db.assert_called_with(True)
 
-    @mock.patch.object(service.MongoDBApp, '_initialize_writable_run_dir')
     @mock.patch.object(service.MongoDBApp, '_configure_as_query_router')
     @mock.patch.object(service.MongoDBApp, '_configure_cluster_security')
-    def test_prepare_mongos(self, mock_secure, mock_config, mock_run_init):
+    def test_prepare_mongos(self, mock_secure, mock_config):
         self._prepare_method("test-id-1", "query_router", None)
-        mock_run_init.assert_called_once_with()
         mock_config.assert_called_once_with()
         mock_secure.assert_called_once_with(None)
         self.manager.app.status.set_status.assert_called_with(
             ds_instance.ServiceStatuses.INSTANCE_READY, force=True)
 
-    @mock.patch.object(service.MongoDBApp, '_initialize_writable_run_dir')
     @mock.patch.object(service.MongoDBApp, '_configure_as_config_server')
     @mock.patch.object(service.MongoDBApp, '_configure_cluster_security')
     def test_prepare_config_server(
-            self, mock_secure, mock_config, mock_run_init):
+            self, mock_secure, mock_config):
         self._prepare_method("test-id-2", "config_server", None)
-        mock_run_init.assert_called_once_with()
         mock_config.assert_called_once_with()
         mock_secure.assert_called_once_with(None)
         self.manager.app.status.set_status.assert_called_with(
             ds_instance.ServiceStatuses.INSTANCE_READY, force=True)
 
-    @mock.patch.object(service.MongoDBApp, '_initialize_writable_run_dir')
     @mock.patch.object(service.MongoDBApp, '_configure_as_cluster_member')
     @mock.patch.object(service.MongoDBApp, '_configure_cluster_security')
-    def test_prepare_member(self, mock_secure, mock_config, mock_run_init):
+    def test_prepare_member(self, mock_secure, mock_config):
         self._prepare_method("test-id-3", "member", None)
-        mock_run_init.assert_called_once_with()
         mock_config.assert_called_once_with('rs1')
         mock_secure.assert_called_once_with(None)
         self.manager.app.status.set_status.assert_called_with(
@@ -141,14 +138,8 @@ class GuestAgentMongoDBClusterManagerTest(trove_testtools.TestCase):
 
     @mock.patch.object(service.MongoDBApp, '_configure_network')
     def test_configure_as_query_router(self, net_conf):
-        self.conf_mgr.parse_configuration = mock.Mock(
-            return_value={'storage.mmapv1.smallFiles': False,
-                          'storage.journal.enabled': True})
         self.manager.app._configure_as_query_router()
-        self.conf_mgr.save_configuration.assert_called_once_with({})
         net_conf.assert_called_once_with(service.MONGODB_PORT)
-        self.conf_mgr.apply_system_override.assert_called_once_with(
-            {'sharding.configDB': ''}, 'clustering')
         self.assertTrue(self.manager.app.is_query_router)
 
     @mock.patch.object(service.MongoDBApp, '_configure_network')
@@ -156,7 +147,7 @@ class GuestAgentMongoDBClusterManagerTest(trove_testtools.TestCase):
         self.manager.app._configure_as_config_server()
         net_conf.assert_called_once_with(service.CONFIGSVR_PORT)
         self.conf_mgr.apply_system_override.assert_called_once_with(
-            {'sharding.clusterRole': 'configsvr'}, 'clustering')
+            {'sharding': {'clusterRole': 'configsvr'}}, 'clustering')
 
     @mock.patch.object(service.MongoDBApp, 'start_db')
     @mock.patch.object(service.MongoDBApp, '_configure_network')
@@ -164,7 +155,7 @@ class GuestAgentMongoDBClusterManagerTest(trove_testtools.TestCase):
         self.manager.app._configure_as_cluster_member('rs1')
         net_conf.assert_called_once_with(service.MONGODB_PORT)
         self.conf_mgr.apply_system_override.assert_called_once_with(
-            {'replication.replSetName': 'rs1'}, 'clustering')
+            {'replication': {'replSetName': 'rs1'}}, 'clustering')
 
     @mock.patch.object(service.MongoDBApp, 'store_key')
     @mock.patch.object(service.MongoDBApp, 'get_key_file',
@@ -172,23 +163,19 @@ class GuestAgentMongoDBClusterManagerTest(trove_testtools.TestCase):
     def test_configure_cluster_security(self, get_key_mock, store_key_mock):
         self.manager.app._configure_cluster_security('key')
         store_key_mock.assert_called_once_with('key')
-        # TODO(mvandijk): enable cluster security once Trove features are in
-        # self.conf_mgr.apply_system_override.assert_called_once_with(
-        #     {'security.clusterAuthMode': 'keyFile',
-        #      'security.keyFile': '/var/keypath'}, 'clustering')
 
     @mock.patch.object(netutils, 'get_my_ipv4', return_value="10.0.0.2")
     def test_configure_network(self, ip_mock):
         self.manager.app._configure_network()
         self.conf_mgr.apply_system_override.assert_called_once_with(
-            {'net.bindIp': '10.0.0.2,127.0.0.1'})
+            {'net': {'bindIp': '10.0.0.2,127.0.0.1'}})
         self.manager.app.status.set_host.assert_called_once_with(
             '10.0.0.2', port=None)
 
         self.manager.app._configure_network(10000)
         self.conf_mgr.apply_system_override.assert_called_with(
-            {'net.bindIp': '10.0.0.2,127.0.0.1',
-             'net.port': 10000})
+            {'net': {'bindIp': '10.0.0.2,127.0.0.1',
+                     'port': 10000}})
         self.manager.app.status.set_host.assert_called_with(
             '10.0.0.2', port=10000)
 

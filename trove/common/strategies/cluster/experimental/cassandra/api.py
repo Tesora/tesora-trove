@@ -114,8 +114,8 @@ class CassandraCluster(models.Cluster):
         vol_enabled = cassandra_conf.volume_support
 
         # Validate instance flavors.
-        models.get_flavors_from_instance_defs(context, instances,
-                                              vol_enabled, eph_enabled)
+        models.validate_instance_flavors(context, instances,
+                                         vol_enabled, eph_enabled)
 
         # Compute the total volume allocation.
         req_volume_size = models.get_required_volume_size(instances,
@@ -155,6 +155,8 @@ class CassandraCluster(models.Cluster):
                 availability_zone=instance_az,
                 configuration_id=None,
                 cluster_config=member_config,
+                modules=instance.get('modules'),
+                region_name=instance.get('region_name'),
                 locality=locality)
 
             new_instances.append(new_instance)

@@ -18,12 +18,9 @@ import json
 from proboscis import SkipTest
 
 from trove.common.utils import generate_uuid
-from trove.tests.config import CONFIG
 from trove.tests.scenario.runners.test_runners import TestRunner
 from trove.tests.util.check import CollectionCheck
 from trove.tests.util.check import TypeCheck
-from trove.tests.util import create_dbaas_client
-from trove.tests.util.users import Requirements
 from troveclient.compat import exceptions
 
 
@@ -39,7 +36,6 @@ class ConfigurationRunner(TestRunner):
         self.non_dynamic_inst_count = 0
         self.initial_group_count = 0
         self.additional_group_count = 0
-        self.other_client = None
         self.config_id_for_inst = None
         self.config_inst_id = None
 
@@ -273,20 +269,12 @@ class ConfigurationRunner(TestRunner):
     def assert_conf_get_unauthorized_user(
             self, config_id, expected_exception=exceptions.NotFound,
             expected_http_code=404):
-        self._create_other_client()
         self.assert_raises(
             expected_exception, None,
-            self.other_client.configurations.get, config_id)
+            self.unauth_client.configurations.get, config_id)
         # we're using a different client, so we'll check the return code
         # on it explicitly, instead of depending on 'assert_raises'
-        self.assert_client_code(expected_http_code, client=self.other_client)
-
-    def _create_other_client(self):
-        if not self.other_client:
-            requirements = Requirements(is_admin=False)
-            other_user = CONFIG.users.find_user(
-                requirements, black_list=[self.instance_info.user.auth_user])
-            self.other_client = create_dbaas_client(other_user)
+        self.assert_client_code(expected_http_code, client=self.unauth_client)
 
     def run_non_dynamic_conf_get_unauthorized_user(
             self, expected_exception=exceptions.NotFound,
@@ -317,6 +305,26 @@ class ConfigurationRunner(TestRunner):
             self.assert_instance_modify(
                 self.instance_info.id, self.dynamic_group_id,
                 expected_states, expected_http_code)
+
+    def run_verify_dynamic_values(self):
+        if self.dynamic_group_id:
+            self.assert_configuration_values(self.instance_info.id,
+                                             self.dynamic_group_id)
+
+    def assert_configuration_values(self, instance_id, group_id):
+        if group_id == self.dynamic_group_id:
+            expected_configs = self.test_helper.get_dynamic_group()
+        elif group_id == self.non_dynamic_group_id:
+            expected_configs = self.test_helper.get_non_dynamic_group()
+
+        self._assert_configuration_values(instance_id, expected_configs)
+
+    def _assert_configuration_values(self, instance_id, expected_configs):
+        host = self.get_instance_host(instance_id)
+        for name, value in expected_configs.items():
+            actual = self.test_helper.get_configuration_value(name, host)
+            self.assert_equal(str(value), str(actual),
+                              "Unexpected value of property '%s'" % name)
 
     def run_list_dynamic_inst_conf_groups_after(self):
         if self.dynamic_group_id:
@@ -381,6 +389,11 @@ class ConfigurationRunner(TestRunner):
             self.assert_instance_modify(
                 self.instance_info.id, self.non_dynamic_group_id,
                 expected_states, expected_http_code, restart_inst=True)
+
+    def run_verify_non_dynamic_values(self):
+        if self.non_dynamic_group_id:
+            self.assert_configuration_values(self.instance_info.id,
+                                             self.non_dynamic_group_id)
 
     def run_list_non_dynamic_inst_conf_groups_after(self):
         if self.non_dynamic_group_id:
@@ -493,7 +506,7 @@ class ConfigurationRunner(TestRunner):
     def assert_create_instance_with_conf(self, config_id):
         # test that a new instance will apply the configuration on create
         result = self.auth_client.instances.create(
-            "TEST_" + str(datetime.now()) + "_config",
+            self.instance_info.name + "_config",
             self.instance_info.dbaas_flavor_href,
             self.instance_info.volume,
             [], [],
@@ -506,30 +519,38 @@ class ConfigurationRunner(TestRunner):
         return result.id
 
     def run_wait_for_conf_instance(
-            # we can't specify all the states here, as it may go active
-            # before this test runs
-            self, final_state=['ACTIVE'],
-            expected_http_code=200):
+            self, expected_states=['BUILD', 'ACTIVE'], expected_http_code=200):
         if self.config_inst_id:
-            self.assert_instance_action(self.config_inst_id, final_state,
+            self.assert_instance_action(self.config_inst_id, expected_states,
                                         expected_http_code)
+            self.create_test_helper_on_instance(self.config_inst_id)
             inst = self.auth_client.instances.get(self.config_inst_id)
             self.assert_equal(self.config_id_for_inst,
                               inst.configuration['id'])
         else:
             raise SkipTest("No instance created with a configuration group.")
 
-    def run_delete_conf_instance(
-            self, expected_states=['SHUTDOWN'],
-            expected_http_code=202):
-        if self.config_inst_id:
-            self.assert_delete_conf_instance(
-                self.config_inst_id, expected_states, expected_http_code)
+    def run_verify_instance_values(self):
+        if self.config_id_for_inst:
+            self.assert_configuration_values(self.config_inst_id,
+                                             self.config_id_for_inst)
         else:
             raise SkipTest("No instance created with a configuration group.")
 
-    def assert_delete_conf_instance(
-            self, instance_id, expected_state, expected_http_code):
+    def run_delete_conf_instance(self, expected_http_code=202):
+        if self.config_inst_id:
+            self.assert_delete_conf_instance(
+                self.config_inst_id, expected_http_code)
+        else:
+            raise SkipTest("No instance created with a configuration group.")
+
+    def assert_delete_conf_instance(self, instance_id, expected_http_code):
         self.auth_client.instances.delete(instance_id)
         self.assert_client_code(expected_http_code)
-        self.assert_all_gone(instance_id, expected_state)
+
+    def run_wait_for_delete_conf_instance(
+            self, expected_last_state=['SHUTDOWN']):
+        if self.config_inst_id:
+            self.assert_all_gone(self.config_inst_id, expected_last_state)
+        else:
+            raise SkipTest("No instance created with a configuration group.")

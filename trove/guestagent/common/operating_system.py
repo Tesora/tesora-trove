@@ -20,6 +20,17 @@ import re
 import stat
 import tempfile
 
+# We need to import modules to grab the name from a given package
+# This is different on each platform, and probably don't exist on all
+try:
+    from apt import debfile
+except ImportError:
+    pass
+try:
+    import rpm
+except ImportError:
+    pass
+
 from functools import reduce
 from oslo_concurrency.processutils import UnknownArgumentError
 
@@ -31,6 +42,7 @@ from trove.common import utils
 REDHAT = 'redhat'
 DEBIAN = 'debian'
 SUSE = 'suse'
+ORACLE = 'oracle'
 
 # A newline character for writing into text files (default).
 # Do not use 'os.linesep' when writing files in the text mode.
@@ -116,7 +128,7 @@ def _read_file_as_root(path, codec, decode=True):
     :type decode:              boolean
     """
     with tempfile.NamedTemporaryFile() as fp:
-        copy(path, fp.name, force=True, as_root=True)
+        copy(path, fp.name, force=True, dereference=True, as_root=True)
         chmod(fp.name, FileMode.ADD_READ_ALL(), as_root=True)
         if decode:
             return codec.deserialize(fp.read())
@@ -339,6 +351,8 @@ def get_os():
         return REDHAT
     elif os.path.isfile("/etc/SuSE-release"):
         return SUSE
+    elif os.path.isfile("/etc/oracle-release"):
+        return ORACLE
     else:
         return DEBIAN
 
@@ -705,7 +719,7 @@ def move(source, destination, force=False, **kwargs):
 
 
 def copy(source, destination, force=False, preserve=False, recursive=True,
-         **kwargs):
+         dereference=False, **kwargs):
     """Copy a given file or directory to another location.
     Copy does NOT attempt to preserve ownership, permissions and timestamps
     unless the 'preserve' option is enabled.
@@ -728,6 +742,9 @@ def copy(source, destination, force=False, preserve=False, recursive=True,
     :param recursive:       Copy directories recursively.
     :type recursive:        boolean
 
+    :param dereference:     Follow symbolic links when copying from them.
+    :type dereference:      boolean
+
     :raises:                :class:`UnprocessableEntity` if source or
                             destination not given.
     """
@@ -737,7 +754,8 @@ def copy(source, destination, force=False, preserve=False, recursive=True,
     elif not destination:
         raise exception.UnprocessableEntity(_("Missing destination path."))
 
-    options = (('f', force), ('p', preserve), ('R', recursive))
+    options = (('f', force), ('p', preserve), ('R', recursive),
+               ('L', dereference))
     _execute_shell_cmd('cp', options, source, destination, **kwargs)
 
 
@@ -825,3 +843,38 @@ def _build_command_options(options):
     """
 
     return ['-' + item[0] for item in options if item[1]]
+
+
+def get_package_command():
+    os_name = get_os()
+
+    pkg_cmd = {REDHAT: "rpm",
+               DEBIAN: "dpkg",
+               SUSE: "rpm",
+               ORACLE: "rpm"}[os_name]
+    install_options = {REDHAT: ["-i"],
+                       DEBIAN: ["-i"],
+                       SUSE: ["-i"],
+                       ORACLE: ["-i"]}[os_name]
+    uninstall_options = {REDHAT: ["-ev"],
+                         DEBIAN: ["-r"],
+                         SUSE: ["-ev"],
+                         ORACLE: ["-ev"]}[os_name]
+    return pkg_cmd, install_options, uninstall_options
+
+
+def get_package_name(package_file):
+    pkg_cmd, install_options, uninstall_opts = get_package_command()
+    if "dpkg" == pkg_cmd:
+        deb_file = debfile.DebPackage(package_file)
+        package_name = deb_file.pkgname
+    elif "rpm" == pkg_cmd:
+        ts = rpm.ts()
+        ts.setVSFlags(rpm._RPMVSF_NOSIGNATURES)
+        with open(package_file) as fd:
+            pkg_hdr = ts.hdrFromFdno(fd)
+        package_name = pkg_hdr[rpm.RPMTAG_NAME]
+    else:
+        raise exception.UnprocessableEntity(
+            _("Unhandled package type: %s)") % pkg_cmd)
+    return package_name

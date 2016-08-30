@@ -89,6 +89,9 @@ function configure_trove {
     # Copy api-paste file over to the trove conf dir
     cp $TROVE_LOCAL_API_PASTE_INI $TROVE_API_PASTE_INI
 
+    # Copy the default policy file over to the trove conf dir
+    cp $TROVE_LOCAL_POLICY_JSON $TROVE_POLICY_JSON
+
     # (Re)create trove conf files
     rm -f $TROVE_CONF
     rm -f $TROVE_TASKMANAGER_CONF
@@ -123,8 +126,9 @@ function configure_trove {
         setup_trove_logging $TROVE_TASKMANAGER_CONF
 
         # Increase default timeouts (required by the tests).
+        iniset $TROVE_TASKMANAGER_CONF DEFAULT agent_call_low_timeout 15
         iniset $TROVE_TASKMANAGER_CONF DEFAULT agent_call_high_timeout 300
-        iniset $TROVE_TASKMANAGER_CONF DEFAULT usage_timeout 1200
+        iniset $TROVE_TASKMANAGER_CONF DEFAULT usage_timeout 1800
     fi
 
     # (Re)create trove conductor conf file if needed
@@ -138,6 +142,9 @@ function configure_trove {
         iniset $TROVE_CONDUCTOR_CONF DEFAULT trove_auth_url $TROVE_AUTH_ENDPOINT
         iniset $TROVE_CONDUCTOR_CONF DEFAULT control_exchange trove
         setup_trove_logging $TROVE_CONDUCTOR_CONF
+
+        # Increase default timeouts (required by the tests).
+        iniset $TROVE_GUESTAGENT_CONF DEFAULT state_change_wait_time 600
     fi
 
     # Set up Guest Agent conf
@@ -221,7 +228,7 @@ function finalize_trove_network {
 
     iniset $TROVE_CONF DEFAULT network_label_regex .*
     iniset $TROVE_CONF DEFAULT ip_regex .*
-    iniset $TROVE_CONF DEFAULT blacklist_regex ^10.0.1.*
+    iniset $TROVE_CONF DEFAULT black_list_regex ^10.0.1.*
     iniset $TROVE_CONF DEFAULT default_neutron_networks $management_network_id
     iniset $TROVE_CONF DEFAULT network_driver trove.network.neutron.NeutronDriver
 

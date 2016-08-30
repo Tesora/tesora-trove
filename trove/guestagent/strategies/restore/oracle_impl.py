@@ -49,29 +49,21 @@
 # the logo is not reasonably feasible for technical reasons.
 
 import glob
+from os import path
 
 from oslo_log import log as logging
 
 from trove.common import cfg
 from trove.common import exception
-from trove.common import utils
+from trove.common.i18n import _
 from trove.guestagent.common import operating_system
-from trove.guestagent.datastore.oracle import (
-    service as oracle_service)
+from trove.guestagent.datastore.oracle import service
 from trove.guestagent.strategies.restore import base
 
 CONF = cfg.CONF
+MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'oracle'
 LOG = logging.getLogger(__name__)
-LARGE_TIMEOUT = 1200
-ORA_PATH = '/u01/app/oracle'
-ORA_DATA_PATH = CONF.get('oracle').mount_point
-ORA_FAST_RECOVERY_PATH =  ORA_PATH + '/fast_recovery_area'
-ORA_AUDIT_PATH = ORA_PATH + '/admin/%(db)s/adump'
-ORA_BACKUP_PATH = ORA_DATA_PATH + '/backupset_files'
-ORATAB_PATH = '/etc/oratab'
-ORACLE_HOME = CONF.get('oracle').oracle_home
-ADMIN_USER = 'os_admin'
-ADMIN_PSWD = oracle_service.OracleConfig().admin_password
+
 
 class RmanBackup(base.RestoreRunner):
     __strategy_name__ = 'rmanbackup'
@@ -79,136 +71,128 @@ class RmanBackup(base.RestoreRunner):
 
     def __init__(self, *args, **kwargs):
         super(RmanBackup, self).__init__(*args, **kwargs)
-        self.status = oracle_service.OracleAppStatus()
-        self.app = oracle_service.OracleApp(self.status)
+        self.app = service.OracleVMApp(service.OracleVMAppStatus())
         self.content_length = 0
         self.backup_id = kwargs.get('backup_id')
-        self.db_name = ''
+        self.db_name = None
 
     def _perform_restore(self):
-        control_file = glob.glob(ORA_BACKUP_PATH  + '/' +
-                                 self.db_name +
-                                 '/*' + self.backup_id + '.ctl')[0]
-        restore_cmd = ("""\"export ORACLE_SID=%(db_name)s
-rman target %(admin_user)s/%(admin_pswd)s <<EOF
-run {
-startup nomount;
-restore controlfile from '%(ctl_file)s';
-startup mount;
-crosscheck backup;
-delete noprompt expired backup;
-restore database;
-}
-EXIT;
-EOF\"
-""" % {'admin_user': ADMIN_USER, 'admin_pswd': ADMIN_PSWD,
-       'db_name': self.db_name, 'ctl_file': control_file})
-        cmd = "su - oracle -c " + restore_cmd
-        utils.execute_with_timeout(cmd,
-                                   run_as_root=True, root_helper='sudo',
-                                   timeout=LARGE_TIMEOUT,
-                                   shell=True, log_output_on_error=True)
+        control_file = glob.glob(path.join(self.app.paths.db_backup_dir,
+                                           '*%s.ctl' % self.backup_id))[0]
+        cmds = [
+            'startup nomount',
+            "restore controlfile from '%s'" % control_file,
+            'startup mount',
+            'crosscheck backup',
+            'delete noprompt expired backup',
+            'restore database']
+        script = self.app.rman_scripter(
+            commands=cmds, sid=self.db_name,
+            t_user=self.app.admin_user_name,
+            t_pswd=self.app.admin.ora_config.admin_password)
+        script.run(timeout=CONF.restore_usage_timeout)
 
     def _perform_recover(self):
-        recover_cmd = ("""\"export ORACLE_SID=%(db_name)s
-rman target %(admin_user)s/%(admin_pswd)s <<EOF
-run {
-recover database;
-}
-EXIT;
-EOF\"
-""" % {'admin_user': ADMIN_USER, 'admin_pswd': ADMIN_PSWD,
-       'db_name': self.db_name})
-        cmd = "su - oracle -c " + recover_cmd
+        script = self.app.rman_scripter(
+            commands='recover database',
+            sid=self.db_name,
+            t_user=self.app.admin_user_name,
+            t_pswd=self.app.admin.ora_config.admin_password)
         try:
-            utils.execute_with_timeout(cmd,
-                                       run_as_root=True, root_helper='sudo',
-                                       timeout=LARGE_TIMEOUT,
-                                       shell=True, log_output_on_error=True)
+            script.run(timeout=CONF.restore_usage_timeout)
         except exception.ProcessExecutionError as p:
             # Ignore the "media recovery requesting unknown archived log" error
             # because RMAN would throw this error even when recovery is
             # successful.
             # If there are in fact errors when recovering the database, the
             # database open step following will fail anyway.
-            if str(p).find('media recovery requesting unknown archived log') != -1:
+            if str(p).find('media recovery requesting '
+                           'unknown archived log') != -1:
                 pass
             else:
-                raise(p)
+                raise p
 
     def _open_database(self):
-        open_cmd = ("""\"export ORACLE_SID=%(db_name)s
-rman target %(admin_user)s/%(admin_pswd)s <<EOF
-run {
-alter database open resetlogs;
-}
-EXIT;
-EOF\"
-""" % {'admin_user': ADMIN_USER, 'admin_pswd': ADMIN_PSWD,
-       'db_name': self.db_name})
-        cmd = "su - oracle -c " + open_cmd
-        utils.execute_with_timeout(cmd,
-                                   run_as_root=True, root_helper='sudo',
-                                   timeout=LARGE_TIMEOUT,
-                                   shell=True, log_output_on_error=True)
+        script = self.app.rman_scripter(
+            commands='alter database open resetlogs',
+            sid=self.db_name,
+            t_user=self.app.admin_user_name,
+            t_pswd=self.app.admin.ora_config.admin_password)
+        script.run(timeout=CONF.get(MANAGER).usage_timeout)
 
     def _unpack_backup_files(self, location, checksum):
-        LOG.debug("Restoring full backup files")
+        LOG.debug("Restoring full backup files.")
         self.content_length = self._unpack(location, checksum, self.restore_cmd)
 
     def _run_restore(self):
         metadata = self.storage.load_metadata(self.location, self.checksum)
         self.db_name = metadata['db_name']
-        operating_system.create_directory(ORA_FAST_RECOVERY_PATH,
-                                          user='oracle', group='oinstall', force=True,
-                                          as_root=True)
-        operating_system.create_directory(ORA_AUDIT_PATH % {'db': self.db_name},
-                                          user='oracle', group='oinstall',
-                                          force=True, as_root=True)
-        operating_system.create_directory(ORA_FAST_RECOVERY_PATH + '/' + self.db_name,
-                                          user='oracle', group='oinstall',
-                                          force=True, as_root=True)
-        operating_system.create_directory(ORA_DATA_PATH + '/' + self.db_name,
-                                          user='oracle', group='oinstall',
-                                          force=True, as_root=True)
+        self.app.paths.update_db_name(self.db_name)
+
+        new_dirs = [self.app.paths.audit_dir,
+                    self.app.paths.db_fast_recovery_logs_dir,
+                    self.app.paths.db_fast_recovery_dir,
+                    self.app.paths.db_data_dir]
+        for new_dir in new_dirs:
+            operating_system.create_directory(
+                new_dir,
+                user=self.app.instance_owner,
+                group=self.app.instance_owner_group,
+                force=True, as_root=True)
+
         # the backup set will restore directly to ORADATA/backupset_files
         self._unpack_backup_files(self.location, self.checksum)
 
-        operating_system.chown(ORA_BACKUP_PATH, 'oracle', 'oinstall',
-                               recursive=True, force=True, as_root=True)
-        operating_system.chown(ORA_FAST_RECOVERY_PATH, 'oracle', 'oinstall',
-                               recursive=True, force=True, as_root=True)
+        if operating_system.exists(self.app.paths.base_spfile, as_root=True):
+            operating_system.copy(self.app.paths.base_spfile,
+                                  self.app.paths.spfile,
+                                  preserve=True, as_root=True)
+
+        # the conf file was just restored by the unpack so sync now
+        self.app.admin.delete_conf_cache()
+        self.app.admin.ora_config.db_name = self.db_name
+
+        chown_dirs = [self.app.paths.backup_dir,
+                      self.app.paths.fast_recovery_area]
+        for chown_dir in chown_dirs:
+            operating_system.chown(
+                chown_dir,
+                self.app.instance_owner, self.app.instance_owner_group,
+                recursive=True, force=True, as_root=True)
 
         self._perform_restore()
         self._perform_recover()
         self._open_database()
 
     def _create_oratab_entry(self):
-        """Create in the /etc/oratab file entries for the databases being
-        restored"""
-        file_content = operating_system.read_file(ORATAB_PATH)
+        oratab = self.app.paths.oratab_file
+        file_content = operating_system.read_file(oratab, as_root=True)
         file_content += ("\n%(db_name)s:%(ora_home)s:N\n" %
-                         {'db_name': self.db_name, 'ora_home': ORACLE_HOME})
-        operating_system.write_file(ORATAB_PATH, file_content, as_root=True)
-        operating_system.chown(ORATAB_PATH, 'oracle', 'oinstall',
+                         {'db_name': self.db_name,
+                          'ora_home': self.app.paths.oracle_home})
+        operating_system.write_file(oratab, file_content, as_root=True)
+        operating_system.chown(oratab,
+                               self.app.instance_owner,
+                               self.app.instance_owner_group,
                                recursive=True, force=True, as_root=True)
 
     def post_restore(self):
-        self._create_oratab_entry();
-        operating_system.remove(ORA_BACKUP_PATH, force=True, as_root=True,
-                                recursive=True)
+        self._create_oratab_entry()
+        operating_system.remove(self.app.paths.backup_dir,
+                                force=True, as_root=True, recursive=True)
 
 
 class RmanBackupIncremental(RmanBackup):
 
     def _unpack_backup_files(self, location, checksum):
-        LOG.debug("Restoring incremental backup files")
+        LOG.debug("Restoring incremental backup files.")
         metadata = self.storage.load_metadata(location, checksum)
         if 'parent_location' in metadata:
-            LOG.info(_("Restoring parent: %(parent_location)s"
-                       " checksum: %(parent_checksum)s.") % metadata)
+            LOG.info(_("Restoring parent: %(parent_location)s "
+                       "checksum: %(parent_checksum)s.") % metadata)
             parent_location = metadata['parent_location']
             parent_checksum = metadata['parent_checksum']
             self._unpack_backup_files(parent_location, parent_checksum)
 
-        self.content_length += self._unpack(location, checksum, self.restore_cmd)
+        self.content_length += self._unpack(location, checksum,
+                                            self.restore_cmd)

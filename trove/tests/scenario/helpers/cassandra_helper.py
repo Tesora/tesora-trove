@@ -58,15 +58,17 @@ class CassandraHelper(TestHelper):
 
     DATA_COLUMN_NAME = 'value'
 
-    def __init__(self, expected_override_name):
-        super(CassandraHelper, self).__init__(expected_override_name)
+    def __init__(self, expected_override_name, report):
+        super(CassandraHelper, self).__init__(expected_override_name, report)
 
         self._data_cache = dict()
 
     def create_client(self, host, *args, **kwargs):
         user = self.get_helper_credentials()
-        return CassandraClient(
-            [host], user['name'], user['password'], user['database'])
+        username = kwargs.get('username', user['name'])
+        password = kwargs.get('password', user['password'])
+        database = kwargs.get('database', user['database'])
+        return CassandraClient([host], username, password, database)
 
     def add_actual_data(self, data_label, data_start, data_size, host,
                         *args, **kwargs):
@@ -130,6 +132,13 @@ class CassandraHelper(TestHelper):
 
     def get_helper_credentials(self):
         return {'name': 'lite', 'password': 'litepass', 'database': 'firstdb'}
+
+    def ping(self, host, *args, **kwargs):
+        try:
+            self.get_client(host, *args, **kwargs)
+            return True
+        except Exception:
+            return False
 
     def get_valid_database_definitions(self):
         return [{"name": 'db1'}, {"name": 'db2'}, {"name": 'db3'}]

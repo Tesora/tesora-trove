@@ -417,7 +417,8 @@ class DebianPackagerMixin(BasePackagerMixin):
 class BasePackage(type):
 
     def __new__(meta, name, bases, dct):
-        if operating_system.get_os() == operating_system.REDHAT:
+        if (operating_system.get_os() in [operating_system.REDHAT,
+                                          operating_system.ORACLE]):
             bases += (RedhatPackagerMixin, )
         else:
             # The default is debian

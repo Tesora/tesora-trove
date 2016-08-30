@@ -15,17 +15,13 @@
 
 from proboscis import SkipTest
 
+from trove.common import exception
+from trove.common.utils import poll_until
 from trove.tests.scenario.runners.test_runners import TestRunner
 from troveclient.compat import exceptions
 
 
 class DatabaseActionsRunner(TestRunner):
-
-    # TODO(pmalik): I believe the 202 (Accepted) should be replaced by
-    # 200 (OK) as the actions are generally very fast and their results
-    # available immediately upon execution of the request. This would
-    # likely require replacing GA casts with calls which I believe are
-    # more appropriate anyways.
 
     def __init__(self):
         super(DatabaseActionsRunner, self).__init__()
@@ -35,6 +31,13 @@ class DatabaseActionsRunner(TestRunner):
     def first_db_def(self):
         if self.db_defs:
             return self.db_defs[0]
+        raise SkipTest("No valid database definitions provided.")
+
+    @property
+    def non_existing_db_def(self):
+        db_def = self.test_helper.get_non_existing_database_definition()
+        if db_def:
+            return db_def
         raise SkipTest("No valid database definitions provided.")
 
     def run_databases_create(self, expected_http_code=202):
@@ -49,6 +52,7 @@ class DatabaseActionsRunner(TestRunner):
                                 expected_http_code):
         self.auth_client.databases.create(instance_id, serial_databases_def)
         self.assert_client_code(expected_http_code)
+        self._wait_for_database_create(instance_id, serial_databases_def)
         return serial_databases_def
 
     def run_databases_list(self, expected_http_code=200):
@@ -101,6 +105,27 @@ class DatabaseActionsRunner(TestRunner):
             self.assert_client_code(expected_http_code)
             self.assert_pagination_match(
                 list_page, full_list, limit, len(full_list))
+
+    def _wait_for_database_create(self, instance_id, expected_database_defs):
+        expected_db_names = {db_def['name']
+                             for db_def in expected_database_defs}
+        self.report.log("Waiting for all created databases to appear in the "
+                        "listing: %s" % expected_db_names)
+
+        def _all_exist():
+            all_dbs = self._get_db_names(instance_id)
+            return all(db in all_dbs for db in expected_db_names)
+
+        try:
+            poll_until(_all_exist, time_out=self.GUEST_CAST_WAIT_TIMEOUT_SEC)
+            self.report.log("All databases now exist on the instance.")
+        except exception.PollTimeOut:
+            self.fail("Some databases were not created within the poll "
+                      "timeout: %ds" % self.GUEST_CAST_WAIT_TIMEOUT_SEC)
+
+    def _get_db_names(self, instance_id):
+        full_list = self.auth_client.databases.list(instance_id)
+        return {database.name: database for database in full_list}
 
     def run_database_create_with_no_attributes(
             self, expected_exception=exceptions.BadRequest,
@@ -158,19 +183,29 @@ class DatabaseActionsRunner(TestRunner):
             expected_http_code):
         self.auth_client.databases.delete(instance_id, database_name)
         self.assert_client_code(expected_http_code)
+        self._wait_for_database_delete(instance_id, database_name)
 
-        for database in self.auth_client.databases.list(instance_id):
-            if database.name == database_name:
-                self.fail(
-                    "Database still listed after delete: %s" %
-                    database_name)
+    def _wait_for_database_delete(self, instance_id, deleted_database_name):
+        self.report.log("Waiting for deleted database to disappear from the "
+                        "listing: %s" % deleted_database_name)
+
+        def _db_is_gone():
+            all_dbs = self._get_db_names(instance_id)
+            return deleted_database_name not in all_dbs
+
+        try:
+            poll_until(_db_is_gone, time_out=self.GUEST_CAST_WAIT_TIMEOUT_SEC)
+            self.report.log("Database is now gone from the instance.")
+        except exception.PollTimeOut:
+            self.fail("Database still listed after the poll timeout: %ds" %
+                      self.GUEST_CAST_WAIT_TIMEOUT_SEC)
 
     def run_nonexisting_database_delete(self, expected_http_code=202):
         # Deleting a non-existing database is expected to succeed as if the
         # database was deleted.
-        db_def = self.test_helper.get_non_existing_database_definition()
         self.assert_database_delete(
-            self.instance_info.id, db_def['name'], expected_http_code)
+            self.instance_info.id, self.non_existing_db_def['name'],
+            expected_http_code)
 
     def run_system_database_delete(
             self, expected_exception=exceptions.BadRequest,

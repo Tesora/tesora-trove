@@ -31,6 +31,7 @@
                 }
             ],
             "name": "json_rack_instance",
+            "region": "regionOne",
             "status": "ACTIVE",
             "volume": {
                 "size": 2
@@ -38,4 +39,3 @@
         }
     ]
 }
-

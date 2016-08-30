@@ -1,0 +1,7 @@
+#cloud-config
+
+users:
+  - name: dbaas
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh-authorized-keys:
+      - <put your public key here>

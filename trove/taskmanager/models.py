@@ -21,6 +21,7 @@ from eventlet import greenthread
 from heatclient import exc as heat_exceptions
 from novaclient import exceptions as nova_exceptions
 from oslo_log import log as logging
+from oslo_utils import importutils
 from oslo_utils import timeutils
 from swiftclient.client import ClientException
 
@@ -309,6 +310,51 @@ class ClusterTasks(Cluster):
             LOG.error(_("timeout for instances to be marked as deleted."))
             return
 
+        network_driver = (importutils.import_class(
+            CONF.network_driver))(context, None)
+        if network_driver.subnet_support:
+            LOG.debug("searching for any network resources owned by the "
+                      "cluster")
+            try:
+                def _find(items):
+                    matches = []
+                    for item in items:
+                        name = item.get('name')
+                        if name and name.endswith(cluster_id):
+                            matches.append(item)
+                    return matches
+
+                ports = _find(network_driver.list_ports())
+                subnets = _find(network_driver.list_subnets())
+                networks = _find(network_driver.list_networks())
+
+                # Detach subnets from routers
+                if subnets:
+                    for port in ports:
+                        if (port.get('device_owner') ==
+                                'network:router_interface'):
+                            subnet = port['fixed_ips'][0]['subnet_id']
+                            router = port['device_id']
+                            LOG.debug("detaching subnet {subnet} from router "
+                                      "{router}".format(subnet=subnet,
+                                                        router=router))
+                            network_driver.disconnect_subnet_from_router(
+                                router, subnet)
+
+                for port in ports:
+                    # Don't try and delete the interface - we did that earlier
+                    if port.get('device_owner') != 'network:router_interface':
+                        LOG.debug("deleting port " + port['id'])
+                        network_driver.delete_port(port['id'])
+                for subnet in subnets:
+                    LOG.debug("deleting subnet " + subnet['id'])
+                    network_driver.delete_subnet(subnet['id'])
+                for network in networks:
+                    LOG.debug("deleting network " + network['id'])
+                    network_driver.delete_network(network['id'])
+            except TroveError:
+                LOG.exception("Failed to clean up all cluster network "
+                              "resources. Skipping network cleanup.")
         LOG.debug("setting cluster %s as deleted." % cluster_id)
         cluster = DBCluster.find_by(id=cluster_id)
         cluster.deleted = True
@@ -320,10 +366,30 @@ class ClusterTasks(Cluster):
 
 class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
 
+    def _delete_resources(self, deleted_at):
+        LOG.debug("Begin _delete_resources for instance %s" % self.id)
+
+        # If volume has "available" status, delete it manually.
+        try:
+            if self.volume_id:
+                volume_client = create_cinder_client(self.context)
+                volume = volume_client.volumes.get(self.volume_id)
+                if volume.status == "available":
+                    LOG.info(_("Deleting volume %(v)s for instance: %(i)s.")
+                             % {'v': self.volume_id, 'i': self.id})
+                    volume.delete()
+        except Exception:
+            LOG.exception(_("Error deleting volume of instance %(id)s.") %
+                          {'id': self.db_info.id})
+
+        LOG.debug("End _delete_resource for instance %s" % self.id)
+
     def wait_for_instance(self, timeout, flavor):
         # Make sure the service becomes active before sending a usage
         # record to avoid over billing a customer for an instance that
         # fails to build properly.
+        error_message = ''
+        error_details = ''
         try:
             utils.poll_until(self._service_is_active,
                              sleep_time=USAGE_SLEEP_TIME,
@@ -331,14 +397,22 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             LOG.info(_("Created instance %s successfully.") % self.id)
             TroveInstanceCreate(instance=self,
                                 instance_size=flavor['ram']).notify()
-        except PollTimeOut:
+        except PollTimeOut as ex:
             LOG.error(_("Failed to create instance %s. "
                         "Timeout waiting for instance to become active. "
                         "No usage create-event was sent.") % self.id)
             self.update_statuses_on_time_out()
-        except Exception:
+            error_message = "%s" % ex
+            error_details = traceback.format_exc()
+        except Exception as ex:
             LOG.exception(_("Failed to send usage create-event for "
                             "instance %s.") % self.id)
+            error_message = "%s" % ex
+            error_details = traceback.format_exc()
+        finally:
+            if error_message:
+                inst_models.save_instance_fault(
+                    self.id, error_message, error_details)
 
     def create_instance(self, flavor, image_id, databases, users,
                         datastore_manager, packages, volume_size,
@@ -535,7 +609,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                 LOG.error(msg_create)
                 # Make sure we log any unexpected errors from the create
                 if not isinstance(e_create, TroveError):
-                    LOG.error(e_create)
+                    LOG.exception(e_create)
                 msg_delete = (
                     _("An error occurred while deleting a bad "
                       "replication snapshot from instance %(source)s.") %
@@ -597,10 +671,18 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             raise TroveError(_("Service not active, status: %s") % status)
 
         c_id = self.db_info.compute_instance_id
-        nova_status = self.nova_client.servers.get(c_id).status
-        if nova_status in [InstanceStatus.ERROR,
-                           InstanceStatus.FAILED]:
-            raise TroveError(_("Server not active, status: %s") % nova_status)
+        server = self.nova_client.servers.get(c_id)
+        server_status = server.status
+        if server_status in [InstanceStatus.ERROR,
+                             InstanceStatus.FAILED]:
+            server_message = ''
+            if server.fault:
+                server_message = "\nServer error: %s" % (
+                    server.fault.get('message', 'Unknown'))
+            raise TroveError(_("Server not active, status: %(status)s"
+                               "%(srv_msg)s") %
+                             {'status': server_status,
+                              'srv_msg': server_message})
         return False
 
     def _create_server_volume(self, flavor_id, image_id, security_groups,
@@ -823,11 +905,13 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                    "exc": exc,
                    "trace": traceback.format_exc()})
         self.update_db(task_status=task_status)
-        raise TroveError(message=message)
+        exc_message = '\n%s' % exc if exc else ''
+        full_message = "%s%s" % (message, exc_message)
+        raise TroveError(message=full_message)
 
     def _create_volume(self, volume_size, volume_type, datastore_manager):
         LOG.debug("Begin _create_volume for id: %s" % self.id)
-        volume_client = create_cinder_client(self.context)
+        volume_client = create_cinder_client(self.context, self.region_name)
         volume_desc = ("datastore volume for %s" % self.id)
         volume_ref = volume_client.volumes.create(
             volume_size, name="datastore-%s" % self.id,
@@ -972,11 +1056,14 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
 
     def _create_secgroup(self, datastore_manager):
         security_group = SecurityGroup.create_for_instance(
-            self.id, self.context)
+            self.id, self.context, self.region_name)
         tcp_ports = CONF.get(datastore_manager).tcp_ports
         udp_ports = CONF.get(datastore_manager).udp_ports
+        icmp = CONF.get(datastore_manager).icmp
         self._create_rules(security_group, tcp_ports, 'tcp')
         self._create_rules(security_group, udp_ports, 'udp')
+        if icmp:
+            self._create_rules(security_group, None, 'icmp')
         return [security_group["name"]]
 
     def _create_rules(self, s_group, ports, protocol):
@@ -992,16 +1079,22 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
                              'to': to_port}
             raise MalformedSecurityGroupRuleError(message=msg)
 
-        for port_or_range in set(ports):
-            try:
-                from_, to_ = (None, None)
-                from_, to_ = utils.gen_ports(port_or_range)
-                cidr = CONF.trove_security_group_rule_cidr
-                SecurityGroupRule.create_sec_group_rule(
-                    s_group, protocol, int(from_), int(to_),
-                    cidr, self.context)
-            except (ValueError, TroveError):
-                set_error_and_raise([from_, to_])
+        cidr = CONF.trove_security_group_rule_cidr
+
+        if protocol == 'icmp':
+            SecurityGroupRule.create_sec_group_rule(
+                s_group, 'icmp', None, None,
+                cidr, self.context, self.region_name)
+        else:
+            for port_or_range in set(ports):
+                try:
+                    from_, to_ = (None, None)
+                    from_, to_ = utils.gen_ports(port_or_range)
+                    SecurityGroupRule.create_sec_group_rule(
+                        s_group, protocol, int(from_), int(to_),
+                        cidr, self.context, self.region_name)
+                except (ValueError, TroveError):
+                    set_error_and_raise([from_, to_])
 
     def _build_heat_nics(self, nics):
         ifaces = []
@@ -1104,7 +1197,8 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         # If volume has been resized it must be manually removed in cinder
         try:
             if self.volume_id:
-                volume_client = create_cinder_client(self.context)
+                volume_client = create_cinder_client(self.context,
+                                                     self.region_name)
                 volume = volume_client.volumes.get(self.volume_id)
                 if volume.status == "available":
                     LOG.info(_("Deleting volume %(v)s for instance: %(i)s.")
@@ -1189,6 +1283,9 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         except (GuestError, GuestTimeout):
             LOG.exception(_("Failed to detach replica %s.") % self.id)
             raise
+        finally:
+            if not for_failover:
+                self.reset_task_status()
 
     def attach_replica(self, master):
         LOG.debug("Calling attach_replica on %s" % self.id)

@@ -21,7 +21,8 @@ from trove.cluster.tasks import ClusterTasks
 from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
-from trove.common.notification import DBaaSClusterGrow, DBaaSClusterShrink
+from trove.common.notification import DBaaSClusterGrow, DBaaSClusterShrink, \
+    DBaaSClusterResetStatus
 from trove.common.notification import StartNotification
 from trove.common import remote
 from trove.common import server_group as srv_grp
@@ -134,6 +135,16 @@ class Cluster(object):
     def reset_task(self):
         LOG.info(_("Setting task to NONE on cluster %s") % self.id)
         self.update_db(task_status=ClusterTasks.NONE)
+
+    def reset_status(self):
+        self.validate_cluster_available([ClusterTasks.BUILDING_INITIAL])
+        LOG.info(_("Resetting status to NONE on cluster %s") % self.id)
+        self.reset_task()
+        instances = inst_models.DBInstance.find_all(cluster_id=self.id,
+                                                    deleted=False).all()
+        for inst in instances:
+            instance = inst_models.load_any_instance(self.context, inst.id)
+            instance.reset_status()
 
     @property
     def id(self):
@@ -257,6 +268,13 @@ class Cluster(object):
                         instance['name'] = node['name']
                     if 'volume' in node:
                         instance['volume_size'] = int(node['volume']['size'])
+                    if 'modules' in node:
+                        instance['modules'] = node['modules']
+                    if 'nics' in node:
+                        instance['nics'] = node['nics']
+                    if 'availability_zone' in node:
+                        instance['availability_zone'] = (
+                            node['availability_zone'])
                     instances.append(instance)
                 return self.grow(instances)
         elif action == 'shrink':
@@ -264,14 +282,20 @@ class Cluster(object):
             with StartNotification(context, cluster_id=self.id):
                 instance_ids = [instance['id'] for instance in param]
                 return self.shrink(instance_ids)
+        elif action == "reset-status":
+            context.notification = DBaaSClusterResetStatus(context,
+                                                           request=req)
+            with StartNotification(context, cluster_id=self.id):
+                return self.reset_status()
+
         else:
             raise exception.BadRequest(_("Action %s not supported") % action)
 
     def grow(self, instances):
-            raise exception.BadRequest(_("Action 'grow' not supported"))
+        raise exception.BadRequest(_("Action 'grow' not supported"))
 
     def shrink(self, instance_ids):
-            raise exception.BadRequest(_("Action 'shrink' not supported"))
+        raise exception.BadRequest(_("Action 'shrink' not supported"))
 
     @staticmethod
     def load_instance(context, cluster_id, instance_id):
@@ -293,25 +317,31 @@ def is_cluster_deleting(context, cluster_id):
             cluster.db_info.task_status == ClusterTasks.SHRINKING_CLUSTER)
 
 
-def get_flavors_from_instance_defs(context, instances,
-                                   volume_enabled, ephemeral_enabled):
-    """Load and validate flavors for given instance definitions."""
-    flavors = dict()
-    nova_client = remote.create_nova_client(context)
+def validate_instance_flavors(context, instances,
+                              volume_enabled, ephemeral_enabled):
+    """Validate flavors for given instance definitions."""
+    nova_cli_cache = dict()
     for instance in instances:
+        region_name = instance.get('region_name')
         flavor_id = instance['flavor_id']
-        if flavor_id not in flavors:
-            try:
-                flavor = nova_client.flavors.get(flavor_id)
-                if (not volume_enabled and
-                        (ephemeral_enabled and flavor.ephemeral == 0)):
-                    raise exception.LocalStorageNotSpecified(
-                        flavor=flavor_id)
-                flavors[flavor_id] = flavor
-            except nova_exceptions.NotFound:
-                raise exception.FlavorNotFound(uuid=flavor_id)
+        try:
+            if region_name is None:
+                nova_client = remote.create_nova_client(context, region_name)
+            else:
+                if region_name not in nova_cli_cache:
+                    nova_client = remote.create_nova_client(
+                        context, region_name)
+                    nova_cli_cache[region_name] = nova_client
+                else:
+                    nova_client = nova_cli_cache[region_name]
 
-    return flavors
+            flavor = nova_client.flavors.get(flavor_id)
+            if (not volume_enabled and
+                    (ephemeral_enabled and flavor.ephemeral == 0)):
+                raise exception.LocalStorageNotSpecified(
+                    flavor=flavor_id)
+        except nova_exceptions.NotFound:
+            raise exception.FlavorNotFound(uuid=flavor_id)
 
 
 def get_required_volume_size(instances, volume_enabled):

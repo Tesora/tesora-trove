@@ -13,6 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import base64
+
 from novaclient import exceptions as nova_exceptions
 from oslo_log import log as logging
 
@@ -78,7 +80,8 @@ class MongoDbCluster(models.Cluster):
         except nova_exceptions.NotFound:
             raise exception.FlavorNotFound(uuid=flavor_id)
         mongo_conf = CONF.get(datastore_version.manager)
-        num_configsvr = mongo_conf.num_config_servers_per_cluster
+        num_configsvr = (1 if mongo_conf.num_config_servers_per_cluster == 1
+                         else 3)
         num_mongos = mongo_conf.num_query_routers_per_cluster
         delta_instances = num_instances + num_configsvr + num_mongos
         deltas = {'instances': delta_instances}
@@ -106,9 +109,18 @@ class MongoDbCluster(models.Cluster):
         check_quotas(context.tenant, deltas)
 
         nics = [instance.get('nics', None) for instance in instances]
+        nic = nics[0]
+        for n in nics[1:]:
+            if n != nic:
+                raise ValueError(_('All cluster nics must be the same. '
+                                   '%(nic)s != %(n)s')
+                                 % {'nic': nic, 'n': n})
 
         azs = [instance.get('availability_zone', None)
                for instance in instances]
+
+        regions = [instance.get('region_name', None)
+                   for instance in instances]
 
         db_info = models.DBCluster.create(
             name=name, tenant_id=context.tenant,
@@ -129,12 +141,12 @@ class MongoDbCluster(models.Cluster):
                          "instance_type": "query_router"}
 
         if mongo_conf.cluster_secure:
-            cluster_key = utils.generate_random_password()
+            cluster_key = base64.b64encode(utils.generate_random_password())
             member_config['key'] = cluster_key
             configsvr_config['key'] = cluster_key
             mongos_config['key'] = cluster_key
 
-        for i in range(0, num_instances):
+        for i in range(num_instances):
             instance_name = "%s-%s-%s" % (name, replica_set_name, str(i + 1))
             inst_models.Instance.create(context, instance_name,
                                         flavor_id,
@@ -143,37 +155,43 @@ class MongoDbCluster(models.Cluster):
                                         datastore_version,
                                         volume_size, None,
                                         availability_zone=azs[i],
-                                        nics=nics[i],
+                                        nics=nic,
                                         configuration_id=None,
                                         cluster_config=member_config,
+                                        modules=instances[i].get('modules'),
+                                        region_name=regions[i],
                                         locality=locality)
 
-        for i in range(1, num_configsvr + 1):
-            instance_name = "%s-%s-%s" % (name, "configsvr", str(i))
+        for i in range(num_configsvr):
+            instance_name = "%s-%s-%s" % (name, "configsvr", str(i + 1))
             inst_models.Instance.create(context, instance_name,
                                         flavor_id,
                                         datastore_version.image_id,
                                         [], [], datastore,
                                         datastore_version,
                                         volume_size, None,
-                                        availability_zone=None,
-                                        nics=None,
+                                        availability_zone=azs[i %
+                                                              num_instances],
+                                        nics=nic,
                                         configuration_id=None,
                                         cluster_config=configsvr_config,
+                                        region_name=regions[i % num_instances],
                                         locality=locality)
 
-        for i in range(1, num_mongos + 1):
-            instance_name = "%s-%s-%s" % (name, "mongos", str(i))
+        for i in range(num_mongos):
+            instance_name = "%s-%s-%s" % (name, "mongos", str(i + 1))
             inst_models.Instance.create(context, instance_name,
                                         flavor_id,
                                         datastore_version.image_id,
                                         [], [], datastore,
                                         datastore_version,
                                         volume_size, None,
-                                        availability_zone=None,
-                                        nics=None,
+                                        availability_zone=azs[i %
+                                                              num_instances],
+                                        nics=nic,
                                         configuration_id=None,
                                         cluster_config=mongos_config,
+                                        region_name=regions[i % num_instances],
                                         locality=locality)
 
         task_api.load(context, datastore_version.manager).create_cluster(
@@ -209,6 +227,8 @@ class MongoDbCluster(models.Cluster):
                                                     'query_router'])
         name = _check_option('name')
         related_to = _check_option('related_to')
+        nics = _check_option('nics')
+        availability_zone = _check_option('availability_zone')
 
         unused_keys = list(set(item.keys()).difference(set(used_keys)))
         if unused_keys:
@@ -224,6 +244,10 @@ class MongoDbCluster(models.Cluster):
             instance['name'] = name
         if related_to:
             instance['related_to'] = related_to
+        if nics:
+            instance['nics'] = nics
+        if availability_zone:
+            instance['availability_zone'] = availability_zone
         return instance
 
     def action(self, context, req, action, param):

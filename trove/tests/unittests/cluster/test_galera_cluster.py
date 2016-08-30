@@ -66,9 +66,13 @@ class ClusterTest(trove_testtools.TestCase):
         self.cluster = galera_api.GaleraCommonCluster(
             self.context, self.db_info, self.datastore, self.datastore_version)
         self.cluster._server_group_loaded = True
-        self.instances = [{'volume_size': 1, 'flavor_id': '1234'},
-                          {'volume_size': 1, 'flavor_id': '1234'},
-                          {'volume_size': 1, 'flavor_id': '1234'}]
+        self.instances = [
+            {'volume_size': 1, 'flavor_id': '1234',
+             'nics': [{"net-id": "foo-bar"}]},
+            {'volume_size': 1, 'flavor_id': '1234',
+             'nics': [{"net-id": "foo-bar"}]},
+            {'volume_size': 1, 'flavor_id': '1234',
+             'nics': [{"net-id": "foo-bar"}]}]
 
     def tearDown(self):
         super(ClusterTest, self).tearDown()

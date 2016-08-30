@@ -15,23 +15,41 @@
 
 from proboscis import test
 
-from trove.tests.scenario.groups import instance_create_group
+from trove.tests.scenario import groups
 from trove.tests.scenario.groups.test_group import TestGroup
+from trove.tests.scenario.runners import test_runners
 
 
 GROUP = "scenario.instance_upgrade_group"
 
 
-@test(depends_on_groups=[instance_create_group.GROUP], groups=[GROUP])
+class InstanceUpgradeRunnerFactory(test_runners.RunnerFactory):
+
+    _runner_ns = 'instance_upgrade_runners'
+    _runner_cls = 'InstanceUpgradeRunner'
+
+
+class UserActionsRunnerFactory(test_runners.RunnerFactory):
+
+    _runner_ns = 'user_actions_runners'
+    _runner_cls = 'UserActionsRunner'
+
+
+class DatabaseActionsRunnerFactory(test_runners.RunnerFactory):
+
+    _runner_ns = 'database_actions_runners'
+    _runner_cls = 'DatabaseActionsRunner'
+
+
+@test(depends_on_groups=[groups.INST_CREATE_WAIT],
+      groups=[GROUP, groups.INST_UPGRADE])
 class InstanceUpgradeGroup(TestGroup):
 
     def __init__(self):
         super(InstanceUpgradeGroup, self).__init__(
-            'instance_upgrade_runners', 'InstanceUpgradeRunner')
-        self.database_actions_runner = self.get_runner(
-            'database_actions_runners', 'DatabaseActionsRunner')
-        self.user_actions_runner = self.get_runner(
-            'user_actions_runners', 'UserActionsRunner')
+            InstanceUpgradeRunnerFactory.instance())
+        self.database_actions_runner = DatabaseActionsRunnerFactory.instance()
+        self.user_actions_runner = UserActionsRunnerFactory.instance()
 
     @test
     def create_user_databases(self):

@@ -34,42 +34,47 @@ class MySQLDump(base.BackupRunner):
     @property
     def cmd(self):
         user_and_pass = (
-            ' --password=%(password)s -u %(user)s '
-            '2>/tmp/mysqldump.log' %
+            " --password='%(password)s' -u %(user)s "
+            "2>/tmp/mysqldump.log" %
             {'password': MySqlApp.get_auth_password(),
              'user': ADMIN_USER_NAME})
-        cmd = ('mysqldump'
-               ' --all-databases'
-               ' %(extra_opts)s'
-               ' --opt' + user_and_pass)
+        cmd = ("mysqldump"
+               " --all-databases"
+               " %(extra_opts)s"
+               " --opt" + user_and_pass)
         return cmd + self.zip_cmd + self.encrypt_cmd
 
 
 class InnoBackupEx(base.BackupRunner):
     """Implementation of Backup Strategy for InnoBackupEx."""
     __strategy_name__ = 'innobackupex'
+    log_file_path = '/tmp/innobackupex.log'
 
     @property
     def user_and_pass(self):
-        return (' --user=%(user)s --password=%(password)s ' %
+        return (" --user=%(user)s --password='%(password)s' " %
                 {'user': ADMIN_USER_NAME,
                  'password': MySqlApp.get_auth_password()})
 
     @property
     def cmd(self):
-        cmd = ('sudo innobackupex'
-               ' --stream=xbstream'
-               ' %(extra_opts)s ' +
+        cmd = ("sudo innobackupex"
+               " --stream=xbstream"
+               " %(extra_opts)s " +
                self.user_and_pass +
                MySqlApp.get_data_dir() +
-               ' 2>/tmp/innobackupex.log'
+               " 2>" + self.log_file_path
                )
         return cmd + self.zip_cmd + self.encrypt_cmd
+
+    @property
+    def lsn_regex(self):
+        return "The latest check point \(for incremental\): '(\d+)'"
 
     def check_process(self):
         """Check the output from innobackupex for 'completed OK!'."""
         LOG.debug('Checking innobackupex process output.')
-        with open('/tmp/innobackupex.log', 'r') as backup_log:
+        with open(self.log_file_path, 'r') as backup_log:
             output = backup_log.read()
             LOG.info(output)
             if not output:
@@ -79,14 +84,13 @@ class InnoBackupEx(base.BackupRunner):
             if not re.search('completed OK!', last_line):
                 LOG.error(_("Innobackupex did not complete successfully."))
                 return False
-
         return True
 
     def metadata(self):
         LOG.debug('Getting metadata from backup.')
         meta = {}
-        lsn = re.compile("The latest check point \(for incremental\): '(\d+)'")
-        with open('/tmp/innobackupex.log', 'r') as backup_log:
+        lsn = re.compile(self.lsn_regex)
+        with open(self.log_file_path, 'r') as backup_log:
             output = backup_log.read()
             match = lsn.search(output)
             if match:
@@ -111,14 +115,14 @@ class InnoBackupExIncremental(InnoBackupEx):
 
     @property
     def cmd(self):
-        cmd = ('sudo innobackupex'
-               ' --stream=xbstream'
-               ' --incremental'
-               ' --incremental-lsn=%(lsn)s'
-               ' %(extra_opts)s ' +
+        cmd = ("sudo innobackupex"
+               " --stream=xbstream"
+               " --incremental"
+               " --incremental-lsn=%(lsn)s"
+               " %(extra_opts)s " +
                self.user_and_pass +
                MySqlApp.get_data_dir() +
-               ' 2>/tmp/innobackupex.log')
+               " 2>" + self.log_file_path)
         return cmd + self.zip_cmd + self.encrypt_cmd
 
     def metadata(self):

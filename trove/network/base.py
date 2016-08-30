@@ -49,3 +49,7 @@ class NetworkDriver(object):
     @abc.abstractmethod
     def delete_security_group_rule(self, sec_group_rule_id):
         """Deletes the rule by given ID."""
+
+    @property
+    def subnet_support(self):
+        return False

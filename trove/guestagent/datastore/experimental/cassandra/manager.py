@@ -24,10 +24,8 @@ from trove.common import instance as trove_instance
 from trove.common.notification import EndNotification
 from trove.guestagent import backup
 from trove.guestagent.datastore.experimental.cassandra import service
-from trove.guestagent.datastore.experimental.cassandra.service import (
-    CassandraAdmin
-)
 from trove.guestagent.datastore import manager
+from trove.guestagent import guest_log
 from trove.guestagent import volume
 
 
@@ -38,10 +36,12 @@ MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'cassandra'
 
 class Manager(manager.Manager):
 
-    def __init__(self):
-        self._app = service.CassandraApp()
-        self.__admin = CassandraAdmin(self.app.get_current_superuser())
-        super(Manager, self).__init__('cassandra')
+    GUEST_LOG_DEFS_SYSTEM_LABEL = 'system'
+
+    def __init__(self, manager_name='cassandra'):
+        super(Manager, self).__init__(manager_name)
+        self._app = None
+        self._admin = None
 
     @property
     def status(self):
@@ -49,15 +49,64 @@ class Manager(manager.Manager):
 
     @property
     def app(self):
+        if self._app is None:
+            self._app = self.build_app()
         return self._app
+
+    def build_app(self):
+        return service.CassandraApp()
 
     @property
     def admin(self):
-        return self.__admin
+        if self._admin is None:
+            self._admin = self.app.build_admin()
+        return self._admin
 
     @property
     def configuration_manager(self):
         return self.app.configuration_manager
+
+    @property
+    def datastore_log_defs(self):
+        system_log_file = self.validate_log_file(
+            self.app.cassandra_system_log_file, self.app.cassandra_owner)
+        return {
+            self.GUEST_LOG_DEFS_SYSTEM_LABEL: {
+                self.GUEST_LOG_TYPE_LABEL: guest_log.LogType.USER,
+                self.GUEST_LOG_USER_LABEL: self.app.cassandra_owner,
+                self.GUEST_LOG_FILE_LABEL: system_log_file
+            }
+        }
+
+    def guest_log_enable(self, context, log_name, disable):
+        if disable:
+            self.app.set_logging_level('OFF')
+        else:
+            log_level = CONF.get(self.manager_name).get('system_log_level')
+            self.app.set_logging_level(log_level)
+
+        return False
+
+    def pre_upgrade(self, context):
+        LOG.debug('Preparing Cassandra for upgrade.')
+        self.app.status.begin_restart()
+        self.app.stop_db()
+        mount_point = self.app.cassandra_working_dir
+        upgrade_info = self.app.save_files_pre_upgrade(mount_point)
+        upgrade_info['mount_point'] = mount_point
+        return upgrade_info
+
+    def post_upgrade(self, context, upgrade_info):
+        LOG.debug('Finalizing Cassandra upgrade.')
+        self.app.stop_db()
+        if 'device' in upgrade_info:
+            self.mount_volume(context, mount_point=upgrade_info['mount_point'],
+                              device_path=upgrade_info['device'])
+        self.app.restore_files_post_upgrade(upgrade_info)
+        # cqlshrc has been restored at this point, need to refresh the
+        # credentials stored in the app by resetting the app.
+        self._app = None
+        self.app.start_db()
 
     def restart(self, context):
         self.app.restart()
@@ -146,7 +195,7 @@ class Manager(manager.Manager):
                     self.app.secure()
                     self.app.restart()
 
-            self.__admin = CassandraAdmin(self.app.get_current_superuser())
+            self._admin = self.app.build_admin()
 
         if not cluster_config and self.is_root_enabled(context):
             self.status.report_root(context, self.app.default_superuser_name)
@@ -273,7 +322,7 @@ class Manager(manager.Manager):
 
     def cluster_secure(self, context, password):
         os_admin = self.app.cluster_secure(password)
-        self.__admin = CassandraAdmin(self.app.get_current_superuser())
+        self._admin = self.app.build_admin()
         return os_admin
 
     def get_admin_credentials(self, context):
@@ -281,4 +330,4 @@ class Manager(manager.Manager):
 
     def store_admin_credentials(self, context, admin_credentials):
         self.app.store_admin_credentials(admin_credentials)
-        self.__admin = CassandraAdmin(self.app.get_current_superuser())
+        self._admin = self.app.build_admin()

@@ -63,6 +63,17 @@ class InstanceDetailViewTest(trove_testtools.TestCase):
         self.instance.slave_of_id = None
         self.instance.slaves = []
         self.instance.locality = 'affinity'
+        self.fault_message = 'Error'
+        self.fault_details = 'details'
+        self.fault_date = 'now'
+        self.instance.fault = Mock()
+        self.instance.fault.message = self.fault_message
+        self.instance.fault.details = self.fault_details
+        self.instance.fault.updated = self.fault_date
+        self.context = trove_testtools.TroveTestContext(self)
+        self.req = Mock()
+        self.req.environ = Mock()
+        self.req.environ.__getitem__ = Mock(return_value=self.context)
 
     def tearDown(self):
         super(InstanceDetailViewTest, self).tearDown()
@@ -71,7 +82,7 @@ class InstanceDetailViewTest(trove_testtools.TestCase):
         InstanceDetailView._build_configuration_info = self.build_config_method
 
     def test_data_hostname(self):
-        view = InstanceDetailView(self.instance, Mock())
+        view = InstanceDetailView(self.instance, self.req)
         result = view.data()
         self.assertEqual(self.instance.created, result['instance']['created'])
         self.assertEqual(self.instance.updated, result['instance']['updated'])
@@ -83,7 +94,7 @@ class InstanceDetailViewTest(trove_testtools.TestCase):
 
     def test_data_ip(self):
         self.instance.hostname = None
-        view = InstanceDetailView(self.instance, Mock())
+        view = InstanceDetailView(self.instance, self.req)
         result = view.data()
         self.assertEqual(self.instance.created, result['instance']['created'])
         self.assertEqual(self.instance.updated, result['instance']['updated'])
@@ -94,7 +105,17 @@ class InstanceDetailViewTest(trove_testtools.TestCase):
 
     def test_locality(self):
         self.instance.hostname = None
-        view = InstanceDetailView(self.instance, Mock())
+        view = InstanceDetailView(self.instance, self.req)
         result = view.data()
         self.assertEqual(self.instance.locality,
                          result['instance']['locality'])
+
+    def test_fault(self):
+        view = InstanceDetailView(self.instance, self.req)
+        result = view.data()
+        self.assertEqual(self.fault_message,
+                         result['instance']['fault']['message'])
+        self.assertEqual(self.fault_details,
+                         result['instance']['fault']['details'])
+        self.assertEqual(self.fault_date,
+                         result['instance']['fault']['created'])

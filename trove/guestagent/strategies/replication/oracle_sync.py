@@ -48,33 +48,25 @@
 # Tesora or display the words "Initial Development by Tesora" if the display of
 # the logo is not reasonably feasible for technical reasons.
 
-import getpass
 from os import path
-from oslo_log import log as logging
-from oslo_utils import netutils
 import socket
 
 import cx_Oracle
+from oslo_log import log as logging
+from oslo_utils import netutils
 
 from trove.common import cfg
 from trove.common import stream_codecs
 from trove.common import utils
-from trove.guestagent.common import configuration
 from trove.guestagent.common import operating_system
-from trove.guestagent.datastore.oracle import service as ora_service
-from trove.guestagent.datastore.oracle import sql_query
-from trove.guestagent.datastore.oracle import system
+from trove.guestagent.datastore.oracle_common import sql_query
 from trove.guestagent.strategies.replication import base
 
 CONF = cfg.CONF
-MANAGER = 'oracle'
+MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'oracle'
 LOG = logging.getLogger(__name__)
-ORANET_DIR = '%s/network/admin' % CONF.get(MANAGER).oracle_home
-TNS_FILE_NAME = 'tnsnames.ora'
-TNS_PATH = path.join(ORANET_DIR, TNS_FILE_NAME)
-LSNR_FILE_NAME = 'listener.ora'
-LSNR_PATH = path.join(ORANET_DIR, LSNR_FILE_NAME)
-OVERRIDES_PATH = path.join(ORANET_DIR, 'overrides')
+
+TMP_DIR = '/tmp'
 
 
 class OracleSyncReplication(base.Replication):
@@ -82,69 +74,61 @@ class OracleSyncReplication(base.Replication):
 
     __strategy_name__ = 'OracleSyncReplication'
 
-    def __init__(self):
-        super(OracleSyncReplication, self).__init__()
-        self._oracle_config = None
-
-    def _get_config(self):
-        if not self._oracle_config:
-            self._oracle_config = ora_service.OracleConfig()
-        return self._oracle_config
+    def _update_parameters(self, service, cursor, parameters, deferred=False):
+        """Set system parameters and update the configuration manager."""
+        for k, v in parameters.items():
+            cursor.execute(str(sql_query.AlterSystem.set_parameter(
+                k, v, deferred=deferred)))
+        service.configuration_manager.apply_system_override(parameters)
+        service.generate_spfile()
 
     def get_replication_detail(self, service):
         replication_detail = {
-            'db_name': self._get_config().db_name,
-            'db_unique_name': self._get_config().db_unique_name,
-            'host': netutils.get_my_ipv4()
-        }
+            'db_name': service.admin.database_name,
+            'db_unique_name': service.admin.ora_config.db_unique_name,
+            'host': netutils.get_my_ipv4()}
         return replication_detail
 
     def get_master_ref(self, service, snapshot_info):
         """Capture information from a master node"""
-        pfile = '/tmp/init%s_stby.ora' % self._get_config().db_name
-        pwfile = ('%(ora_home)s/dbs/orapw%(db_name)s' %
-                  {'ora_home': CONF.get(MANAGER).oracle_home,
-                   'db_name': self._get_config().db_name})
-        ctlfile = '/tmp/%s_stby.ctl' % self._get_config().db_name
-        oratabfile = '/etc/oratab'
-        oracnffile = CONF.get(MANAGER).conf_file
-        datafile = '/tmp/oradata.tar.gz'
+        ctlfile = path.join(TMP_DIR,
+                            '%s_stby.ctl' % service.admin.database_name)
+        datafile = path.join(TMP_DIR, 'oradata.tar.gz')
 
         def _cleanup_tmp_files():
             operating_system.remove(ctlfile, force=True, as_root=True)
-            operating_system.remove(pfile, force=True, as_root=True)
             operating_system.remove(datafile, force=True, as_root=True)
 
         _cleanup_tmp_files()
 
-        with ora_service.LocalOracleClient(self._get_config().db_name,
-                                           service=True) as client:
-            client.execute("ALTER DATABASE CREATE STANDBY CONTROLFILE AS "
-                           "'%s'" % ctlfile)
-            ora_service.OracleAdmin().create_parameter_file(target=pfile,
-                                                            client=client)
-            q = sql_query.Query()
-            q.columns = ["value"]
-            q.tables = ["v$parameter"]
-            q.where = ["name = 'fal_server'"]
-            client.execute(str(q))
-            row = client.fetchone()
+        with service.cursor(service.admin.database_name) as cursor:
+            cursor.execute(str(sql_query.AlterDatabase(
+                "CREATE STANDBY CONTROLFILE AS '%s'" % ctlfile)))
+            cursor.execute(str(sql_query.Query(
+                columns=['VALUE'],
+                tables=['V$PARAMETER'],
+                where=["NAME = 'fal_server'"])))
+            row = cursor.fetchone()
             db_list = []
             if row is not None and row[0] is not None:
                 db_list = str(row[0]).split(",")
-            db_list.insert(0, self._get_config().db_name)
+            db_list.insert(0, service.admin.database_name)
 
         # Create a tar file containing files needed for slave creation
         utils.execute_with_timeout('tar', '-Pczvf', datafile, ctlfile,
-                                   pwfile, pfile, oratabfile, oracnffile,
+                                   service.paths.orapw_file,
+                                   service.paths.oratab_file,
+                                   CONF.get(MANAGER).conf_file,
                                    run_as_root=True, root_helper='sudo')
         oradata_encoded = operating_system.read_file(
-            datafile, codec=stream_codecs.Base64Codec(), as_root=True,
+            datafile,
+            codec=stream_codecs.Base64Codec(),
+            as_root=True,
             decode=False)
         _cleanup_tmp_files()
         master_ref = {
             'host': netutils.get_my_ipv4(),
-            'db_name': self._get_config().db_name,
+            'db_name': service.admin.database_name,
             'db_list': db_list,
             'oradata': oradata_encoded,
         }
@@ -158,369 +142,315 @@ class OracleSyncReplication(base.Replication):
         """"Post processing required for replication"""
         return True
 
-    def snapshot_for_replication(self, context, service,
-                                 location, snapshot_info):
+    def snapshot_for_replication(self, context, service, location,
+                                 snapshot_info):
         return None, None
 
-    def _log_apply_is_running(self):
-        with ora_service.LocalOracleClient(
-                self._get_config().db_name) as client:
-            client.execute("select count(*) from v$managed_standby "
-                           "where process like 'MRP%'")
-            row = client.fetchone()
-            return int(row[0]) > 0
+    def _log_apply_is_running(self, cursor):
+        cursor.execute(str(sql_query.Query(
+            columns=['COUNT(*)'],
+            tables=['V$MANAGED_STANDBY'],
+            where=["PROCESS LIKE 'MRP%'"])))
+        row = cursor.fetchone()
+        return int(row[0]) > 0
 
-    def wait_for_txn(self):
+    def wait_for_txn(self, service):
         # Turn this slave node into master when switching over
         # (promote-to-replica-source)
-        if self._log_apply_is_running():
-            # Switchover from slave to master only if the current
-            # instance is already a slave
-            with ora_service.OracleConnection(
-                    self._get_config().db_name) as conn:
-                cursor = conn.cursor()
-                cursor.execute("ALTER DATABASE COMMIT TO SWITCHOVER TO "
-                               "PRIMARY WITH SESSION SHUTDOWN")
-                conn.shutdown(mode=cx_Oracle.DBSHUTDOWN_IMMEDIATE)
-                cursor.execute("alter database dismount")
-                conn.shutdown(mode=cx_Oracle.DBSHUTDOWN_FINAL)
-
-            # The DB has been shut down at this point, need to establish a
-            # new connection in PRELIM_AUTH mode in order to start it up.
-            with ora_service.OracleConnection(
-                    self._get_config().db_name,
-                    mode=(cx_Oracle.SYSDBA |
-                          cx_Oracle.PRELIM_AUTH)) as conn:
-                conn.startup()
-
-            # DB is now up but not open, re-connect to the DB in SYSDBA
-            # mode to open it.
-            with ora_service.OracleConnection(
-                    self._get_config().db_name) as conn:
-                cursor = conn.cursor()
-                cursor.execute("alter database mount")
-                cursor.execute("alter database open")
-                cursor.execute("ALTER SYSTEM SWITCH LOGFILE")
-            ora_status = ora_service.OracleAppStatus()
-            ora_status.update()
+        with service.cursor(service.admin.database_name) as cursor:
+            if not self._log_apply_is_running(cursor):
+                # Switchover from slave to master only if the current
+                # instance is already a slave
+                return
+            cursor.execute(str(sql_query.AlterDatabase(
+                "COMMIT TO SWITCHOVER TO PRIMARY WITH SESSION SHUTDOWN")))
+        service.restart()
+        with service.cursor(service.admin.database_name) as cursor:
+            cursor.execute(str(sql_query.AlterSystem('SWITCH LOGFILE')))
+        service.status.update()
 
     def enable_as_master(self, service, master_config):
         # Turn this slave node into master when failing over
         # (eject-replica-source)
-        if self._log_apply_is_running():
-            with ora_service.LocalOracleClient(
-                    self._get_config().db_name) as client:
-                client.execute("ALTER DATABASE RECOVER MANAGED STANDBY "
-                               "DATABASE FINISH")
-                client.execute("ALTER DATABASE ACTIVATE STANDBY DATABASE")
-                client.execute("ALTER DATABASE OPEN")
-                client.execute("ALTER SYSTEM SWITCH LOGFILE")
+        with service.cursor(service.admin.database_name) as cursor:
+            if self._log_apply_is_running(cursor):
+                cursor.execute(str(sql_query.AlterDatabase(
+                    'RECOVER MANAGED STANDBY DATABASE FINISH')))
+                cursor.execute(str(sql_query.AlterDatabase(
+                    'ACTIVATE STANDBY DATABASE')))
+                cursor.execute(str(sql_query.AlterDatabase('OPEN')))
+                cursor.execute(str(sql_query.AlterSystem('SWITCH LOGFILE')))
 
-    def _create_tns_entry(self, dbname, host, service_name):
-        return ('(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)'
+    def _create_tns_file(self, service, dbs):
+        tns_file = service.paths.tns_file
+        tns_entries = {}
+        for db in dbs:
+            tns_entry = (
+                '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)'
                 '(HOST=%(host)s)(PORT=%(port)s))'
                 '(CONNECT_DATA=(SERVICE_NAME=%(service_name)s)))' %
-                {'dbname': dbname, 'host': host,
+                {'dbname': db['db_unique_name'],
+                 'host': db['host'],
                  'port': CONF.get(MANAGER).listener_port,
-                 'service_name': service_name})
+                 'service_name': service.admin.database_name})
+            tns_entries[db['db_unique_name']] = tns_entry
+        operating_system.write_file(tns_file, tns_entries,
+                                    codec=stream_codecs.KeyValueCodec(),
+                                    as_root=True)
+        operating_system.chown(tns_file,
+                               service.instance_owner,
+                               service.instance_owner_group,
+                               force=True, as_root=True)
 
-    def _create_tns_file(self, dbs):
-        if not path.isfile(TNS_PATH):
-            operating_system.write_file(TNS_PATH, '', as_root=True)
-        conf = configuration.ConfigurationManager(
-            TNS_PATH, system.ORACLE_INSTANCE_OWNER, system.ORACLE_GROUP_OWNER,
-            stream_codecs.PropertiesCodec('='), requires_root=True)
-        conf.save_configuration({})
-        for db in dbs:
-            tns_entry = self._create_tns_entry(db['db_unique_name'],
-                                               db['host'],
-                                               self._get_config().db_name)
-            conf.apply_system_override({db['db_unique_name']: tns_entry},
-                                       db['db_unique_name'])
+    def _force_logging_enabled(self, cursor):
+        """Checking whether the database is in force logging mode.
+        """
+        cursor.execute(str(sql_query.Query(
+            columns=['FORCE_LOGGING'], tables=['V$DATABASE'])))
+        row = cursor.fetchone()
+        return (row[0] == 'YES')
 
-    def _create_lsnr_file(self):
-        """Create the listener.ora file"""
-        listener_file_name = 'listener.ora'
-        listener_path = path.join(ORANET_DIR, listener_file_name)
-        content = ('SID_LIST_LISTENER=(SID_LIST=(SID_DESC='
-                   '(GLOBAL_DBNAME=%(db_name)s)'
-                   '(ORACLE_HOME=%(ora_home)s)'
-                   '(SID_NAME=%(db_name)s)))\n' %
-                   {'db_name': self._get_config().db_name,
-                    'ora_home': CONF.get(MANAGER).oracle_home})
-        content += ('LISTENER=(DESCRIPTION_LIST=(DESCRIPTION=(ADDRESS='
-                    '(PROTOCOL=TCP)(HOST=%(host)s)(PORT=%(port)s))'
-                    '(ADDRESS=(PROTOCOL=IPC)(KEY=EXTPROC1521))))\n' %
-                    {'host': socket.gethostname(),
-                     'port': CONF.get(MANAGER).listener_port})
-        content += ('ADR_BASE_LISTENER=%s\n' %
-                    CONF.get(MANAGER).oracle_base)
-        operating_system.write_file(listener_path, content, as_root=True)
-        operating_system.chown(listener_path, system.ORACLE_INSTANCE_OWNER,
-                               system.ORACLE_GROUP_OWNER, as_root=True)
-
-    def _create_static_params(self, oracle_client):
+    def _create_static_params(self, service, cursor):
         """Create replication system parameters that only needs to be
         setup once.
         """
-        oracle_client.execute('ALTER DATABASE FORCE LOGGING')
-        oracle_client.execute("ALTER SYSTEM SET LOG_ARCHIVE_FORMAT="
-                              "'%t_%s_%r.arc' SCOPE=SPFILE")
-        oracle_client.execute("ALTER SYSTEM SET "
-                              "LOG_ARCHIVE_MAX_PROCESSES=%s" %
-                              CONF.get(MANAGER).log_archive_max_process)
-        oracle_client.execute("ALTER SYSTEM SET REMOTE_LOGIN_PASSWORDFILE="
-                              "EXCLUSIVE SCOPE=SPFILE")
-        oracle_client.execute("ALTER SYSTEM SET STANDBY_FILE_MANAGEMENT=AUTO")
-        oracle_client.execute("ALTER SYSTEM SET REDO_TRANSPORT_USER=%s "
-                              "SCOPE=BOTH" % ora_service.ADMIN_USER_NAME)
+        if not self._force_logging_enabled(cursor):
+            cursor.execute(str(sql_query.AlterDatabase('FORCE LOGGING')))
+        max_processes = CONF.get(MANAGER).log_archive_max_process
+        settings = {
+            'LOG_ARCHIVE_MAX_PROCESSES': max_processes,
+            'STANDBY_FILE_MANAGEMENT': 'AUTO',
+            'REDO_TRANSPORT_USER': service.admin_user_name.upper()}
+        self._update_parameters(service, cursor, settings)
+        settings = {
+            'LOG_ARCHIVE_FORMAT': '%t_%s_%r.arc',
+            'REMOTE_LOGIN_PASSWORDFILE': 'EXCLUSIVE'}
+        self._update_parameters(service, cursor, settings, deferred=True)
 
-    def _update_dynamic_params(self, oracle_client, dbs):
+    def _clear_log_archive_dests(self, service, cursor):
+        settings = dict()
+        for index in range(2, 31):
+            settings['LOG_ARCHIVE_DEST_%s' % index] = "''"
+        self._update_parameters(service, cursor, settings)
+
+    def _update_dynamic_params(self, service, cursor, dbs):
         """Update replication system parameters that changes according to
         the current topology.
         """
         db_list = [db['db_unique_name'] for db in dbs]
-        dg_config_list = ",".join(db_list)
-        fal_server_list = ",".join("'%s'" % db for db in db_list)
-        oracle_client.execute("ALTER SYSTEM SET LOG_ARCHIVE_CONFIG="
-                              "'DG_CONFIG=(%s)'" % dg_config_list)
-        oracle_client.execute("ALTER SYSTEM SET FAL_SERVER=%s" %
-                              fal_server_list)
-        for index in range(2, 31):
-            oracle_client.execute("ALTER SYSTEM SET LOG_ARCHIVE_DEST_%s=''" %
-                                  index)
+        settings = {
+            'LOG_ARCHIVE_CONFIG': 'DG_CONFIG=(%s)' % ','.join(db_list),
+            'FAL_SERVER': ','.join("'%s'" % db for db in db_list)}
+        self._update_parameters(service, cursor, settings)
+        # Set up a log destination for each slave
+        self._clear_log_archive_dests(service, cursor)
         log_index = 2
+        settings = dict()
         for db in dbs:
-            if db['db_unique_name'] != self._get_config().db_unique_name:
-                oracle_client.execute(
-                    "ALTER SYSTEM SET "
-                    "LOG_ARCHIVE_DEST_%(log_index)s='SERVICE="
-                    "%(db)s NOAFFIRM ASYNC VALID_FOR="
-                    "(ONLINE_LOGFILES,PRIMARY_ROLE) "
-                    "DB_UNIQUE_NAME=%(db)s'" %
-                    {'log_index': log_index, 'db': db['db_unique_name']})
-                oracle_client.execute("ALTER SYSTEM SET "
-                                      "LOG_ARCHIVE_DEST_STATE_%s=ENABLE" %
-                                      log_index)
+            if db['db_unique_name'] != service.admin.ora_config.db_unique_name:
+                dest = ('SERVICE=%(db)s NOAFFIRM ASYNC VALID_FOR='
+                        '(ONLINE_LOGFILES,PRIMARY_ROLE) '
+                        'DB_UNIQUE_NAME=%(db)s' %
+                        {'db': db['db_unique_name']})
+                settings['LOG_ARCHIVE_DEST_%s' % log_index] = dest
+                settings['LOG_ARCHIVE_DEST_STATE_%s' % log_index] = 'ENABLE'
                 log_index += 1
+        self._update_parameters(service, cursor, settings)
 
-    def _create_standby_log_files(self, oracle_client):
+    def _create_standby_log_files(self, service, cursor):
         for i in range(1, CONF.get(MANAGER).standby_log_count + 1):
-            standby_log_file = path.join(
-                CONF.get(MANAGER).oracle_base, 'oradata',
-                self._get_config().db_name, 'standby_redo%s.log' % i)
-            oracle_client.execute(
-                "ALTER DATABASE ADD STANDBY LOGFILE "
-                "('%(log_file)s') SIZE %(log_size)sM" %
+            standby_log_file = service.paths.standby_log_file % i
+            cursor.execute(str(sql_query.AlterDatabase(
+                "ADD STANDBY LOGFILE ('%(log_file)s') SIZE %(log_size)sM" %
                 {'log_file': standby_log_file,
-                 'log_size': CONF.get(MANAGER).standby_log_size})
+                 'log_size': CONF.get(MANAGER).standby_log_size})))
 
-    def _is_new_replication_node(self):
-        return not (path.isfile(LSNR_PATH) and path.isfile(TNS_PATH))
+    def _is_new_slave_node(self, service):
+        return not path.isfile(service.paths.tns_file)
 
-    def complete_master_setup(self, context, slave_detail):
+    def _is_new_master_node(self, service):
+        standby_log_file = service.paths.standby_log_file % "1"
+        return not operating_system.exists(standby_log_file, as_root=True)
+
+    def complete_master_setup(self, service, slave_detail):
         """Finalize master setup and start the master Oracle processes."""
-        dbs = [self.get_replication_detail(None)]
+        dbs = [self.get_replication_detail(service)]
         dbs.extend(slave_detail)
-        with ora_service.LocalOracleClient(self._get_config().db_name,
-                                           service=True) as ora_client:
-            if self._is_new_replication_node():
-                self._create_lsnr_file()
-                self._create_standby_log_files(ora_client)
-                self._create_static_params(ora_client)
-            self._create_tns_file(dbs)
-            self._update_dynamic_params(ora_client, dbs)
-            ora_client.execute("ALTER SYSTEM SWITCH LOGFILE")
+        with service.cursor(service.admin.database_name) as cursor:
+            if self._is_new_master_node(service):
+                self._create_standby_log_files(service, cursor)
+                self._create_static_params(service, cursor)
+            self._create_tns_file(service, dbs)
+            self._update_dynamic_params(service, cursor, dbs)
+            cursor.execute(str(sql_query.AlterSystem(
+                'SWITCH LOGFILE')))
 
-    def _complete_new_slave_setup(self, master_host, dbs):
-        ora_conf = ora_service.OracleConfig()
-        sys_password = ora_conf.sys_password
-        with ora_service.OracleConnection(
-                self._get_config().db_name,
-                mode=(cx_Oracle.SYSDBA | cx_Oracle.PRELIM_AUTH)) as conn:
-            conn.startup()
+    def _complete_new_slave_setup(self, service, master_host, dbs):
+        sys_password = service.admin.ora_config.root_password
+        with service.client(service.admin.database_name,
+                            mode=(cx_Oracle.SYSDBA |
+                                  cx_Oracle.PRELIM_AUTH)) as client:
+            client.startup()
         db_list = [db['db_unique_name'] for db in dbs]
         fal_server_list = ",".join("'%s'" % db for db in db_list)
         # The RMAN DUPLICATE command requires connecting to target with the
         # 'sys' user. If we use any other user, such as 'os_admin', even with
         # the sysdba and sysoper roles assigned, it will still fail with:
         # ORA-01017: invalid username/password; logon denied
-        cmd = ("""\"\
-rman target %(admin_user)s/%(admin_pswd)s@%(host)s/%(db_name)s \
-auxiliary %(admin_user)s/%(admin_pswd)s@%(db_unique_name)s <<EOF
-run {
-DUPLICATE TARGET DATABASE FOR STANDBY
-FROM ACTIVE DATABASE DORECOVER SPFILE
-SET db_unique_name='%(db_unique_name)s' COMMENT 'Is standby'
-SET FAL_SERVER=%(fal_server_list)s COMMENT 'Is primary'
-NOFILENAMECHECK;
-}
-EXIT;
-EOF\"
-""")
-        duplicate_cmd = (cmd % {'admin_user': 'sys',
-                                'admin_pswd': sys_password,
-                                'host': master_host,
-                                'db_name': self._get_config().db_name,
-                                'db_unique_name':
-                                    self._get_config().db_unique_name,
-                                'fal_server_list': fal_server_list})
-        utils.execute_with_timeout("su - oracle -c " + duplicate_cmd,
-                                   run_as_root=True, root_helper='sudo',
-                                   timeout=CONF.restore_usage_timeout,
-                                   shell=True, log_output_on_error=True)
-        with ora_service.LocalOracleClient(
-                self._get_config().db_name) as client:
-            client.execute("ALTER SYSTEM SET REDO_TRANSPORT_USER = %s "
-                           "SCOPE = BOTH" % ora_service.ADMIN_USER_NAME)
-            client.execute("ALTER DATABASE OPEN READ ONLY")
-            client.execute("ALTER DATABASE RECOVER MANAGED STANDBY DATABASE "
-                           "USING CURRENT LOGFILE DISCONNECT FROM SESSION")
+        duplicate_cmd = (
+            "DUPLICATE TARGET DATABASE FOR STANDBY FROM ACTIVE DATABASE "
+            "DORECOVER SPFILE SET db_unique_name='%(db_unique_name)s' COMMENT "
+            "'Is standby' SET FAL_SERVER=%(fal_server_list)s COMMENT "
+            "'Is primary' NOFILENAMECHECK"
+            % {'db_unique_name': service.admin.ora_config.db_unique_name,
+               'fal_server_list': fal_server_list})
+        script = service.rman_scripter(
+            commands=duplicate_cmd,
+            t_user=service.root_user_name, t_pswd=sys_password,
+            t_host=master_host, t_db=service.admin.database_name,
+            a_user=service.root_user_name, a_pswd=sys_password,
+            a_db=service.admin.ora_config.db_unique_name)
+        script.run(timeout=CONF.restore_usage_timeout)
+        with service.cursor(service.admin.database_name) as cursor:
+            # This is set before the configuration manager is initialized so
+            # set the parameter directly
+            cursor.execute(str(sql_query.AlterSystem.set_parameter(
+                'REDO_TRANSPORT_USER', service.admin_user_name.upper())))
+            cursor.execute(str(sql_query.AlterDatabase('OPEN READ ONLY')))
+            cursor.execute(str(sql_query.AlterDatabase(
+                'RECOVER MANAGED STANDBY DATABASE USING CURRENT LOGFILE '
+                'DISCONNECT FROM SESSION')))
+        service.prep_pfile_management()
 
-    def complete_slave_setup(self, context, master_detail, slave_detail):
+    def complete_slave_setup(self, service, master_detail, slave_detail):
         """Finalize slave setup and start the slave Oracle processes."""
-        if self._is_new_replication_node():
+        if self._is_new_slave_node(service):
             dbs = [master_detail]
             dbs.extend(slave_detail)
-            self._create_tns_file(dbs)
-            self._complete_new_slave_setup(master_detail['host'], dbs)
+            self._create_tns_file(service, dbs)
+            self._complete_new_slave_setup(service, master_detail['host'], dbs)
 
-    def sync_data_to_slaves(self, context):
+    def sync_data_to_slaves(self, service):
         """Trigger an archive log switch and flush transactions down to the
         slaves.
         """
         LOG.debug("sync_data_to_slaves - switching log file")
-        with ora_service.LocalOracleClient(
-                self._get_config().db_name) as client:
-            client.execute("ALTER SYSTEM SWITCH LOGFILE")
+        with service.cursor(service.admin.database_name) as cursor:
+            cursor.execute(str(sql_query.AlterSystem('SWITCH LOGFILE')))
 
-    def prepare_slave(self, snapshot):
+    def prepare_slave(self, service, snapshot):
         """Prepare the environment needed for starting the slave Oracle
         processes.
         """
         master_info = snapshot['master']
         db_name = master_info['db_name']
+        db_unique_name = ('%(db_name)s_%(replica_label)s' %
+                          {'db_name': db_name,
+                           'replica_label': utils.generate_random_string(6)})
+        service.paths.update_db_name(db_name)
 
-        tmp_dir = '/tmp'
-        tmp_data_path = path.join(tmp_dir, 'oradata.tar.gz')
-        orabase_path = CONF.get(MANAGER).oracle_base
-        orahome_path = CONF.get(MANAGER).oracle_home
-        db_data_path = path.join(orabase_path, 'oradata', db_name)
-        fast_recovery_path = path.join(orabase_path, 'fast_recovery_area')
-        db_fast_recovery_path = path.join(fast_recovery_path, db_name)
-        audit_path = path.join(orabase_path, 'admin', db_name, 'adump')
-        admin_path = path.join(orabase_path, 'admin')
-
-        # Create necessary directories and set permissions
-        directories = [db_data_path, db_fast_recovery_path, audit_path]
-        for directory in directories:
+        # Create necessary directories and set necessary permissions
+        new_dirs = [service.paths.db_data_dir,
+                    service.paths.db_fast_recovery_logs_dir,
+                    service.paths.db_fast_recovery_dir,
+                    service.paths.audit_dir]
+        for directory in new_dirs:
             operating_system.create_directory(directory,
-                                              system.ORACLE_INSTANCE_OWNER,
-                                              system.ORACLE_GROUP_OWNER,
+                                              service.instance_owner,
+                                              service.instance_owner_group,
                                               as_root=True)
-        operating_system.chown(fast_recovery_path,
-                               system.ORACLE_INSTANCE_OWNER,
-                               system.ORACLE_GROUP_OWNER, as_root=True)
-        operating_system.chown(admin_path, system.ORACLE_INSTANCE_OWNER,
-                               system.ORACLE_GROUP_OWNER, as_root=True)
+
+        chown_dirs = [service.paths.fast_recovery_area,
+                      service.paths.admin_dir]
+        for directory in chown_dirs:
+            operating_system.chown(directory,
+                                   service.instance_owner,
+                                   service.instance_owner_group,
+                                   as_root=True)
 
         # Install on the slave files extracted from the master
         # (e.g. the control, pfile, password, oracle.cnf file ... etc)
-        oradata = master_info['oradata']
-        operating_system.write_file(tmp_data_path, oradata,
+        oradata_encoded = master_info['oradata']
+        tmp_data_path = path.join(TMP_DIR, 'oradata.tar.gz')
+        operating_system.write_file(tmp_data_path, oradata_encoded,
                                     codec=stream_codecs.Base64Codec(),
                                     encode=False)
         utils.execute_with_timeout('tar', '-Pxzvf', tmp_data_path,
                                    run_as_root=True, root_helper='sudo')
 
         # Put the control file in place
-        tmp_ctlfile_path = path.join(tmp_dir, '%s_stby.ctl' % db_name)
-        ctlfile1_path = path.join(db_data_path, 'control01.ctl')
-        ctlfile2_path = path.join(db_fast_recovery_path, 'control02.ctl')
-        operating_system.move(tmp_ctlfile_path, ctlfile1_path, as_root=True)
-        operating_system.copy(ctlfile1_path, ctlfile2_path, preserve=True,
+        tmp_ctlfile_path = path.join(TMP_DIR, '%s_stby.ctl' % db_name)
+        operating_system.move(tmp_ctlfile_path,
+                              service.paths.ctlfile1_file,
                               as_root=True)
+        operating_system.copy(service.paths.ctlfile1_file,
+                              service.paths.ctlfile2_file,
+                              preserve=True, as_root=True)
 
-        db_unique_name = ('%(db_name)s_%(replica_label)s' %
-                          {'db_name': db_name,
-                           'replica_label': utils.generate_random_string(6)})
+        # Set the db_name and db_unique_name via the PFILE which will be
+        # removed later
+        operating_system.write_file(service.paths.pfile,
+                                    "*.db_unique_name='%s'\n"
+                                    "*.db_name='%s'\n"
+                                    % (db_unique_name, db_name),
+                                    as_root=True)
+        operating_system.chown(service.paths.pfile,
+                               service.instance_owner,
+                               service.instance_owner_group,
+                               as_root=True, force=True)
 
-        # Customize the pfile for slave and put it in the right place.
-        # The pfile that came from master is owned by the 'oracle' user,
-        # so we need to change ownership first before editing it.
-        tmp_pfile_path = path.join(tmp_dir, 'init%s_stby.ora' % db_name)
-        pfile_path = path.join(orahome_path, 'dbs', 'init%s.ora' % db_name)
-        operating_system.chown(tmp_pfile_path, getpass.getuser(), None,
-                               as_root=True)
-        with open(tmp_pfile_path, 'a') as pfile:
-            pfile.write("*.db_unique_name='%s'\n" % db_unique_name)
-
-        # Finished editing pfile, put it in the proper directory and chown
-        # back to oracle user and group
-        operating_system.move(tmp_pfile_path, pfile_path, force=True,
-                              as_root=True)
-        operating_system.chown(pfile_path, system.ORACLE_INSTANCE_OWNER,
-                               system.ORACLE_GROUP_OWNER, as_root=True)
-
-        self._get_config().db_name = db_name
-        self._get_config().db_unique_name = db_unique_name
+        service.admin.delete_conf_cache()
+        service.admin.ora_config.db_name = db_name
+        service.admin.ora_config.db_unique_name = db_unique_name
 
         # Set proper permissions on the oratab file
-        operating_system.chown('/etc/oratab', system.ORACLE_INSTANCE_OWNER,
-                               system.ORACLE_GROUP_OWNER, as_root=True)
+        operating_system.chown(service.paths.oratab_file,
+                               service.instance_owner,
+                               service.instance_owner_group,
+                               as_root=True, force=True)
 
-        # Create the listener.ora file
-        self._create_lsnr_file()
+        # Create the listener.ora file and restart
+        service.configure_listener()
 
-        # Restart the listener
-        utils.execute_with_timeout("sudo", "su", "-", "oracle", "-c",
-                                   "lsnrctl reload",
-                                   timeout=CONF.usage_timeout)
+    def _restart_listener(self, service):
+        service.run_oracle_sys_command('lsnrctl reload')
 
     def enable_as_slave(self, service, snapshot, slave_config):
         """Turn this node into slave by enabling the log apply process."""
-        with ora_service.LocalOracleClient(
-                self._get_config().db_name) as client:
-            client.execute("select count(*) from v$managed_standby "
-                           "where process like 'MRP%'")
-            row = client.fetchone()
-            if int(row[0]) == 0:
+        with service.cursor(service.admin.database_name) as cursor:
+            if not self._log_apply_is_running(cursor):
                 # Only attempt to enable log apply if it is not already
                 # running
                 LOG.debug('Slave processes does not exist in '
                           'v$managed_standy, switching on LOG APPLY')
-                client.execute("ALTER DATABASE RECOVER MANAGED STANDBY "
-                               "DATABASE USING CURRENT LOGFILE DISCONNECT "
-                               "FROM SESSION")
-        utils.execute_with_timeout("sudo", "su", "-", "oracle", "-c",
-                                   "lsnrctl reload",
-                                   timeout=CONF.usage_timeout)
+                cursor.execute(str(sql_query.AlterDatabase(
+                    'RECOVER MANAGED STANDBY DATABASE USING CURRENT LOGFILE '
+                    'DISCONNECT FROM SESSION')))
+        self._restart_listener(service)
 
     def detach_slave(self, service, for_failover=False):
         """Detach this slave by disabling the log apply process,
         setting it to read/write.
         """
         if not for_failover:
-            with ora_service.LocalOracleClient(
-                    self._get_config().db_name) as client:
-                client.execute("ALTER DATABASE RECOVER MANAGED STANDBY "
-                               "DATABASE CANCEL")
-                client.execute("ALTER DATABASE ACTIVATE STANDBY DATABASE")
-                client.execute("ALTER DATABASE OPEN")
-                for index in range(2, 31):
-                    client.execute("ALTER SYSTEM SET LOG_ARCHIVE_DEST_%s=''" %
-                                   index)
-                client.execute("ALTER SYSTEM SET LOG_ARCHIVE_CONFIG=''")
-                client.execute("ALTER SYSTEM SET FAL_SERVER=''")
+            settings = {
+                'LOG_ARCHIVE_CONFIG': "''",
+                'FAL_SERVER': "''"}
+            with service.cursor(service.admin.database_name) as cursor:
+                self._clear_log_archive_dests(service, cursor)
+                cursor.execute(str(sql_query.AlterDatabase(
+                    'RECOVER MANAGED STANDBY DATABASE CANCEL')))
+                cursor.execute(str(sql_query.AlterDatabase(
+                    'ACTIVATE STANDBY DATABASE')))
+                cursor.execute(str(sql_query.AlterDatabase('OPEN')))
+                self._update_parameters(service, cursor, settings)
 
     def cleanup_source_on_replica_detach(self, service, replica_info):
         # Nothing needs to be done to the master when a replica goes away.
         pass
 
     def get_replica_context(self, service):
-        return {
-            'is_master': True,
-        }
+        return {'is_master': True}
 
     def demote_master(self, service):
         pass

@@ -18,8 +18,9 @@ from trove.tests.scenario.helpers.sql_helper import SqlHelper
 
 class MysqlHelper(SqlHelper):
 
-    def __init__(self, expected_override_name):
-        super(MysqlHelper, self).__init__(expected_override_name, 'mysql')
+    def __init__(self, expected_override_name, report):
+        super(MysqlHelper, self).__init__(expected_override_name, report,
+                                          'mysql')
 
     def get_helper_credentials(self):
         return {'name': 'lite', 'password': 'litepass', 'database': 'firstdb'}
@@ -33,11 +34,11 @@ class MysqlHelper(SqlHelper):
                 {'name': 'db2'}, {"name": 'db3'}]
 
     def get_valid_user_definitions(self):
-        return [{'name': 'user1', 'password': 'password1', 'databases': [],
+        return [{'name': 'a_user1', 'password': 'password1', 'databases': [],
                  'host': '127.0.0.1'},
-                {'name': 'user2', 'password': 'password1',
+                {'name': 'a_user2', 'password': 'password1',
                  'databases': [{'name': 'db1'}], 'host': '0.0.0.0'},
-                {'name': 'user3', 'password': 'password1',
+                {'name': 'a_user3', 'password': 'password1',
                  'databases': [{'name': 'db1'}, {'name': 'db2'}]}]
 
     def get_dynamic_group(self):
@@ -48,7 +49,7 @@ class MysqlHelper(SqlHelper):
         return {'innodb_buffer_pool_size': 10485760}
 
     def get_invalid_groups(self):
-        return [{'key_buffer_size': 4}, {"join_buffer_size": 'string_value'}]
+        return [{'key_buffer_size': -1}, {"join_buffer_size": 'string_value'}]
 
     def get_exposed_user_log_names(self):
         return ['general', 'slow_query']

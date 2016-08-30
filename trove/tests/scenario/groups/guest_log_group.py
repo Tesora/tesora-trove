@@ -14,20 +14,30 @@
 
 from proboscis import test
 
-from trove.tests.scenario.groups import instance_create_group
+from trove.tests.scenario import groups
 from trove.tests.scenario.groups.test_group import TestGroup
+from trove.tests.scenario.runners import test_runners
 
 
 GROUP = "scenario.guest_log_group"
 
 
-@test(depends_on_groups=[instance_create_group.GROUP], groups=[GROUP])
+class GuestLogRunnerFactory(test_runners.RunnerFactory):
+
+    _runner_ns = 'guest_log_runners'
+    _runner_cls = 'GuestLogRunner'
+
+
+@test(depends_on_groups=[groups.INST_CREATE_WAIT],
+      groups=[GROUP],
+      runs_after_groups=[groups.USER_ACTION_INST_CREATE,
+                         groups.ROOT_ACTION_INST_CREATE])
 class GuestLogGroup(TestGroup):
     """Test Guest Log functionality."""
 
     def __init__(self):
         super(GuestLogGroup, self).__init__(
-            'guest_log_runners', 'GuestLogRunner')
+            GuestLogRunnerFactory.instance())
 
     @test
     def test_log_list(self):

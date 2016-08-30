@@ -15,6 +15,7 @@
 #
 
 from mock import Mock
+from mock import patch
 
 from testtools import ExpectedException
 from trove.common import exception
@@ -22,15 +23,15 @@ from trove.common import utils
 from trove.tests.unittests import trove_testtools
 
 
-class TestTroveExecuteWithTimeout(trove_testtools.TestCase):
+class TestUtils(trove_testtools.TestCase):
 
     def setUp(self):
-        super(TestTroveExecuteWithTimeout, self).setUp()
+        super(TestUtils, self).setUp()
         self.orig_utils_execute = utils.execute
         self.orig_utils_log_error = utils.LOG.error
 
     def tearDown(self):
-        super(TestTroveExecuteWithTimeout, self).tearDown()
+        super(TestUtils, self).tearDown()
         utils.execute = self.orig_utils_execute
         utils.LOG.error = self.orig_utils_log_error
 
@@ -81,3 +82,67 @@ class TestTroveExecuteWithTimeout(trove_testtools.TestCase):
     def test_pagination_limit(self):
         self.assertEqual(5, utils.pagination_limit(5, 9))
         self.assertEqual(5, utils.pagination_limit(9, 5))
+
+    def test_format_output(self):
+        data = [
+            ['', ''],
+            ['Single line', 'Single line'],
+            ['Long line no breaks ' * 10, 'Long line no breaks ' * 10],
+            ['Long line. Has breaks ' * 5,
+             'Long line.\nHas breaks ' * 2 + 'Long line. Has breaks ' * 3],
+            ['Long line with semi: ' * 4,
+             'Long line with semi:\n    ' +
+             'Long line with semi: ' * 3],
+            ['Long line with brack (' * 4,
+             'Long line with brack\n(' +
+             'Long line with brack (' * 3],
+        ]
+        for index, datum in enumerate(data):
+            self.assertEqual(datum[1], utils.format_output(datum[0]),
+                             "Error formatting line %d of data" % index)
+
+    @patch('trove.common.utils.LOG')
+    def test_retry_decorator(self, _):
+
+        class TestEx1(Exception):
+            pass
+
+        class TestEx2(Exception):
+            pass
+
+        class TestEx3(Exception):
+            pass
+
+        class TestExecutor():
+
+            def _test_foo(self, arg):
+                return arg
+
+            @utils.retry(TestEx1, retries=5, delay_fun=lambda n: 0.2)
+            def test_foo_1(self, arg):
+                return self._test_foo(arg)
+
+            @utils.retry((TestEx1, TestEx2), delay_fun=lambda n: 0.2)
+            def test_foo_2(self, arg):
+                return self._test_foo(arg)
+
+        def assert_retry(fun, side_effect, exp_call_num, exp_exception):
+            with patch.object(te, '_test_foo', side_effect=side_effect) as f:
+                mock_arg = Mock()
+                if exp_exception:
+                    self.assertRaises(exp_exception, fun, mock_arg)
+                else:
+                    fun(mock_arg)
+
+                f.assert_called_with(mock_arg)
+                self.assertEqual(exp_call_num, f.call_count)
+
+        te = TestExecutor()
+        assert_retry(te.test_foo_1, [TestEx1, None], 2, None)
+        assert_retry(te.test_foo_1, TestEx3, 1, TestEx3)
+        assert_retry(te.test_foo_1, TestEx1, 5, TestEx1)
+        assert_retry(te.test_foo_1, [TestEx1, TestEx3], 2, TestEx3)
+        assert_retry(te.test_foo_2, [TestEx1, TestEx2, None], 3, None)
+        assert_retry(te.test_foo_2, TestEx3, 1, TestEx3)
+        assert_retry(te.test_foo_2, TestEx2, 3, TestEx2)
+        assert_retry(te.test_foo_2, [TestEx1, TestEx3, TestEx2], 2, TestEx3)

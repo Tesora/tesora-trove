@@ -28,12 +28,15 @@ from trove.conductor import api as conductor_api
 from trove.guestagent.backup import backupagent
 from trove.guestagent.common import configuration
 from trove.guestagent.common.configuration import ImportOverrideStrategy
+from trove.guestagent.datastore.experimental.couchbase.service import \
+    CouchbaseApp
 from trove.guestagent.strategies.backup.base import BackupRunner
 from trove.guestagent.strategies.backup.base import UnknownBackupType
 from trove.guestagent.strategies.backup.experimental import couchbase_impl
 from trove.guestagent.strategies.backup.experimental import db2_impl
 from trove.guestagent.strategies.backup.experimental import mongo_impl
 from trove.guestagent.strategies.backup.experimental import redis_impl
+from trove.guestagent.strategies.backup import mysql_ee_impl
 from trove.guestagent.strategies.backup import mysql_impl
 from trove.guestagent.strategies.backup.mysql_impl import MySqlApp
 from trove.guestagent.strategies.restore.base import RestoreRunner
@@ -209,16 +212,16 @@ class BackupAgentTest(trove_testtools.TestCase):
         mysql_dump = mysql_impl.MySQLDump(
             'abc', extra_opts='')
         self.assertIsNotNone(mysql_dump.cmd)
-        str_mysql_dump_cmd = ('mysqldump'
-                              ' --all-databases'
-                              ' %(extra_opts)s'
-                              ' --opt'
-                              ' --password=123'
-                              ' -u os_admin'
-                              ' 2>/tmp/mysqldump.log'
-                              ' | gzip |'
-                              ' openssl enc -aes-256-cbc -salt '
-                              '-pass pass:default_aes_cbc_key')
+        str_mysql_dump_cmd = ("mysqldump"
+                              " --all-databases"
+                              " %(extra_opts)s"
+                              " --opt"
+                              " --password='123'"
+                              " -u os_admin"
+                              " 2>/tmp/mysqldump.log"
+                              " | gzip |"
+                              " openssl enc -aes-256-cbc -salt "
+                              "-pass pass:default_aes_cbc_key")
         self.assertEqual(str_mysql_dump_cmd, mysql_dump.cmd)
         self.assertIsNotNone(mysql_dump.manifest)
         self.assertEqual('abc.gz.enc', mysql_dump.manifest)
@@ -231,20 +234,41 @@ class BackupAgentTest(trove_testtools.TestCase):
         """
         inno_backup_ex = mysql_impl.InnoBackupEx('innobackupex', extra_opts='')
         self.assertIsNotNone(inno_backup_ex.cmd)
-        str_innobackup_cmd = ('sudo innobackupex'
-                              ' --stream=xbstream'
-                              ' %(extra_opts)s '
-                              ' --user=os_admin --password=123'
-                              ' /var/lib/mysql/data 2>/tmp/innobackupex.log'
-                              ' | gzip |'
-                              ' openssl enc -aes-256-cbc -salt '
-                              '-pass pass:default_aes_cbc_key')
+        str_innobackup_cmd = ("sudo innobackupex"
+                              " --stream=xbstream"
+                              " %(extra_opts)s "
+                              " --user=os_admin --password='123'"
+                              " /var/lib/mysql/data 2>/tmp/innobackupex.log"
+                              " | gzip |"
+                              " openssl enc -aes-256-cbc -salt "
+                              "-pass pass:default_aes_cbc_key")
         self.assertEqual(str_innobackup_cmd, inno_backup_ex.cmd)
         self.assertIsNotNone(inno_backup_ex.manifest)
         str_innobackup_manifest = 'innobackupex.xbstream.gz.enc'
         self.assertEqual(str_innobackup_manifest, inno_backup_ex.manifest)
 
-    def test_backup_impl_CbBackup(self):
+    def test_backup_impl_MySqlBackup(self):
+        """This test is for
+           guestagent/strategies/backup/mysql_ee_impl
+        """
+        mysql_backup = mysql_ee_impl.MySqlBackup('mysqlbackup', extra_opts='')
+        self.assertIsNotNone(mysql_backup.cmd)
+        key = hashlib.sha256('default_aes_cbc_key').hexdigest()
+        str_mysqlbackup_cmd = ("sudo mysqlbackup --with-timestamp"
+                               " --backup-image=-"
+                               " --backup_dir=/tmp/mysqlbackup"
+                               " --compress --encrypt"
+                               " --key=" + key +
+                               " %(extra_opts)s --user=os_admin"
+                               " --password='123'  backup-to-image"
+                               " 2>/tmp/mysqlbackup.log")
+        self.assertEqual(str_mysqlbackup_cmd, mysql_backup.cmd)
+        self.assertIsNotNone(mysql_backup.manifest)
+        str_mysqlbackup_manifest = 'mysqlbackup.gz.enc'
+        self.assertEqual(str_mysqlbackup_manifest, mysql_backup.manifest)
+
+    @patch.object(CouchbaseApp, 'get_password', return_value='password')
+    def test_backup_impl_CbBackup(self, _):
         netutils.get_my_ipv4 = Mock(return_value="1.1.1.1")
         utils.execute_with_timeout = Mock(return_value=None)
         cbbackup = couchbase_impl.CbBackup('cbbackup', extra_opts='')

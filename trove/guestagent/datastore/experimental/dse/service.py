@@ -68,5 +68,6 @@ class DSEApp(community_service.CassandraApp):
         return {
             operating_system.REDHAT: "/etc/dse/cassandra/",
             operating_system.DEBIAN: "/etc/dse/cassandra/",
-            operating_system.SUSE: "/etc/dse/cassandra/"
+            operating_system.SUSE: "/etc/dse/cassandra/",
+            operating_system.ORACLE: "/etc/dse/cassandra/"
         }[operating_system.get_os()]

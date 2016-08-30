@@ -18,9 +18,11 @@ import json
 
 from oslo_log import log as logging
 
+from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common import utils
+from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.experimental.couchbase import service
 from trove.guestagent.datastore.experimental.couchbase import system
@@ -28,6 +30,7 @@ from trove.guestagent.strategies.backup import base
 
 
 LOG = logging.getLogger(__name__)
+CONF = cfg.CONF
 OUTFILE = '/tmp' + system.BUCKETS_JSON
 
 
@@ -46,6 +49,10 @@ class CbBackup(base.BackupRunner):
         ['rm', '-rf', system.COUCHBASE_DUMP_DIR],
     ]
 
+    def __init__(self, filename, **kwargs):
+        self.app = service.CouchbaseApp()
+        super(CbBackup, self).__init__(filename, **kwargs)
+
     @property
     def cmd(self):
         """
@@ -60,19 +67,14 @@ class CbBackup(base.BackupRunner):
                                    ' ' + url + ' > ' + OUTFILE,
                                    shell=True, timeout=300)
 
-    def _backup(self, password):
-        utils.execute_with_timeout('/opt/couchbase/bin/cbbackup',
-                                   system.COUCHBASE_REST_API,
-                                   system.COUCHBASE_DUMP_DIR,
-                                   '-u', 'root', '-p', password,
-                                   timeout=600)
+    def _backup(self):
+        self.run_cbbackup()
 
     def _run_pre_backup(self):
         try:
             for cmd in self.pre_backup_commands:
                 utils.execute_with_timeout(*cmd)
-            root = service.CouchbaseRootAccess()
-            pw = root.get_password()
+            pw = self.app.get_password()
             self._save_buckets_config(pw)
             with open(OUTFILE, "r") as f:
                 out = f.read()
@@ -85,14 +87,14 @@ class CbBackup(base.BackupRunner):
                             all_memcached = False
                             break
                     if not all_memcached:
-                        self._backup(pw)
+                        self._backup()
                     else:
                         LOG.info(_("All buckets are memcached.  "
                                    "Skipping backup."))
             operating_system.move(OUTFILE, system.COUCHBASE_DUMP_DIR)
             if pw != "password":
                 # Not default password, backup generated root password
-                operating_system.copy(system.pwd_file,
+                operating_system.copy(self.app.couchbase_pwd_file,
                                       system.COUCHBASE_DUMP_DIR,
                                       preserve=True, as_root=True)
         except exception.ProcessExecutionError as p:
@@ -106,3 +108,19 @@ class CbBackup(base.BackupRunner):
         except exception.ProcessExecutionError as p:
             LOG.error(p)
             raise p
+
+    def run_cbbackup(self):
+        host_and_port = 'localhost:%d' % CONF.couchbase.couchbase_port
+        admin_user = self.app.get_cluster_admin()
+        cmd_tokens = [self.cbbackup_bin,
+                      'http://' + host_and_port,
+                      system.COUCHBASE_DUMP_DIR,
+                      '-u', admin_user.name,
+                      '-p', admin_user.password]
+        return utils.execute(' '.join(cmd_tokens), shell=True)
+
+    @property
+    def cbbackup_bin(self):
+        admin = self.app.build_admin()
+        return guestagent_utils.build_file_path(admin.couchbase_bin_dir,
+                                                'cbbackup')

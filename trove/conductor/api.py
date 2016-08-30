@@ -90,6 +90,7 @@ class API(object):
         context = self.context
         serialized = SerializableNotification.serialize(context,
                                                         context.notification)
-        cctxt.cast(self.context, "notify_exception",
+        serialized.update({'instance_id': CONF.guest_id})
+        cctxt.cast(self.context, "notify_exc_info",
                    serialized_notification=serialized,
                    message=message, exception=exception)

@@ -20,11 +20,17 @@ from trove.guestagent import pkg
 
 OS_NAME = operating_system.get_os()
 
-MONGODB_MOUNT_POINT = "/var/lib/mongodb"
-MONGO_PID_FILE = '/var/run/mongodb/mongodb.pid'
-MONGO_LOG_FILE = '/var/log/mongodb/mongod.log'
+CONFIG_DIR = "/etc"
+MONGOD_CONFIG_CANDIDATES = [path.join(CONFIG_DIR, name) for name in
+                            ['mongodb.conf', 'mongod.conf']]
+MONGOD_CONFIG_FILE = operating_system.file_discovery(MONGOD_CONFIG_CANDIDATES)
+MONGOD_CONFIG_OVERRIDES_DIR = path.join(CONFIG_DIR, 'mongod_overrides')
 
-CONFIG_CANDIDATES = ["/etc/mongodb.conf", "/etc/mongod.conf"]
+MONGOS_CONFIG_CANDIDATES = [path.join(CONFIG_DIR, name) for name in
+                            ['mongodb.conf', 'mongos.conf']]
+MONGOS_CONFIG_FILE = operating_system.file_discovery(MONGOS_CONFIG_CANDIDATES)
+MONGOS_CONFIG_OVERRIDES_DIR = path.join(CONFIG_DIR, 'mongos_overrides')
+
 MONGO_ADMIN_NAME = 'os_admin'
 MONGO_ADMIN_ROLES = [{'db': 'admin', 'role': 'userAdminAnyDatabase'},
                      {'db': 'admin', 'role': 'dbAdminAnyDatabase'},
@@ -36,11 +42,9 @@ MONGO_KEY_FILE = '/etc/mongo_key'
 MONGOS_SERVICE_CANDIDATES = ["mongos"]
 MONGOD_SERVICE_CANDIDATES = ["mongodb", "mongod"]
 MONGODB_KILL = "sudo kill %s"
-FIND_PID = "ps xau | grep 'mongo[ds]'"
+FIND_PID = "ps xaco pid,cmd | awk '/mongo(d|db|s)/ {print $1}'"
 TIME_OUT = 1000
 
-MONGO_USER = {operating_system.REDHAT: "mongod",
-              operating_system.DEBIAN: "mongodb",
-              operating_system.SUSE: "mongod"}[OS_NAME]
+MONGO_USER = "mongodb"
 
 PACKAGER = pkg.Package()

@@ -21,6 +21,7 @@ from collections import defaultdict
 import os
 import re
 import six
+import urllib
 import uuid
 
 from oslo_log import log as logging
@@ -47,6 +48,7 @@ from trove.guestagent.db import models
 from trove.guestagent import pkg
 
 ADMIN_USER_NAME = "os_admin"
+CONNECTION_STR_FORMAT = "mysql://%s:%s@127.0.0.1:3306"
 LOG = logging.getLogger(__name__)
 FLUSH = text(sql_query.FLUSH)
 ENGINE = None
@@ -67,7 +69,8 @@ INCLUDE_MARKER_OPERATORS = {
 OS_NAME = operating_system.get_os()
 MYSQL_CONFIG = {operating_system.REDHAT: "/etc/my.cnf",
                 operating_system.DEBIAN: "/etc/mysql/my.cnf",
-                operating_system.SUSE: "/etc/my.cnf"}[OS_NAME]
+                operating_system.SUSE: "/etc/my.cnf",
+                operating_system.ORACLE: "/etc/my.cnf"}[OS_NAME]
 MYSQL_BIN_CANDIDATES = ["/usr/sbin/mysqld", "/usr/libexec/mysqld"]
 MYSQL_OWNER = 'mysql'
 CNF_EXT = 'cnf'
@@ -255,8 +258,8 @@ class BaseMySqlAdmin(object):
                 user = models.MySQLUser()
                 user.deserialize(user_dict)
                 LOG.debug("\tDeserialized: %s." % user.__dict__)
-                uu = sql_query.UpdateUser(user.name, host=user.host,
-                                          clear=user.password)
+                uu = sql_query.SetPassword(user.name, host=user.host,
+                                           new_password=user.password)
                 t = text(str(uu))
                 client.execute(t)
 
@@ -264,33 +267,28 @@ class BaseMySqlAdmin(object):
         """Change the attributes of an existing user."""
         LOG.debug("Changing user attributes for user %s." % username)
         user = self._get_user(username, hostname)
-        db_access = set()
-        grantee = set()
-        with self.local_sql_client(self.mysql_app.get_engine()) as client:
-            q = sql_query.Query()
-            q.columns = ["grantee", "table_schema"]
-            q.tables = ["information_schema.SCHEMA_PRIVILEGES"]
-            q.group = ["grantee", "table_schema"]
-            q.where = ["privilege_type != 'USAGE'"]
-            t = text(str(q))
-            db_result = client.execute(t)
-            for db in db_result:
-                grantee.add(db['grantee'])
-                if db['grantee'] == "'%s'@'%s'" % (user.name, user.host):
-                    db_name = db['table_schema']
-                    db_access.add(db_name)
-        with self.local_sql_client(self.mysql_app.get_engine()) as client:
-            uu = sql_query.UpdateUser(user.name, host=user.host,
-                                      clear=user_attrs.get('password'),
-                                      new_user=user_attrs.get('name'),
-                                      new_host=user_attrs.get('host'))
-            t = text(str(uu))
-            client.execute(t)
-            uname = user_attrs.get('name') or username
-            host = user_attrs.get('host') or hostname
-            find_user = "'%s'@'%s'" % (uname, host)
-            if find_user not in grantee:
-                self.grant_access(uname, host, db_access)
+
+        new_name = user_attrs.get('name')
+        new_host = user_attrs.get('host')
+        new_password = user_attrs.get('password')
+
+        if new_name or new_host or new_password:
+
+            with self.local_sql_client(self.mysql_app.get_engine()) as client:
+
+                if new_password is not None:
+                    uu = sql_query.SetPassword(user.name, host=user.host,
+                                               new_password=new_password)
+
+                    t = text(str(uu))
+                    client.execute(t)
+
+                if new_name or new_host:
+                    uu = sql_query.RenameUser(user.name, host=user.host,
+                                              new_user=new_name,
+                                              new_host=new_host)
+                    t = text(str(uu))
+                    client.execute(t)
 
     def create_database(self, databases):
         """Create the list of specified databases."""
@@ -368,7 +366,7 @@ class BaseMySqlAdmin(object):
                                        )
         with self.local_sql_client(self.mysql_app.get_engine()) as client:
             q = sql_query.Query()
-            q.columns = ['User', 'Host', 'Password']
+            q.columns = ['User', 'Host']
             q.tables = ['mysql.user']
             q.where = ["Host != 'localhost'",
                        "User = '%s'" % username,
@@ -380,7 +378,6 @@ class BaseMySqlAdmin(object):
             if len(result) != 1:
                 return None
             found_user = result[0]
-            user.password = found_user['Password']
             user.host = found_user['Host']
             self._associate_dbs(user)
             return user
@@ -565,7 +562,7 @@ class BaseKeepAliveConnection(interfaces.PoolListener):
                 dbapi_con.ping(False)
             except TypeError:
                 dbapi_con.ping()
-        except dbapi_con.OperationalError as ex:
+        except (dbapi_con.OperationalError, dbapi_con.InternalError) as ex:
             if ex.args[0] in (2006, 2013, 2014, 2045, 2055):
                 raise exc.DisconnectionError()
             else:
@@ -588,9 +585,13 @@ class BaseMySqlApp(object):
         return self._keep_alive_connection_cls
 
     @property
+    def service_candidates(self):
+        return ["mysql", "mysqld", "mysql-server"]
+
+    @property
     def mysql_service(self):
-        MYSQL_SERVICE_CANDIDATES = ["mysql", "mysqld", "mysql-server"]
-        return operating_system.service_discovery(MYSQL_SERVICE_CANDIDATES)
+        service_candidates = self.service_candidates
+        return operating_system.service_discovery(service_candidates)
 
     configuration_manager = ConfigurationManager(
         MYSQL_CONFIG, MYSQL_OWNER, MYSQL_OWNER, CFG_CODEC, requires_root=True,
@@ -606,9 +607,10 @@ class BaseMySqlApp(object):
             return ENGINE
 
         pwd = self.get_auth_password()
-        ENGINE = sqlalchemy.create_engine("mysql://%s:%s@127.0.0.1:3306" %
-                                          (ADMIN_USER_NAME, pwd.strip()),
-                                          pool_recycle=7200,
+        ENGINE = sqlalchemy.create_engine(CONNECTION_STR_FORMAT %
+                                          (ADMIN_USER_NAME,
+                                           urllib.quote(pwd.strip())),
+                                          pool_recycle=120,
                                           echo=CONF.sql_query_logging,
                                           listeners=[
                                               self.keep_alive_connection_cls()]
@@ -653,18 +655,21 @@ class BaseMySqlApp(object):
         Create a os_admin user with a random password
         with all privileges similar to the root user.
         """
+        LOG.debug("Creating Trove admin user '%s'." % ADMIN_USER_NAME)
         localhost = "localhost"
         g = sql_query.Grant(permissions='ALL', user=ADMIN_USER_NAME,
                             host=localhost, grant_option=True, clear=password)
         t = text(str(g))
         client.execute(t)
+        LOG.debug("Trove admin user '%s' created." % ADMIN_USER_NAME)
 
     @staticmethod
     def _generate_root_password(client):
         """Generate and set a random root password and forget about it."""
         localhost = "localhost"
-        uu = sql_query.UpdateUser("root", host=localhost,
-                                  clear=utils.generate_random_password())
+        uu = sql_query.SetPassword(
+            "root", host=localhost,
+            new_password=utils.generate_random_password())
         t = text(str(uu))
         client.execute(t)
 
@@ -685,22 +690,27 @@ class BaseMySqlApp(object):
         self.start_mysql()
 
     def secure(self, config_contents):
-        LOG.info(_("Generating admin password."))
-        admin_password = utils.generate_random_password()
+        LOG.debug("Securing MySQL now.")
         clear_expired_password()
-        engine = sqlalchemy.create_engine("mysql://root:@localhost:3306",
-                                          echo=True)
-        with self.local_sql_client(engine) as client:
-            self._remove_anonymous_user(client)
+        LOG.debug("Generating admin password.")
+        admin_password = utils.generate_random_password()
+        engine = sqlalchemy.create_engine(
+            CONNECTION_STR_FORMAT % ('root', ''), echo=True)
+        with self.local_sql_client(engine, use_flush=False) as client:
             self._create_admin_user(client, admin_password)
 
+        LOG.debug("Switching to the '%s' user now." % ADMIN_USER_NAME)
         self.clear_engine_cache()
+        engine = sqlalchemy.create_engine(
+            CONNECTION_STR_FORMAT % (ADMIN_USER_NAME,
+                                     urllib.quote(admin_password)),
+            echo=True)
+        with self.local_sql_client(engine) as client:
+            self._remove_anonymous_user(client)
 
         self.stop_db()
-
         self._reset_configuration(config_contents, admin_password)
         self.start_mysql()
-
         LOG.debug("MySQL secure complete.")
 
     def _reset_configuration(self, configuration, admin_password=None):
@@ -781,12 +791,16 @@ class BaseMySqlApp(object):
             raise RuntimeError("Could not stop MySQL!")
 
     def _remove_anonymous_user(self, client):
+        LOG.debug("Removing anonymous user.")
         t = text(sql_query.REMOVE_ANON)
         client.execute(t)
+        LOG.debug("Anonymous user removed.")
 
     def _remove_remote_root_access(self, client):
+        LOG.debug("Removing root access.")
         t = text(sql_query.REMOVE_ROOT)
         client.execute(t)
+        LOG.debug("Root access removed.")
 
     def restart(self):
         try:
@@ -816,7 +830,7 @@ class BaseMySqlApp(object):
                 t = text(str(q))
                 try:
                     client.execute(t)
-                except exc.OperationalError:
+                except (exc.OperationalError, exc.InternalError):
                     output = {'key': k, 'value': byte_value}
                     LOG.exception(_("Unable to set %(key)s with value "
                                     "%(value)s.") % output)
@@ -899,9 +913,10 @@ class BaseMySqlApp(object):
             }
             return binlog_position
 
-    def execute_on_client(self, sql_statement):
+    def execute_on_client(self, sql_statement, use_flush=True):
         LOG.debug("Executing SQL: %s" % sql_statement)
-        with self.local_sql_client(self.get_engine()) as client:
+        with self.local_sql_client(self.get_engine(),
+                                   use_flush=use_flush) as client:
             return client.execute(sql_statement)
 
     def start_slave(self):
@@ -934,8 +949,26 @@ class BaseMySqlApp(object):
 
         def verify_slave_status():
             actual_status = client.execute(
-                "SHOW GLOBAL STATUS like 'slave_running'").first()[1]
-            return actual_status.upper() == status.upper()
+                "SHOW GLOBAL STATUS like 'slave_running'").first()
+            if actual_status:
+                return actual_status[1].upper() == status.upper()
+            # The slave_running status is no longer available in MySql 5.7
+            # Need to query the performance_schema instead.
+            LOG.debug("slave_running global status doesn't exist, checking "
+                      "service_state in performance_schema instead.")
+            q = sql_query.Query()
+            q.columns = ["a.service_state", "c.service_state"]
+            q.tables = ["performance_schema.replication_applier_status a",
+                        "performance_schema.replication_connection_status c"]
+            q.where = ["a.channel_name = ''", "c.channel_name = ''"]
+            t = text(str(q))
+            actual_status = client.execute(t).first()
+            if (actual_status and actual_status[0].upper() == 'ON' and
+                    actual_status[1].upper() == 'ON'):
+                actual_status_str = 'ON'
+            else:
+                actual_status_str = 'OFF'
+            return actual_status_str == status.upper()
 
         LOG.debug("Waiting for SLAVE_RUNNING to change to %s.", status)
         try:
@@ -1046,14 +1079,17 @@ class BaseMySqlRootAccess(object):
                 cu = sql_query.CreateUser(user.name, host=user.host)
                 t = text(str(cu))
                 client.execute(t, **cu.keyArgs)
-            except exc.OperationalError as err:
-                # Ignore, user is already created, just reset the password
-                # TODO(rnirmal): More fine grained error checking later on
-                LOG.debug(err)
+            except (exc.OperationalError, exc.InternalError) as err:
+                if '1396' in err.args[0]:
+                    # Ignore, user is already created, just reset the password
+                    # TODO(rnirmal): More fine grained error checking later on
+                    LOG.debug(err)
+                else:
+                    raise
         with self.local_sql_client(self.mysql_app.get_engine()) as client:
             print(client)
-            uu = sql_query.UpdateUser(user.name, host=user.host,
-                                      clear=user.password)
+            uu = sql_query.SetPassword(user.name, host=user.host,
+                                       new_password=user.password)
             t = text(str(uu))
             client.execute(t)
 
@@ -1071,7 +1107,6 @@ class BaseMySqlRootAccess(object):
             return user.serialize()
 
     def disable_root(self):
-        """Disable the root user global access
+        """Reset the root password to an unknown value.
         """
-        with self.local_sql_client(self.mysql_app.get_engine()) as client:
-            client.execute(text(sql_query.REMOVE_ROOT))
+        self.enable_root(root_password=None)

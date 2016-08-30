@@ -17,6 +17,8 @@ from six.moves.urllib import parse as urllib_parse
 
 from proboscis import SkipTest
 
+from trove.common import exception
+from trove.common.utils import poll_until
 from trove.tests.scenario.runners.test_runners import TestRunner
 from troveclient.compat import exceptions
 
@@ -39,6 +41,13 @@ class UserActionsRunner(TestRunner):
             return self.user_defs[0]
         raise SkipTest("No valid user definitions provided.")
 
+    @property
+    def non_existing_user_def(self):
+        user_def = self.test_helper.get_non_existing_user_definition()
+        if user_def:
+            return user_def
+        raise SkipTest("No valid user definitions provided.")
+
     def run_users_create(self, expected_http_code=202):
         users = self.test_helper.get_valid_user_definitions()
         if users:
@@ -51,7 +60,29 @@ class UserActionsRunner(TestRunner):
                             expected_http_code):
         self.auth_client.users.create(instance_id, serial_users_def)
         self.assert_client_code(expected_http_code)
+        self._wait_for_user_create(instance_id, serial_users_def)
         return serial_users_def
+
+    def _wait_for_user_create(self, instance_id, expected_user_defs):
+        expected_user_names = {user_def['name']
+                               for user_def in expected_user_defs}
+        self.report.log("Waiting for all created users to appear in the "
+                        "listing: %s" % expected_user_names)
+
+        def _all_exist():
+            all_users = self._get_user_names(instance_id)
+            return all(usr in all_users for usr in expected_user_names)
+
+        try:
+            poll_until(_all_exist, time_out=self.GUEST_CAST_WAIT_TIMEOUT_SEC)
+            self.report.log("All users now exist on the instance.")
+        except exception.PollTimeOut:
+            self.fail("Some users were not created within the poll "
+                      "timeout: %ds" % self.GUEST_CAST_WAIT_TIMEOUT_SEC)
+
+    def _get_user_names(self, instance_id):
+        full_list = self.auth_client.users.list(instance_id)
+        return {user.name: user for user in full_list}
 
     def run_user_show(self, expected_http_code=200):
         for user_def in self.user_defs:
@@ -205,15 +236,15 @@ class UserActionsRunner(TestRunner):
     def run_user_create_with_blank_name(
             self, expected_exception=exceptions.BadRequest,
             expected_http_code=400):
-        usr_def = self.test_helper.get_non_existing_user_definition()
         # Test with missing user name attribute.
-        no_name_usr_def = self.copy_dict(usr_def, ignored_keys=['name'])
+        no_name_usr_def = self.copy_dict(self.non_existing_user_def,
+                                         ignored_keys=['name'])
         self.assert_users_create_failure(
             self.instance_info.id, no_name_usr_def,
             expected_exception, expected_http_code)
 
         # Test with empty user name attribute.
-        blank_name_usr_def = self.copy_dict(usr_def)
+        blank_name_usr_def = self.copy_dict(self.non_existing_user_def)
         blank_name_usr_def.update({'name': ''})
         self.assert_users_create_failure(
             self.instance_info.id, blank_name_usr_def,
@@ -222,15 +253,16 @@ class UserActionsRunner(TestRunner):
     def run_user_create_with_blank_password(
             self, expected_exception=exceptions.BadRequest,
             expected_http_code=400):
-        usr_def = self.test_helper.get_non_existing_user_definition()
         # Test with missing password attribute.
-        no_pass_usr_def = self.copy_dict(usr_def, ignored_keys=['password'])
+        no_pass_usr_def = self.copy_dict(self.non_existing_user_def,
+                                         ignored_keys=['password'])
         self.assert_users_create_failure(
             self.instance_info.id, no_pass_usr_def,
             expected_exception, expected_http_code)
 
         # Test with missing databases attribute.
-        no_db_usr_def = self.copy_dict(usr_def, ignored_keys=['databases'])
+        no_db_usr_def = self.copy_dict(self.non_existing_user_def,
+                                       ignored_keys=['databases'])
         self.assert_users_create_failure(
             self.instance_info.id, no_db_usr_def,
             expected_exception, expected_http_code)
@@ -330,6 +362,8 @@ class UserActionsRunner(TestRunner):
                 user_def.update(update_attribites)
                 expected_def = user_def
 
+        self._wait_for_user_create(instance_id, self.user_defs)
+
         # Verify using 'user-show' and 'user-list'.
         self.assert_user_show(instance_id, expected_def, 200)
         self.assert_users_list(instance_id, self.user_defs, 200)
@@ -344,21 +378,29 @@ class UserActionsRunner(TestRunner):
 
         self.auth_client.users.delete(instance_id, user_name, user_host)
         self.assert_client_code(expected_http_code)
+        self._wait_for_user_delete(instance_id, user_name)
 
-        self.assert_raises(exceptions.NotFound, 404,
-                           self.auth_client.users.get,
-                           instance_id, user_name, user_host)
+    def _wait_for_user_delete(self, instance_id, deleted_user_name):
+        self.report.log("Waiting for deleted user to disappear from the "
+                        "listing: %s" % deleted_user_name)
 
-        for user in self.auth_client.users.list(instance_id):
-            if user.name == user_name:
-                self.fail("User still listed after delete: %s" % user_name)
+        def _db_is_gone():
+            all_users = self._get_user_names(instance_id)
+            return deleted_user_name not in all_users
+
+        try:
+            poll_until(_db_is_gone, time_out=self.GUEST_CAST_WAIT_TIMEOUT_SEC)
+            self.report.log("User is now gone from the instance.")
+        except exception.PollTimeOut:
+            self.fail("User still listed after the poll timeout: %ds" %
+                      self.GUEST_CAST_WAIT_TIMEOUT_SEC)
 
     def run_nonexisting_user_show(
             self, expected_exception=exceptions.NotFound,
             expected_http_code=404):
-        usr_def = self.test_helper.get_non_existing_user_definition()
         self.assert_user_show_failure(
-            self.instance_info.id, {'name': usr_def['name']},
+            self.instance_info.id,
+            {'name': self.non_existing_user_def['name']},
             expected_exception, expected_http_code)
 
     def assert_user_show_failure(self, instance_id, user_def,
@@ -384,8 +426,7 @@ class UserActionsRunner(TestRunner):
 
     def run_nonexisting_user_update(self, expected_http_code=404):
         # Test valid update on a non-existing user.
-        usr_def = self.test_helper.get_non_existing_user_definition()
-        update_def = {'name': usr_def['name']}
+        update_def = {'name': self.non_existing_user_def['name']}
         self.assert_user_attribute_update_failure(
             self.instance_info.id, update_def, update_def,
             exceptions.NotFound, expected_http_code)
@@ -393,9 +434,9 @@ class UserActionsRunner(TestRunner):
     def run_nonexisting_user_delete(
             self, expected_exception=exceptions.NotFound,
             expected_http_code=404):
-        usr_def = self.test_helper.get_non_existing_user_definition()
         self.assert_user_delete_failure(
-            self.instance_info.id, {'name': usr_def['name']},
+            self.instance_info.id,
+            {'name': self.non_existing_user_def['name']},
             expected_exception, expected_http_code)
 
     def assert_user_delete_failure(
@@ -440,3 +481,65 @@ class PerconaUserActionsRunner(MysqlUserActionsRunner):
 
     def __init__(self):
         super(PerconaUserActionsRunner, self).__init__()
+
+
+class PxcUserActionsRunner(MysqlUserActionsRunner):
+
+    def __init__(self):
+        super(PxcUserActionsRunner, self).__init__()
+
+
+class CouchbaseUserActionsRunner(UserActionsRunner):
+
+    # Couchbase supports only one user per instance.
+    # Since we have already created the helper user, we need to
+    # delete it before and re-create after the tests.
+
+    def run_users_create(self, expected_http_code=202):
+        _, user_def, _ = self.build_helper_defs()
+        self.report.log("Deleting the helper user before proceeding.")
+        self.assert_user_delete(self.instance_info.id, user_def, None)
+        self.report.log("The helper user has been removed. "
+                        "Creating the test user now.")
+        super(CouchbaseUserActionsRunner, self).run_users_create(
+            expected_http_code=expected_http_code)
+
+    def run_user_delete(self, expected_http_code=202):
+        self.report.log("Deleting the test user now.")
+        super(CouchbaseUserActionsRunner, self).run_user_delete(
+            expected_http_code=expected_http_code)
+        self.report.log("The test user has been removed. "
+                        "Re-creating the helper user now.")
+        self.create_test_helper_on_instance(self.instance_info.id)
+        self.report.log("The helper user has been created.")
+
+    def run_user_attribute_update(self, expected_http_code=202):
+        # Couchbase users cannot be renamed.
+        # We only test changing the password here.
+        updated_def = self.first_user_def
+        update_attribites = {'password': 'password2'}
+        self.assert_user_attribute_update(
+            self.instance_info.id, updated_def,
+            update_attribites, expected_http_code)
+
+    def run_user_update_with_existing_name(
+            self, expected_exception=exceptions.BadRequest,
+            expected_http_code=400):
+        raise SkipTest("Couchbase users cannot be renamed.")
+
+    def run_user_access_show(self):
+        raise SkipTest("Operation is currently not supported.")
+
+    def run_user_access_revoke(self):
+        raise SkipTest("Operation is currently not supported.")
+
+    def run_user_access_grant(self):
+        raise SkipTest("Operation is currently not supported.")
+
+    def get_system_users(self):
+        # Couchbase does not define 'ignore_users' property.
+        return []
+
+
+class Couchbase_4UserActionsRunner(CouchbaseUserActionsRunner):
+    pass

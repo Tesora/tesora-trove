@@ -1,4 +1,8 @@
-# mongodb.conf
-
-storage.mmapv1.smallFiles: false
-storage.journal.enabled: true
+# Trove's mongod.conf
+storage:
+    journal:
+        enabled: true
+systemLog:
+    destination: file
+    logAppend: true
+    path: /var/log/mongodb/mongod.log

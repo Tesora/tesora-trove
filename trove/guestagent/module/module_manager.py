@@ -31,7 +31,7 @@ LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 
 
-class ModuleManager():
+class ModuleManager(object):
     """This is a Manager utility class (mixin) for managing module-related
     tasks.
     """
@@ -61,26 +61,31 @@ class ModuleManager():
             module_type, name, tenant, datastore,
             ds_version, module_id, md5, auto_apply, visible, now)
         result = cls.read_module_result(module_dir, default_result)
+        admin_module = cls.is_admin_module(tenant, auto_apply, visible)
         try:
+            driver.configure(name, datastore, ds_version, data_file)
             applied, message = driver.apply(
-                name, datastore, ds_version, data_file)
+                name, datastore, ds_version, data_file, admin_module)
         except Exception as ex:
             LOG.exception(_("Could not apply module '%s'") % name)
             applied = False
             message = ex.message
         finally:
             status = 'OK' if applied else 'ERROR'
-            admin_only = (not visible or tenant == cls.MODULE_APPLY_TO_ALL or
-                          auto_apply)
+            result['removed'] = None
             result['status'] = status
             result['message'] = message
             result['updated'] = now
             result['id'] = module_id
             result['md5'] = md5
+            result['type'] = module_type
+            result['name'] = name
+            result['datastore'] = datastore
+            result['datastore_version'] = ds_version
             result['tenant'] = tenant
             result['auto_apply'] = auto_apply
             result['visible'] = visible
-            result['admin_only'] = admin_only
+            result['admin_only'] = admin_module
             cls.write_module_result(module_dir, result)
         return result
 
@@ -111,8 +116,7 @@ class ModuleManager():
     def build_default_result(cls, module_type, name, tenant,
                              datastore, ds_version, module_id, md5,
                              auto_apply, visible, now):
-        admin_only = (not visible or tenant == cls.MODULE_APPLY_TO_ALL or
-                      auto_apply)
+        admin_module = cls.is_admin_module(tenant, auto_apply, visible)
         result = {
             'type': module_type,
             'name': name,
@@ -128,10 +132,15 @@ class ModuleManager():
             'removed': None,
             'auto_apply': auto_apply,
             'visible': visible,
-            'admin_only': admin_only,
+            'admin_only': admin_module,
             'contents': None,
         }
         return result
+
+    @classmethod
+    def is_admin_module(cls, tenant, auto_apply, visible):
+        return (not visible or tenant == cls.MODULE_APPLY_TO_ALL or
+                auto_apply)
 
     @classmethod
     def read_module_result(cls, result_file, default=None):
@@ -202,6 +211,7 @@ class ModuleManager():
             raise exception.NotFound(
                 _("Module '%s' has not been applied") % name)
         try:
+            driver.configure(name, datastore, ds_version, contents_file)
             removed, message = driver.remove(
                 name, datastore, ds_version, contents_file)
             cls.remove_module_result(module_dir)

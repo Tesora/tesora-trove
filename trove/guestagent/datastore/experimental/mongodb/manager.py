@@ -17,6 +17,7 @@ import os
 
 from oslo_log import log as logging
 
+from trove.common import cfg
 from trove.common.i18n import _
 from trove.common import instance as ds_instance
 from trove.common.notification import EndNotification
@@ -25,11 +26,10 @@ from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.experimental.mongodb import service
 from trove.guestagent.datastore.experimental.mongodb import system
 from trove.guestagent.datastore import manager
-from trove.guestagent import dbaas
 from trove.guestagent import volume
 
-
 LOG = logging.getLogger(__name__)
+CONF = cfg.CONF
 
 
 class Manager(manager.Manager):
@@ -55,14 +55,14 @@ class Manager(manager.Manager):
         self.status.wait_for_database_service_start(
             self.app.state_change_wait_time)
         self.app.stop_db()
-        self.app.clear_storage()
-        mount_point = system.MONGODB_MOUNT_POINT
+        mount_point = CONF.mongodb.mount_point
+        self.app.clear_storage(mount_point)
         if device_path:
             device = volume.VolumeDevice(device_path)
             # unmount if device is already mounted
             device.unmount_device(device_path)
             device.format()
-            if os.path.exists(system.MONGODB_MOUNT_POINT):
+            if os.path.exists(mount_point):
                 device.migrate_data(mount_point)
             device.mount(mount_point)
             operating_system.chown(mount_point,
@@ -94,6 +94,25 @@ class Manager(manager.Manager):
             if service.MongoDBAdmin().is_root_enabled():
                 self.app.status.report_root(context, 'root')
 
+    def pre_upgrade(self, context):
+        LOG.debug('Preparing MongoDB for upgrade.')
+        self.app.status.begin_restart()
+        self.app.stop_db()
+        mount_point = CONF.mongodb.mount_point
+        upgrade_info = self.app.save_files_pre_upgrade(mount_point)
+        upgrade_info['mount_point'] = mount_point
+        return upgrade_info
+
+    def post_upgrade(self, context, upgrade_info):
+        LOG.debug('Finalizing MongoDB upgrade.')
+        self.app.stop_db()
+        if 'device' in upgrade_info:
+            self.mount_volume(context,
+                              mount_point=upgrade_info['mount_point'],
+                              device_path=upgrade_info['device'])
+        self.app.restore_files_post_upgrade(upgrade_info)
+        self.app.start_db()
+
     def restart(self, context):
         LOG.debug("Restarting MongoDB.")
         self.app.restart()
@@ -105,12 +124,6 @@ class Manager(manager.Manager):
     def stop_db(self, context, do_not_start_on_reboot=False):
         LOG.debug("Stopping MongoDB.")
         self.app.stop_db(do_not_start_on_reboot=do_not_start_on_reboot)
-
-    def get_filesystem_stats(self, context, fs_path):
-        """Gets the filesystem stats for the path given."""
-        LOG.debug("Getting file system status.")
-        # TODO(peterstac) - why is this hard-coded?
-        return dbaas.get_filesystem_volume_stats(system.MONGODB_MOUNT_POINT)
 
     def change_passwords(self, context, users):
         LOG.debug("Changing password.")

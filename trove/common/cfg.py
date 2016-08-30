@@ -48,6 +48,8 @@ def _update_options(options, *values):
             match_index = updated_options.index(match)
             updated_options.remove(match)
             updated_options.insert(match_index, value)
+        else:
+            updated_options.append(value)
 
     return updated_options
 
@@ -107,6 +109,16 @@ common_opts = [
                help='Service endpoint type to use when searching catalog.'),
     cfg.StrOpt('trove_auth_url', default='http://0.0.0.0:5000/v2.0',
                help='Trove authentication URL.'),
+    cfg.StrOpt('trove_url', help='URL without the tenant segment.'),
+    cfg.StrOpt('trove_service_type', default='database',
+               help='Service type to use when searching catalog.'),
+    cfg.StrOpt('trove_endpoint_type', default='publicURL',
+               help='Service endpoint type to use when searching catalog.'),
+    cfg.StrOpt('glance_url', help='URL without the tenant segment.'),
+    cfg.StrOpt('glance_service_type', default='image',
+               help='Service type to use when searching catalog.'),
+    cfg.StrOpt('glance_endpoint_type', default='publicURL',
+               help='Service endpoint type to use when searching catalog.'),
     cfg.IPOpt('host', default='0.0.0.0',
               help='Host to listen for RPC messages.'),
     cfg.IntOpt('report_interval', default=30,
@@ -278,8 +290,13 @@ common_opts = [
                 deprecated_name='hostname_require_ipv4'),
     cfg.BoolOpt('trove_security_groups_support', default=True,
                 help='Whether Trove should add Security Groups on create.'),
-    cfg.StrOpt('trove_security_group_name_prefix', default='SecGroup',
+    cfg.StrOpt('trove_security_group_name_prefix', default='dbaas_secgroup',
                help='Prefix to use when creating Security Groups.'),
+    cfg.StrOpt('trove_security_group_description', default='Created by Trove '
+                                                           'DBaaS, Do Not '
+                                                           'Delete.\nSecurity '
+                                                           'Group for',
+               help='Description to use when creating Security Groups.'),
     cfg.StrOpt('trove_security_group_rule_cidr', default='0.0.0.0/0',
                help='CIDR to use when creating Security Group Rules.'),
     cfg.IntOpt('trove_api_workers',
@@ -343,14 +360,21 @@ common_opts = [
     cfg.StrOpt('remote_swift_client',
                default='trove.common.remote.swift_client',
                help='Client to send Swift calls to.'),
+    cfg.StrOpt('remote_trove_client',
+               default='trove.common.trove_remote.trove_client',
+               help='Client to send Swift calls to.'),
+    cfg.StrOpt('remote_glance_client',
+               default='trove.common.remote.glance_client',
+               help='Client to send Swift calls to.'),
     cfg.StrOpt('exists_notification_transformer',
                help='Transformer for exists notifications.'),
     cfg.IntOpt('exists_notification_interval', default=3600,
                help='Seconds to wait between pushing events.'),
-    cfg.IntOpt('quota_notification_interval', default=3600,
+    cfg.IntOpt('quota_notification_interval',
                help='Seconds to wait between pushing events.'),
     cfg.DictOpt('notification_service_id',
                 default={'mysql': '2f3ff068-2bfb-4f70-9a9d-a6bb65bc084b',
+                         'mysql_ee': '6d7d0900-f453-4497-9ae6-47d282bd637c',
                          'percona': 'fd1723f5-68d2-409c-994f-a4a197892a17',
                          'pxc': '75a628c3-f81b-4ffb-b10a-4087c26bc854',
                          'redis': 'b216ffc5-1947-456c-a4cf-70f94c05f7d0',
@@ -365,6 +389,7 @@ common_opts = [
                          'mariadb': '7a4f82cc-10d2-4bc6-aadc-d9aacc2a3cb5',
                          'oracle': 'dc43ae4f-9480-4f52-a818-ceb06594893d',
                          'oracle_ra': '94d3fe48-3927-4041-8944-457a2fac86ce',
+                         'oracle_rac': '984cb45a-4ab6-11e6-beb8-9e71128cae77',
                          },
                 help='Unique ID to tag notification events.'),
     cfg.StrOpt('nova_proxy_admin_user', default='',
@@ -437,7 +462,8 @@ common_opts = [
                     'become alive.'),
     cfg.StrOpt('module_aes_cbc_key', default='module_aes_cbc_key',
                help='OpenSSL aes_cbc key for module encryption.'),
-    cfg.ListOpt('module_types', default=['ping'],
+    cfg.ListOpt('module_types', default=['ping', 'new_relic_license',
+                                         'package_install'],
                 help='A list of module types supported. A module type '
                      'corresponds to the name of a ModuleDriver.'),
     cfg.StrOpt('guest_log_container_name',
@@ -447,6 +473,21 @@ common_opts = [
                help='Maximum size of a chunk saved in guest log container.'),
     cfg.IntOpt('guest_log_expiry', default=2592000,
                help='Expiry (in seconds) of objects in guest log container.'),
+    cfg.IntOpt('password_min_lower_case', default=1,
+               help='Minimum number of lower case letters to use in '
+                    'randomly generated database passwords.'),
+    cfg.IntOpt('password_min_upper_case', default=1,
+               help='Minimum number of upper case letters to use in '
+                    'randomly generated database passwords.'),
+    cfg.IntOpt('password_min_numbers', default=1,
+               help='Minimum number of numbers to use in randomly generated '
+                    'database passwords.'),
+    cfg.IntOpt('password_min_special_chars', default=1,
+               help='Minimum number of special characters to use in randomly '
+                    'generated database passwords.'),
+    cfg.StrOpt('password_special_charset', default='!^+?_',
+               help='List of special characters that can be used in randomly '
+                    'generated database passwords.'),
 ]
 
 
@@ -514,6 +555,8 @@ mysql_group = cfg.OptGroup(
     'mysql', title='MySQL options',
     help="Oslo option group designed for MySQL datastore")
 mysql_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports', default=["3306"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
@@ -581,13 +624,55 @@ mysql_opts = [
     cfg.IntOpt('guest_log_long_query_time', default=1000,
                help='The time in milliseconds that a statement must take in '
                     'in order to be logged in the slow_query log.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
+
+# MySQL EE (mostly uses same options as MySQL community edition).
+# Extend the list of ignored keyspaces with MySQL-EE specific names.
+mysql_ee_group = cfg.OptGroup(
+    'mysql_ee', title='MySQL Enterprise Edition options',
+    help="Oslo option group designed for MySQL Enterprise Edition datastore")
+mysql_ee_opts = _update_options(
+    mysql_opts,
+    cfg.StrOpt('backup_strategy', default='MySqlBackup',
+               help='Default strategy to perform backups.',
+               deprecated_name='backup_strategy',
+               deprecated_group='DEFAULT'),
+    cfg.DictOpt('backup_incremental_strategy',
+                default={'MySqlBackup': 'MySqlBackupIncremental'},
+                help='Incremental Backup Runner based on the default '
+                     'strategy. For strategies that do not implement an '
+                     'incremental backup, the runner will use the default '
+                     'full backup.',
+                deprecated_name='backup_incremental_strategy',
+                deprecated_group='DEFAULT'),
+    cfg.StrOpt('backup_namespace',
+               default='trove.guestagent.strategies.backup.mysql_ee_impl',
+               help='Namespace to load backup strategies from.',
+               deprecated_name='backup_namespace',
+               deprecated_group='DEFAULT'),
+    cfg.StrOpt('restore_namespace',
+               default='trove.guestagent.strategies.restore.mysql_ee_impl',
+               help='Namespace to load restore strategies from.',
+               deprecated_name='restore_namespace',
+               deprecated_group='DEFAULT'),
+    cfg.StrOpt('backup_dir',
+               default='/tmp/mysqlbackup',
+               help='Default directory for mysqlbackup to store temp data.'),
+    cfg.StrOpt('replication_strategy', default='MysqlEEGTIDReplication',
+               help='Default strategy for replication.'),
+    cfg.StrOpt('replication_namespace',
+               default='trove.guestagent.strategies.replication.mysql_ee_gtid',
+               help='Namespace to load replication strategies from.'))
 
 # Oracle remote agent
 oracle_ra_group = cfg.OptGroup(
     'oracle_ra', title='Oracle Remote Agent options',
     help="Oslo option group designed for the Oracle Remote Agent datastore")
 oracle_ra_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports', default=[],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
@@ -634,6 +719,14 @@ oracle_ra_opts = [
                 'backup.',
                 deprecated_name='backup_incremental_strategy',
                 deprecated_group='DEFAULT'),
+    cfg.StrOpt('oracle_home',
+               default='/usr/lib/oracle/12.1/client64',
+               help='Default $ORACLE_HOME directory'),
+    cfg.StrOpt('conf_file',
+               default='/etc/oracle/oracle_ra.cnf',
+               help='Default config file path'),
+    cfg.StrOpt('cloud_user_role', default='CLOUD_USER_ROLE',
+               help='Default role name of all regular cloud db users'),
     cfg.StrOpt('oracle_host', default=None,
                help='oracle_host'),
     cfg.IntOpt('oracle_port', default=1526,
@@ -651,6 +744,100 @@ oracle_ra_opts = [
     cfg.StrOpt('root_controller',
                default='trove.extensions.oracle.service.OracleRootController',
                help='Root controller implementation for Oracle Remote Agent.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
+]
+
+# Oracle RAC
+oracle_rac_group = cfg.OptGroup(
+    'oracle_rac', title='Oracle Real Application Cluster options',
+    help="Oslo option group designed for the Oracle RAC datastore")
+oracle_rac_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
+    cfg.ListOpt('tcp_ports', default=["1521"],
+                help='List of TCP ports and/or port ranges to open '
+                     'in the security group (only applicable '
+                     'if trove_security_groups_support is True).'),
+    cfg.ListOpt('udp_ports', default=[],
+                help='List of UDP ports and/or port ranges to open '
+                     'in the security group (only applicable '
+                     'if trove_security_groups_support is True).'),
+    cfg.StrOpt('backup_strategy', default=None,
+               help='Default strategy to perform backups.',
+               deprecated_name='backup_strategy',
+               deprecated_group='DEFAULT'),
+    cfg.StrOpt('replication_strategy', default=None,
+               help='Default strategy for replication.'),
+    cfg.StrOpt('replication_namespace', default=None,
+               help='Namespace to load replication strategies from.'),
+    cfg.StrOpt('mount_point', default=None,
+               help="Filesystem path for mounting "
+                    "volumes if volume support is enabled."),
+    cfg.BoolOpt('root_on_create', default=False,
+                help='Enable the automatic creation of the root user for the '
+                'service during instance-create. The generated password for '
+                'the root user is immediately returned in the response of '
+                "instance-create as the 'password' field."),
+    cfg.IntOpt('usage_timeout', default=400,
+               help='Maximum time (in seconds) to wait for a Guest to become '
+                    'active.'),
+    cfg.StrOpt('backup_namespace', default=None,
+               help='Namespace to load backup strategies from.',
+               deprecated_name='backup_namespace',
+               deprecated_group='DEFAULT'),
+    cfg.StrOpt('restore_namespace', default=None,
+               help='Namespace to load restore strategies from.',
+               deprecated_name='restore_namespace',
+               deprecated_group='DEFAULT'),
+    cfg.BoolOpt('volume_support', default=False,
+                help='Whether to provision a Cinder volume for datadir.'),
+    cfg.StrOpt('device_path', default=None,
+               help='Device path for volume if volume support is enabled.'),
+    cfg.DictOpt('backup_incremental_strategy', default=None,
+                help='Incremental Backup Runner based on the default '
+                'strategy. For strategies that do not implement an '
+                'incremental backup, the runner will use the default full '
+                'backup.',
+                deprecated_name='backup_incremental_strategy',
+                deprecated_group='DEFAULT'),
+    cfg.BoolOpt('cluster_support', default=True,
+                help='Enable clusters to be created and managed.'),
+    cfg.StrOpt('api_strategy',
+               default='trove.common.strategies.cluster.oracle_rac.'
+                       'api.OracleRACAPIStrategy',
+               help='Class that implements datastore-specific API logic.'),
+    cfg.StrOpt('taskmanager_strategy',
+               default='trove.common.strategies.cluster.oracle_rac.'
+                       'taskmanager.OracleRACTaskManagerStrategy',
+               help='Class that implements datastore-specific task manager '
+                    'logic.'),
+    cfg.StrOpt('guestagent_strategy',
+               default='trove.common.strategies.cluster.oracle_rac.'
+                       'guestagent.OracleRACGuestAgentStrategy',
+               help='Class that implements datastore-specific Guest Agent API '
+                    'logic.'),
+    cfg.IntOpt('default_password_length', default=30,
+               help='Character length of generated passwords.'),
+    cfg.StrOpt('cloud_user_role', default='CLOUD_USER_ROLE',
+               help='Default role name of all regular cloud db users'),
+    cfg.IntOpt('db_ram', default=40,
+               help='Default percentage of physical memory to allocate '
+                    'for Oracle.'),
+    cfg.StrOpt('db_charset', default='AL32UTF8',
+               help='Default database character set.'),
+    cfg.StrOpt('template', default='General_Purpose.dbc',
+               help='Template file name used by dbca.'),
+    cfg.IntOpt('default_prefixlen', default=24,
+               help="Subnet length to be used if no length if given. Set to 0 "
+                    "to defer to the subnetpool's default length."),
+    cfg.StrOpt('network_object_name_prefix', default='dbaas_rac',
+               help="Prefix to use when creating the RAC network objects."),
+    cfg.StrOpt('interconnect_subnet_cidr', default='192.168.70.0/24',
+               help="CIDR of the interconnect subnet."),
+    cfg.IntOpt('configuration_timeout', default=3600,
+               help="Maximum time (in seconds) guest should wait for Oracle "
+                    "RAC installation and configuration operations."),
 ]
 
 # Oracle
@@ -658,6 +845,8 @@ oracle_group = cfg.OptGroup(
     'oracle', title='Oracle options',
     help="Oslo option group designed for Oracle datastore")
 oracle_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports',
                 default=["1521"],
                 help='List of TCP ports and/or port ranges to open '
@@ -698,6 +887,9 @@ oracle_opts = [
     cfg.IntOpt('usage_timeout', default=1500,
                help='Maximum time (in seconds) to wait for a Guest to become '
                     'active.'),
+    cfg.IntOpt('service_start_timeout', default=180,
+               help='Maximum time (in seconds) to wait for Oracle service '
+                    'start.'),
     cfg.StrOpt('backup_namespace',
                default='trove.guestagent.strategies.backup.oracle_impl',
                help='Namespace to load backup strategies from.'),
@@ -725,9 +917,11 @@ oracle_opts = [
                help='Default Oracle listener port'),
     cfg.StrOpt('cloud_user_role', default='CLOUD_USER_ROLE',
                help='Default role name of all regular cloud db users'),
-    cfg.IntOpt('db_ram_size', default=500,
-               help='Default memory size (MB) of each Oracle database '
-                    'instance.'),
+    cfg.IntOpt('db_ram', default=40,
+               help='Default percentage of physical memory to allocate '
+                    'for Oracle.'),
+    cfg.StrOpt('db_charset', default='AL32UTF8',
+               help='Default database character set.'),
     cfg.StrOpt('guest_log_exposed_logs', default='alert',
                help='List of Guest Logs to expose for publishing.'),
     cfg.StrOpt('template', default='General_Purpose_ArchiveLog.dbc',
@@ -740,6 +934,8 @@ oracle_opts = [
                        'guestagent.OracleGuestAgentStrategy',
                help='Class that implements datastore-specific Guest Agent API '
                     'logic.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # Percona
@@ -747,6 +943,8 @@ percona_group = cfg.OptGroup(
     'percona', title='Percona options',
     help="Oslo option group designed for Percona datastore")
 percona_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports', default=["3306"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
@@ -802,7 +1000,7 @@ percona_opts = [
                 deprecated_name='backup_incremental_strategy',
                 deprecated_group='DEFAULT'),
     cfg.StrOpt('root_controller',
-               default='trove.extensions.common.service.DefaultRootController',
+               default='trove.extensions.mysql.service.MySQLRootController',
                help='Root controller implementation for percona.'),
     cfg.ListOpt('ignore_users', default=['os_admin', 'root'],
                 help='Users to exclude when listing users.',
@@ -818,6 +1016,9 @@ percona_opts = [
     cfg.IntOpt('guest_log_long_query_time', default=1000,
                help='The time in milliseconds that a statement must take in '
                     'in order to be logged in the slow_query log.'),
+    cfg.IntOpt('default_password_length',
+               default='${mysql.default_password_length}',
+               help='Character length of generated passwords.'),
 ]
 
 # Percona XtraDB Cluster
@@ -825,6 +1026,8 @@ pxc_group = cfg.OptGroup(
     'pxc', title='Percona XtraDB Cluster options',
     help="Oslo option group designed for Percona XtraDB Cluster datastore")
 pxc_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports', default=["3306", "4444", "4567", "4568"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
@@ -900,6 +1103,9 @@ pxc_opts = [
     cfg.IntOpt('guest_log_long_query_time', default=1000,
                help='The time in milliseconds that a statement must take in '
                     'in order to be logged in the slow_query log.'),
+    cfg.IntOpt('default_password_length',
+               default='${mysql.default_password_length}',
+               help='Character length of generated passwords.'),
 ]
 
 
@@ -908,6 +1114,8 @@ redis_group = cfg.OptGroup(
     'redis', title='Redis options',
     help="Oslo option group designed for Redis datastore")
 redis_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports', default=["6379", "16379"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
@@ -972,6 +1180,8 @@ redis_opts = [
                help='Root controller implementation for redis.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # Cassandra
@@ -979,6 +1189,8 @@ cassandra_group = cfg.OptGroup(
     'cassandra', title='Cassandra options',
     help="Oslo option group designed for Cassandra datastore")
 cassandra_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports', default=["7000", "7001", "7199", "9042", "9160"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
@@ -1027,8 +1239,12 @@ cassandra_opts = [
     cfg.ListOpt('ignore_dbs', default=['system', 'system_auth',
                                        'system_traces'],
                 help='Databases to exclude when listing databases.'),
-    cfg.StrOpt('guest_log_exposed_logs', default='',
+    cfg.StrOpt('guest_log_exposed_logs', default='system',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.StrOpt('system_log_level',
+               choices=['ALL', 'TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR'],
+               default='INFO',
+               help='Cassandra log verbosity.'),
     cfg.BoolOpt('cluster_support', default=True,
                 help='Enable clusters to be created and managed.'),
     cfg.StrOpt('api_strategy',
@@ -1045,7 +1261,19 @@ cassandra_opts = [
                '.cassandra.guestagent.CassandraGuestAgentStrategy',
                help='Class that implements datastore-specific Guest Agent API '
                     'logic.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
+
+cassandra_3_group = cfg.OptGroup(
+    'cassandra_3', title='DSE options',
+    help="Oslo option group designed for Cassandra 3.x datastore")
+cassandra_3_opts = _update_options(cassandra_opts)
+
+cassandra_22_group = cfg.OptGroup(
+    'cassandra_22', title='DSE options',
+    help="Oslo option group designed for Cassandra 2.2 datastore")
+cassandra_22_opts = _update_options(cassandra_3_opts)
 
 # DSE (mostly uses same options as Cassandra community edition).
 # Extend the list of ignored keyspaces with DSE-specific names.
@@ -1064,6 +1292,8 @@ couchbase_group = cfg.OptGroup(
     'couchbase', title='Couchbase options',
     help="Oslo option group designed for Couchbase datastore")
 couchbase_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports',
                 default=["8091", "8092", "4369", "11209-11211", "21100-21299"],
                 help='List of TCP ports and/or port ranges to open '
@@ -1073,6 +1303,8 @@ couchbase_opts = [
                 help='List of UDP ports and/or port ranges to open '
                      'in the security group (only applicable '
                      'if trove_security_groups_support is True).'),
+    cfg.PortOpt('couchbase_port', default=8091,
+                help='The TCP port the server listens on.'),
     cfg.StrOpt('backup_strategy', default='CbBackup',
                help='Default strategy to perform backups.',
                deprecated_name='backup_strategy',
@@ -1114,6 +1346,8 @@ couchbase_opts = [
                help='Root controller implementation for couchbase.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.IntOpt('default_password_length', default=24, min=6, max=24,
+               help='Character length of generated passwords.'),
     cfg.BoolOpt('cluster_support', default=True,
                 help='Enable clusters to be created and managed.'),
     cfg.StrOpt('api_strategy',
@@ -1135,13 +1369,38 @@ couchbase_opts = [
                ' percentage of the available memory.'
                ' Minimum of 256MB will be used if the given percentage amounts'
                ' for less.'),
+    cfg.IntOpt('default_replica_count', default=1, min=0, max=3,
+               help='Default number of bucket replicas.'
+               'The nearest possible value will be chosen if there is not'
+               ' enough servers in the cluster to support this number of'
+               ' replicas.'),
+    cfg.IntOpt('bucket_port', default=11211,
+               help='Port clients use to communicate with the data bucket.'),
+    cfg.BoolOpt('enable_index_replica', default=True,
+                help='Whether to create replica indexes.'),
+    cfg.StrOpt('eviction_policy', default='valueOnly',
+               choices='valueOnly,fullEviction',
+               help='Default bucket metadata ejection policy.'),
+    cfg.StrOpt('bucket_type', default='couchbase',
+               choices='couchbase,memcached',
+               help='Default bucket type.'),
 ]
+
+couchbase_4_group = cfg.OptGroup(
+    'couchbase_4', title='Couchbase 4.x options',
+    help="Oslo option group designed for Couchbase 4.x datastore")
+couchbase_4_opts = _update_options(
+    couchbase_opts,
+    cfg.ListOpt('default_services', default=['data', 'index', 'query'],
+                help='Couchbase services enabled on a new node.'))
 
 # MongoDB
 mongodb_group = cfg.OptGroup(
     'mongodb', title='MongoDB options',
     help="Oslo option group designed for MongoDB datastore")
 mongodb_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports', default=["2500", "27017", "27019"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
@@ -1222,6 +1481,8 @@ mongodb_opts = [
                help='Root controller implementation for mongodb.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # PostgreSQL
@@ -1229,6 +1490,8 @@ postgresql_group = cfg.OptGroup(
     'postgresql', title='PostgreSQL options',
     help="Oslo option group for the PostgreSQL datastore.")
 postgresql_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports', default=["5432"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
@@ -1289,13 +1552,61 @@ postgresql_opts = [
                     "in order to be logged in the 'general' log.  A value of "
                     "'0' logs all statements, while '-1' turns off "
                     "statement logging."),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
+
+# EDB (mostly uses same options as Postgresql community edition).
+# Use EDB PPAS port.
+edb_group = cfg.OptGroup(
+    'edb', title='EnterpriseDB options',
+    help="Oslo option group for the EnterpriseDB datastore.")
+edb_opts = _update_options(
+    postgresql_opts,
+    cfg.ListOpt('tcp_ports', default=["5444"],
+                help='List of TCP ports and/or port ranges to open '
+                     'in the security group (only applicable '
+                     'if trove_security_groups_support is True).'),
+    cfg.PortOpt('postgresql_port', default=5444,
+                help='The TCP port the server listens on.'),
+    cfg.StrOpt('backup_namespace',
+               default='trove.guestagent.strategies.backup.experimental.'
+                       'edb_impl',
+               help='Namespace to load backup strategies from.'),
+    cfg.StrOpt('backup_strategy', default='EdbPgBaseBackup',
+               help='Default strategy to perform backups.'),
+    cfg.DictOpt('backup_incremental_strategy',
+                default={'EdbPgBaseBackup': 'EdbPgBaseBackupIncremental'},
+                help='Incremental Backup Runner based on the default '
+                'strategy. For strategies that do not implement an '
+                'incremental, the runner will use the default full backup.'),
+    cfg.StrOpt('mount_point', default='/var/lib/ppas',
+               help="Filesystem path for mounting "
+               "volumes if volume support is enabled."),
+    cfg.StrOpt('restore_namespace',
+               default='trove.guestagent.strategies.restore.experimental.'
+                       'edb_impl',
+               help='Namespace to load restore strategies from.'),
+    cfg.StrOpt('replication_namespace',
+               default='trove.guestagent.strategies.replication.experimental.'
+                       'edb_impl',
+               help='Namespace to load replication strategies from.'),
+    cfg.StrOpt('replication_strategy',
+               default='EdbReplicationStreaming',
+               help='Default strategy for replication.'),
+    cfg.StrOpt('root_controller',
+               default='trove.extensions.edb.service'
+               '.EnterpriseDBRootController',
+               help='Root controller implementation for EnterpriseDB.'),
+    cfg.ListOpt('ignore_dbs', default=['postgres', 'enterprisedb', 'edb']))
 
 # Apache CouchDB
 couchdb_group = cfg.OptGroup(
     'couchdb', title='CouchDB options',
     help="Oslo option group designed for CouchDB datastore")
 couchdb_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports',
                 default=["5984"],
                 help='List of TCP ports and/or port ranges to open '
@@ -1345,7 +1656,8 @@ couchdb_opts = [
                 help='Databases to exclude when listing databases.',
                 deprecated_name='ignore_dbs',
                 deprecated_group='DEFAULT'),
-
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # Vertica
@@ -1353,6 +1665,8 @@ vertica_group = cfg.OptGroup(
     'vertica', title='Vertica options',
     help="Oslo option group designed for Vertica datastore")
 vertica_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports',
                 default=["5433", "5434", "22", "5444", "5450", "4803"],
                 help='List of TCP ports and/or port ranges to open '
@@ -1410,6 +1724,8 @@ vertica_opts = [
                help='List of Guest Logs to expose for publishing.'),
     cfg.IntOpt('min_ksafety', default=0,
                help='Minimum k-safety setting permitted for vertica clusters'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # DB2
@@ -1417,6 +1733,8 @@ db2_group = cfg.OptGroup(
     'db2', title='DB2 options',
     help="Oslo option group designed for DB2 datastore")
 db2_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports',
                 default=["50000"],
                 help='List of TCP ports and/or port ranges to open '
@@ -1464,6 +1782,8 @@ db2_opts = [
                help='Root controller implementation for db2.'),
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
+    cfg.IntOpt('default_password_length', default=36,
+               help='Character length of generated passwords.'),
 ]
 
 # MariaDB
@@ -1471,6 +1791,8 @@ mariadb_group = cfg.OptGroup(
     'mariadb', title='MariaDB options',
     help="Oslo option group designed for MariaDB datastore")
 mariadb_opts = [
+    cfg.BoolOpt('icmp', default=False,
+                help='Whether to permit ICMP.'),
     cfg.ListOpt('tcp_ports', default=["3306", "4444", "4567", "4568"],
                 help='List of TCP ports and/or port ranges to open '
                      'in the security group (only applicable '
@@ -1479,7 +1801,7 @@ mariadb_opts = [
                 help='List of UDP ports and/or port ranges to open '
                      'in the security group (only applicable '
                      'if trove_security_groups_support is True).'),
-    cfg.StrOpt('backup_strategy', default='InnoBackupEx',
+    cfg.StrOpt('backup_strategy', default='MariaDBInnoBackupEx',
                help='Default strategy to perform backups.',
                deprecated_name='backup_strategy',
                deprecated_group='DEFAULT'),
@@ -1501,12 +1823,14 @@ mariadb_opts = [
                help='Maximum time (in seconds) to wait for a Guest to become '
                     'active.'),
     cfg.StrOpt('backup_namespace',
-               default='trove.guestagent.strategies.backup.mysql_impl',
+               default='trove.guestagent.strategies.backup.experimental'''
+                       '.mariadb_impl',
                help='Namespace to load backup strategies from.',
                deprecated_name='backup_namespace',
                deprecated_group='DEFAULT'),
     cfg.StrOpt('restore_namespace',
-               default='trove.guestagent.strategies.restore.mysql_impl',
+               default='trove.guestagent.strategies.restore.experimental'
+                       '.mariadb_impl',
                help='Namespace to load restore strategies from.',
                deprecated_name='restore_namespace',
                deprecated_group='DEFAULT'),
@@ -1515,7 +1839,8 @@ mariadb_opts = [
     cfg.StrOpt('device_path', default='/dev/vdb',
                help='Device path for volume if volume support is enabled.'),
     cfg.DictOpt('backup_incremental_strategy',
-                default={'InnoBackupEx': 'InnoBackupExIncremental'},
+                default={'MariaDBInnoBackupEx':
+                         'MariaDBInnoBackupExIncremental'},
                 help='Incremental Backup Runner based on the default '
                 'strategy. For strategies that do not implement an '
                 'incremental backup, the runner will use the default full '
@@ -1523,7 +1848,7 @@ mariadb_opts = [
                 deprecated_name='backup_incremental_strategy',
                 deprecated_group='DEFAULT'),
     cfg.StrOpt('root_controller',
-               default='trove.extensions.common.service.DefaultRootController',
+               default='trove.extensions.mysql.service.MySQLRootController',
                help='Root controller implementation for mysql.'),
     cfg.ListOpt('ignore_users', default=['os_admin', 'root'],
                 help='Users to exclude when listing users.',
@@ -1557,6 +1882,9 @@ mariadb_opts = [
                'galera_common.guestagent.GaleraCommonGuestAgentStrategy',
                help='Class that implements datastore-specific Guest Agent API '
                     'logic.'),
+    cfg.IntOpt('default_password_length',
+               default='${mysql.default_password_length}',
+               help='Character length of generated passwords.'),
 ]
 
 # RPC version groups
@@ -1578,21 +1906,25 @@ rpcapi_cap_opts = [
 ]
 
 CONF = cfg.CONF
-
 CONF.register_opts(path_opts)
 CONF.register_opts(common_opts)
 
 CONF.register_opts(database_opts, 'database')
 
 CONF.register_group(mysql_group)
+CONF.register_group(mysql_ee_group)
 CONF.register_group(oracle_ra_group)
+CONF.register_group(oracle_rac_group)
 CONF.register_group(oracle_group)
 CONF.register_group(percona_group)
 CONF.register_group(pxc_group)
 CONF.register_group(redis_group)
 CONF.register_group(cassandra_group)
+CONF.register_group(cassandra_22_group)
+CONF.register_group(cassandra_3_group)
 CONF.register_group(dse_group)
 CONF.register_group(couchbase_group)
+CONF.register_group(couchbase_4_group)
 CONF.register_group(mongodb_group)
 CONF.register_group(postgresql_group)
 CONF.register_group(couchdb_group)
@@ -1601,16 +1933,22 @@ CONF.register_group(db2_group)
 CONF.register_group(mariadb_group)
 
 CONF.register_opts(mysql_opts, mysql_group)
+CONF.register_opts(mysql_ee_opts, mysql_ee_group)
 CONF.register_opts(oracle_ra_opts, oracle_ra_group)
+CONF.register_opts(oracle_rac_opts, oracle_rac_group)
 CONF.register_opts(oracle_opts, oracle_group)
 CONF.register_opts(percona_opts, percona_group)
 CONF.register_opts(pxc_opts, pxc_group)
 CONF.register_opts(redis_opts, redis_group)
 CONF.register_opts(cassandra_opts, cassandra_group)
+CONF.register_opts(cassandra_22_opts, cassandra_22_group)
+CONF.register_opts(cassandra_3_opts, cassandra_3_group)
 CONF.register_opts(dse_opts, dse_group)
 CONF.register_opts(couchbase_opts, couchbase_group)
+CONF.register_opts(couchbase_4_opts, couchbase_4_group)
 CONF.register_opts(mongodb_opts, mongodb_group)
 CONF.register_opts(postgresql_opts, postgresql_group)
+CONF.register_opts(edb_opts, edb_group)
 CONF.register_opts(couchdb_opts, couchdb_group)
 CONF.register_opts(vertica_opts, vertica_group)
 CONF.register_opts(db2_opts, db2_group)

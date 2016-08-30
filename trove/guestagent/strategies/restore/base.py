@@ -69,6 +69,10 @@ class RestoreRunner(Strategy):
         """Hook that is called after the restore command."""
         pass
 
+    def check_process(self):
+        """Hook for subclasses to check process for errors."""
+        return True
+
     def restore(self):
         self.pre_restore()
         content_length = self._run_restore()
@@ -89,6 +93,8 @@ class RestoreRunner(Strategy):
             content_length += len(chunk)
         process.stdin.close()
         utils.raise_if_process_errored(process, RestoreError)
+        if not self.check_process():
+            raise RestoreError
         LOG.debug("Restored %s bytes from stream." % content_length)
 
         return content_length

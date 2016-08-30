@@ -138,7 +138,8 @@ class TroveBaseTraits(object):
         self.context = ctxt
         return self
 
-    def notify(self, event_type, publisher_id=CONF.host):
+    def notify(self, event_type, publisher_id=None):
+        publisher_id = publisher_id or CONF.host
         event_type = self.event_type_format % event_type
         event_payload = self.serialize(self.context)
         LOG.debug('Sending event: %(event_type)s, %(payload)s' %
@@ -294,6 +295,15 @@ class DBaaSAPINotification(object):
     '''
 
     event_type_format = 'dbaas.%s.%s'
+    notify_callback = None
+
+    @classmethod
+    def register_notify_callback(cls, callback):
+        """A callback registered here will be fired whenever
+        a notification is sent out. The callback should
+        take a notification object, and event_qualifier.
+        """
+        cls.notify_callback = callback
 
     @abc.abstractmethod
     def event_type(self):
@@ -323,7 +333,7 @@ class DBaaSAPINotification(object):
 
     def optional_error_traits(self):
         'Returns list of optional traits for error notification'
-        return []
+        return ['instance_id']
 
     def required_base_traits(self):
         return ['tenant_id', 'client_ip', 'server_ip', 'server_type',
@@ -398,6 +408,8 @@ class DBaaSAPINotification(object):
         del context.notification
         notifier = rpc.get_notifier(service=self.payload['server_type'])
         notifier.info(context, qualified_event_type, self.payload)
+        if self.notify_callback:
+            self.notify_callback(event_qualifier)
 
     def notify_start(self, **kwargs):
         self._notify('start', self.required_start_traits(),
@@ -432,7 +444,7 @@ class DBaaSInstanceCreate(DBaaSAPINotification):
 
     def required_start_traits(self):
         return ['name', 'flavor_id', 'datastore', 'datastore_version',
-                'image_id', 'availability_zone']
+                'image_id', 'availability_zone', 'region_name']
 
     def optional_start_traits(self):
         return ['databases', 'users', 'volume_size', 'restore_point',
@@ -502,6 +514,16 @@ class DBaaSInstanceDelete(DBaaSAPINotification):
         return ['instance_id']
 
 
+class DBaaSInstanceResetStatus(DBaaSAPINotification):
+
+    def event_type(self):
+        return 'instance_reset_status'
+
+    @abc.abstractmethod
+    def required_start_traits(self):
+        return ['instance_id']
+
+
 class DBaaSInstanceDetach(DBaaSAPINotification):
 
     @abc.abstractmethod
@@ -555,6 +577,17 @@ class DBaaSClusterDelete(DBaaSAPINotification):
     @abc.abstractmethod
     def event_type(self):
         return 'cluster_delete'
+
+    @abc.abstractmethod
+    def required_start_traits(self):
+        return ['cluster_id']
+
+
+class DBaaSClusterResetStatus(DBaaSAPINotification):
+
+    @abc.abstractmethod
+    def event_type(self):
+        return 'cluster_reset_status'
 
     @abc.abstractmethod
     def required_start_traits(self):
@@ -764,3 +797,14 @@ class DBaaSInstanceUpgrade(DBaaSAPINotification):
     @abc.abstractmethod
     def required_start_traits(self):
         return ['instance_id', 'datastore_version_id']
+
+
+class DBaaSInstanceMigrate(DBaaSAPINotification):
+
+    @abc.abstractmethod
+    def event_type(self):
+        return 'migrate'
+
+    @abc.abstractmethod
+    def required_start_traits(self):
+        return ['host']

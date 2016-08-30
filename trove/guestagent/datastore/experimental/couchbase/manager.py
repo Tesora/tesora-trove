@@ -17,17 +17,18 @@ import os
 
 from oslo_log import log as logging
 
+from trove.common import cfg
 from trove.common.i18n import _
 from trove.common import instance as rd_instance
 from trove.common.notification import EndNotification
 from trove.guestagent import backup
 from trove.guestagent.datastore.experimental.couchbase import service
-from trove.guestagent.datastore.experimental.couchbase import system
 from trove.guestagent.datastore import manager
 from trove.guestagent import volume
 
 
 LOG = logging.getLogger(__name__)
+CONF = cfg.CONF
 
 
 class Manager(manager.Manager):
@@ -36,14 +37,29 @@ class Manager(manager.Manager):
     based off of the datastore of the trove instance
     """
 
-    def __init__(self):
-        self.appStatus = service.CouchbaseAppStatus()
-        self.app = service.CouchbaseApp(self.appStatus)
-        super(Manager, self).__init__('couchbase')
+    def __init__(self, manager_name='couchbase'):
+        super(Manager, self).__init__(manager_name)
+        self._app = None
+        self._admin = None
+
+    @property
+    def app(self):
+        if self._app is None:
+            self._app = self.build_app()
+        return self._app
+
+    def build_app(self):
+        return service.CouchbaseApp()
+
+    @property
+    def admin(self):
+        if self._admin is None:
+            self._admin = self.app.build_admin()
+        return self._admin
 
     @property
     def status(self):
-        return self.appStatus
+        return self.app.status
 
     def reset_configuration(self, context, configuration):
         self.app.reset_configuration(configuration)
@@ -54,7 +70,6 @@ class Manager(manager.Manager):
                    cluster_config, snapshot):
         """This is called from prepare in the base class."""
         self.app.install_if_needed(packages)
-        self.app.available_ram_mb = memory_mb
 
         if device_path:
             device = volume.VolumeDevice(device_path)
@@ -66,22 +81,31 @@ class Manager(manager.Manager):
             LOG.debug('Mounted the volume (%s).' % device_path)
 
         self.app.start_db(update_db=False)
-        self.app.apply_initial_guestagent_configuration(cluster_config)
 
-        if root_password:
-            LOG.debug('Enabling root user (with password).')
-            self.app.enable_root(root_password)
+        self.app.initialize_node()
+
+        if cluster_config:
+            # If cluster configuration is provided retrieve the cluster
+            # password and store it on the filesystem. Skip the cluster
+            # initialization as it will be performed later from the
+            # task manager.
+            self.app.secure(password=cluster_config['cluster_password'],
+                            initialize=False)
+        else:
+            self.app.secure(password=root_password, initialize=True)
 
         if backup_info:
             LOG.debug('Now going to perform restore.')
             self._perform_restore(backup_info,
                                   context,
                                   mount_point)
+            self.app.apply_post_restore_updates(backup_info)
+
+        self._admin = self.app.build_admin()
 
         if not cluster_config:
-            if self.is_root_enabled(context):
-                self.status.report_root(
-                    context, service.CouchbaseRootAccess.DEFAULT_ADMIN_NAME)
+            if backup_info and self.is_root_enabled(context):
+                self.status.report_root(context, self.app.DEFAULT_ADMIN_NAME)
 
     def restart(self, context):
         """
@@ -102,16 +126,42 @@ class Manager(manager.Manager):
         """
         self.app.stop_db(do_not_start_on_reboot=do_not_start_on_reboot)
 
+    def create_user(self, context, users):
+        with EndNotification(context):
+            self.admin.create_user(context, users)
+
+    def delete_user(self, context, user):
+        with EndNotification(context):
+            self.admin.delete_user(context, user)
+
+    def get_user(self, context, username, hostname):
+        return self.admin.get_user(context, username, hostname)
+
+    def list_users(self, context, limit=None, marker=None,
+                   include_marker=False):
+        return self.admin.list_users(context, limit, marker, include_marker)
+
+    def change_passwords(self, context, users):
+        with EndNotification(context):
+            self.admin.change_passwords(context, users)
+
+    def update_attributes(self, context, username, hostname, user_attrs):
+        with EndNotification(context):
+            self.admin.update_attributes(context, username, hostname,
+                                         user_attrs)
+
     def enable_root(self, context):
         LOG.debug("Enabling root.")
-        return self.app.enable_root()
+        root = self.app.enable_root()
+        self._admin = self.app.build_admin()
+        return root
 
     def enable_root_with_password(self, context, root_password=None):
         return self.app.enable_root(root_password)
 
     def is_root_enabled(self, context):
         LOG.debug("Checking if root is enabled.")
-        return os.path.exists(system.pwd_file)
+        return os.path.exists(self.app.couchbase_pwd_file)
 
     def _perform_restore(self, backup_info, context, restore_location):
         """
@@ -151,3 +201,24 @@ class Manager(manager.Manager):
 
     def remove_nodes(self, context, nodes):
         self.app.rebalance_cluster(removed_nodes=nodes)
+
+    def pre_upgrade(self, context):
+        LOG.debug('Preparing Couchbase for upgrade.')
+        self.app.status.begin_restart()
+        self.app.stop_db()
+        mount_point = CONF.couchbase.mount_point
+        upgrade_info = self.app.save_files_pre_upgrade(mount_point)
+        upgrade_info['mount_point'] = mount_point
+        return upgrade_info
+
+    def post_upgrade(self, context, upgrade_info):
+        LOG.debug('Finalizing Couchbase upgrade.')
+        self.app.stop_db()
+        if 'device' in upgrade_info:
+            self.mount_volume(context, mount_point=upgrade_info['mount_point'],
+                              device_path=upgrade_info['device'])
+        self.app.restore_files_post_upgrade(upgrade_info)
+        # password file has been restored at this point, need to refresh the
+        # credentials stored in the app by resetting the app.
+        self._app = None
+        self.app.start_db()

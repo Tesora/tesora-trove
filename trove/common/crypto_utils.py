@@ -17,6 +17,7 @@
 # Encryption/decryption handling
 
 from Crypto.Cipher import AES
+from Crypto.PublicKey import RSA
 from Crypto import Random
 import hashlib
 
@@ -60,3 +61,8 @@ def decrypt_data(data, key, iv_bit_count=IV_BIT_COUNT):
     aes = AES.new(md5_key, AES.MODE_CBC, bytes(iv))
     decrypted = aes.decrypt(bytes(data[iv_bit_count:]))
     return unpad_after_decryption(decrypted)
+
+
+def generate_ssh_keys():
+    key = RSA.generate(2048)
+    return key.exportKey('PEM'), key.publickey().exportKey('OpenSSH')

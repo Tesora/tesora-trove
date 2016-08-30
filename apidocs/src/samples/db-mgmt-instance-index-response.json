@@ -34,6 +34,7 @@
                 }
             ],
             "name": "json_rack_instance",
+            "region": "regionOne",
             "server": {
                 "deleted": false,
                 "deleted_at": null,
@@ -44,6 +45,7 @@
                 "status": "ACTIVE",
                 "tenant_id": "3000"
             },
+            "server_id": "44b277eb-39be-4921-be31-3d61b43651d7",
             "service_status": "ACTIVE",
             "status": "ACTIVE",
             "task_description": "No tasks for the instance.",
@@ -51,8 +53,8 @@
             "updated": "2014-10-30T12:30:00",
             "volume": {
                 "size": 4
-            }
+            },
+            "volume_id": "VOL_44b277eb-39be-4921-be31-3d61b43651d7"
         }
     ]
 }
-

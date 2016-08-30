@@ -36,6 +36,8 @@ LOG = logging.getLogger(__name__)
 defaults = {
     'mysql':
     'trove.guestagent.datastore.mysql.manager.Manager',
+    'mysql_ee':
+    'trove.guestagent.datastore.mysql_ee.manager.Manager',
     'percona':
     'trove.guestagent.datastore.experimental.percona.manager.Manager',
     'pxc':
@@ -44,10 +46,16 @@ defaults = {
     'trove.guestagent.datastore.experimental.redis.manager.Manager',
     'cassandra':
     'trove.guestagent.datastore.experimental.cassandra.manager.Manager',
+    'cassandra_22':
+    'trove.guestagent.datastore.experimental.cassandra_22.manager.Manager',
+    'cassandra_3':
+    'trove.guestagent.datastore.experimental.cassandra_3.manager.Manager',
     'dse':
     'trove.guestagent.datastore.experimental.dse.manager.Manager',
     'couchbase':
     'trove.guestagent.datastore.experimental.couchbase.manager.Manager',
+    'couchbase_4':
+    'trove.guestagent.datastore.experimental.couchbase_4.manager.Manager',
     'mongodb':
     'trove.guestagent.datastore.experimental.mongodb.manager.Manager',
     'postgresql':
@@ -62,8 +70,12 @@ defaults = {
     'trove.guestagent.datastore.oracle.manager.Manager',
     'oracle_ra':
     'trove.guestagent.datastore.oracle_ra.manager.Manager',
+    'oracle_rac':
+    'trove.guestagent.datastore.oracle_rac.manager.Manager',
     'mariadb':
-    'trove.guestagent.datastore.experimental.mariadb.manager.Manager'
+    'trove.guestagent.datastore.experimental.mariadb.manager.Manager',
+    'edb':
+    'trove.guestagent.datastore.experimental.edb.manager.Manager',
 }
 CONF = cfg.CONF
 

@@ -13,11 +13,15 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-
 from oslo_log import log as logging
 
 from trove.common import cfg
+from trove.common import exception
+from trove.common.i18n import _
 from trove.guestagent.backup.backupagent import BackupAgent
+from trove.guestagent.common import operating_system
+from trove.guestagent.common.operating_system import FileMode
+from trove.guestagent.datastore.mysql.service import MySqlApp
 from trove.guestagent.strategies.replication import mysql_base
 
 AGENT = BackupAgent()
@@ -29,7 +33,29 @@ LOG = logging.getLogger(__name__)
 class MysqlGTIDReplication(mysql_base.MysqlReplicationBase):
     """MySql Replication coordinated by GTIDs."""
 
+    class UnableToDetermineLastMasterGTID(exception.TroveError):
+        message = _("Unable to determine last GTID executed on master "
+                    "(from file %(binlog_file)s).")
+
     def connect_to_master(self, service, snapshot):
+        if 'dataset' in snapshot:
+            # pull the last executed GTID from the master via
+            # the xtrabackup metadata file. If that value is
+            # provided we need to set the gtid_purged variable
+            # before executing the CHANGE MASTER TO command
+            last_gtid = self._read_last_master_gtid()
+            if last_gtid:
+                # gtid_purged can only be set when gtid_executed is empty.
+                # Use the RESET MASTER statement to reset gtid_executed.
+                # The use_flush=False parameter on the execute_on_client call
+                # is to prevent the "FLUSH PRIVILEGES" statement from being
+                # executed after RESET MASTER. "FLUSH PRIVILEGES" causes the
+                # gtid_executed value to be set in MySql 5.7, negating the
+                # effect of RESET MASTER.
+                service.execute_on_client('RESET MASTER', use_flush=False)
+                set_gtid_cmd = "SET GLOBAL gtid_purged='%s'" % last_gtid
+                service.execute_on_client(set_gtid_cmd)
+
         logging_config = snapshot['log_position']
         LOG.debug("connect_to_master %s" % logging_config['replication_user'])
         change_master_cmd = (
@@ -47,3 +73,20 @@ class MysqlGTIDReplication(mysql_base.MysqlReplicationBase):
             })
         service.execute_on_client(change_master_cmd)
         service.start_slave()
+
+    def _read_last_master_gtid(self):
+        INFO_FILE = ('%s/xtrabackup_binlog_info' % MySqlApp.get_data_dir())
+        LOG.info(_("Setting read permissions on %s") % INFO_FILE)
+        operating_system.chmod(INFO_FILE, FileMode.ADD_READ_ALL, as_root=True)
+        LOG.info(_("Reading last master GTID from %s") % INFO_FILE)
+        gtids = ''
+        try:
+            with open(INFO_FILE, 'rb') as f:
+                row = f.read().split('\t')
+                if row[2]:
+                    gtids = row[2].replace('\n', '')
+                return gtids
+        except (IOError, IndexError) as ex:
+            LOG.exception(ex)
+            raise self.UnableToDetermineLastMasterGTID(
+                {'binlog_file': INFO_FILE})
