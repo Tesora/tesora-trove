@@ -38,10 +38,12 @@ from trove.guestagent.datastore.experimental.cassandra import (
 from trove.guestagent.db import models
 from trove.guestagent import pkg as pkg
 from trove.guestagent import volume
+from trove.tests.unittests.guestagent.test_datastore_manager import \
+    DatastoreManagerTest
 from trove.tests.unittests import trove_testtools
 
 
-class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
+class GuestAgentCassandraDBManagerTest(DatastoreManagerTest):
 
     __MOUNT_POINT = '/var/lib/cassandra'
 
@@ -74,7 +76,7 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
     @patch.object(ImportOverrideStrategy, '_initialize_import_directory')
     @patch('trove.guestagent.datastore.experimental.cassandra.service.LOG')
     def setUp(self, *args, **kwargs):
-        super(GuestAgentCassandraDBManagerTest, self).setUp()
+        super(GuestAgentCassandraDBManagerTest, self).setUp('cassandra')
 
         conn_patcher = patch.multiple(cass_service.CassandraConnection,
                                       _connect=DEFAULT,
@@ -334,7 +336,8 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
         return [item.serialize() for item in collection]
 
     @classmethod
-    def _get_random_name(self, size, chars=string.letters + string.digits):
+    def _get_random_name(self, size,
+                         chars=string.ascii_letters + string.digits):
         return ''.join(random.choice(chars) for _ in range(size))
 
     def test_create_database(self):
@@ -451,7 +454,7 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
             found = self.manager.list_databases(self.context)
             self.assertEqual(2, len(found))
             self.assertEqual(3, len(found[0]))
-            self.assertEqual(None, found[1])
+            self.assertIsNone(found[1])
             self.assertIn(db1.serialize(), found[0])
             self.assertIn(db2.serialize(), found[0])
             self.assertIn(db3.serialize(), found[0])
@@ -602,7 +605,7 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
             found = self.manager.list_users(self.context)
             self.assertEqual(2, len(found))
             self.assertEqual(3, len(found[0]))
-            self.assertEqual(None, found[1])
+            self.assertIsNone(found[1])
             self.assertIn(usr1.serialize(), found[0])
             self.assertIn(usr2.serialize(), found[0])
             self.assertIn(usr3.serialize(), found[0])

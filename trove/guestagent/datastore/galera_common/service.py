@@ -35,10 +35,6 @@ class GaleraApp(service.BaseMySqlApp):
         super(GaleraApp, self).__init__(status, local_sql_client,
                                         keep_alive_connection_cls)
 
-    @property
-    def service_candidates(self):
-        return super(GaleraApp, self).service_candidates
-
     def _grant_cluster_replication_privilege(self, replication_user):
         LOG.info(_("Granting Replication Slave privilege."))
         with self.local_sql_client(self.get_engine()) as client:

@@ -1028,7 +1028,6 @@ class RedisRestoreTests(trove_testtools.TestCase):
 
 
 class PostgresqlBackupTests(trove_testtools.TestCase):
-    # TODO(atomic77) More tests for error scenarios, edge cases and timelines
 
     def setUp(self):
         super(PostgresqlBackupTests, self).setUp()

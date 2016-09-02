@@ -69,7 +69,7 @@ class PgDump(base.RestoreRunner):
             content_length += len(chunk)
         process.stdin.close()
         self._handle_errors(process)
-        LOG.debug("Restored %s bytes from stream." % content_length)
+        LOG.info(_("Restored %s bytes from stream.") % content_length)
 
         return content_length
 
@@ -120,7 +120,6 @@ class PgBaseBackup(base.RestoreRunner):
 
     def pre_restore(self):
         self.app.stop_db()
-        LOG.info("Preparing WAL archive dir")
         self.app.recreate_wal_archive_dir()
         datadir = self.app.pgsql_data_dir
         operating_system.remove(datadir, force=True, recursive=True,
@@ -131,19 +130,18 @@ class PgBaseBackup(base.RestoreRunner):
 
     def post_restore(self):
         operating_system.chmod(self.app.pgsql_data_dir,
-                               FileMode.OCTAL_MODE("0700"),
+                               FileMode.SET_USR_RWX(),
                                as_root=True, recursive=True, force=True)
 
     def write_recovery_file(self, restore=False):
         metadata = self.storage.load_metadata(self.location, self.checksum)
-        LOG.info(_("Metadata for backup: %s") % str(metadata))
         recovery_conf = ""
         recovery_conf += "recovery_target_name = '%s' \n" % metadata['label']
         recovery_conf += "recovery_target_timeline = '%s' \n" % 1
 
         if restore:
-            recovery_conf += "restore_command = '" + \
-                             self.pgsql_restore_cmd + "'\n"
+            recovery_conf += ("restore_command = '" +
+                              self.pgsql_restore_cmd + "'\n")
 
         recovery_file = os.path.join(self.app.pgsql_data_dir, 'recovery.conf')
         operating_system.write_file(recovery_file, recovery_conf,
@@ -179,9 +177,8 @@ class PgBaseBackupIncremental(PgBaseBackup):
     def _incremental_restore(self, location, checksum):
 
         metadata = self.storage.load_metadata(location, checksum)
-        LOG.info(_("Metadata for inc backup: %s") % str(metadata))
         if 'parent_location' in metadata:
-            LOG.info("Found parent at %s", metadata['parent_location'])
+            LOG.info(_("Found parent at %s"), metadata['parent_location'])
             parent_location = metadata['parent_location']
             parent_checksum = metadata['parent_checksum']
             self._incremental_restore(parent_location, parent_checksum)
@@ -190,17 +187,15 @@ class PgBaseBackupIncremental(PgBaseBackup):
 
         else:
             # For the parent base backup, revert to the default restore cmd
-            LOG.info("Recursed back to full backup ")
+            LOG.info(_("Recursed back to full backup."))
 
             super(PgBaseBackupIncremental, self).pre_restore()
             cmd = self._incremental_restore_cmd(incr=False)
             self.content_length += self._unpack(location, checksum, cmd)
 
             operating_system.chmod(self.app.pgsql_data_dir,
-                                   FileMode.OCTAL_MODE("0700"),
+                                   FileMode.SET_USR_RWX(),
                                    as_root=True, recursive=True, force=True)
-
-        # TODO(atomic77) Archive cleanup
 
     def _run_restore(self):
         self._incremental_restore(self.location, self.checksum)

@@ -9,6 +9,7 @@ trove.egg*
 trove/vcsversion.py
 *py*.egg
 .coverage
+coverage.xml
 cover/
 dist/
 host-syslog.log
@@ -25,14 +26,11 @@ trove.iml
 # Sphinx
 doc/build/*
 doc/source/api/*
+install-guide/build/
 
 # Docs
 .DS_Store
-apidocs/.DS_Store
-apidocs/src/.DS_Store
-apidocs/src/samples/.DS_Store
-apidocs/includewars.xml
-apidocs/src/bookinfo.xml
+api-ref/build/
 
 # Files created by releasenotes build
 releasenotes/build

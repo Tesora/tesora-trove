@@ -11,13 +11,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import ConfigParser
 import os
 import subprocess
 import tempfile
 
 from oslo_log import log as logging
 from oslo_utils import netutils
+from six.moves import configparser
 
 from trove.common import cfg
 from trove.common import exception
@@ -361,7 +361,7 @@ class VerticaApp(object):
 
     def _generate_database_password(self):
         """Generate and write the password to vertica.cnf file."""
-        config = ConfigParser.ConfigParser()
+        config = configparser.ConfigParser()
         config.add_section('credentials')
         config.set('credentials', 'dbadmin_password',
                    utils.generate_random_password())
@@ -372,7 +372,7 @@ class VerticaApp(object):
                      temp_function=tempfile.NamedTemporaryFile):
         """Write the configuration contents to vertica.cnf file."""
         LOG.debug('Defining config holder at %s.' % system.VERTICA_CONF)
-        tempfile = temp_function(delete=False)
+        tempfile = temp_function('w', delete=False)
         try:
             config.write(tempfile)
             tempfile.close()
@@ -388,7 +388,7 @@ class VerticaApp(object):
     def read_config(self):
         """Reads and returns the Vertica config."""
         try:
-            config = ConfigParser.ConfigParser()
+            config = configparser.ConfigParser()
             config.read(system.VERTICA_CONF)
             return config
         except Exception:
@@ -549,7 +549,7 @@ class VerticaApp(object):
         all_keys = '\n'.join(public_keys) + "\n"
 
         try:
-            with tempfile.NamedTemporaryFile(delete=False) as tempkeyfile:
+            with tempfile.NamedTemporaryFile("w", delete=False) as tempkeyfile:
                 tempkeyfile.write(all_keys)
             copy_key_cmd = (("install -o %(user)s -m 600 %(source)s %(target)s"
                              ) % {'user': user, 'source': tempkeyfile.name,

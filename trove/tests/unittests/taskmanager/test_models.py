@@ -197,10 +197,11 @@ class FreshInstanceTasksTest(trove_testtools.TestCase):
         self.orig_DBI_find_by = DBInstance.find_by
         self.userdata = "hello moto"
         self.guestconfig_content = "guest config"
-        with NamedTemporaryFile(suffix=".cloudinit", delete=False) as f:
+        with NamedTemporaryFile(mode="w", suffix=".cloudinit",
+                                delete=False) as f:
             self.cloudinit = f.name
             f.write(self.userdata)
-        with NamedTemporaryFile(delete=False) as f:
+        with NamedTemporaryFile(mode="w", delete=False) as f:
             self.guestconfig = f.name
             f.write(self.guestconfig_content)
         self.freshinstancetasks = taskmanager_models.FreshInstanceTasks(
@@ -395,8 +396,7 @@ class FreshInstanceTasksTest(trove_testtools.TestCase):
             'Error creating security group for instance',
             self.freshinstancetasks.create_instance, mock_flavor,
             'mysql-image-id', None, None, 'mysql', 'mysql-server', 2,
-            None, None, None, None, Mock(), None, None, None, None,
-            None)
+            None, None, None, None, Mock(), None, None, None, None, None)
 
     @patch.object(BaseInstance, 'update_db')
     @patch.object(backup_models.Backup, 'get_by_id')
@@ -407,7 +407,6 @@ class FreshInstanceTasksTest(trove_testtools.TestCase):
     @patch.object(taskmanager_models.FreshInstanceTasks, '_create_server')
     @patch.object(taskmanager_models.FreshInstanceTasks, '_guest_prepare')
     @patch.object(template, 'SingleInstanceConfigTemplate')
-    @patch.object(template, 'OverrideConfigTemplate')
     @patch.object(taskmanager_models.FreshInstanceTasks, '_create_dns_entry',
                   side_effect=TroveError)
     @patch('trove.taskmanager.models.LOG')
@@ -710,7 +709,7 @@ class BuiltInstanceTasksTest(trove_testtools.TestCase):
 
         def side_effect_func(*args, **kwargs):
             if 'instance_id' in kwargs:
-                return answers.next()
+                return next(answers)
             elif ('id' in kwargs and 'deleted' in kwargs
                   and not kwargs['deleted']):
                 return db_instance

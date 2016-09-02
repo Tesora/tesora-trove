@@ -14,6 +14,7 @@
 #    under the License.
 
 from oslo_log import log as logging
+from oslo_utils import encodeutils
 
 from trove.common import cfg
 from trove.common import exception
@@ -219,9 +220,9 @@ class DB2Admin(object):
 
             if marker is not None:
                 try:
-                    item = result.next()
+                    item = next(result)
                     while item != marker:
-                        item = result.next()
+                        item = next(result)
 
                     if item == marker:
                         marker = None
@@ -229,7 +230,7 @@ class DB2Admin(object):
                     pass
 
             try:
-                item = result.next()
+                item = next(result)
                 while item:
                     count = count + 1
                     if (limit and count <= limit) or limit is None:
@@ -240,7 +241,7 @@ class DB2Admin(object):
                         db2_db.collate = None
                         next_marker = db2_db.name
                         databases.append(db2_db.serialize())
-                        item = result.next()
+                        item = next(result)
                     else:
                         next_marker = None
                         break
@@ -248,8 +249,9 @@ class DB2Admin(object):
                 next_marker = None
             LOG.debug("databases = %s." % str(databases))
         except exception.ProcessExecutionError as pe:
+            err_msg = encodeutils.exception_to_unicode(pe)
             LOG.exception(_("An error occurred listing databases: %s.") %
-                          pe.message)
+                          err_msg)
             pass
         return databases, next_marker
 
@@ -353,16 +355,16 @@ class DB2Admin(object):
                 user = item.split() if item != "" else None
                 LOG.debug("user = %r" % (user))
                 if (user is not None
-                    and (user[0] not in cfg.get_ignored_users(manager='db2')
+                    and (user[0] not in cfg.get_ignored_users()
                          and user[1] == 'Y')):
                     userlist.append(user[0])
             result = iter(userlist)
 
             if marker is not None:
                 try:
-                    item = result.next()
+                    item = next(result)
                     while item != marker:
-                        item = result.next()
+                        item = next(result)
 
                     if item == marker:
                         marker = None
@@ -370,7 +372,7 @@ class DB2Admin(object):
                     pass
 
             try:
-                item = result.next()
+                item = next(result)
                 db2db = models.MySQLDatabase()
                 db2db.name = db2_db.name
 
@@ -382,7 +384,7 @@ class DB2Admin(object):
                     if item in user_map:
                         db2user = user_map.get(item)
                         db2user.databases.append(db2db.serialize())
-                        item = result.next()
+                        item = next(result)
                         continue
                     '''
                      If this user was not previously discovered, then add
@@ -395,7 +397,7 @@ class DB2Admin(object):
                         db2_user.databases.append(db2db.serialize())
                         users.append(db2_user.serialize())
                         user_map.update({item: db2_user})
-                        item = result.next()
+                        item = next(result)
                     else:
                         next_marker = None
                         break

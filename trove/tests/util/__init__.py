@@ -23,8 +23,6 @@
 """
 
 import subprocess
-from urllib import unquote
-
 try:
     EVENT_AVAILABLE = True
 except ImportError:
@@ -34,6 +32,7 @@ from proboscis.asserts import assert_true
 from proboscis.asserts import Check
 from proboscis.asserts import fail
 from proboscis import SkipTest
+from six.moves.urllib.parse import unquote
 from sqlalchemy import create_engine
 from troveclient.compat import Dbaas
 from troveclient.compat import exceptions
@@ -296,6 +295,6 @@ class LocalSqlClient(object):
 
     @staticmethod
     def init_engine(user, password, host):
-        return create_engine("mysql://%s:%s@%s:3306" %
+        return create_engine("mysql+pymysql://%s:%s@%s:3306" %
                              (user, password, host),
                              pool_recycle=1800, echo=True)

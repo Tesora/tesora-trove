@@ -22,7 +22,6 @@ import random
 import shutil
 import string
 import time
-import types
 import uuid
 
 from eventlet.timeout import Timeout
@@ -35,6 +34,7 @@ from oslo_utils import importutils
 from oslo_utils import strutils
 from oslo_utils import timeutils
 from passlib import utils as passlib_utils
+import six
 import six.moves.urllib.parse as urlparse
 
 from trove.common import cfg
@@ -86,13 +86,13 @@ def create_method_args_string(*args, **kwargs):
 def stringify_keys(dictionary):
     if dictionary is None:
         return None
-    return {str(key): value for key, value in dictionary.iteritems()}
+    return {str(key): value for key, value in dictionary.items()}
 
 
 def exclude(key_values, *exclude_keys):
     if key_values is None:
         return None
-    return {key: value for key, value in key_values.iteritems()
+    return {key: value for key, value in key_values.items()
             if key not in exclude_keys}
 
 
@@ -396,7 +396,7 @@ def is_collection(item):
     """Return True is a given item is an iterable collection, but not a string.
     """
     return (isinstance(item, collections.Iterable) and
-            not isinstance(item, types.StringTypes))
+            not isinstance(item, (bytes, six.text_type)))
 
 
 def format_output(message, format_len=79, truncate_len=None, replace_index=0):

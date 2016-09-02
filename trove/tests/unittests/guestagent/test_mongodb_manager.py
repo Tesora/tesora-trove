@@ -23,16 +23,16 @@ import trove.guestagent.datastore.experimental.mongodb.manager as manager
 import trove.guestagent.datastore.experimental.mongodb.service as service
 import trove.guestagent.db.models as models
 import trove.guestagent.volume as volume
-import trove.tests.unittests.trove_testtools as trove_testtools
+from trove.tests.unittests.guestagent.test_datastore_manager import \
+    DatastoreManagerTest
 
 
-class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
+class GuestAgentMongoDBManagerTest(DatastoreManagerTest):
 
     @mock.patch.object(configuration.ImportOverrideStrategy,
                        '_initialize_import_directory')
     def setUp(self, _):
-        super(GuestAgentMongoDBManagerTest, self).setUp()
-        self.context = trove_testtools.TroveTestContext(self)
+        super(GuestAgentMongoDBManagerTest, self).setUp('mongodb')
         self.manager = manager.Manager()
 
         self.execute_with_timeout_patch = mock.patch.object(
@@ -246,7 +246,8 @@ class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
         users, next_marker = self.manager.list_users(self.context)
 
         self.assertIsNone(next_marker)
-        self.assertEqual(sorted([user1, user2]), users)
+        self.assertEqual(sorted([user1, user2], key=lambda x: x['_name']),
+                         users)
 
     @mock.patch.object(service.MongoDBAdmin, 'create_validated_user')
     @mock.patch.object(utils, 'generate_random_password',
@@ -339,16 +340,14 @@ class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
                           'db0', 'db1', 'db2', 'db3'])
         mocked_client().__enter__().database_names = mocked_list
 
-        marker = models.MongoDBSchema('db1').serialize()
         dbs, next_marker = self.manager.list_databases(
-            self.context, limit=2, marker=marker, include_marker=True)
+            self.context, limit=2, marker='db1', include_marker=True)
 
         mocked_list.assert_any_call()
         self.assertEqual([models.MongoDBSchema('db1').serialize(),
                           models.MongoDBSchema('db2').serialize()],
                          dbs)
-        self.assertEqual(models.MongoDBSchema('db2').serialize(),
-                         next_marker)
+        self.assertEqual('db2', next_marker)
 
     @mock.patch.object(service, 'MongoDBClient')
     @mock.patch.object(service.MongoDBAdmin, '_admin_user')

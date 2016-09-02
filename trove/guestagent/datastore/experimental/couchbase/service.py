@@ -23,6 +23,7 @@ import tempfile
 from oslo_log import log as logging
 from oslo_utils import netutils
 import pexpect
+import six
 
 from trove.common import cfg
 from trove.common import exception
@@ -216,6 +217,8 @@ class CouchbaseApp(object):
         try:
             tempfd, tempname = tempfile.mkstemp()
             os.fchmod(tempfd, stat.S_IRUSR | stat.S_IWUSR)
+            if isinstance(root_password, six.text_type):
+                root_password = root_password.encode('utf-8')
             os.write(tempfd, root_password)
             os.fchmod(tempfd, stat.S_IRUSR)
             os.close(tempfd)

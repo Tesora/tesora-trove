@@ -33,6 +33,7 @@ from proboscis import before_class
 from proboscis.decorators import time_out
 from proboscis import SkipTest
 from proboscis import test
+import six
 from troveclient.compat import exceptions
 
 from trove.common import exception as rd_exceptions
@@ -271,6 +272,8 @@ class CreateInstanceQuotaTest(unittest.TestCase):
                       self.test_info.user.tenant_id, quota_dict)
 
     def test_create_too_many_instances(self):
+        raise SkipTest(
+            "Skipping until https://review.openstack.org/#/c/331323 merges")
         instance_quota = 0
         quota_dict = {'instances': instance_quota}
         new_quotas = dbaas_admin.quota.update(self.test_info.user.tenant_id,
@@ -491,7 +494,7 @@ class CreateInstanceFail(object):
                 check.guest_status()
 
     @test
-    def test_create_failure_with_datastore_default_notfound(self):
+    def test_create_failure_with_datastore_default_not_defined(self):
         if not FAKE:
             raise SkipTest("This test only for fake mode.")
         if VOLUME_SUPPORT:
@@ -511,8 +514,8 @@ class CreateInstanceFail(object):
                           volume, databases, users)
         except exceptions.BadRequest as e:
             assert_equal(e.message,
-                         "Please specify datastore. Default datastore "
-                         "cannot be found.")
+                         "Please specify datastore. No default datastore "
+                         "is defined.")
         datastore_models.CONF.default_datastore = \
             origin_default_datastore
 
@@ -956,11 +959,11 @@ class SecurityGroupsTest(object):
     def test_created_security_group(self):
         assert_is_not_none(self.testSecurityGroup)
         with TypeCheck('SecurityGroup', self.testSecurityGroup) as secGrp:
-            secGrp.has_field('id', basestring)
-            secGrp.has_field('name', basestring)
-            secGrp.has_field('description', basestring)
-            secGrp.has_field('created', basestring)
-            secGrp.has_field('updated', basestring)
+            secGrp.has_field('id', six.string_types)
+            secGrp.has_field('name', six.string_types)
+            secGrp.has_field('description', six.string_types)
+            secGrp.has_field('created', six.string_types)
+            secGrp.has_field('updated', six.string_types)
         assert_equal(self.testSecurityGroup.name, self.secGroupName)
         assert_equal(self.testSecurityGroup.description,
                      self.secGroupDescription)

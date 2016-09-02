@@ -30,16 +30,18 @@ from trove.guestagent.datastore.experimental.vertica import system
 from trove.guestagent import dbaas
 from trove.guestagent import volume
 from trove.guestagent.volume import VolumeDevice
+from trove.tests.unittests.guestagent.test_datastore_manager import \
+    DatastoreManagerTest
 from trove.tests.unittests import trove_testtools
 
 
-class GuestAgentManagerTest(trove_testtools.TestCase):
+class GuestAgentManagerTest(DatastoreManagerTest):
 
     @patch.object(ImportOverrideStrategy, '_initialize_import_directory')
     @patch.multiple(operating_system, exists=DEFAULT, write_file=DEFAULT,
                     chown=DEFAULT, chmod=DEFAULT)
     def setUp(self, *args, **kwargs):
-        super(GuestAgentManagerTest, self).setUp()
+        super(GuestAgentManagerTest, self).setUp('vertica')
 
         # TODO(pmalik): Remove this line when
         # https://review.openstack.org/#/c/308707/ merges.

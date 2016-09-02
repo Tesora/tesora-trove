@@ -21,10 +21,11 @@ from collections import defaultdict
 import os
 import re
 import six
-import urllib
 import uuid
 
 from oslo_log import log as logging
+from oslo_utils import encodeutils
+from six.moves import urllib
 import sqlalchemy
 from sqlalchemy import exc
 from sqlalchemy import interfaces
@@ -48,7 +49,7 @@ from trove.guestagent.db import models
 from trove.guestagent import pkg
 
 ADMIN_USER_NAME = "os_admin"
-CONNECTION_STR_FORMAT = "mysql://%s:%s@127.0.0.1:3306"
+CONNECTION_STR_FORMAT = "mysql+pymysql://%s:%s@127.0.0.1:3306"
 LOG = logging.getLogger(__name__)
 FLUSH = text(sql_query.FLUSH)
 ENGINE = None
@@ -360,9 +361,10 @@ class BaseMySqlAdmin(object):
             user.name = username  # Could possibly throw a BadRequest here.
         except ValueError as ve:
             LOG.exception(_("Error Getting user information"))
+            err_msg = encodeutils.exception_to_unicode(ve)
             raise exception.BadRequest(_("Username %(user)s is not valid"
                                          ": %(reason)s") %
-                                       {'user': username, 'reason': ve.message}
+                                       {'user': username, 'reason': err_msg}
                                        )
         with self.local_sql_client(self.mysql_app.get_engine()) as client:
             q = sql_query.Query()
@@ -460,7 +462,7 @@ class BaseMySqlAdmin(object):
                 mysql_db.collate = database[2]
                 databases.append(mysql_db.serialize())
         LOG.debug("databases = " + str(databases))
-        if database_names.rowcount <= limit:
+        if limit is not None and database_names.rowcount <= limit:
             next_marker = None
         return databases, next_marker
 
@@ -524,7 +526,7 @@ class BaseMySqlAdmin(object):
                 self._associate_dbs(mysql_user)
                 next_marker = row['Marker']
                 users.append(mysql_user.serialize())
-        if result.rowcount <= limit:
+        if limit is not None and result.rowcount <= limit:
             next_marker = None
         LOG.debug("users = " + str(users))
 
@@ -607,14 +609,11 @@ class BaseMySqlApp(object):
             return ENGINE
 
         pwd = self.get_auth_password()
-        ENGINE = sqlalchemy.create_engine(CONNECTION_STR_FORMAT %
-                                          (ADMIN_USER_NAME,
-                                           urllib.quote(pwd.strip())),
-                                          pool_recycle=120,
-                                          echo=CONF.sql_query_logging,
-                                          listeners=[
-                                              self.keep_alive_connection_cls()]
-                                          )
+        ENGINE = sqlalchemy.create_engine(
+            CONNECTION_STR_FORMAT % (ADMIN_USER_NAME,
+                                     urllib.parse.quote(pwd.strip())),
+            pool_recycle=120, echo=CONF.sql_query_logging,
+            listeners=[self.keep_alive_connection_cls()])
         return ENGINE
 
     def clear_engine_cache(self):
@@ -703,7 +702,7 @@ class BaseMySqlApp(object):
         self.clear_engine_cache()
         engine = sqlalchemy.create_engine(
             CONNECTION_STR_FORMAT % (ADMIN_USER_NAME,
-                                     urllib.quote(admin_password)),
+                                     urllib.parse.quote(admin_password)),
             echo=True)
         with self.local_sql_client(engine) as client:
             self._remove_anonymous_user(client)
@@ -824,7 +823,7 @@ class BaseMySqlApp(object):
         LOG.debug("Applying overrides to MySQL.")
         with self.local_sql_client(self.get_engine()) as client:
             LOG.debug("Updating override values in running MySQL.")
-            for k, v in overrides.iteritems():
+            for k, v in overrides.items():
                 byte_value = guestagent_utils.to_bytes(v)
                 q = sql_query.SetServerVariable(key=k, value=byte_value)
                 t = text(str(q))
@@ -1002,7 +1001,7 @@ class BaseMySqlApp(object):
             # but actually come up ok. we're looking into the timing issue on
             # parallel, but for now, we'd like to give it one more chance to
             # come up. so regardless of the execute_with_timeout() response,
-            # we'll assume mysql comes up and check it's status for a while.
+            # we'll assume mysql comes up and check its status for a while.
             pass
         if not self.status.wait_for_real_status_to_change_to(
                 rd_instance.ServiceStatuses.RUNNING,

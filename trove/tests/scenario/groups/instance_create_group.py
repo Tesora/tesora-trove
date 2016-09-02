@@ -129,6 +129,7 @@ class InstanceInitDeleteGroup(TestGroup):
 
 
 @test(depends_on_groups=[groups.INST_INIT_DELETE],
+      runs_after_groups=[groups.INST_ERROR_DELETE],
       groups=[GROUP, groups.INST_INIT_DELETE_WAIT])
 class InstanceInitDeleteWaitGroup(TestGroup):
     """Test that Initialized Instance Delete Completes."""
@@ -137,12 +138,11 @@ class InstanceInitDeleteWaitGroup(TestGroup):
         super(InstanceInitDeleteWaitGroup, self).__init__(
             InstanceCreateRunnerFactory.instance())
 
-    @test
-    def wait_for_error_init_delete(self):
-        """Wait for the initialized and error instances to be gone."""
-        self.test_runner.run_wait_for_error_init_delete()
+    def wait_for_init_delete(self):
+        """Wait for the initialized instance to be gone."""
+        self.test_runner.run_wait_for_init_delete()
 
-    @test(runs_after=[wait_for_error_init_delete])
+    @test(runs_after=[wait_for_init_delete])
     def delete_initial_configuration(self):
         """Delete the initial configuration group."""
         self.test_runner.run_initial_configuration_delete()

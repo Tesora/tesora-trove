@@ -138,7 +138,7 @@ class MySQLRestoreMixin(object):
         for initial datastore configuration.
         """
 
-        with tempfile.NamedTemporaryFile() as init_file:
+        with tempfile.NamedTemporaryFile(mode='w') as init_file:
             operating_system.write_file(init_file.name,
                                         self.RESET_ROOT_MYSQL_COMMANDS)
             operating_system.chmod(init_file.name, FileMode.ADD_READ_ALL,

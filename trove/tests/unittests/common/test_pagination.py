@@ -15,6 +15,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
+
+from mock import Mock
+
 from trove.common import pagination
 from trove.tests.unittests import trove_testtools
 
@@ -39,9 +42,10 @@ class TestPaginatedDataView(trove_testtools.TestCase):
                                             next_page_marker=52)
         self.assertEqual("52", view.next_page_marker)
 
-    def _do_paginate_list(self, limit=None, marker=None, include_marker=False):
+    def _do_paginate_list(self, limit=None, marker='', include_marker=False):
         li = ['a', 'b', 'c', 'd', 'e']
-        return pagination.paginate_list(li, limit, marker, include_marker)
+        return pagination.paginate_list(li, limit=limit, marker=marker,
+                                        include_marker=include_marker)
 
     def test_paginate_list(self):
         # start list
@@ -76,6 +80,10 @@ class TestPaginatedDataView(trove_testtools.TestCase):
         self.assertEqual([], li_4)
         self.assertIsNone(marker_4)
 
+        li_5, marker_5 = self._do_paginate_list(limit=1, marker='f')
+        self.assertEqual([], li_5)
+        self.assertIsNone(marker_5)
+
     def test_dict_paginate(self):
         li = [{'_collate': 'en_US.UTF-8',
                '_character_set': 'UTF8',
@@ -93,10 +101,26 @@ class TestPaginatedDataView(trove_testtools.TestCase):
                '_character_set': 'UTF8',
                '_name': 'db4'}
               ]
-        key = '_name'
 
-        l, m = pagination.paginate_dict_list(li, key=key, limit=1,
+        l, m = pagination.paginate_dict_list(li, '_name', limit=1,
                                              marker='db1',
                                              include_marker=True)
+        self.assertEqual(l[0], li[0])
+        self.assertEqual(m, 'db1')
+
+    def test_object_paginate(self):
+
+        def build_mock_object(name):
+            o = Mock()
+            o.name = name
+            o.attr = 'attr'
+            return o
+
+        li = [build_mock_object('db1'), build_mock_object('db2'),
+              build_mock_object('db3')]
+
+        l, m = pagination.paginate_object_list(li, 'name', limit=1,
+                                               marker='db1',
+                                               include_marker=True)
         self.assertEqual(l[0], li[0])
         self.assertEqual(m, 'db1')

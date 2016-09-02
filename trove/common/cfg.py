@@ -53,7 +53,7 @@ def _update_options(options, *values):
 
     return updated_options
 
-
+LOG = logging.getLogger(__name__)
 UNKNOWN_SERVICE_ID = 'unknown-service-id-error'
 
 path_opts = [
@@ -80,34 +80,34 @@ common_opts = [
                      'configured usage_timeout.'),
     cfg.StrOpt('os_region_name', default='RegionOne',
                help='Region name of this node. Used when searching catalog.'),
-    cfg.StrOpt('nova_compute_url', help='URL without the tenant segment.'),
+    cfg.URIOpt('nova_compute_url', help='URL without the tenant segment.'),
     cfg.StrOpt('nova_compute_service_type', default='compute',
                help='Service type to use when searching catalog.'),
     cfg.StrOpt('nova_compute_endpoint_type', default='publicURL',
                help='Service endpoint type to use when searching catalog.'),
     cfg.StrOpt('nova_client_version', default='2.12',
                help="The version of the compute service client."),
-    cfg.StrOpt('neutron_url', help='URL without the tenant segment.'),
+    cfg.URIOpt('neutron_url', help='URL without the tenant segment.'),
     cfg.StrOpt('neutron_service_type', default='network',
                help='Service type to use when searching catalog.'),
     cfg.StrOpt('neutron_endpoint_type', default='publicURL',
                help='Service endpoint type to use when searching catalog.'),
-    cfg.StrOpt('cinder_url', help='URL without the tenant segment.'),
+    cfg.URIOpt('cinder_url', help='URL without the tenant segment.'),
     cfg.StrOpt('cinder_service_type', default='volumev2',
                help='Service type to use when searching catalog.'),
     cfg.StrOpt('cinder_endpoint_type', default='publicURL',
                help='Service endpoint type to use when searching catalog.'),
-    cfg.StrOpt('heat_url', help='URL without the tenant segment.'),
+    cfg.URIOpt('heat_url', help='URL without the tenant segment.'),
     cfg.StrOpt('heat_service_type', default='orchestration',
                help='Service type to use when searching catalog.'),
     cfg.StrOpt('heat_endpoint_type', default='publicURL',
                help='Service endpoint type to use when searching catalog.'),
-    cfg.StrOpt('swift_url', help='URL ending in AUTH_.'),
+    cfg.URIOpt('swift_url', help='URL ending in AUTH_.'),
     cfg.StrOpt('swift_service_type', default='object-store',
                help='Service type to use when searching catalog.'),
     cfg.StrOpt('swift_endpoint_type', default='publicURL',
                help='Service endpoint type to use when searching catalog.'),
-    cfg.StrOpt('trove_auth_url', default='http://0.0.0.0:5000/v2.0',
+    cfg.URIOpt('trove_auth_url', default='http://0.0.0.0:5000/v2.0',
                help='Trove authentication URL.'),
     cfg.StrOpt('trove_url', help='URL without the tenant segment.'),
     cfg.StrOpt('trove_service_type', default='database',
@@ -133,17 +133,17 @@ common_opts = [
     cfg.StrOpt('dns_instance_entry_factory',
                default='trove.dns.driver.DnsInstanceEntryFactory',
                help='Factory for adding DNS entries.'),
-    cfg.StrOpt('dns_hostname', default="",
-               help='Hostname used for adding DNS entries.'),
+    cfg.HostnameOpt('dns_hostname', default="localhost",
+                    help='Hostname used for adding DNS entries.'),
     cfg.StrOpt('dns_account_id', default="",
                help='Tenant ID for DNSaaS.'),
-    cfg.StrOpt('dns_endpoint_url', default="0.0.0.0",
+    cfg.URIOpt('dns_endpoint_url', default="http://0.0.0.0",
                help='Endpoint URL for DNSaaS.'),
     cfg.StrOpt('dns_service_type', default="",
                help='Service Type for DNSaaS.'),
     cfg.StrOpt('dns_region', default="",
                help='Region name for DNSaaS.'),
-    cfg.StrOpt('dns_auth_url', default="",
+    cfg.URIOpt('dns_auth_url', default="http://0.0.0.0",
                help='Authentication URL for DNSaaS.'),
     cfg.StrOpt('dns_domain_name', default="",
                help='Domain name used for adding DNS entries.'),
@@ -151,7 +151,7 @@ common_opts = [
                help='Username for DNSaaS.'),
     cfg.StrOpt('dns_passkey', default="", secret=True,
                help='Passkey for DNSaaS.'),
-    cfg.StrOpt('dns_management_base_url', default="",
+    cfg.URIOpt('dns_management_base_url', default="http://0.0.0.0",
                help='Management URL for DNSaaS.'),
     cfg.IntOpt('dns_ttl', default=300,
                help='Time (in seconds) before a refresh of DNS information '
@@ -172,11 +172,11 @@ common_opts = [
                help='Page size for listing configurations.'),
     cfg.IntOpt('modules_page_size', default=20,
                help='Page size for listing modules.'),
-    cfg.IntOpt('agent_call_low_timeout', default=5,
+    cfg.IntOpt('agent_call_low_timeout', default=15,
                help="Maximum time (in seconds) to wait for Guest Agent 'quick'"
                     "requests (such as retrieving a list of users or "
                     "databases)."),
-    cfg.IntOpt('agent_call_high_timeout', default=60,
+    cfg.IntOpt('agent_call_high_timeout', default=60 * 10,
                help="Maximum time (in seconds) to wait for Guest Agent 'slow' "
                     "requests (such as restarting the database)."),
     cfg.IntOpt('agent_replication_snapshot_timeout', default=36000,
@@ -185,7 +185,7 @@ common_opts = [
     # The guest_id opt definition must match the one in cmd/guest.py
     cfg.StrOpt('guest_id', default=None, help="ID of the Guest Instance."),
     cfg.StrOpt('guest_name', default=None, help="Name of the Guest Instance."),
-    cfg.IntOpt('state_change_wait_time', default=3 * 60,
+    cfg.IntOpt('state_change_wait_time', default=60 * 10,
                help='Maximum time (in seconds) to wait for a state change.'),
     cfg.IntOpt('state_change_poll_time', default=3,
                help='Interval between state change poll requests (seconds).'),
@@ -208,12 +208,12 @@ common_opts = [
     cfg.StrOpt('mount_options', default='defaults,noatime',
                help='Options to use when mounting a volume.'),
     cfg.IntOpt('max_instances_per_tenant',
-               default=5,
+               default=10,
                help='Default maximum number of instances per tenant.',
                deprecated_name='max_instances_per_user'),
-    cfg.IntOpt('max_accepted_volume_size', default=5,
+    cfg.IntOpt('max_accepted_volume_size', default=10,
                help='Default maximum volume size (in GB) for an instance.'),
-    cfg.IntOpt('max_volumes_per_tenant', default=20,
+    cfg.IntOpt('max_volumes_per_tenant', default=40,
                help='Default maximum volume capacity (in GB) spanning across '
                     'all Trove volumes per tenant.',
                deprecated_name='max_volumes_per_user'),
@@ -231,7 +231,7 @@ common_opts = [
                'will be the number of CPUs available.'),
     cfg.StrOpt('use_nova_key_name', default=None,
                help='Use key_name for for nova instances'),
-    cfg.BoolOpt('use_nova_server_config_drive', default=False,
+    cfg.BoolOpt('use_nova_server_config_drive', default=True,
                 help='Use config drive for file injection when booting '
                 'instance.'),
     cfg.BoolOpt('use_nova_server_volume', default=False,
@@ -261,7 +261,7 @@ common_opts = [
                help='Maximum time (in seconds) to wait for a server reboot.'),
     cfg.IntOpt('dns_time_out', default=60 * 2,
                help='Maximum time (in seconds) to wait for a DNS entry add.'),
-    cfg.IntOpt('resize_time_out', default=60 * 10,
+    cfg.IntOpt('resize_time_out', default=60 * 15,
                help='Maximum time (in seconds) to wait for a server resize.'),
     cfg.IntOpt('revert_time_out', default=60 * 10,
                help='Maximum time (in seconds) to wait for a server resize '
@@ -272,8 +272,6 @@ common_opts = [
                 help="Permissions to grant to the 'root' user."),
     cfg.BoolOpt('root_grant_option', default=True,
                 help="Assign the 'root' user GRANT permissions."),
-    cfg.IntOpt('default_password_length', default=36,
-               help='Character length of generated passwords.'),
     cfg.IntOpt('http_get_rate', default=200,
                help="Maximum number of HTTP 'GET' requests (per minute)."),
     cfg.IntOpt('http_post_rate', default=200,
@@ -448,7 +446,7 @@ common_opts = [
                help="Describes the actual network manager used for "
                     "the management of network attributes "
                     "(security groups, floating IPs, etc.)."),
-    cfg.IntOpt('usage_timeout', default=900,
+    cfg.IntOpt('usage_timeout', default=60 * 30,
                help='Maximum time (in seconds) to wait for a Guest to become '
                     'active.'),
     cfg.IntOpt('restore_usage_timeout', default=36000,
@@ -625,7 +623,9 @@ mysql_opts = [
                help='The time in milliseconds that a statement must take in '
                     'in order to be logged in the slow_query log.'),
     cfg.IntOpt('default_password_length', default=36,
-               help='Character length of generated passwords.'),
+               help='Character length of generated passwords.',
+               deprecated_name='default_password_length',
+               deprecated_group='DEFAULT'),
 ]
 
 # MySQL EE (mostly uses same options as MySQL community edition).
@@ -745,7 +745,9 @@ oracle_ra_opts = [
                default='trove.extensions.oracle.service.OracleRootController',
                help='Root controller implementation for Oracle Remote Agent.'),
     cfg.IntOpt('default_password_length', default=36,
-               help='Character length of generated passwords.'),
+               help='Character length of generated passwords.',
+               deprecated_name='default_password_length',
+               deprecated_group='DEFAULT'),
 ]
 
 # Oracle RAC
@@ -935,7 +937,9 @@ oracle_opts = [
                help='Class that implements datastore-specific Guest Agent API '
                     'logic.'),
     cfg.IntOpt('default_password_length', default=36,
-               help='Character length of generated passwords.'),
+               help='Character length of generated passwords.',
+               deprecated_name='default_password_length',
+               deprecated_group='DEFAULT'),
 ]
 
 # Percona
@@ -1018,7 +1022,9 @@ percona_opts = [
                     'in order to be logged in the slow_query log.'),
     cfg.IntOpt('default_password_length',
                default='${mysql.default_password_length}',
-               help='Character length of generated passwords.'),
+               help='Character length of generated passwords.',
+               deprecated_name='default_password_length',
+               deprecated_group='DEFAULT'),
 ]
 
 # Percona XtraDB Cluster
@@ -1105,7 +1111,9 @@ pxc_opts = [
                     'in order to be logged in the slow_query log.'),
     cfg.IntOpt('default_password_length',
                default='${mysql.default_password_length}',
-               help='Character length of generated passwords.'),
+               help='Character length of generated passwords.',
+               deprecated_name='default_password_length',
+               deprecated_group='DEFAULT'),
 ]
 
 
@@ -1181,7 +1189,9 @@ redis_opts = [
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
     cfg.IntOpt('default_password_length', default=36,
-               help='Character length of generated passwords.'),
+               help='Character length of generated passwords.',
+               deprecated_name='default_password_length',
+               deprecated_group='DEFAULT'),
 ]
 
 # Cassandra
@@ -1262,7 +1272,9 @@ cassandra_opts = [
                help='Class that implements datastore-specific Guest Agent API '
                     'logic.'),
     cfg.IntOpt('default_password_length', default=36,
-               help='Character length of generated passwords.'),
+               help='Character length of generated passwords.',
+               deprecated_name='default_password_length',
+               deprecated_group='DEFAULT'),
 ]
 
 cassandra_3_group = cfg.OptGroup(
@@ -1347,7 +1359,9 @@ couchbase_opts = [
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
     cfg.IntOpt('default_password_length', default=24, min=6, max=24,
-               help='Character length of generated passwords.'),
+               help='Character length of generated passwords.',
+               deprecated_name='default_password_length',
+               deprecated_group='DEFAULT'),
     cfg.BoolOpt('cluster_support', default=True,
                 help='Enable clusters to be created and managed.'),
     cfg.StrOpt('api_strategy',
@@ -1482,7 +1496,9 @@ mongodb_opts = [
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
     cfg.IntOpt('default_password_length', default=36,
-               help='Character length of generated passwords.'),
+               help='Character length of generated passwords.',
+               deprecated_name='default_password_length',
+               deprecated_group='DEFAULT'),
 ]
 
 # PostgreSQL
@@ -1520,9 +1536,9 @@ postgresql_opts = [
                help="Filesystem path for mounting "
                "volumes if volume support is enabled."),
     cfg.StrOpt('wal_archive_location', default='/mnt/wal_archive',
-               help="Filesystem path storing WAL archive files "
-                    "WAL-shipping based backups or replication"
-                    "is enabled"),
+               help="Filesystem path storing WAL archive files when "
+                    "WAL-shipping based backups or replication "
+                    "is enabled."),
     cfg.BoolOpt('root_on_create', default=False,
                 help='Enable the automatic creation of the root user for the '
                 'service during instance-create. The generated password for '
@@ -1553,7 +1569,9 @@ postgresql_opts = [
                     "'0' logs all statements, while '-1' turns off "
                     "statement logging."),
     cfg.IntOpt('default_password_length', default=36,
-               help='Character length of generated passwords.'),
+               help='Character length of generated passwords.',
+               deprecated_name='default_password_length',
+               deprecated_group='DEFAULT'),
 ]
 
 # EDB (mostly uses same options as Postgresql community edition).
@@ -1657,7 +1675,9 @@ couchdb_opts = [
                 deprecated_name='ignore_dbs',
                 deprecated_group='DEFAULT'),
     cfg.IntOpt('default_password_length', default=36,
-               help='Character length of generated passwords.'),
+               help='Character length of generated passwords.',
+               deprecated_name='default_password_length',
+               deprecated_group='DEFAULT'),
 ]
 
 # Vertica
@@ -1725,7 +1745,9 @@ vertica_opts = [
     cfg.IntOpt('min_ksafety', default=0,
                help='Minimum k-safety setting permitted for vertica clusters'),
     cfg.IntOpt('default_password_length', default=36,
-               help='Character length of generated passwords.'),
+               help='Character length of generated passwords.',
+               deprecated_name='default_password_length',
+               deprecated_group='DEFAULT'),
 ]
 
 # DB2
@@ -1783,7 +1805,9 @@ db2_opts = [
     cfg.StrOpt('guest_log_exposed_logs', default='',
                help='List of Guest Logs to expose for publishing.'),
     cfg.IntOpt('default_password_length', default=36,
-               help='Character length of generated passwords.'),
+               help='Character length of generated passwords.',
+               deprecated_name='default_password_length',
+               deprecated_group='DEFAULT'),
 ]
 
 # MariaDB
@@ -1884,7 +1908,9 @@ mariadb_opts = [
                     'logic.'),
     cfg.IntOpt('default_password_length',
                default='${mysql.default_password_length}',
-               help='Character length of generated passwords.'),
+               help='Character length of generated passwords.',
+               deprecated_name='default_password_length',
+               deprecated_group='DEFAULT'),
 ]
 
 # RPC version groups
@@ -1971,16 +1997,16 @@ def parse_args(argv, default_config_files=None):
              default_config_files=default_config_files)
 
 
-def get_ignored_dbs(manager=None):
+def get_ignored_dbs():
     try:
-        return get_configuration_property('ignore_dbs', manager=manager)
+        return get_configuration_property('ignore_dbs')
     except NoSuchOptError:
         return []
 
 
-def get_ignored_users(manager=None):
+def get_ignored_users():
     try:
-        return get_configuration_property('ignore_users', manager=manager)
+        return get_configuration_property('ignore_users')
     except NoSuchOptError:
         return []
 

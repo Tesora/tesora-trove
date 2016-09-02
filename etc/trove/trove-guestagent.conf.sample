@@ -68,15 +68,13 @@ root_grant_option = True
 
 # ========== Sample Logging Configuration ==========
 
-# Show more verbose log output (sets INFO log level output)
-# verbose = True
-
 # Show debugging output in logs (sets DEBUG log level output)
 # debug = True
 
 # Directory and path for log files
 log_dir = /var/log/trove/
 log_file = logfile.txt
+log_config_append = /etc/trove/trove-logging-guestagent.conf
 
 [profiler]
 # If False fully disable profiling feature.

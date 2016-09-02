@@ -56,7 +56,7 @@ class VolumeDevice(object):
         """Check that the device path exists.
 
         Verify that the device path has actually been created and can report
-        it's size, only then can it be available for formatting, retry
+        its size, only then can it be available for formatting, retry
         num_tries to account for the time lag.
         """
         try:
@@ -73,7 +73,7 @@ class VolumeDevice(object):
     def _check_format(self):
         """Checks that an unmounted volume is formatted."""
         cmd = "sudo dumpe2fs %s" % self.device_path
-        LOG.debug("Checking whether %s is formated: %s." %
+        LOG.debug("Checking whether %s is formatted: %s." %
                   (self.device_path, cmd))
 
         child = pexpect.spawn(cmd)
