@@ -298,12 +298,11 @@ class CouchbaseAdmin(object):
         LOG.debug("Rebalancing the cluster.")
         options = {}
         if added_nodes:
-            for ip in added_nodes:
-                options.update({'server-add': ip,
-                                'server-add-username': self._user.name,
-                                'server-add-password': self._user.password})
+            options.update({'server-add': added_nodes,
+                            'server-add-username': self._user.name,
+                            'server-add-password': self._user.password})
         if removed_nodes:
-            options.update({'server-remove': ip for ip in removed_nodes})
+            options.update({'server-remove': removed_nodes})
 
         if options:
             self._run_couchbase_command('rebalance', options)
@@ -386,13 +385,21 @@ class CouchbaseAdmin(object):
         return utils.execute(' '.join(cmd_tokens), shell=True, **kwargs)
 
     def _build_command_options(self, options):
+
+        def append_option(name, value, cmd_opts):
+            tokens = [name]
+            if value is not None:
+                tokens.append(str(value))
+            cmd_opts.append('--%s' % '='.join(tokens))
+
         cmd_opts = []
         if options:
             for name, value in options.items():
-                tokens = [name]
-                if value is not None:
-                    tokens.append(str(value))
-                cmd_opts.append('--%s' % '='.join(tokens))
+                if utils.is_collection(value):
+                    for item in value:
+                        append_option(name, item, cmd_opts)
+                else:
+                    append_option(name, value, cmd_opts)
 
         return cmd_opts
 
