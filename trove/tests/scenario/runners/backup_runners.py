@@ -122,6 +122,7 @@ class BackupRunner(BackupRunnerMixin):
         self.backup_count_prior_to_create = 0
         self.backup_count_for_ds_prior_to_create = 0
         self.backup_count_for_instance_prior_to_create = 0
+        self.databases_before_backup = None
 
         self.backup_inc_1_info = None
         self.backup_inc_2_info = None
@@ -179,8 +180,15 @@ class BackupRunner(BackupRunnerMixin):
             self.auth_client.instances.backups(self.instance_info.id))
 
     def run_backup_create(self):
+        if self.test_helper.get_valid_database_definitions():
+            self.databases_before_backup = self._get_databases(
+                self.instance_info.id)
         self.backup_info = self.assert_backup_create(
             self.BACKUP_NAME, self.BACKUP_DESC, self.instance_info.id)
+
+    def _get_databases(self, instance_id):
+        return [database.name for database in
+                self.auth_client.databases.list(instance_id)]
 
     def assert_backup_create(self, name, desc, instance_id, parent_id=None):
         result = self.auth_client.backups.create(
@@ -415,9 +423,26 @@ class BackupRunner(BackupRunnerMixin):
     def run_verify_data_in_restored_instance(self):
         self.assert_verify_backup_data(self.restore_host, DataType.large)
 
+    def run_verify_databases_in_restored_instance(self):
+        self.assert_verify_backup_databases(self.restore_instance_id,
+                                            self.databases_before_backup)
+
     def run_verify_data_in_restored_inc_1_instance(self):
         self.assert_verify_backup_data(self.restore_inc_1_host, DataType.large)
         self.assert_verify_backup_data(self.restore_inc_1_host, DataType.tiny)
+
+    def run_verify_databases_in_restored_inc_1_instance(self):
+        self.assert_verify_backup_databases(self.restore_instance_id,
+                                            self.databases_before_backup)
+
+    def assert_verify_backup_databases(self, instance_id, expected_databases):
+        if expected_databases is not None:
+            actual = self._get_databases(instance_id)
+            self.assert_list_elements_equal(
+                expected_databases, actual,
+                "Unexpected databases on the restored instance.")
+        else:
+            raise SkipTest("Datastore does not support databases.")
 
     def run_delete_restored_instance(self, expected_http_code=202):
         self.assert_delete_restored_instance(

@@ -15,7 +15,6 @@
 #    under the License.
 
 from mock import ANY, DEFAULT, Mock, patch, PropertyMock
-
 from proboscis.asserts import assert_equal
 
 from trove.backup.models import Backup
@@ -207,7 +206,7 @@ class TestManager(trove_testtools.TestCase):
 
     @patch.object(Backup, 'delete')
     @patch.object(models.BuiltInstanceTasks, 'load')
-    def test_create_replication_slave(self, bit_mock, mock_backup_delete):
+    def test_create_replication_slave(self, mock_load, mock_backup_delete):
         mock_tasks = Mock()
         mock_snapshot = {'dataset': {'snapshot_id': 'test-id'}}
         mock_tasks.get_replication_master_snapshot = Mock(
@@ -220,8 +219,8 @@ class TestManager(trove_testtools.TestCase):
                                          'mysql', 'mysql-server', 2,
                                          'temp-backup-id', None,
                                          'some_password', None, Mock(),
-                                         'some-master-id', None, None, None,
-                                         None)
+                                         'some-master-id', None, None,
+                                         None, None)
         mock_tasks.get_replication_master_snapshot.assert_called_with(
             self.context, 'some-master-id', mock_flavor, 'temp-backup-id',
             replica_number=1)
@@ -229,9 +228,9 @@ class TestManager(trove_testtools.TestCase):
 
     @patch.object(models.FreshInstanceTasks, 'load')
     @patch.object(Backup, 'delete')
-    @patch('trove.taskmanager.manager.LOG')
     @patch.object(models.BuiltInstanceTasks, 'load')
-    def test_exception_create_replication_slave(self, bit_mock, mock_logging,
+    @patch('trove.taskmanager.manager.LOG')
+    def test_exception_create_replication_slave(self, mock_logging, mock_tasks,
                                                 mock_delete, mock_load):
         mock_load.return_value.create_instance = Mock(side_effect=TroveError)
         self.assertRaises(TroveError, self.manager.create_instance,

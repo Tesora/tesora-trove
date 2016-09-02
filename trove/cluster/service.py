@@ -71,7 +71,7 @@ class ClusterController(wsgi.Controller):
         context = req.environ[wsgi.CONTEXT_KEY]
         cluster = models.Cluster.load(context, id)
         self.authorize_cluster_action(context, 'action', cluster)
-        cluster.action(context, req, *body.items()[0])
+        cluster.action(context, req, *next(iter(body.items())))
 
         view = views.load_view(cluster, req=req, load_servers=False)
         wsgi_result = wsgi.Result(view.data(), 202)

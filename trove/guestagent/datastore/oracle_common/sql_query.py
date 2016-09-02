@@ -49,6 +49,7 @@
 # the logo is not reasonably feasible for technical reasons.
 
 import re
+import six
 
 from oslo_log import log as logging
 
@@ -223,7 +224,7 @@ class AlterSystem(OracleSql):
     def set_parameter(cls, k, v, deferred=False):
         scope = 'SPFILE' if deferred else 'BOTH'
         value = ("'%s'" % v
-                 if (isinstance(v, (str, unicode)) and "'" not in v)
+                 if (isinstance(v, (str, six.text_type)) and "'" not in v)
                  else v)
         q = cls('SET %s = %s SCOPE = %s' % (k, value, scope))
         return q

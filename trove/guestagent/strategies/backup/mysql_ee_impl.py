@@ -52,6 +52,7 @@ import hashlib
 import re
 
 from oslo_log import log as logging
+from oslo_utils import encodeutils
 
 from trove.common import cfg
 from trove.common.i18n import _
@@ -62,21 +63,21 @@ CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 MANAGER = 'mysql_ee'
 MYSQL_BACKUP_DIR = CONF.get(MANAGER).backup_dir
+BACKUP_KEY = hashlib.sha256(encodeutils.to_utf8(
+    CONF.backup_aes_cbc_key)).hexdigest()
 
 
 class MySqlBackup(mysql_backup.InnoBackupEx):
     """Implementation of full backup strategy for mysqlbackup."""
     __strategy_name__ = 'mysqlbackup'
     log_file_path = '/tmp/mysqlbackup.log'
-    encrypt_param = ' --encrypt --key=%s' % hashlib.sha256(
-        CONF.backup_aes_cbc_key).hexdigest()
+    encrypt_param = ' --encrypt --key=%s' % BACKUP_KEY
     compress_param = ' --compress'
 
     @property
     def cmd(self):
         args = {'bkp_dir': MYSQL_BACKUP_DIR,
-                'bkp_key': hashlib.sha256(
-                    CONF.backup_aes_cbc_key).hexdigest(),
+                'bkp_key': BACKUP_KEY,
                 'log_path': self.log_file_path,
                 'extra_opts': '%(extra_opts)s'}
         cmd = ("sudo mysqlbackup"
@@ -134,8 +135,7 @@ class MySqlBackupIncremental(MySqlBackup):
     @property
     def cmd(self):
         args = {'bkp_dir': MYSQL_BACKUP_DIR,
-                'bkp_key': hashlib.sha256(
-                    CONF.backup_aes_cbc_key).hexdigest(),
+                'bkp_key': BACKUP_KEY,
                 'log_path': self.log_file_path,
                 'lsn': '%(lsn)s',
                 'extra_opts': '%(extra_opts)s'}

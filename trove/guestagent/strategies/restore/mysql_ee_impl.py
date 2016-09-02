@@ -52,6 +52,7 @@ import hashlib
 import re
 
 from oslo_log import log as logging
+from oslo_utils import encodeutils
 
 from trove.common import cfg
 from trove.common.i18n import _
@@ -64,7 +65,8 @@ MANAGER = 'mysql_ee'
 MYSQL_BACKUP_DIR = CONF.get(MANAGER).backup_dir
 MYSQL_DATA_DIR = '%s/data' % CONF.get(MANAGER).mount_point
 RESTORE_LOG = '/tmp/mysqlrestore.log'
-BACKUP_KEY = hashlib.sha256(CONF.backup_aes_cbc_key).hexdigest()
+BACKUP_KEY = hashlib.sha256(encodeutils.to_utf8(
+    CONF.backup_aes_cbc_key)).hexdigest()
 
 
 class MySqlBackup(mysql_restore.InnoBackupEx):

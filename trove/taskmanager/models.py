@@ -1127,11 +1127,17 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         LOG.debug("Begin _delete_resources for instance %s" % self.id)
         server_id = self.db_info.compute_instance_id
         old_server = self.nova_client.servers.get(server_id)
-        LOG.debug("Stopping datastore on instance %s before deleting any "
-                  "resources." % self.id)
         result = None
         try:
-            result = self.guest.stop_db()
+            # The server may have already been marked as 'SHUTDOWN'
+            # but check for 'ACTIVE' in case of any race condition
+            # We specifically don't want to attempt to stop db if
+            # the server is in 'ERROR' or 'FAILED" state, as it will
+            # result in a long timeout
+            if self.server_status_matches(['ACTIVE', 'SHUTDOWN'], server=self):
+                LOG.debug("Stopping datastore on instance %s before deleting "
+                          "any resources." % self.id)
+                result = self.guest.stop_db()
         except Exception:
             LOG.exception(_("Error stopping the datastore before attempting "
                             "to delete instance id %s.") % self.id)
@@ -1547,25 +1553,17 @@ class BackupTasks(object):
         container = storage.get_container_name()
         client = remote.create_swift_client(context)
         obj = client.head_object(container, filename)
-        manifest = obj.get('x-object-manifest', '')
-        cont, prefix = cls._parse_manifest(manifest)
-        if all([cont, prefix]):
-            # This is a manifest file, first delete all segments.
-            LOG.debug("Deleting files with prefix: %(cont)s/%(prefix)s" %
-                      {'cont': cont, 'prefix': prefix})
-            # list files from container/prefix specified by manifest
-            headers, segments = client.get_container(cont, prefix=prefix)
-            LOG.debug(headers)
-            for segment in segments:
-                name = segment.get('name')
-                if name:
-                    LOG.debug("Deleting file: %(cont)s/%(name)s" %
-                              {'cont': cont, 'name': name})
-                    client.delete_object(cont, name)
-        # Delete the manifest file
-        LOG.debug("Deleting file: %(cont)s/%(filename)s" %
-                  {'cont': cont, 'filename': filename})
-        client.delete_object(container, filename)
+        if 'x-static-large-object' in obj:
+            # Static large object
+            LOG.debug("Deleting large object file: %(cont)s/%(filename)s" %
+                      {'cont': container, 'filename': filename})
+            client.delete_object(container, filename,
+                                 query_string='multipart-manifest=delete')
+        else:
+            # Single object
+            LOG.debug("Deleting object file: %(cont)s/%(filename)s" %
+                      {'cont': container, 'filename': filename})
+            client.delete_object(container, filename)
 
     @classmethod
     def delete_backup(cls, context, backup_id):
@@ -1950,7 +1948,7 @@ class ResizeActionBase(object):
             self._assert_processes_are_ok()
             LOG.debug("Confirming nova action")
             self._confirm_nova_action()
-        except Exception as ex:
+        except Exception:
             LOG.exception(_("Exception during nova action."))
             if need_to_revert:
                 LOG.error(_("Reverting action for instance %s") %
@@ -1966,7 +1964,7 @@ class ResizeActionBase(object):
                             "Nova server status is not ACTIVE"))
 
             LOG.error(_("Error resizing instance %s.") % self.instance.id)
-            raise ex
+            raise
 
         LOG.debug("Recording success")
         self._record_action_success()

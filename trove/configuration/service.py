@@ -16,6 +16,7 @@
 from datetime import datetime
 
 from oslo_log import log as logging
+import six
 
 import trove.common.apischema as apischema
 from trove.common import cfg
@@ -125,7 +126,7 @@ class ConfigurationsController(wsgi.Controller):
                     models.DatastoreConfigurationParameters.load_parameters(
                         datastore_version.id))
 
-                for k, v in values.iteritems():
+                for k, v in values.items():
                     configItems.append(DBConfigurationParameter(
                         configuration_key=k,
                         configuration_value=v))
@@ -241,7 +242,7 @@ class ConfigurationsController(wsgi.Controller):
                 ds_version,
                 models.DatastoreConfigurationParameters.load_parameters(
                     ds_version.id))
-            for k, v in configuration['values'].iteritems():
+            for k, v in configuration['values'].items():
                 items.append(DBConfigurationParameter(
                     configuration_id=group.id,
                     configuration_key=k,
@@ -266,7 +267,7 @@ class ConfigurationsController(wsgi.Controller):
                     "datastore: %(name)s %(version)s") % output
             raise exception.UnprocessableEntity(message=msg)
 
-        for k, v in values.iteritems():
+        for k, v in values.items():
             key = k.lower()
             # parameter name validation
             if key not in rules_lookup:
@@ -291,7 +292,7 @@ class ConfigurationsController(wsgi.Controller):
                 raise exception.UnprocessableEntity(message=msg)
 
             # integer min/max checking
-            if isinstance(v, (int, long)) and not isinstance(v, bool):
+            if isinstance(v, six.integer_types) and not isinstance(v, bool):
                 if rule.min_size is not None:
                     try:
                         min_value = int(rule.min_size)
@@ -329,9 +330,9 @@ class ConfigurationsController(wsgi.Controller):
         if value_type == "boolean":
             return bool
         elif value_type == "string":
-            return basestring
+            return six.string_types
         elif value_type == "integer":
-            return (int, long)
+            return six.integer_types
         else:
             raise exception.TroveError(_(
                 "Invalid or unsupported type defined in the "

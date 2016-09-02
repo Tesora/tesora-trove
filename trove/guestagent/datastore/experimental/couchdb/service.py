@@ -35,7 +35,6 @@ from trove.guestagent import pkg
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 packager = pkg.Package()
-MANAGER = CONF.datastore_manager if CONF.datastore_manager else 'couchdb'
 
 COUCHDB_LIB_DIR = "/var/lib/couchdb"
 COUCHDB_LOG_DIR = "/var/log/couchdb"
@@ -200,26 +199,26 @@ class CouchDBAdmin(object):
         if not type(self).admin_user:
             creds = CouchDBCredentials()
             creds.read(system.COUCHDB_ADMIN_CREDS_FILE)
-            user = models.CouchDBUser()
-            user.name = creds.username
-            user.password = creds.password
+            user = models.CouchDBUser(creds.username, creds.password)
             type(self).admin_user = user
         return type(self).admin_user
 
     def _is_modifiable_user(self, name):
-        if name in cfg.get_ignored_users(manager=MANAGER):
+        if name in cfg.get_ignored_users():
             return False
         elif name == system.COUCHDB_ADMIN_NAME:
             return False
         return True
+
+    def _is_modifiable_database(self, name):
+        return name not in cfg.get_ignored_dbs()
 
     def create_user(self, users):
         LOG.debug("Creating user(s) for accessing CouchDB database(s).")
         self._admin_user()
         try:
             for item in users:
-                user = models.CouchDBUser()
-                user.deserialize(item)
+                user = models.CouchDBUser.deserialize_user(item)
                 try:
                     LOG.debug("Creating user: %s." % user.name)
                     utils.execute_with_timeout(
@@ -235,8 +234,7 @@ class CouchDBAdmin(object):
                     pass
 
                 for database in user.databases:
-                    mydb = models.CouchDBSchema()
-                    mydb.deserialize(database)
+                    mydb = models.CouchDBSchema.deserialize_schema(database)
                     try:
                         LOG.debug("Granting user: %s access to database: %s."
                                   % (user.name, mydb.name))
@@ -259,8 +257,7 @@ class CouchDBAdmin(object):
 
     def delete_user(self, user):
         LOG.debug("Delete a given CouchDB user.")
-        couchdb_user = models.CouchDBUser()
-        couchdb_user.deserialize(user)
+        couchdb_user = models.CouchDBUser.deserialize_user(user)
         db_names = self.list_database_names()
 
         for db in db_names:
@@ -347,8 +344,7 @@ class CouchDBAdmin(object):
             elif uname[17:]:
                 userlist.append(uname[17:])
         for i in range(len(userlist)):
-            user = models.CouchDBUser()
-            user.name = userlist[i]
+            user = models.CouchDBUser(userlist[i])
             for db in db_names:
                 try:
                     out2, err = utils.execute_with_timeout(
@@ -382,8 +378,7 @@ class CouchDBAdmin(object):
         return user.serialize()
 
     def _get_user(self, username, hostname):
-        user = models.CouchDBUser()
-        user.name = username
+        user = models.CouchDBUser(username)
         db_names = self.list_database_names()
         for db in db_names:
             try:
@@ -414,11 +409,10 @@ class CouchDBAdmin(object):
                 'Cannot grant access for non-existant user: '
                 '%(user)s') % {'user': username})
         else:
-            user = models.CouchDBUser()
-            user.name = username
+            user = models.CouchDBUser(username)
             if not self._is_modifiable_user(user.name):
                 LOG.warning(_('Cannot grant access for reserved user '
-                            '%(user)s') % {'user': username})
+                              '%(user)s') % {'user': username})
             if not user:
                 raise exception.BadRequest(_(
                     'Cannot grant access for reserved or non-existant user '
@@ -463,12 +457,7 @@ class CouchDBAdmin(object):
 
     def enable_root(self, root_pwd=None):
         '''Create admin user root'''
-        if not root_pwd:
-            LOG.debug('Generating root user password.')
-            root_pwd = utils.generate_random_password()
-        root_user = models.CouchDBUser()
-        root_user.name = 'root'
-        root_user.password = root_pwd
+        root_user = models.CouchDBRootUser(password=root_pwd)
         out, err = utils.execute_with_timeout(
             system.ENABLE_ROOT %
             {'admin_name': self._admin_user().name,
@@ -498,19 +487,24 @@ class CouchDBAdmin(object):
 
         for database in databases:
             dbName = models.CouchDBSchema.deserialize_schema(database).name
-            LOG.debug('Creating CouchDB database %s' % dbName)
-            try:
-                utils.execute_with_timeout(
-                    system.CREATE_DB_COMMAND %
-                    {'admin_name': self._admin_user().name,
-                     'admin_password': self._admin_user().password,
-                     'dbname': dbName},
-                    shell=True)
-            except exception.ProcessExecutionError:
-                LOG.exception(_(
-                    "There was an error creating database: %s.") % dbName)
+            if self._is_modifiable_database(dbName):
+                LOG.debug('Creating CouchDB database %s' % dbName)
+                try:
+                    utils.execute_with_timeout(
+                        system.CREATE_DB_COMMAND %
+                        {'admin_name': self._admin_user().name,
+                         'admin_password': self._admin_user().password,
+                         'dbname': dbName},
+                        shell=True)
+                except exception.ProcessExecutionError:
+                    LOG.exception(_(
+                        "There was an error creating database: %s.") % dbName)
+                    db_create_failed.append(dbName)
+                    pass
+            else:
+                LOG.warning(_('Cannot create database with a reserved name '
+                              '%(db)s') % {'db': dbName})
                 db_create_failed.append(dbName)
-                pass
         if len(db_create_failed) > 0:
             LOG.exception(_("Creating the following databases failed: %s.") %
                           db_create_failed)
@@ -523,7 +517,7 @@ class CouchDBAdmin(object):
              'admin_password': self._admin_user().password},
             shell=True)
         dbnames_list = eval(out)
-        for hidden in cfg.get_ignored_dbs(manager=MANAGER):
+        for hidden in cfg.get_ignored_dbs():
             if hidden in dbnames_list:
                 dbnames_list.remove(hidden)
         return dbnames_list
@@ -541,25 +535,29 @@ class CouchDBAdmin(object):
 
     def delete_database(self, database):
         '''Delete the specified database.'''
-        dbName = None
-        try:
-            dbName = models.CouchDBSchema.deserialize_schema(database).name
-            LOG.debug("Deleting CouchDB database: %s." % dbName)
-            utils.execute_with_timeout(
-                system.DELETE_DB_COMMAND %
-                {'admin_name': self._admin_user().name,
-                 'admin_password': self._admin_user().password,
-                 'dbname': dbName},
-                shell=True)
-        except exception.ProcessExecutionError:
-            LOG.exception(_(
-                "There was an error while deleting database:%s.") % dbName)
-            raise exception.GuestError(_("Unable to delete database: %s.") %
-                                       dbName)
+        dbName = models.CouchDBSchema.deserialize_schema(database).name
+        if self._is_modifiable_database(dbName):
+            try:
+                LOG.debug("Deleting CouchDB database: %s." % dbName)
+                utils.execute_with_timeout(
+                    system.DELETE_DB_COMMAND %
+                    {'admin_name': self._admin_user().name,
+                     'admin_password': self._admin_user().password,
+                     'dbname': dbName},
+                    shell=True)
+            except exception.ProcessExecutionError:
+                LOG.exception(_(
+                    "There was an error while deleting database:%s.") % dbName)
+                raise exception.GuestError(_("Unable to delete database: %s.")
+                                           % dbName)
+        else:
+            LOG.warning(_('Cannot delete a reserved database '
+                          '%(db)s') % {'db': dbName})
 
 
 class CouchDBCredentials(object):
     """Handles storing/retrieving credentials. Stored as json in files"""
+
     def __init__(self, username=None, password=None):
         self.username = username
         self.password = password

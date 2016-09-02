@@ -43,7 +43,7 @@ class ServerGroup(object):
         return server_group
 
     @classmethod
-    def create(cls, context, name_suffix, locality):
+    def create(cls, context, locality, name_suffix):
         client = create_nova_client(context)
         server_group_name = "%s_%s" % ('locality', name_suffix)
         server_group = client.server_groups.create(
@@ -54,14 +54,14 @@ class ServerGroup(object):
         return server_group
 
     @classmethod
-    def delete(cls, context, server_group, inst_id):
-        # Only delete the server group if we're the last member in it
+    def delete(cls, context, server_group, force=False):
+        # Only delete the server group if we're the last member in it, or if
+        # it has no members
         if server_group:
-            if len(server_group.members) == 1:
+            if force or len(server_group.members) <= 1:
                 client = create_nova_client(context)
                 client.server_groups.delete(server_group.id)
-                LOG.debug("Deleted server group for instance %s (id: %s)." %
-                          (inst_id, server_group.id))
+                LOG.debug("Deleted server group %s." % server_group.id)
             else:
                 LOG.debug("Skipping delete of server group %s (members: %s)." %
                           (server_group.id, server_group.members))
@@ -80,7 +80,7 @@ class ServerGroup(object):
             # Build the scheduler hint, but only if locality's a string
             if isinstance(locality, six.string_types):
                 server_group = cls.create(
-                    context, name_suffix, locality)
+                    context, locality, name_suffix)
                 scheduler_hint = cls.convert_to_hint(
                     server_group)
             else:

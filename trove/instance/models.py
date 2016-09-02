@@ -27,7 +27,7 @@ from oslo_log import log as logging
 from trove.backup.models import Backup
 from trove.common import cfg
 from trove.common import exception
-from trove.common import i18n as i18n
+from trove.common.i18n import _, _LE, _LI, _LW
 import trove.common.instance as tr_instance
 from trove.common.notification import StartNotification
 from trove.common.remote import create_cinder_client
@@ -53,8 +53,6 @@ from trove.module import models as module_models
 from trove.module import views as module_views
 from trove.quota.quota import run_with_quotas
 from trove.taskmanager import api as task_api
-
-(_, _LE, _LI, _LW) = (i18n._, i18n._LE, i18n._LI, i18n._LW)
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
@@ -113,7 +111,7 @@ def validate_volume_size(size):
     if size is None:
         raise exception.VolumeSizeNotSpecified()
     max_size = CONF.max_accepted_volume_size
-    if long(size) > max_size:
+    if int(size) > max_size:
         msg = ("Volume 'size' cannot exceed maximum "
                "of %d GB, %s cannot be accepted."
                % (max_size, size))
@@ -1145,7 +1143,7 @@ class Instance(BuiltInstance):
                   "%(ds_version)s and flavor %(flavor)s.",
                   {'ds_version': self.ds_version, 'flavor': flavor})
         config = template.SingleInstanceConfigTemplate(
-            self.ds_version, flavor, id)
+            self.ds_version, flavor, self.id)
         return config.render_dict()
 
     def resize_flavor(self, new_flavor_id):
@@ -1201,7 +1199,7 @@ class Instance(BuiltInstance):
         if not self.volume_size:
             raise exception.BadRequest(_("Instance %s has no volume.")
                                        % self.id)
-        new_size_l = long(new_size)
+        new_size_l = int(new_size)
         validate_volume_size(new_size_l)
         return run_with_quotas(self.tenant_id,
                                {'volumes': new_size_l - self.volume_size},
@@ -1258,7 +1256,7 @@ class Instance(BuiltInstance):
 
     def eject_replica_source(self):
         self.validate_can_perform_action()
-        LOG.info(_LI("Ejecting replica source %s from it's replication set."),
+        LOG.info(_LI("Ejecting replica source %s from its replication set."),
                  self.id)
 
         if not self.slaves:
@@ -1468,11 +1466,9 @@ class Instances(object):
         if instance_ids and len(instance_ids) > 1:
             raise exception.DatastoreOperationNotSupported(
                 operation='module-instances', datastore='current')
-            db_infos = DBInstance.query().filter_by(**query_opts)
-        else:
-            if instance_ids:
-                query_opts['id'] = instance_ids[0]
-            db_infos = DBInstance.find_all(**query_opts)
+        if instance_ids:
+            query_opts['id'] = instance_ids[0]
+        db_infos = DBInstance.find_all(**query_opts)
         limit = utils.pagination_limit(context.limit, Instances.DEFAULT_LIMIT)
         data_view = DBInstance.find_by_pagination('instances', db_infos, "foo",
                                                   limit=limit,

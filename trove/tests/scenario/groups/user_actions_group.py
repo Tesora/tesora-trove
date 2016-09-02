@@ -135,6 +135,11 @@ class UserActionsCreateGroup(TestGroup):
         """Update an existing user."""
         self.test_runner.run_user_attribute_update()
 
+    @test(depends_on=[update_user_attributes])
+    def recreate_user_with_no_access(self):
+        """Re-create a renamed user with no access rights."""
+        self.test_runner.run_user_recreate_with_no_access()
+
     @test
     def show_nonexisting_user(self):
         """Ensure show on non-existing user fails."""
@@ -264,4 +269,4 @@ class UserActionsInstDeleteWaitGroup(TestGroup):
     @test
     def wait_for_delete_initialized_instance(self):
         """Wait for the initialized instance to delete."""
-        self.instance_create_runner.run_wait_for_error_init_delete()
+        self.instance_create_runner.run_wait_for_init_delete()

@@ -16,7 +16,6 @@
 """
 Manages packages on the Guest VM.
 """
-import commands
 import os
 import re
 import subprocess
@@ -24,7 +23,6 @@ from tempfile import NamedTemporaryFile
 
 from oslo_log import log as logging
 import pexpect
-import six
 
 from trove.common import exception
 from trove.common.exception import ProcessExecutionError
@@ -38,6 +36,23 @@ OK = 0
 RUN_DPKG_FIRST = 1
 REINSTALL_FIRST = 2
 CONFLICT_REMOVED = 3
+
+
+def getoutput(*cmd):
+    """Get the stdout+stderr of a command, ignore errors.
+
+    Similar to commands.getstatusoutput(cmd)[1] of Python 2.
+    """
+
+    try:
+        proc = subprocess.Popen(cmd,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT)
+    except OSError:
+        # ignore errors like program not found
+        return b''
+    stdout = proc.communicate()[0]
+    return stdout
 
 
 class PkgAdminLockError(exception.TroveError):
@@ -80,7 +95,7 @@ class PkgConfigureError(exception.TroveError):
     pass
 
 
-class BasePackagerMixin:
+class BasePackagerMixin(object):
 
     def pexpect_kill_proc(self, child):
         child.delayafterclose = 1
@@ -191,9 +206,7 @@ class RedhatPackagerMixin(BasePackagerMixin):
 
     def pkg_is_installed(self, packages):
         packages = packages if isinstance(packages, list) else packages.split()
-        cmd = "rpm -qa"
-        p = commands.getstatusoutput(cmd)
-        std_out = p[1]
+        std_out = getoutput("rpm", "-qa")
         for pkg in packages:
             found = False
             for line in std_out.split("\n"):
@@ -205,12 +218,11 @@ class RedhatPackagerMixin(BasePackagerMixin):
         return True
 
     def pkg_version(self, package_name):
-        cmd_list = ["rpm", "-qa", "--qf", "'%{VERSION}-%{RELEASE}\n'",
-                    package_name]
-        p = commands.getstatusoutput(' '.join(cmd_list))
+        std_out = getoutput("rpm", "-qa",
+                            "--qf", "'%{VERSION}-%{RELEASE}\n'",
+                            package_name)
         # Need to capture the version string
         # check the command output
-        std_out = p[1]
         for line in std_out.split("\n"):
             regex = re.compile("[0-9.]+-.*")
             matches = regex.match(line)
@@ -255,9 +267,7 @@ class DebianPackagerMixin(BasePackagerMixin):
                 package_name = m.group(1)
             else:
                 package_name = package
-            command = "sudo debconf-show %s" % package_name
-            p = commands.getstatusoutput(command)
-            std_out = p[1]
+            std_out = getoutput("sudo", "debconf-show", package_name)
             for line in std_out.split("\n"):
                 for selection, value in config_opts.items():
                     m = re.match(".* (.*/%s):.*" % selection, line)
@@ -369,8 +379,7 @@ class DebianPackagerMixin(BasePackagerMixin):
             self._fix_package_selections(packages, config_opts)
 
     def pkg_version(self, package_name):
-        p = commands.getstatusoutput("apt-cache policy %s" % package_name)
-        std_out = p[1]
+        std_out = getoutput("apt-cache", "policy", package_name)
         for line in std_out.split("\n"):
             m = re.match("\s+Installed: (.*)", line)
             if m:
@@ -414,18 +423,10 @@ class DebianPackagerMixin(BasePackagerMixin):
                                            % package_name)
 
 
-class BasePackage(type):
-
-    def __new__(meta, name, bases, dct):
-        if (operating_system.get_os() in [operating_system.REDHAT,
-                                          operating_system.ORACLE]):
-            bases += (RedhatPackagerMixin, )
-        else:
-            # The default is debian
-            bases += (DebianPackagerMixin,)
-        return super(BasePackage, meta).__new__(meta, name, bases, dct)
-
-
-@six.add_metaclass(BasePackage)
-class Package(object):
-    pass
+if operating_system.get_os() in [operating_system.REDHAT,
+                                 operating_system.ORACLE]:
+    class Package(RedhatPackagerMixin):
+        pass
+else:
+    class Package(DebianPackagerMixin):
+        pass

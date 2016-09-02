@@ -172,8 +172,7 @@ class API(object):
                    slave_of_id=slave_of_id,
                    cluster_config=cluster_config,
                    volume_type=volume_type,
-                   modules=modules,
-                   locality=locality)
+                   modules=modules, locality=locality)
 
     def create_cluster(self, cluster_id):
         LOG.debug("Making async call to create cluster %s " % cluster_id)

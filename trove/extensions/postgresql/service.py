@@ -22,9 +22,8 @@ class PostgreSQLRootController(DefaultRootController):
 
     def _find_root_user(self, context, instance_id):
         user = guest_models.PostgreSQLRootUser()
-        # TODO(pmalik): This should be ultimately using Postgres model
-        # extensions. MySQL extensions will work for now, but may lead to
-        # future bugs as it makes use of the 'host' field which
-        # does not exist/has different meaning in Postgres.
+        # This is currently using MySQL model.
+        # MySQL extension *should* work for now, but may lead to
+        # future bugs (incompatible input validation, unused field etc).
         return models.User.load(
             context, instance_id, user.name, user.host, root_user=True)

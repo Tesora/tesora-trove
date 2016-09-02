@@ -15,7 +15,6 @@
 
 from hashlib import md5
 from mock import MagicMock, patch
-import httplib
 import json
 import os
 import socket
@@ -24,6 +23,8 @@ import swiftclient.client as swift_client
 import uuid
 
 from oslo_log import log as logging
+import six
+from six.moves import http_client
 from swiftclient import client as swift
 
 from trove.common.i18n import _  # noqa
@@ -44,7 +45,9 @@ class FakeSwiftClient(object):
 
 class FakeSwiftConnection(object):
     """Logging calls instead of executing."""
-    MANIFEST_HEADER_KEY = 'X-Object-Manifest'
+    MANIFEST_QUERY_STRING_PUT = 'multipart-manifest=put'
+    MANIFEST_QUERY_STRING_DELETE = 'multipart-manifest=delete'
+    COPY_OBJECT_HEADER_KEY = 'X-Copy-From'
     url = 'http://mockswift/v1'
 
     def __init__(self, *args, **kwargs):
@@ -77,10 +80,10 @@ class FakeSwiftConnection(object):
         LOG.debug("fake head_container(%s)" % container)
         if container == 'missing_container':
             raise swift.ClientException('fake exception',
-                                        http_status=httplib.NOT_FOUND)
+                                        http_status=http_client.NOT_FOUND)
         elif container == 'unauthorized_container':
             raise swift.ClientException('fake exception',
-                                        http_status=httplib.UNAUTHORIZED)
+                                        http_status=http_client.UNAUTHORIZED)
         elif container == 'socket_error_on_head':
             raise socket.error(111, 'ECONNREFUSED')
         pass
@@ -101,12 +104,15 @@ class FakeSwiftConnection(object):
         LOG.debug("fake put_container(%(container)s, %(name)s)" %
                   {'container': container, 'name': name})
         checksum = md5()
-        if self.manifest_prefix and self.manifest_name == name:
-            for object_name in sorted(self.container_objects.iterkeys()):
+        if self.manifest_name == name:
+            for object_name in sorted(self.container_objects):
                 object_checksum = md5(self.container_objects[object_name])
                 # The manifest file etag for a HEAD or GET is the checksum of
                 # the concatenated checksums.
-                checksum.update(object_checksum.hexdigest())
+                if six.PY3:
+                    checksum.update(object_checksum.hexdigest().encode())
+                else:
+                    checksum.update(object_checksum.hexdigest())
             # this is included to test bad swift segment etags
             if name.startswith("bad_manifest_etag_"):
                 return {'etag': '"this_is_an_intentional_bad_manifest_etag"'}
@@ -163,18 +169,26 @@ class FakeSwiftConnection(object):
         if container == 'socket_error_on_put':
             raise socket.error(111, 'ECONNREFUSED')
         headers = kwargs.get('headers', {})
+        query_string = kwargs.get('query_string', '')
         object_checksum = md5()
-        if self.MANIFEST_HEADER_KEY in headers:
+        if query_string == self.MANIFEST_QUERY_STRING_PUT:
             # the manifest prefix format is <container>/<prefix> where
             # container is where the object segments are in and prefix is the
             # common prefix for all segments.
-            self.manifest_prefix = headers.get(self.MANIFEST_HEADER_KEY)
             self.manifest_name = name
-            object_checksum.update(contents)
+            if isinstance(contents, six.text_type):
+                object_checksum.update(contents.encode('utf-8'))
+            else:
+                object_checksum.update(contents)
+        elif self.COPY_OBJECT_HEADER_KEY in headers:
+            # this is a copy object operation
+            source_path = headers.get(self.COPY_OBJECT_HEADER_KEY)
+            source_name = source_path.split('/')[1]
+            self.container_objects[name] = self.container_objects[source_name]
         else:
             if hasattr(contents, 'read'):
                 chunk_size = 128
-                object_content = ""
+                object_content = b""
                 chunk = contents.read(chunk_size)
                 while chunk:
                     object_content += chunk

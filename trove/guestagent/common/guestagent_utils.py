@@ -17,6 +17,10 @@ import collections
 import os
 import re
 
+import six
+
+from trove.common import pagination
+
 
 def update_dict(updates, target):
     """Recursively update a target dictionary with given updates.
@@ -38,7 +42,7 @@ def update_dict(updates, target):
         return target
 
     if updates is not None:
-        for k, v in updates.iteritems():
+        for k, v in updates.items():
             if isinstance(v, collections.Mapping):
                 target[k] = update_dict(v, target.get(k, {}))
             else:
@@ -103,7 +107,7 @@ def build_file_path(base_dir, base_name, *extensions):
 def to_bytes(value):
     """Convert numbers with a byte suffix to bytes.
     """
-    if isinstance(value, basestring):
+    if isinstance(value, six.string_types):
         pattern = re.compile('^(\d+)([K,M,G]{1})$')
         match = pattern.match(value)
         if match:
@@ -115,6 +119,24 @@ def to_bytes(value):
                 'G': 1024 ** 3,
             }[suffix]
 
-            return str(int(round(factor * float(value))))
+            return int(round(factor * float(value)))
 
     return value
+
+
+def paginate_list(li, limit=None, marker=None, include_marker=False):
+    """Paginate a list of objects based on the name attribute.
+    :returns:           Page sublist and a marker (name of the last item).
+    """
+    return pagination.paginate_object_list(
+        li, 'name', limit=limit, marker=marker, include_marker=include_marker)
+
+
+def serialize_list(li, limit=None, marker=None, include_marker=False):
+    """
+    Paginate (by name) and serialize a given object list.
+    :returns:           A serialized and paginated version of a given list.
+    """
+    page, next_name = paginate_list(li, limit=limit, marker=marker,
+                                    include_marker=include_marker)
+    return [item.serialize() for item in page], next_name

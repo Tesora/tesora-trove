@@ -31,8 +31,11 @@ wiki <http://wiki.openstack.org>`_, blogs, or on IRC at
 ``#openstack-trove`` on ``irc.freenode.net``.
 
 
+House Rules
+===========
+
 Code Reviews
-============
+------------
 
 We value your contribution in reviewing code changes submitted by
 others, as this helps increase the quality of the product as well.
@@ -87,60 +90,118 @@ Other references:
    - http://docs.openstack.org/developer/hacking/
    - https://review.openstack.org/#/c/116176/
 
+Approving changes
+-----------------
+
+The Trove project follows the conventions below in approving changes.
+
+1. In general, two core reviewers must +2 a change before it can be
+   approved. In practice this means that coreA can +2 the change, then
+   coreB can +2/+A the change and it can be merged.
+
+2. coreA and coreB should belong to different organizations.
+
+3. For requirements changes proposed by the Proposal Bot or
+   translations proposed by Zanata, a single core reviewer can review
+   and approve the change.
+
+NOTE:
+
+For the remainder of the Newton release cycle, we will relax the above
+conventions. These relaxations apply to the master branch only.
+
+We will adopt a practice of lazy consensus for approving all changes
+and a single core reviewer can review and approve a change. This could
+be done, for example, by allowing all reviewers know that he or she
+intends to approve some change or set of changes if there are no
+additional negative comments by a certain time definite.
+
+We will however still require that at least one other person review
+(and +1 or +2) the change before it can be +A'ed.
+
+Abandoning changes
+------------------
+
+At the Trove mid-cycle held in July 2016 we discussed our process for
+abandoning changes and concluded that we would adopt the following
+process.
+
+1. We will take a more proactive policy towards abandoning changes
+   that have not been merged for a long time.
+
+2. A list of changes proposed for abandonment will be presented at a
+   weekly meeting and if there is no objection, those changes will be
+   abandoned. If the patch sets are associated with bugs, the bugs
+   will be unassigned.
+
+3. In general, changes will be proposed for abandonment if the change
+   being proposed has either been addressed in some other patch set,
+   or if the patch is not being actively maintained by the author and
+   there is no available volunteer who will step up to take over the
+   patch set.
 
 Trove Documentation
 ===================
 
-This repository also contains the following OpenStack manual:
+This repository also contains the Database Services API Reference.
+To build the API reference, run::
 
-* Database Services API Reference
+    $ tox -e api-ref
 
-Prerequisites for Building the Documentation
---------------------------------------------
-`Apache Maven <http://maven.apache.org/>`_ must be installed to build the
-documentation.
+The generated documentation is found::
 
-To install Maven 3 for Ubuntu 12.04 and later, and Debian wheezy and later::
+    api-ref/html/index.html
 
-    apt-get install maven
+Testing
+=======
 
-On Fedora 15 and later::
+Usage for integration testing
+-----------------------------
 
-    yum install maven3
+If you'd like to start up a fake Trove API daemon for integration testing
+with your own tool, run:
 
-Building
---------
-The manuals are in the ``apidocs`` directory.
+.. code-block:: bash
 
-To build a specific guide, look for a ``pom.xml`` file within a subdirectory,
-then run the ``mvn`` command in that directory. For example::
+    $ ./tools/start-fake-mode.sh
 
-    cd apidocs
-    mvn clean generate-sources
+Stop the server with:
 
-The generated PDF documentation file is::
+.. code-block:: bash
 
-    apidocs/target/docbkx/webhelp/cdb-devguide/cdb-devguide-reviewer.pdf
+    $ ./tools/stop-fake-mode.sh
 
-The root of the generated HTML documentation is::
+Tests
+-----
 
-    apidocs/target/docbkx/webhelp/cdb-devguide/content/index.html
+To run all tests and PEP8, run tox, like so:
 
-Testing of changes and building of the manual
-----------------------------------------------
+.. code-block:: bash
 
-Install the python tox package and run ``tox`` from the top-level
-directory to use the same tests that are done as part of our Jenkins
-gating jobs.
+    $ tox
 
-If you like to run individual tests, run:
+To run just the tests for Python 2.7, run:
 
- * ``tox -e checkniceness`` - to run the niceness tests
- * ``tox -e checksyntax`` - to run syntax checks
- * ``tox -e checkdeletions`` - to check that no deleted files are referenced
- * ``tox -e checkbuild`` - to actually build the manual
+.. code-block:: bash
 
-tox will use the `openstack-doc-tools package
-<https://github.com/openstack/openstack-doc-tools>`_ for execution of
-these tests. openstack-doc-tools has a requirement on maven for the
-build check.
+    $ tox -epy27
+
+To run just PEP8, run:
+
+.. code-block:: bash
+
+    $ tox -epep8
+
+To generate a coverage report,run:
+
+.. code-block:: bash
+
+    $ tox -ecover
+
+(note: on some boxes, the results may not be accurate unless you run it twice)
+
+If you want to run only the tests in one file you can use testtools e.g.
+
+.. code-block:: bash
+
+    $ python -m testtools.run trove.tests.unittests.python.module.path

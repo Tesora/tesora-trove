@@ -80,9 +80,11 @@ class Manager(manager.Manager):
 
     def guest_log_enable(self, context, log_name, disable):
         if disable:
+            LOG.debug("Disabling system log.")
             self.app.set_logging_level('OFF')
         else:
             log_level = CONF.get(self.manager_name).get('system_log_level')
+            LOG.debug("Enabling system log with logging level: %s" % log_level)
             self.app.set_logging_level(log_level)
 
         return False

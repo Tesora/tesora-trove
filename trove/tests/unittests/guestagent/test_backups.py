@@ -16,6 +16,7 @@ import mock
 import os
 
 from mock import ANY, DEFAULT, Mock, patch, PropertyMock
+from oslo_utils import encodeutils
 from testtools.testcase import ExpectedException
 from trove.common import exception
 from trove.common import utils
@@ -134,7 +135,8 @@ DB2BACKUP_RESTORE = "sudo tar xPf -"
 COUCHDB_BACKUP_CMD = "sudo tar cpPf - /var/lib/couchdb"
 COUCHDB_RESTORE_CMD = "sudo tar xPf -"
 
-MYSQLEE_BACKUP_KEY = hashlib.sha256('default_aes_cbc_key').hexdigest()
+MYSQLEE_BACKUP_KEY = hashlib.sha256(encodeutils.to_utf8(
+    'default_aes_cbc_key')).hexdigest()
 MYSQLEE_BACKUP_CMD = ("sudo mysqlbackup --with-timestamp --backup-image=-"
                       " --backup_dir=/tmp/mysqlbackup --compress "
                       " --user=os_admin --password='password'"
@@ -1028,7 +1030,6 @@ class RedisRestoreTests(trove_testtools.TestCase):
 
 
 class PostgresqlBackupTests(trove_testtools.TestCase):
-    # TODO(atomic77) More tests for error scenarios, edge cases and timelines
 
     def setUp(self):
         super(PostgresqlBackupTests, self).setUp()

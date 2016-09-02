@@ -19,13 +19,13 @@ Module dedicated functions/classes dealing with rate limiting requests.
 
 import collections
 import copy
-import httplib
 import math
 import re
 import time
 
 from oslo_serialization import jsonutils
 from oslo_utils import importutils
+from six.moves import http_client
 import webob.dec
 import webob.exc
 
@@ -396,10 +396,10 @@ class WsgiLimiterProxy(object):
         self.limiter_address = limiter_address
 
     def check_for_delay(self, verb, path, username=None):
-        body = jsonutils.dumps({"verb": verb, "path": path})
+        body = jsonutils.dump_as_bytes({"verb": verb, "path": path})
         headers = {"Content-Type": "application/json"}
 
-        conn = httplib.HTTPConnection(self.limiter_address)
+        conn = http_client.HTTPConnection(self.limiter_address)
 
         if username:
             conn.request("POST", "/%s" % (username), body, headers)
