@@ -411,5 +411,5 @@ class CouchbaseClusterActionsRunner(ClusterActionsRunner):
         raise SkipTest("Operation is currently not supported.")
 
 
-class Couchbase_4ClusterActionsRunner(ClusterActionsRunner):
+class Couchbase_4ClusterActionsRunner(CouchbaseClusterActionsRunner):
     pass
