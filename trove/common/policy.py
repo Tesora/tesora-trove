@@ -63,10 +63,10 @@ def __authorize(context, rule, target=None):
                         e.g. ``{'project_id': context.project_id}``
        :type target     dict
 
-       :raises:         :class:`UnauthorizedRequest` if verification fails.
+       :raises:         :class:`PolicyNotAuthorized` if verification fails.
 
     """
     target = target or {'tenant': context.tenant}
     return get_enforcer().enforce(
         rule, target, context.to_dict(), do_raise=True,
-        exc=trove_exceptions.UnauthorizedRequest)
+        exc=trove_exceptions.PolicyNotAuthorized)
