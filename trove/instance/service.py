@@ -289,6 +289,8 @@ class InstanceController(wsgi.Controller):
         except ValueError as ve:
             raise exception.BadRequest(msg=ve)
 
+        modules = body['instance'].get('modules')
+
         # The following operations have their own API calls.
         # We need to make sure the same policies are enforced when
         # creating an instance.
@@ -296,7 +298,9 @@ class InstanceController(wsgi.Controller):
         # allowed, it should not be possible to create a new instance with the
         # group attached either
         if configuration:
-            policy.authorize_on_tenant(context, 'configuration:update')
+            policy.authorize_on_tenant(context, 'instance:update')
+        if modules:
+            policy.authorize_on_tenant(context, 'instance:module_apply')
         if users:
             policy.authorize_on_tenant(
                 context, 'instance:extension:user:create')
@@ -325,7 +329,6 @@ class InstanceController(wsgi.Controller):
                                            # also check for older name
                                            body['instance'].get('slave_of'))
         replica_count = body['instance'].get('replica_count')
-        modules = body['instance'].get('modules')
         locality = body['instance'].get('locality')
         if locality:
             locality_domain = ['affinity', 'anti-affinity']
