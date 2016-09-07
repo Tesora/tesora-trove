@@ -97,13 +97,12 @@ class Couchbase4Admin(community_service.CouchbaseAdmin):
         LOG.debug("Rebalancing the cluster.")
         options = {}
         if added_nodes:
-            for ip in added_nodes:
-                options.update({'server-add': ip,
-                                'server-add-username': self._user.name,
-                                'server-add-password': self._user.password,
-                                'services': ','.join(enabled_services)})
+            options.update({'server-add': added_nodes,
+                            'server-add-username': self._user.name,
+                            'server-add-password': self._user.password,
+                            'services': ','.join(enabled_services)})
         if removed_nodes:
-            options.update({'server-remove': ip for ip in removed_nodes})
+            options.update({'server-remove': removed_nodes})
 
         if options:
             self._run_couchbase_command('rebalance', options)
