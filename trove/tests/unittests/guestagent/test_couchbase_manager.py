@@ -209,6 +209,18 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
             set(['--bucket=bucket1', '--bucket-replica=0', '--wait']),
             set(opts))
 
+        opts = app.build_admin()._build_command_options(
+            {'server-add': ['0.0.0.0', '1.2.3.4'],
+             'server-add-username': 'user',
+             'server-add-password': 'password',
+             'server-remove': ['8.8.8.8']})
+        self.assertEqual(
+            set(['--server-add=0.0.0.0', '--server-add=1.2.3.4',
+                 '--server-add-username=user',
+                 '--server-add-password=password',
+                 '--server-remove=8.8.8.8']),
+            set(opts))
+
     def test_parse_bucket_list(self):
         app = couch_service.CouchbaseApp(Mock())
         bucket_list = app.build_admin()._parse_bucket_list(

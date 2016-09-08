@@ -132,6 +132,9 @@ class CouchbaseClusterTasks(task_models.ClusterTasks):
             cluster_node_ids = self.find_cluster_node_ids(cluster_id)
             cluster_nodes = self.load_cluster_nodes(context, cluster_node_ids)
 
+            old_nodes = [node for node in cluster_nodes
+                         if node['id'] not in new_instance_ids]
+
             # Rebalance the cluster via one of the existing nodes.
             # Clients can continue to store and retrieve information and
             # do not need to be aware that a rebalance operation is taking
@@ -139,7 +142,7 @@ class CouchbaseClusterTasks(task_models.ClusterTasks):
             # The new nodes are marked active only if the rebalancing
             # completes.
             try:
-                coordinator = cluster_nodes[0]
+                coordinator = old_nodes[0]
                 self._add_nodes(coordinator, added_nodes)
                 LOG.debug("Cluster configuration finished successfully.")
             except Exception:
