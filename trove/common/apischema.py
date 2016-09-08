@@ -537,7 +537,8 @@ backup = {
                     "description": non_empty_string,
                     "instance": uuid,
                     "name": non_empty_string,
-                    "parent_id": backup_id
+                    "parent_id": backup_id,
+                    "incremental": boolean_string
                 }
             }
         }
