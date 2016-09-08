@@ -255,11 +255,6 @@ class UnprocessableEntity(TroveError):
     message = _("Unable to process the contained request.")
 
 
-class UnauthorizedRequest(TroveError):
-
-    message = _("Unauthorized request.")
-
-
 class CannotResizeToSameSize(TroveError):
 
     message = _("No change was requested in the size of the instance.")
@@ -326,6 +321,11 @@ class PollTimeOut(TroveError):
 class Forbidden(TroveError):
 
     message = _("User does not have admin privileges.")
+
+
+class PolicyNotAuthorized(Forbidden):
+
+    message = _("Policy doesn't allow %(action)s to be performed.")
 
 
 class InvalidModelError(TroveError):
@@ -636,3 +636,8 @@ class ImageNotFound(NotFound):
 class DatastoreVersionAlreadyExists(BadRequest):
 
     message = _("A datastore version with the name '%(name)s' already exists.")
+
+
+class LogAccessForbidden(Forbidden):
+
+    message = _("You must be admin to %(action)s log '%(log)s'.")

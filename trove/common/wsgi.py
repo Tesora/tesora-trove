@@ -321,6 +321,8 @@ class Controller(object):
             exception.BackupTooLarge,
             exception.ModuleAccessForbidden,
             exception.ModuleAppliedToInstance,
+            exception.PolicyNotAuthorized,
+            exception.LogAccessForbidden,
         ],
         webob.exc.HTTPBadRequest: [
             exception.InvalidModelError,
