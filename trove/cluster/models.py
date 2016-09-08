@@ -216,9 +216,15 @@ class Cluster(object):
     @property
     def server_group(self):
         # The server group could be empty, so we need a flag to cache it
-        if not self._server_group_loaded:
-            self._server_group = self.instances[0].server_group
-        self._server_group_loaded = True
+        if not self._server_group_loaded and self.instances:
+            self._server_group = None
+            # Not all the instances may have the server group loaded, so
+            # check them all
+            for instance in self.instances:
+                if instance.server_group:
+                    self._server_group = instance.server_group
+                    break
+            self._server_group_loaded = True
         return self._server_group
 
     @classmethod
