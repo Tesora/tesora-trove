@@ -181,18 +181,9 @@ class OracleClient(object):
     def __enter__(self):
         os.environ['ORACLE_HOME'] = self.oracle_home
         os.environ['ORACLE_SID'] = self.sid
-        if self.use_service:
-            ora_dsn = cx_Oracle.makedsn(self.hostname,
-                                        self.port,
-                                        service_name=self.sid)
-        else:
-            ora_dsn = cx_Oracle.makedsn(self.hostname,
-                                        self.port,
-                                        self.sid)
-        LOG.debug("Connecting to Oracle with DSN: %s" % ora_dsn)
+        LOG.debug("Connecting to Oracle with SID: %s" % self.sid)
         self.conn = cx_Oracle.connect(user=self.user_id,
                                       password=self.password,
-                                      dsn=ora_dsn,
                                       mode=self.mode)
         return self.conn
 
