@@ -16,16 +16,16 @@
 import jsonschema
 from testtools.matchers import Is
 
+from trove.extensions.common.service import RoutingUserController
 from trove.extensions.mysql.service import SchemaController
 from trove.extensions.mysql.service import UserAccessController
-from trove.extensions.mysql.service import UserController
 from trove.tests.unittests import trove_testtools
 
 
 class TestUserController(trove_testtools.TestCase):
     def setUp(self):
         super(TestUserController, self).setUp()
-        self.controller = UserController()
+        self.controller = RoutingUserController()
 
     def test_get_create_schema(self):
         body = {'users': [{'name': 'test', 'password': 'test'}]}

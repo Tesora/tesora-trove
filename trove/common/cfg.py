@@ -638,6 +638,9 @@ mysql_opts = [
                 help='Allows backup of single instance in the cluster.'),
     cfg.BoolOpt('enable_saslauthd', default=False,
                 help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # MySQL EE (mostly uses same options as MySQL community edition).
@@ -763,6 +766,9 @@ oracle_ra_opts = [
                 help='Allows backup of single instance in the cluster.'),
     cfg.BoolOpt('enable_saslauthd', default=False,
                 help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # Oracle RAC
@@ -860,6 +866,9 @@ oracle_rac_opts = [
                 help='Allows backup of single instance in the cluster.'),
     cfg.BoolOpt('enable_saslauthd', default=False,
                 help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # Oracle
@@ -963,6 +972,9 @@ oracle_opts = [
                 help='Allows backup of single instance in the cluster.'),
     cfg.BoolOpt('enable_saslauthd', default=False,
                 help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # Percona
@@ -1051,6 +1063,9 @@ percona_opts = [
                 help='Allows backup of single instance in the cluster.'),
     cfg.BoolOpt('enable_saslauthd', default=False,
                 help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # Percona XtraDB Cluster
@@ -1143,6 +1158,9 @@ pxc_opts = [
                 help='Allows backup of single instance in the cluster.'),
     cfg.BoolOpt('enable_saslauthd', default=False,
                 help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 
@@ -1310,6 +1328,10 @@ cassandra_opts = [
                 help='Allows backup of single instance in the cluster.'),
     cfg.BoolOpt('enable_saslauthd', default=False,
                 help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.cassandra.service.'
+               'CassandraUserController',
+               help='User controller implementation.'),
 ]
 
 cassandra_3_group = cfg.OptGroup(
@@ -1436,6 +1458,10 @@ couchbase_opts = [
                 help='Allows backup of single instance in the cluster.'),
     cfg.BoolOpt('enable_saslauthd', default=False,
                 help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.couchbase.service.'
+               'CouchbaseUserController',
+               help='User controller implementation.'),
 ]
 
 couchbase_4_group = cfg.OptGroup(
@@ -1539,6 +1565,9 @@ mongodb_opts = [
                 help='Allows backup of single instance in the cluster.'),
     cfg.BoolOpt('enable_saslauthd', default=False,
                 help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # PostgreSQL
@@ -1615,6 +1644,9 @@ postgresql_opts = [
                 help='Allows backup of single instance in the cluster.'),
     cfg.BoolOpt('enable_saslauthd', default=False,
                 help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # EDB (mostly uses same options as Postgresql community edition).
@@ -1724,6 +1756,9 @@ couchdb_opts = [
                 help='Allows backup of single instance in the cluster.'),
     cfg.BoolOpt('enable_saslauthd', default=False,
                 help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # Vertica
@@ -1797,6 +1832,9 @@ vertica_opts = [
                 help='Allows backup of single instance in the cluster.'),
     cfg.BoolOpt('enable_saslauthd', default=False,
                 help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # DB2
@@ -1860,6 +1898,9 @@ db2_opts = [
                 help='Allows backup of single instance in the cluster.'),
     cfg.BoolOpt('enable_saslauthd', default=False,
                 help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # MariaDB
@@ -1966,6 +2007,9 @@ mariadb_opts = [
                 help='Allows backup of single instance in the cluster.'),
     cfg.BoolOpt('enable_saslauthd', default=False,
                 help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # RPC version groups

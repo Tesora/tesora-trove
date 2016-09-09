@@ -30,6 +30,9 @@ from trove.common.utils import correct_id_with_req
 from trove.common import wsgi
 from trove.extensions.common.service import DefaultRootController
 from trove.extensions.common.service import ExtensionController
+from trove.extensions.common.service import UserController
+from trove.extensions.mysql.common import get_user_identity
+from trove.extensions.mysql.common import parse_users
 from trove.extensions.mysql.common import populate_users
 from trove.extensions.mysql.common import populate_validated_databases
 from trove.extensions.mysql.common import unquote_user_host
@@ -43,17 +46,13 @@ import_class = importutils.import_class
 CONF = cfg.CONF
 
 
-class UserController(ExtensionController):
-    """Controller for instance functionality."""
-    schemas = apischema.user
+class MySQLUserController(UserController):
 
-    @classmethod
-    def get_schema(cls, action, body):
-        action_schema = super(UserController, cls).get_schema(action, body)
-        if 'update_all' == action:
-            update_type = list(body.keys())[0]
-            action_schema = action_schema.get(update_type, {})
-        return action_schema
+    def parse_users_from_request(self, users):
+        return parse_users(users)
+
+    def get_user_id(self, user_model):
+        return get_user_identity(user_model)
 
     def index(self, req, tenant_id, instance_id):
         """Return all users."""

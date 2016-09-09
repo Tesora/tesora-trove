@@ -242,6 +242,17 @@ class UserAlreadyExists(BadRequest):
     message = _('A user with the name "%(name)s" already exists.')
 
 
+class ReservedUserId(BadRequest):
+
+    message = _('Cannot access or modify reserved user "%(name)s".')
+
+
+class DuplicateUserId(BadRequest):
+
+    message = _('All created users must be unique. '
+                'User "%(name)s" appears multiple times.')
+
+
 class InstanceAssignedToConfiguration(BadRequest):
 
     message = _('A configuration group cannot be deleted if it is '
