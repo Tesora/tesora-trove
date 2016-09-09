@@ -111,7 +111,7 @@ class Manager(manager.OracleManager):
                     db = models.ValidatedMySQLDatabase()
                     # no database name provided so default to first 8 valid
                     # characters of instance name (alphanumeric, no '_')
-                    db.name = re.sub(r'[\W_]', '', CONF.guest_name[:8])
+                    db.name = re.sub(r'[\W_]', '', CONF.guest_name)[:8]
                     database = [db.serialize()]
                 self.admin.create_database(database)
 
