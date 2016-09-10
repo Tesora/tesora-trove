@@ -15,6 +15,7 @@
 
 import datetime
 import os
+import proboscis
 import time as timer
 
 from oslo_config.cfg import NoSuchOptError
@@ -159,6 +160,19 @@ class InstanceTestInfo(object):
         self.user = None  # The user instance who owns the instance.
         self.users = None  # The users created on the instance.
         self.databases = None  # The databases created on the instance.
+
+
+class SkipKnownBug(proboscis.SkipTest):
+    """Skip test failures due to known bug(s).
+    These should get fixed sometime in the future.
+    """
+
+    def __init__(self, *bugs):
+        """
+        :param bugs:    One or more bug references (e.g. link, bug #).
+        """
+        bug_ref = '; '.join(map(str, bugs))
+        super(SkipKnownBug, self).__init__("Known bug: %s" % bug_ref)
 
 
 class TestRunner(object):
