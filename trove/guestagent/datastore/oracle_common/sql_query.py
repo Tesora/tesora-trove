@@ -138,7 +138,37 @@ class Query(OracleSql):
         return " ".join(query)
 
 
+class CreateTablespace(OracleSql):
+
+    def __init__(self, name):
+        self.name = name
+
+    @property
+    def statement(self):
+        return 'CREATE TABLESPACE %s' % self.name
+
+
+class DropTablespace(OracleSql):
+
+    def __init__(self, name, datafiles=False, cascade=False):
+        self.name = name
+        self.datafiles = datafiles
+        self.cascade = cascade
+
+    @property
+    def statement(self):
+        q = "DROP TABLESPACE %s INCLUDING CONTENTS" % self.name
+        if self.datafiles:
+            q += " AND DATAFILES"
+        else:
+            q += " KEEP DATAFILES"
+        if self.cascade:
+            q += " CASCADE CONSTRAINTS"
+        return q
+
+
 class CreateUser(OracleSql):
+    """Creates a user with a default tablespace of the same name."""
 
     def __init__(self, user, password):
         self.user = user
@@ -146,11 +176,13 @@ class CreateUser(OracleSql):
 
     @property
     def log_statement(self):
-        return 'CREATE USER %s IDENTIFIED BY "***"' % (self.user,)
+        return ('CREATE USER {name} IDENTIFIED BY "***" DEFAULT TABLESPACE '
+                '{name}'.format(name=self.user))
 
     @property
     def statement(self):
-        return 'CREATE USER %s IDENTIFIED BY "%s"' % (self.user, self.password)
+        return ('CREATE USER {name} IDENTIFIED BY "{pwd}" DEFAULT TABLESPACE '
+                '{name}'.format(name=self.user, pwd=self.password))
 
 
 class DropUser(OracleSql):

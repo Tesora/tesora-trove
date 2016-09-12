@@ -243,6 +243,12 @@ class OracleAdmin(object):
         # Create the cloud user role for identifying dbaas-managed users
         with self.cursor(db_name) as cursor:
             cursor.execute(str(sql_query.CreateRole(self.cloud_role_name)))
+            privileges = ['CREATE SESSION', 'CREATE TABLE', 'SELECT TABLE',
+                          'UPDATE TABLE', 'INSERT TABLE', 'DROP TABLE',
+                          'CREATE TABLESPACE', 'DROP TABLESPACE',
+                          'CREATE USER', 'DROP USER']
+            cursor.execute(str(sql_query.Grant(self.cloud_role_name,
+                                               privileges)))
 
     def _delete_database(self, db_name):
         pass
@@ -310,12 +316,9 @@ class OracleAdmin(object):
             user = models.OracleUser.deserialize_user(item)
             LOG.debug("Creating user %s." % user.name)
             with self.cursor(self.database_name) as cursor:
+                cursor.execute(str(sql_query.CreateTablespace(user.name)))
                 cursor.execute(str(
                     sql_query.CreateUser(user.name, user.password)))
-                roles = ['CREATE SESSION', 'CREATE TABLE', 'SELECT ANY TABLE',
-                         'UPDATE ANY TABLE', 'INSERT ANY TABLE',
-                         'DROP ANY TABLE']
-                cursor.execute(str(sql_query.Grant(user.name, roles)))
                 cursor.execute(str(
                     sql_query.Grant(user.name, 'UNLIMITED TABLESPACE')))
                 cursor.execute(str(
@@ -328,6 +331,10 @@ class OracleAdmin(object):
         with self.cursor(self.database_name) as cursor:
             cursor.execute(str(
                 sql_query.DropUser(oracle_user.name, cascade=True)))
+            cursor.execute(str(
+                sql_query.DropTablespace(oracle_user.name,
+                                         datafiles=True,
+                                         cascade=True)))
 
     def list_users(self, limit=None, marker=None, include_marker=False):
         LOG.debug("Listing users (limit of %s, marker %s, "
