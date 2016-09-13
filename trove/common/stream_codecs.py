@@ -473,7 +473,7 @@ class KeyValueCodec(StreamCodec):
             return False
         except ValueError:
             pass
-        if self._big_ints and re.match(r'\d+[kKmMgG]', value):
+        if self._big_ints and re.match(r'\d+[kKmMgGtTpP]', value):
             return False
         return True
 
