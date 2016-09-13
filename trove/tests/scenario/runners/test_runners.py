@@ -15,6 +15,7 @@
 
 import datetime
 import os
+import proboscis
 import time as timer
 
 from oslo_config.cfg import NoSuchOptError
@@ -39,6 +40,19 @@ TEST_RUNNERS_NS = 'trove.tests.scenario.runners'
 TEST_HELPERS_NS = 'trove.tests.scenario.helpers'
 TEST_HELPER_MODULE_NAME = 'test_helper'
 TEST_HELPER_BASE_NAME = 'TestHelper'
+
+
+class SkipKnownBug(proboscis.SkipTest):
+    """Skip test failures due to known bug(s).
+    These should get fixed sometime in the future.
+    """
+
+    def __init__(self, *bugs):
+        """
+        :param bugs:    One or more bug references (e.g. link, bug #).
+        """
+        bug_ref = '; '.join(map(str, bugs))
+        super(SkipKnownBug, self).__init__("Known bug: %s" % bug_ref)
 
 
 class RunnerFactory(object):
@@ -669,12 +683,14 @@ class TestRunner(object):
                 "Creating a helper database '%s' on instance: %s"
                 % (database_def['name'], instance_id))
             self.auth_client.databases.create(instance_id, [database_def])
+            self.wait_for_database_create(instance_id, [database_def])
 
         if user_def:
             self.report.log(
                 "Creating a helper user '%s:%s' on instance: %s"
                 % (user_def['name'], user_def['password'], instance_id))
             self.auth_client.users.create(instance_id, [user_def])
+            self.wait_for_user_create(instance_id, [user_def])
 
         if root_def:
             # Not enabling root on a single instance of the cluster here
@@ -710,6 +726,48 @@ class TestRunner(object):
         return (database_def,
                 _get_credentials(credentials),
                 _get_credentials(credentials_root))
+
+    def wait_for_user_create(self, instance_id, expected_user_defs):
+        expected_user_names = {user_def['name']
+                               for user_def in expected_user_defs}
+        self.report.log("Waiting for all created users to appear in the "
+                        "listing: %s" % expected_user_names)
+
+        def _all_exist():
+            all_users = self.get_user_names(instance_id)
+            return all(usr in all_users for usr in expected_user_names)
+
+        try:
+            poll_until(_all_exist, time_out=self.GUEST_CAST_WAIT_TIMEOUT_SEC)
+            self.report.log("All users now exist on the instance.")
+        except exception.PollTimeOut:
+            self.fail("Some users were not created within the poll "
+                      "timeout: %ds" % self.GUEST_CAST_WAIT_TIMEOUT_SEC)
+
+    def get_user_names(self, instance_id):
+        full_list = self.auth_client.users.list(instance_id)
+        return {user.name: user for user in full_list}
+
+    def wait_for_database_create(self, instance_id, expected_database_defs):
+        expected_db_names = {db_def['name']
+                             for db_def in expected_database_defs}
+        self.report.log("Waiting for all created databases to appear in the "
+                        "listing: %s" % expected_db_names)
+
+        def _all_exist():
+            all_dbs = self.get_db_names(instance_id)
+            return all(db in all_dbs for db in expected_db_names)
+
+        try:
+            poll_until(_all_exist, time_out=self.GUEST_CAST_WAIT_TIMEOUT_SEC)
+            self.report.log("All databases now exist on the instance.")
+        except exception.PollTimeOut:
+            self.fail("Some databases were not created within the poll "
+                      "timeout: %ds" % self.GUEST_CAST_WAIT_TIMEOUT_SEC)
+
+    def get_db_names(self, instance_id):
+        full_list = self.auth_client.databases.list(instance_id)
+        return {database.name: database for database in full_list}
 
 
 class CheckInstance(AttrCheck):

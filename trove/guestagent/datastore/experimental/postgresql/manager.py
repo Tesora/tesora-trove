@@ -23,6 +23,7 @@ from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance as trove_instance
 from trove.common.notification import EndNotification
+from trove.common import utils
 from trove.guestagent import backup
 from trove.guestagent.datastore.experimental.postgresql.service import (
     PgSqlAdmin)
@@ -232,7 +233,6 @@ class Manager(manager.Manager):
             self.app.set_current_admin_user(os_admin)
 
         if snapshot:
-            LOG.info("Found snapshot info: " + str(snapshot))
             self.attach_replica(context, snapshot, snapshot['config'])
 
         self.app.start_db()
@@ -274,7 +274,6 @@ class Manager(manager.Manager):
         pass
 
     def get_replica_context(self, context):
-        LOG.debug("Getting replica context.")
         return self.replication.get_replica_context(self.app)
 
     def get_latest_txn_id(self, context):
@@ -282,7 +281,7 @@ class Manager(manager.Manager):
             lsn = self.app.pg_last_xlog_replay_location()
         else:
             lsn = self.app.pg_current_xlog_location()
-        LOG.info("Last xlog location found: %s" % lsn)
+        LOG.info(_("Last xlog location found: %s") % lsn)
         return lsn
 
     def get_last_txn(self, context):
@@ -297,7 +296,7 @@ class Manager(manager.Manager):
 
         def _wait_for_txn():
             lsn = self.app.pg_last_xlog_replay_location()
-            LOG.info("Last xlog location found: %s" % lsn)
+            LOG.info(_("Last xlog location found: %s") % lsn)
             return lsn >= txn
         try:
             utils.poll_until(_wait_for_txn, time_out=120)
@@ -306,17 +305,14 @@ class Manager(manager.Manager):
                                  "offset to change to '%s'.") % txn)
 
     def cleanup_source_on_replica_detach(self, context, replica_info):
-        LOG.debug("Calling cleanup_source_on_replica_detach")
         self.replication.cleanup_source_on_replica_detach(self.app,
                                                           replica_info)
 
     def demote_replication_master(self, context):
-        LOG.debug("Calling demote_replication_master")
         self.replication.demote_master(self.app)
 
     def get_replication_snapshot(self, context, snapshot_info,
                                  replica_source_config=None):
-        LOG.debug("Getting replication snapshot.")
 
         self.app.enable_backups()
         self.replication.enable_as_master(self.app, None)
