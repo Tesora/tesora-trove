@@ -243,8 +243,7 @@ class OracleAdmin(object):
         # Create the cloud user role for identifying dbaas-managed users
         with self.cursor(db_name) as cursor:
             cursor.execute(str(sql_query.CreateRole(self.cloud_role_name)))
-            privileges = ['CREATE SESSION', 'CREATE TABLE', 'SELECT TABLE',
-                          'UPDATE TABLE', 'INSERT TABLE', 'DROP TABLE',
+            privileges = ['CREATE SESSION', 'CREATE TABLE',
                           'CREATE TABLESPACE', 'DROP TABLESPACE',
                           'CREATE USER', 'DROP USER']
             cursor.execute(str(sql_query.Grant(self.cloud_role_name,

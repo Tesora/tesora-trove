@@ -181,6 +181,8 @@ class OracleRACAdmin(service.OracleAdmin):
         with self.cursor(db_name,
                          user_id='sys',
                          password=sys_pwd) as sys_cursor:
+            sys_cursor.execute(str(sql_query.CreateTablespace(
+                ADMIN_USER_NAME)))
             sys_cursor.execute(str(sql_query.CreateUser(
                 ADMIN_USER_NAME, self.ora_config.admin_password)))
             sys_cursor.execute(str(
