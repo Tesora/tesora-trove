@@ -175,7 +175,7 @@ class Manager(manager.Manager):
         LOG.debug("Calling enable_as_master.")
         self.replication.enable_as_master(self._app, replica_source_config)
 
-    def detach_replica(self, context, for_failover=False):
+    def detach_replica(self, context, for_failover=False, for_promote=False):
         LOG.debug("Detaching replica.")
         replica_info = self.replication.detach_slave(self._app, for_failover)
         return replica_info

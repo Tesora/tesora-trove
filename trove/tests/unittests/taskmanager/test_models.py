@@ -811,13 +811,15 @@ class BuiltInstanceTasksTest(trove_testtools.TestCase):
     def test_detach_replica(self, mock_update_db):
         with patch.object(self.instance_task, 'reset_task_status') as tr_mock:
             self.instance_task.detach_replica(Mock(), True)
-            self.instance_task._guest.detach_replica.assert_called_with(True)
+            self.instance_task._guest.detach_replica.assert_called_with(True,
+                                                                        False)
             mock_update_db.assert_called_with(slave_of_id=None)
             tr_mock.assert_not_called()
 
         with patch.object(self.instance_task, 'reset_task_status') as tr_mock:
             self.instance_task.detach_replica(Mock(), False)
-            self.instance_task._guest.detach_replica.assert_called_with(False)
+            self.instance_task._guest.detach_replica.assert_called_with(False,
+                                                                        False)
             mock_update_db.assert_called_with(slave_of_id=None)
             tr_mock.assert_called_once_with()
 
