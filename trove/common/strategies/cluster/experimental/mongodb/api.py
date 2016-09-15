@@ -158,9 +158,9 @@ class MongoDbCluster(models.Cluster):
                                         nics=nic,
                                         configuration_id=None,
                                         cluster_config=member_config,
-                                        modules=instances[i].get('modules'),
                                         region_name=regions[i],
-                                        locality=locality)
+                                        locality=locality,
+                                        modules=instances[i].get('modules'))
 
         for i in range(num_configsvr):
             instance_name = "%s-%s-%s" % (name, "configsvr", str(i + 1))

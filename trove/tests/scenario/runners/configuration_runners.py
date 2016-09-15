@@ -134,7 +134,7 @@ class ConfigurationRunner(TestRunner):
             description,
             datastore=self.instance_info.dbaas_datastore,
             datastore_version=self.instance_info.dbaas_datastore_version)
-        self.assert_client_code(expected_http_code)
+        self.assert_client_code(expected_http_code, client=self.auth_client)
 
         with TypeCheck('Configuration', result) as configuration:
             configuration.has_field('name', basestring)
@@ -323,7 +323,16 @@ class ConfigurationRunner(TestRunner):
         host = self.get_instance_host(instance_id)
         for name, value in expected_configs.items():
             actual = self.test_helper.get_configuration_value(name, host)
-            self.assert_equal(str(value), str(actual),
+            # Compare floating point numbers as floats to avoid rounding
+            # and precision issues.
+            try:
+                expected_value = float(value)
+                actual_value = float(actual)
+            except ValueError:
+                expected_value = str(value)
+                actual_value = str(actual)
+
+            self.assert_equal(expected_value, actual_value,
                               "Unexpected value of property '%s'" % name)
 
     def run_list_dynamic_inst_conf_groups_after(self):
@@ -473,7 +482,7 @@ class ConfigurationRunner(TestRunner):
 
     def assert_group_delete(self, group_id, expected_http_code):
         self.auth_client.configurations.delete(group_id)
-        self.assert_client_code(expected_http_code)
+        self.assert_client_code(expected_http_code, client=self.auth_client)
 
     def run_delete_non_dynamic_group(self, expected_http_code=202):
         if self.non_dynamic_group_id:
@@ -514,15 +523,14 @@ class ConfigurationRunner(TestRunner):
             datastore_version=self.instance_info.dbaas_datastore_version,
             availability_zone="nova",
             configuration=config_id)
-        self.assert_client_code(200)
+        self.assert_client_code(200, client=self.auth_client)
         self.assert_equal("BUILD", result.status, 'Unexpected inst status')
         return result.id
 
     def run_wait_for_conf_instance(
-            self, expected_states=['BUILD', 'ACTIVE'], expected_http_code=200):
+            self, expected_states=['BUILD', 'ACTIVE']):
         if self.config_inst_id:
-            self.assert_instance_action(self.config_inst_id, expected_states,
-                                        expected_http_code)
+            self.assert_instance_action(self.config_inst_id, expected_states)
             self.create_test_helper_on_instance(self.config_inst_id)
             inst = self.auth_client.instances.get(self.config_inst_id)
             self.assert_equal(self.config_id_for_inst,
@@ -546,7 +554,7 @@ class ConfigurationRunner(TestRunner):
 
     def assert_delete_conf_instance(self, instance_id, expected_http_code):
         self.auth_client.instances.delete(instance_id)
-        self.assert_client_code(expected_http_code)
+        self.assert_client_code(expected_http_code, client=self.auth_client)
 
     def run_wait_for_delete_conf_instance(
             self, expected_last_state=['SHUTDOWN']):

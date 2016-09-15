@@ -29,6 +29,7 @@ from trove.guestagent.datastore.experimental.cassandra import (
 from trove.guestagent.datastore.experimental.db2 import (
     service as db2_service)
 from trove.guestagent.strategies.backup import base as backupBase
+from trove.guestagent.strategies.backup.experimental import db2_impl
 from trove.guestagent.strategies.backup.experimental.postgresql_impl \
     import PgBaseBackupUtil
 from trove.guestagent.strategies.backup.mysql_impl import MySqlApp
@@ -585,6 +586,7 @@ class GuestAgentBackupTest(trove_testtools.TestCase):
                     chown=DEFAULT, chmod=DEFAULT)
     @patch.object(db2_service, 'run_command')
     @patch.object(db2_service.DB2App, 'process_default_dbm_config')
+    @patch.object(db2_impl.DB2Backup, 'list_dbnames')
     def test_backup_encrypted_db2backup_command(self, *mock, **kwargs):
         backupBase.BackupRunner.is_encrypted = True
         backupBase.BackupRunner.encrypt_key = CRYPTO_KEY
@@ -601,6 +603,7 @@ class GuestAgentBackupTest(trove_testtools.TestCase):
                     chown=DEFAULT, chmod=DEFAULT)
     @patch.object(db2_service, 'run_command')
     @patch.object(db2_service.DB2App, 'process_default_dbm_config')
+    @patch.object(db2_impl.DB2Backup, 'list_dbnames')
     def test_backup_not_encrypted_db2backup_command(self, *mock, **kwargs):
         backupBase.BackupRunner.is_encrypted = False
         backupBase.BackupRunner.encrypt_key = CRYPTO_KEY
@@ -1112,6 +1115,9 @@ class DB2BackupTests(trove_testtools.TestCase):
         super(DB2BackupTests, self).setUp()
         self.exec_timeout_patch = patch.object(utils, 'execute_with_timeout')
         self.exec_timeout_patch.start()
+        self.exec_list_database = patch.object(db2_impl.DB2Backup,
+                                               'list_dbnames')
+        self.exec_list_database.start()
         self.backup_runner = utils.import_class(BACKUP_DB2_CLS)
         self.backup_runner_patch = patch.multiple(
             self.backup_runner, _run=DEFAULT,
@@ -1120,6 +1126,7 @@ class DB2BackupTests(trove_testtools.TestCase):
     def tearDown(self):
         super(DB2BackupTests, self).tearDown()
         self.backup_runner_patch.stop()
+        self.exec_list_database.stop()
         self.exec_timeout_patch.stop()
 
     def test_backup_success(self):

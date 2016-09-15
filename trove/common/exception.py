@@ -522,6 +522,11 @@ class InsufficientSpaceForReplica(TroveError):
                 "of data.")
 
 
+class InsufficientSpaceForBackup(TroveError):
+    message = _("The instance has only %(free)sG free while the estimated "
+                "backup size is %(backup_size)sG.")
+
+
 class ReplicaSourceDeleteForbidden(Forbidden):
     message = _("The replica source cannot be deleted without detaching the "
                 "replicas.")
@@ -555,7 +560,7 @@ class ModuleAccessForbidden(Forbidden):
 
 class ModuleInvalid(Forbidden):
 
-    message = _("The module you are applying is invalid: %(reason)s")
+    message = _("The module is invalid: %(reason)s")
 
 
 class ClusterNotFound(NotFound):
