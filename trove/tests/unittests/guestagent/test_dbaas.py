@@ -81,8 +81,6 @@ from trove.guestagent.datastore.service import BaseDbStatus
 from trove.guestagent.db import models
 from trove.guestagent import dbaas as dbaas_sr
 from trove.guestagent.dbaas import get_filesystem_volume_stats
-from trove.guestagent.dbaas import to_gb
-from trove.guestagent.dbaas import to_mb
 from trove.guestagent import pkg
 from trove.guestagent.volume import VolumeDevice
 from trove.instance.models import InstanceServiceStatus
@@ -1608,7 +1606,7 @@ class MySqlAppMockTest(trove_testtools.TestCase):
     @patch.object(mysql_common_service, 'clear_expired_password')
     @patch.object(mysql_common_service.BaseMySqlApp,
                   'get_auth_password', return_value='some_password')
-    def test_secure_with_mycnf_error(self, auth_pwd_mock, clear_pwd_mock, _):
+    def test_secure_with_mycnf_error(self, *args):
         with patch.object(self.mock_client,
                           'execute', return_value=None) as mock_execute:
             with patch.object(operating_system, 'service_discovery',
@@ -1713,30 +1711,6 @@ class InterrogatorTest(trove_testtools.TestCase):
 
     def tearDown(self):
         super(InterrogatorTest, self).tearDown()
-
-    def test_to_gb(self):
-        result = to_gb(123456789)
-        self.assertEqual(0.11, result)
-
-    def test_to_gb_small(self):
-        result = to_gb(2)
-        self.assertEqual(0.01, result)
-
-    def test_to_gb_zero(self):
-        result = to_gb(0)
-        self.assertEqual(0.0, result)
-
-    def test_to_mb(self):
-        result = to_mb(123456789)
-        self.assertEqual(117.74, result)
-
-    def test_to_mb_small(self):
-        result = to_mb(2)
-        self.assertEqual(0.01, result)
-
-    def test_to_mb_zero(self):
-        result = to_mb(0)
-        self.assertEqual(0.0, result)
 
     def test_get_filesystem_volume_stats(self):
         with patch.object(os, 'statvfs', return_value=MockStats):

@@ -715,6 +715,15 @@ class BaseInstance(SimpleInstance):
                  self.id)
         self.update_db(task_status=InstanceTasks.NONE)
 
+    @property
+    def server_group(self):
+        # The server group could be empty, so we need a flag to cache it
+        if not self._server_group_loaded:
+            self._server_group = srv_grp.ServerGroup.load(
+                self.context, self.db_info.compute_instance_id)
+            self._server_group_loaded = True
+        return self._server_group
+
     def get_injected_files(self, datastore_manager):
         injected_config_location = CONF.get('injected_config_location')
         guest_info = CONF.get('guest_info')
@@ -741,15 +750,6 @@ class BaseInstance(SimpleInstance):
                                    "trove-guestagent.conf")] = f.read()
 
         return files
-
-    @property
-    def server_group(self):
-        # The server group could be empty, so we need a flag to cache it
-        if not self._server_group_loaded:
-            self._server_group = srv_grp.ServerGroup.load(
-                self.context, self.db_info.compute_instance_id)
-            self._server_group_loaded = True
-        return self._server_group
 
     def reset_status(self):
         if self.is_building or self.is_error:

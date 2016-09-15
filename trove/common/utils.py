@@ -468,3 +468,29 @@ def retry(expected_exception_cls, retries=3, delay_fun=lambda n: 3 * n):
             return f(*args, **kwargs)
         return wrapper
     return retry_deco
+
+
+def to_gb(bytes):
+    """
+    This was moved from dbaas.py so that it could be used as
+    widely as a utility function. The tests corresponding to
+    this were also moved out from test_dbaas.py to test_utils.py.
+    """
+    if bytes == 0:
+        return 0.0
+    size = bytes / 1024.0 ** 3
+    # Make sure we don't return 0.0 if the size is greater than 0
+    return max(round(size, 2), 0.01)
+
+
+def to_mb(bytes):
+    """
+    This was moved from dbaas.py so that it could be used as
+    widely as a utility function. The tests corresponding to
+    this were also moved out from test_dbaas.py to test_utils.py.
+    """
+    if bytes == 0:
+        return 0.0
+    size = bytes / 1024.0 ** 2
+    # Make sure we don't return 0.0 if the size is greater than 0
+    return max(round(size, 2), 0.01)

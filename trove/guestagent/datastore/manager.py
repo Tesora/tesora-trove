@@ -254,7 +254,7 @@ class Manager(periodic_task.PeriodicTasks):
         return True
 
     #################
-    # Prepare related
+    # Instance related
     #################
     def post_processing_required_for_replication(self, context):
         """Tests whether the given replication strategy requires
@@ -336,12 +336,16 @@ class Manager(periodic_task.PeriodicTasks):
                     LOG.info(_("Creating databases (called from 'prepare')."))
                     self.create_database(context, databases)
                     LOG.info(_('Databases created successfully.'))
+            except Exception as ex:
+                LOG.exception(_("An error occurred creating databases: "
+                                "%s") % ex.message)
+            try:
                 if users:
                     LOG.info(_("Creating users (called from 'prepare')"))
                     self.create_user(context, users)
                     LOG.info(_('Users created successfully.'))
             except Exception as ex:
-                LOG.exception(_("An error occurred creating databases/users: "
+                LOG.exception(_("An error occurred creating users: "
                                 "%s") % ex.message)
 
             # We only enable-root automatically if not restoring a backup
@@ -406,6 +410,18 @@ class Manager(periodic_task.PeriodicTasks):
         LOG.info(_('No post_prepare work has been defined.'))
         pass
 
+    def pre_upgrade(self, context):
+        """Prepares the guest for upgrade, returning a dict to be passed
+        to post_upgrade
+        """
+        return {}
+
+    def post_upgrade(self, context, upgrade_info):
+        """Recovers the guest after the image is upgraded using infomation
+        from the pre_upgrade step
+        """
+        pass
+
     #################
     # Service related
     #################
@@ -424,11 +440,12 @@ class Manager(periodic_task.PeriodicTasks):
         LOG.debug("Getting file system stats for '%s'" % mount_point)
         return dbaas.get_filesystem_volume_stats(mount_point)
 
-    def mount_volume(self, context, device_path=None, mount_point=None):
+    def mount_volume(self, context, device_path=None, mount_point=None,
+                     write_to_fstab=False):
         LOG.debug("Mounting the device %s at the mount point %s." %
                   (device_path, mount_point))
         device = volume.VolumeDevice(device_path)
-        device.mount(mount_point, write_to_fstab=False)
+        device.mount(mount_point, write_to_fstab=write_to_fstab)
 
     def unmount_volume(self, context, device_path=None, mount_point=None):
         LOG.debug("Unmounting the device %s from the mount point %s." %
@@ -455,18 +472,6 @@ class Manager(periodic_task.PeriodicTasks):
             config_contents = configuration['config_contents']
             self.configuration_manager.save_configuration(config_contents)
 
-    def pre_upgrade(self, context):
-        """Prepares the guest for upgrade, returning a dict to be passed
-        to post_upgrade
-        """
-        return {}
-
-    def post_upgrade(self, context, upgrade_info):
-        """Recovers the guest after the image is upgraded using infomation
-        from the pre_upgrade step
-        """
-        pass
-
     #################
     # Cluster related
     #################
@@ -482,8 +487,8 @@ class Manager(periodic_task.PeriodicTasks):
         self.guest_log_context = context
         gl_cache = self.guest_log_cache
         result = filter(None, [gl_cache[log_name].show()
-                        if gl_cache[log_name].exposed else None
-                        for log_name in gl_cache.keys()])
+                               if gl_cache[log_name].exposed else None
+                               for log_name in gl_cache.keys()])
         LOG.info(_("Returning list of logs: %s") % result)
         return result
 
@@ -496,7 +501,7 @@ class Manager(periodic_task.PeriodicTasks):
         if publish and not disable:
             enable = True
         LOG.info(_("Processing guest log '%(log)s' "
-                 "(enable=%(en)s, disable=%(dis)s, "
+                   "(enable=%(en)s, disable=%(dis)s, "
                    "publish=%(pub)s, discard=%(disc)s).") %
                  {'log': log_name, 'en': enable, 'dis': disable,
                   'pub': publish, 'disc': discard})
@@ -570,7 +575,7 @@ class Manager(periodic_task.PeriodicTasks):
                      "no configuration manager defined!") %
                    {'verb': verb, 'log': log_name})
             LOG.error(msg)
-            raise exception.GuestError(msg)
+            raise exception.GuestError(original_message=msg)
 
         return restart_required
 
@@ -583,8 +588,12 @@ class Manager(periodic_task.PeriodicTasks):
             config_man_values = cfg_values
             if section_label:
                 config_man_values = {section_label: cfg_values}
-            self.configuration_manager.apply_system_override(
-                config_man_values, change_id=apply_label)
+            # Applying the changes with a group id lower than the one used
+            # by user overrides. Any user defined value will override these
+            # settings (irrespective of order in which they are applied).
+            # See Bug 1542485
+            self.configuration_manager._apply_override(
+                '10-system-low-priority', apply_label, config_man_values)
         if restart_required:
             self.status.set_status(instance.ServiceStatuses.RESTART_REQUIRED)
         else:

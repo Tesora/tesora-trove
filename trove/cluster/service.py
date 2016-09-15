@@ -185,7 +185,7 @@ class ClusterController(wsgi.Controller):
             modules = None
             if 'volume' in node:
                 volume_size = int(node['volume']['size'])
-                volume_type = node['volume'].get('volume_type')
+                volume_type = node['volume'].get('type')
             if 'nics' in node:
                 nics = node['nics']
             if 'availability_zone' in node:
@@ -200,16 +200,6 @@ class ClusterController(wsgi.Controller):
                               "availability_zone": availability_zone,
                               'region_name': node.get('region_name'),
                               "modules": modules})
-
-        locality = body['cluster'].get('locality')
-        if locality:
-            locality_domain = ['affinity', 'anti-affinity']
-            locality_domain_msg = ("Invalid locality '%s'. "
-                                   "Must be one of ['%s']" %
-                                   (locality,
-                                    "', '".join(locality_domain)))
-            if locality not in locality_domain:
-                raise exception.BadRequest(msg=locality_domain_msg)
 
         locality = body['cluster'].get('locality')
         if locality:
