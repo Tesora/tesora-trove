@@ -518,10 +518,18 @@ class TestRunner(object):
                                else [instance_ids], expected_last_status)
 
     def assert_pagination_match(
-            self, list_page, full_list, start_idx, end_idx):
-        self.assert_equal(full_list[start_idx:end_idx], list(list_page),
-                          "List page does not match the expected full "
-                          "list section.")
+            self, list_page, full_list, start_idx, end_idx,
+            comp=lambda a, b: a == b):
+        expected = full_list[start_idx:end_idx]
+        actual = list(list_page)
+        self.assert_equal(len(expected), len(actual),
+                          "List page has an unexpected length.")
+        for idx, exp_val in enumerate(expected):
+            self.assert_true(
+                comp(exp_val, actual[idx]),
+                "List page does not match the expected full "
+                "list section at index %d: '%s' (expected '%s')."
+                % (idx, actual, expected))
 
     def _wait_all_deleted(self, instance_ids, expected_last_status):
         self.report.log("Waiting for instances to be gone: %s (status %s)" %

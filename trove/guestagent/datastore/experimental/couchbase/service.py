@@ -35,6 +35,7 @@ from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.datastore import service
 from trove.guestagent.db import models
+from trove.guestagent import dbaas as dbaas_utils
 from trove.guestagent import pkg
 
 
@@ -321,7 +322,7 @@ class CouchbaseAdmin(object):
     def run_bucket_create(self, bucket_name, bucket_password, bucket_port,
                           bucket_type, bucket_ramsize_quota_mb,
                           enable_index_replica, eviction_policy,
-                          replica_count):
+                          replica_count, bucket_priority):
         LOG.debug("Creating a new bucket: %s" % bucket_name)
         options = {'bucket': bucket_name,
                    'bucket-type': bucket_type,
@@ -331,6 +332,7 @@ class CouchbaseAdmin(object):
                    'enable-index-replica': enable_index_replica,
                    'bucket-eviction-policy': eviction_policy,
                    'bucket-replica': replica_count,
+                   'bucket-priority': bucket_priority,
                    'wait': None,
                    'force': None}
         if bucket_password is not None:
@@ -339,7 +341,8 @@ class CouchbaseAdmin(object):
 
     def run_bucket_edit(self, bucket_name, bucket_password, bucket_port,
                         bucket_type, bucket_ramsize_quota_mb,
-                        enable_index_replica, eviction_policy, replica_count):
+                        enable_index_replica, eviction_policy, replica_count,
+                        bucket_priority):
         LOG.debug("Modifying bucket: %s" % bucket_name)
         self._run_couchbase_command(
             'bucket-edit', {'bucket': bucket_name,
@@ -351,6 +354,7 @@ class CouchbaseAdmin(object):
                             'enable-index-replica': enable_index_replica,
                             'bucket-eviction-policy': eviction_policy,
                             'bucket-replica': replica_count,
+                            'bucket-priority': bucket_priority,
                             'wait': None,
                             'force': None})
 
@@ -467,9 +471,10 @@ class CouchbaseAdmin(object):
         options = {'list': None}
         name = self._run_couchbase_command('user-manage', options)[0]
         if 'Object Not Found' not in name:
-            user = models.CouchbaseUser(name.strip())
-            user.roles = {'name': 'read-only'}
-            return user
+            return models.CouchbaseUser(name=name.strip(),
+                                        roles={'name': 'read-only'})
+
+        return None
 
     def _delete_read_only_user(self):
         LOG.debug("Deleting the read-only user.")
@@ -477,19 +482,29 @@ class CouchbaseAdmin(object):
         self._run_couchbase_command('user-manage', options)
 
     def _create_bucket(self, user):
-        bucket_ramsize_quota_mb = self.get_memory_quota_mb()
+        bucket_ramsize_quota_mb = (user.bucket_ramsize_mb or
+                                   self.get_memory_quota_mb())
         num_cluster_nodes = self.get_num_cluster_nodes()
-        replica_count = min(CONF.couchbase.default_replica_count,
-                            num_cluster_nodes - 1)
+        replica_count = (user.bucket_replica_count or
+                         min(CONF.couchbase.default_replica_count,
+                             num_cluster_nodes - 1))
+        eviction_policy = (user.bucket_eviction_policy or
+                           CONF.couchbase.eviction_policy)
+        enable_index_replica = (user.enable_index_replica or
+                                int(CONF.couchbase.enable_index_replica))
+        bucket_priority = (user.bucket_priority or
+                           CONF.couchbase.bucket_priority)
+
         self.run_bucket_create(
             user.name,
             user.password,
             CONF.couchbase.bucket_port,
             CONF.couchbase.bucket_type,
             bucket_ramsize_quota_mb,
-            int(CONF.couchbase.enable_index_replica),
-            CONF.couchbase.eviction_policy,
-            replica_count)
+            enable_index_replica,
+            eviction_policy,
+            replica_count,
+            bucket_priority)
 
     def get_memory_quota_mb(self):
         server_info = self.run_server_info()
@@ -531,8 +546,17 @@ class CouchbaseAdmin(object):
 
     def _list_buckets(self):
         bucket_list = self.run_bucket_list()
-        return [models.CouchbaseUser(item)
-                for item in self._parse_bucket_list(bucket_list)]
+        buckets = []
+        for name, info in self._parse_bucket_list(bucket_list).items():
+            bucket_ramsize_quota_mb = int(info['ramQuota']) / 1048576
+            bucket_replica_count = int(info['numReplicas'])
+            used_ram_mb = dbaas_utils.to_mb(float(info['ramUsed']))
+            buckets.append(models.CouchbaseUser(
+                name,
+                bucket_ramsize_mb=bucket_ramsize_quota_mb,
+                bucket_replica_count=bucket_replica_count,
+                used_ram_mb=used_ram_mb))
+        return buckets
 
     def _parse_bucket_list(self, bucket_list):
         buckets = dict()
@@ -568,21 +592,30 @@ class CouchbaseAdmin(object):
         # When changing the active bucket configuration,
         # specify all existing configuration parameters to avoid having them
         # reset to defaults.
-        buckets = self._parse_bucket_list(self.run_bucket_list())
-        bucket = buckets[user.name]
 
-        bucket_ramsize_quota_mb = str(int(bucket['ramQuota']) / 1048576)
-        replica_count = int(bucket['numReplicas'])
-        bucket_type = bucket['bucketType']
+        current = self._find_bucket(user.name)
+
+        bucket_ramsize_quota_mb = (user.bucket_ramsize_mb or
+                                   current.bucket_ramsize_mb)
+        replica_count = (user.bucket_replica_count or
+                         current.bucket_replica_count)
+        eviction_policy = (user.bucket_eviction_policy or
+                           CONF.couchbase.eviction_policy)
+        enable_index_replica = (user.enable_index_replica or
+                                int(CONF.couchbase.enable_index_replica))
+        bucket_priority = (user.bucket_priority or
+                           CONF.couchbase.bucket_priority)
+
         self.run_bucket_edit(
             user.name,
             user.password,
             CONF.couchbase.bucket_port,
-            bucket_type,
+            CONF.couchbase.bucket_type,
             bucket_ramsize_quota_mb,
-            int(CONF.couchbase.enable_index_replica),
-            CONF.couchbase.eviction_policy,
-            replica_count)
+            enable_index_replica,
+            eviction_policy,
+            replica_count,
+            bucket_priority)
 
     def update_attributes(self, context, username, hostname, user_attrs):
         self._block_read_only_user_edit(username)
@@ -592,10 +625,16 @@ class CouchbaseAdmin(object):
             raise exception.UnprocessableEntity(
                 _("Users cannot be renamed."))
 
-        new_password = user_attrs.get('password')
-        if new_password:
-            user = models.CouchbaseUser(username, password=new_password)
-            self._edit_bucket(user)
+        user = models.CouchbaseUser(
+            username,
+            password=user_attrs.get('password'),
+            bucket_ramsize_mb=user_attrs.get('bucket_ramsize'),
+            bucket_replica_count=user_attrs.get('bucket_replica'),
+            enable_index_replica=user_attrs.get('enable_index_replica'),
+            bucket_eviction_policy=user_attrs.get('bucket_eviction_policy'),
+            bucket_priority=user_attrs.get('bucket_priority'))
+
+        self._edit_bucket(user)
 
     def reset_root_password(self, new_password):
         host_and_port = 'localhost:%d' % self._http_client_port

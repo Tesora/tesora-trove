@@ -29,7 +29,7 @@ class CouchbaseHelper(TestHelper):
         self._data_cache = dict()
 
     def get_valid_user_definitions(self):
-        return [{'name': 'bucket1', 'password': 'password1', 'databases': []}]
+        return [{'name': 'bucket1', 'password': 'password1'}]
 
     def get_helper_credentials(self):
         return {'name': 'lite', 'password': 'litepass'}

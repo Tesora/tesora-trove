@@ -25,8 +25,9 @@ class UserView(common_views.SingleModelView):
     def deserialize_model(cls, user):
         return {
             "name": user.name,
-            "host": user.host,
-            "databases": [{'name': db['_name']} for db in user.databases]
+            "bucket_ramsize": user.bucket_ramsize_mb,
+            "bucket_replica": user.bucket_replica_count,
+            "used_ram": user.used_ram_mb
         }
 
 

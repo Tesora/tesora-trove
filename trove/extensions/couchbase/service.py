@@ -14,6 +14,8 @@
 #    under the License.
 
 
+from trove.common import exception
+from trove.common.i18n import _LE
 from trove.extensions.common.service import DatastoreUserController
 from trove.extensions.couchbase import views as couchbase_views
 from trove.guestagent.db import models as guest_models
@@ -33,4 +35,45 @@ class CouchbaseUserController(DatastoreUserController):
     def parse_user_from_request(self, user_data):
         name = user_data['name']
         password = user_data['password']
-        return guest_models.CouchbaseUser(name, password)
+        roles = user_data.get('roles')
+        bucket_ramsize = user_data.get('bucket_ramsize')
+        bucket_replica = user_data.get('bucket_replica')
+        enable_index_replica = user_data.get('enable_index_replica')
+        bucket_eviction_policy = user_data.get('bucket_eviction_policy')
+        bucket_priority = user_data.get('bucket_priority')
+        return guest_models.CouchbaseUser(
+            name, password,
+            roles=roles,
+            bucket_ramsize_mb=bucket_ramsize,
+            bucket_replica_count=bucket_replica,
+            enable_index_replica=enable_index_replica,
+            bucket_eviction_policy=bucket_eviction_policy,
+            bucket_priority=bucket_priority)
+
+    def apply_user_updates(self, user_model, updates):
+
+        # When editing buckets, be sure to always specify all properties.
+        # Couchbase Server may otherwise reset the property value to default.
+
+        def get_attribute(name):
+            value = updates.get(name)
+            if value is None:
+                raise exception.MissingKey(
+                    _LE("Specify all user properties."))
+
+            return value
+
+        if 'name' in updates:
+            raise exception.BadRequest(
+                _LE("Couchbase users cannot be renamed."))
+
+        user_model.password = get_attribute('password')
+        user_model.bucket_ramsize_mb = get_attribute('bucket_ramsize')
+        user_model.bucket_replica_count = get_attribute('bucket_replica')
+        user_model.enable_index_replica = get_attribute('enable_index_replica')
+        user_model.bucket_eviction_policy = get_attribute(
+            'bucket_eviction_policy')
+        user_model.bucket_priority = get_attribute('bucket_priority')
+
+        # Couchbase buckets cannot be renamed, the ID hence never changes.
+        return None
