@@ -159,19 +159,23 @@ class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
 
     # This is used in the test_*_user tests below
     _serialized_user = {'_name': 'testdb.testuser', '_password': None,
-                        '_roles': [{'db': 'testdb', 'role': 'testrole'}],
+                        '_roles': [{'database': 'testdb', 'name': 'testrole'}],
                         '_username': 'testuser', '_databases': [],
                         '_host': None,
                         '_database': {'_name': 'testdb',
                                       '_character_set': None,
                                       '_collate': None}}
 
+    @property
+    def serialized_user(self):
+        return self._serialized_user.copy()
+
     @mock.patch.object(service, 'MongoDBClient')
     @mock.patch.object(service.MongoDBAdmin, '_admin_user')
     @mock.patch.object(service.MongoDBAdmin, '_get_user_record')
     def test_create_user(self, mocked_get_user, mocked_admin_user,
                          mocked_client):
-        user = self._serialized_user.copy()
+        user = self.serialized_user
         user['_password'] = 'testpassword'
         users = [user]
 
@@ -189,7 +193,7 @@ class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
     def test_delete_user(self, mocked_admin_user, mocked_client):
         client = mocked_client().__enter__()['testdb']
 
-        self.manager.delete_user(self.context, self._serialized_user)
+        self.manager.delete_user(self.context, self.serialized_user)
 
         client.remove_user.assert_called_with('testuser')
 
@@ -207,17 +211,17 @@ class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
         result = self.manager.get_user(self.context, 'testdb.testuser', None)
 
         mocked_find.assert_called_with({'user': 'testuser', 'db': 'testdb'})
-        self.assertEqual(self._serialized_user, result)
+        self.assertEqual(self.serialized_user, result)
 
     @mock.patch.object(service, 'MongoDBClient')
     @mock.patch.object(service.MongoDBAdmin, '_admin_user')
     def test_list_users(self, mocked_admin_user, mocked_client):
         # roles are NOT returned by list_users
-        user1 = self._serialized_user.copy()
-        user2 = self._serialized_user.copy()
+        user1 = self.serialized_user
+        user2 = self.serialized_user
         user2['_name'] = 'testdb.otheruser'
         user2['_username'] = 'otheruser'
-        user2['_roles'] = [{'db': 'testdb2', 'role': 'readWrite'}]
+        user2['_roles'] = [{'database': 'testdb2', 'name': 'readWrite'}]
         user2['_databases'] = [{'_name': 'testdb2',
                                          '_character_set': None,
                                          '_collate': None}]
@@ -258,7 +262,7 @@ class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
                                    '_character_set': None,
                                    '_collate': None},
                      '_password': 'password',
-                     '_roles': [{'db': 'admin', 'role': 'root'}],
+                     '_roles': [{'database': 'admin', 'name': 'root'}],
                      '_databases': [],
                      '_host': None}
 
@@ -293,9 +297,9 @@ class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
         client = mocked_client().__enter__()['testdb']
 
         mocked_get_user.return_value.roles = [
-            {'db': 'db1', 'role': 'readWrite'},
-            {'db': 'db2', 'role': 'readWrite'},
-            {'db': 'db3', 'role': 'readWrite'}
+            {'database': 'db1', 'name': 'readWrite'},
+            {'database': 'db2', 'name': 'readWrite'},
+            {'database': 'db3', 'name': 'readWrite'}
         ]
 
         self.manager.revoke_access(self.context, 'testdb.testuser',
@@ -313,9 +317,9 @@ class GuestAgentMongoDBManagerTest(trove_testtools.TestCase):
     def test_list_access(self, mocked_get_user,
                          mocked_admin_user, mocked_client):
         mocked_get_user.return_value.roles = [
-            {'db': 'db1', 'role': 'readWrite'},
-            {'db': 'db2', 'role': 'readWrite'},
-            {'db': 'db3', 'role': 'readWrite'}
+            {'database': 'db1', 'name': 'readWrite'},
+            {'database': 'db2', 'name': 'readWrite'},
+            {'database': 'db3', 'name': 'readWrite'}
         ]
 
         accessible_databases = self.manager.list_access(

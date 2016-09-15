@@ -10,6 +10,11 @@
             "password": "password"
         },
         {
+            "roles": [
+                {
+                    "name": "read-only"
+                }
+            ],
             "databases": [
                 {
                     "name": "databaseB"
@@ -32,4 +37,3 @@
         }
     ]
 }
-
