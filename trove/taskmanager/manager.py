@@ -463,6 +463,11 @@ class Manager(periodic_task.PeriodicTasks):
         cluster_tasks = models.load_cluster_tasks(context, cluster_id)
         cluster_tasks.shrink_cluster(context, cluster_id, instance_ids)
 
+    def upgrade_cluster(self, context, cluster_id, datastore_version_id):
+        datastore_version = DatastoreVersion.load_by_uuid(datastore_version_id)
+        cluster_tasks = models.load_cluster_tasks(context, cluster_id)
+        cluster_tasks.upgrade_cluster(context, cluster_id, datastore_version)
+
     def delete_cluster(self, context, cluster_id):
         with EndNotification(context):
             cluster_tasks = models.load_cluster_tasks(context, cluster_id)

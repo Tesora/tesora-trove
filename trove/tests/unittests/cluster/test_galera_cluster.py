@@ -362,3 +362,23 @@ class ClusterTest(trove_testtools.TestCase):
             self.db_info.id, [mock_load.return_value.id])
         mock_init.assert_called_with(self.context, self.db_info,
                                      self.datastore, self.datastore_version)
+
+    @patch.object(galera_api.GaleraCommonCluster, '__init__')
+    @patch.object(task_api, 'load')
+    @patch.object(DBCluster, 'update')
+    @patch.object(inst_models.DBInstance, 'find_all')
+    @patch.object(inst_models.Instance, 'load')
+    @patch.object(Cluster, 'validate_cluster_available')
+    def test_upgrade(self, mock_validate, mock_load, mock_find_all,
+                     mock_update, mock_task_api, mock_init):
+        mock_init.return_value = None
+        existing_instances = [Mock(), Mock()]
+        mock_find_all.return_value.all.return_value = existing_instances
+        self.cluster.upgrade(self.datastore_version)
+        mock_validate.assert_called_with()
+        mock_update.assert_called_with(
+            task_status=ClusterTasks.UPGRADING_CLUSTER)
+        mock_task_api.return_value.upgrade_cluster.assert_called_with(
+            self.db_info.id, self.datastore_version.id)
+        mock_init.assert_called_with(self.context, self.db_info,
+                                     self.datastore, self.datastore_version)

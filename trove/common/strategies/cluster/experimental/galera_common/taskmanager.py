@@ -19,6 +19,7 @@ from trove.common import cfg
 from trove.common.exception import PollTimeOut
 from trove.common.exception import TroveError
 from trove.common.i18n import _
+from trove.common import notification
 from trove.common.remote import create_nova_client
 from trove.common.strategies.cluster import base as cluster_base
 from trove.common.template import ClusterConfigTemplate
@@ -325,3 +326,45 @@ class GaleraCommonClusterTasks(task_models.ClusterTasks):
             timeout.cancel()
 
         LOG.debug("End shrink_cluster for id: %s." % cluster_id)
+
+    def upgrade_cluster(self, context, cluster_id, datastore_version):
+        LOG.debug("Begin rolling cluster upgrade for id: %s." % cluster_id)
+
+        def _upgrade_cluster_instance(instance):
+            LOG.debug("Upgrading instance with id: %s." % instance.id)
+            context.notification = (
+                notification.DBaaSInstanceUpgrade(context, **request_info))
+            with notification.StartNotification(
+                    context, instance_id=instance.id,
+                    datastore_version_id=datastore_version.id):
+                with notification.EndNotification(context):
+                    instance.update_db(
+                        datastore_version_id=datastore_version.id,
+                        task_status=inst_tasks.InstanceTasks.UPGRADING)
+                    instance.upgrade(datastore_version)
+
+        timeout = Timeout(CONF.cluster_usage_timeout)
+        cluster_notification = context.notification
+        request_info = cluster_notification.serialize(context)
+        try:
+            for db_inst in DBInstance.find_all(cluster_id=cluster_id).all():
+                instance = task_models.BuiltInstanceTasks.load(
+                    context, db_inst.id)
+                _upgrade_cluster_instance(instance)
+
+            self.reset_task()
+        except Timeout as t:
+            if t is not timeout:
+                raise  # not my timeout
+            LOG.exception(_("Timeout for upgrading cluster."))
+            self.update_statuses_on_failure(
+                cluster_id, status=inst_tasks.InstanceTasks.UPGRADING_ERROR)
+        except Exception:
+            LOG.exception(_("Error upgrading cluster %s.") % cluster_id)
+            self.update_statuses_on_failure(
+                cluster_id, status=inst_tasks.InstanceTasks.UPGRADING_ERROR)
+        finally:
+            context.notification = cluster_notification
+            timeout.cancel()
+
+        LOG.debug("End upgrade_cluster for id: %s." % cluster_id)
