@@ -20,9 +20,8 @@ import csv
 import json
 import re
 import six
+from six.moves.configparser import SafeConfigParser
 import yaml
-
-from ConfigParser import SafeConfigParser
 
 from trove.common import utils as trove_utils
 from trove.common import xmltodict
