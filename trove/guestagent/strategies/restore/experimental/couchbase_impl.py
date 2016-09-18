@@ -21,6 +21,7 @@ from oslo_log import log as logging
 
 from trove.common import cfg
 from trove.common import exception
+from trove.common.i18n import _
 from trove.common import utils
 from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
