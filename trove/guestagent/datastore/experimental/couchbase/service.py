@@ -439,13 +439,42 @@ class CouchbaseAdmin(object):
             raise exception.UnprocessableEntity(
                 _("Only a single user can be created on the instance."))
 
-        user_list = self._list_buckets()
-        if user_list:
-            raise exception.UnprocessableEntity(
-                _("There already is a user on this instance: %s")
-                % user_list[0].name)
+        user = models.CouchbaseUser.deserialize_user(users[0])
+        if user.roles:
+            if user.roles[0].get('name') == 'read-only':
+                self._set_read_only_user(user)
+            else:
+                raise exception.UnprocessableEntity(
+                    _("Unrecognized role(s): %s.") % user.roles)
+        else:
+            user_list = self._list_buckets()
+            if user_list:
+                raise exception.UnprocessableEntity(
+                    _("There already is a user on this instance: %s")
+                    % user_list[0].name)
+            self._create_bucket(user)
 
-        self._create_bucket(models.CouchbaseUser.deserialize_user(users[0]))
+    def _set_read_only_user(self, user):
+        LOG.debug("Setting the read-only user: %s" % user.name)
+        options = {'set': None,
+                   'ro-username': user.name}
+        if user.password:
+            options['ro-password'] = user.password
+        self._run_couchbase_command('user-manage', options)
+
+    def _get_read_only_user(self):
+        LOG.debug("Getting the read-only user.")
+        options = {'list': None}
+        name = self._run_couchbase_command('user-manage', options)[0]
+        if 'Object Not Found' not in name:
+            user = models.CouchbaseUser(name.strip())
+            user.roles = {'name': 'read-only'}
+            return user
+
+    def _delete_read_only_user(self):
+        LOG.debug("Deleting the read-only user.")
+        options = {'delete': None}
+        self._run_couchbase_command('user-manage', options)
 
     def _create_bucket(self, user):
         bucket_ramsize_quota_mb = self.get_memory_quota_mb()
@@ -471,12 +500,20 @@ class CouchbaseAdmin(object):
         return len(server_list)
 
     def delete_user(self, context, user):
-        self._delete_bucket(models.CassandraUser.deserialize_user(user))
+        couchbase_user = models.CouchbaseUser.deserialize_user(user)
+        ro_user = self._get_read_only_user()
+        if ro_user and ro_user.name == couchbase_user.name:
+            self._delete_read_only_user()
+        else:
+            self._delete_bucket(couchbase_user)
 
     def _delete_bucket(self, user):
         self.run_bucket_delete(user.name)
 
     def get_user(self, context, username, hostname):
+        ro_user = self._get_read_only_user()
+        if ro_user and ro_user.name == username:
+            return ro_user.serialize()
         user = self._find_bucket(username)
         return user.serialize() if user is not None else None
 
@@ -487,6 +524,9 @@ class CouchbaseAdmin(object):
     def list_users(self, context, limit=None, marker=None,
                    include_marker=False):
         users = [user.serialize() for user in self._list_buckets()]
+        ro_user = self._get_read_only_user()
+        if ro_user:
+            users.append(ro_user.serialize())
         return pagination.paginate_list(users, limit, marker, include_marker)
 
     def _list_buckets(self):
@@ -508,12 +548,21 @@ class CouchbaseAdmin(object):
 
         return buckets
 
+    def _block_read_only_user_edit(self, username):
+        ro_user = self._get_read_only_user()
+        if ro_user and ro_user.name == username:
+            raise exception.BadRequest(_(
+                "Cannot edit the read-only user. Delete it before creating "
+                "a new one."))
+
     def change_passwords(self, context, users):
         if len(users) > 1:
             raise exception.UnprocessableEntity(
                 _("There is only one user on the instance."))
 
-        self._edit_bucket(models.CouchbaseUser.deserialize_user(users[0]))
+        user = models.CouchbaseUser.deserialize_user(users[0])
+        self._block_read_only_user_edit(user.name)
+        self._edit_bucket(user)
 
     def _edit_bucket(self, user):
         # When changing the active bucket configuration,
@@ -536,6 +585,8 @@ class CouchbaseAdmin(object):
             replica_count)
 
     def update_attributes(self, context, username, hostname, user_attrs):
+        self._block_read_only_user_edit(username)
+
         new_name = user_attrs.get('name')
         if new_name:
             raise exception.UnprocessableEntity(
