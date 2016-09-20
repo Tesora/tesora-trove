@@ -878,3 +878,13 @@ def get_package_name(package_file):
         raise exception.UnprocessableEntity(
             _("Unhandled package type: %s)") % pkg_cmd)
     return package_name
+
+
+def owned_by_root(data_file):
+    file_stats = os.stat(data_file)
+
+    if file_stats[stat.ST_UID] == 0 and file_stats[stat.ST_GID] == 0 and \
+            oct(file_stats[stat.ST_MODE])[-3:] == "600":
+        return True
+    else:
+        return False

@@ -703,14 +703,24 @@ class Manager(periodic_task.PeriodicTasks):
                 raise exception.ModuleTypeNotFound(
                     _("No driver implemented for module type '%s'") %
                     module_type)
+
             if (datastore and datastore != self.MODULE_APPLY_TO_ALL and
                     datastore != CONF.datastore_manager):
                 reason = (_("Module not valid for datastore %s") %
                           CONF.datastore_manager)
                 raise exception.ModuleInvalid(reason=reason)
+
+            if module_type == "db_command_executor":
+                use_root = True
+                if datastore == self.MODULE_APPLY_TO_ALL:
+                    datastore = self.manager_name
+            else:
+                use_root = False
+
             result = module_manager.ModuleManager.apply_module(
                 driver, module_type, name, tenant, datastore, ds_version,
-                contents, id, md5, auto_apply, visible, is_admin)
+                contents, id, md5, auto_apply, visible, is_admin,
+                use_root=use_root)
             results.append(result)
         LOG.info(_("Returning list of modules: %s") % results)
         return results
