@@ -1274,10 +1274,10 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         return run_with_quotas(self.context.tenant, {'backups': 1},
                                _get_replication_snapshot)
 
-    def detach_replica(self, master, for_failover=False):
+    def detach_replica(self, master, for_failover=False, for_promote=False):
         LOG.debug("Calling detach_replica on %s" % self.id)
         try:
-            self.guest.detach_replica(for_failover)
+            self.guest.detach_replica(for_failover, for_promote)
             self.update_db(slave_of_id=None)
             self.slave_list = None
         except (GuestError, GuestTimeout):
@@ -1362,6 +1362,10 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         LOG.debug("Calling wait_for_txn on %s" % self.id)
         if txn:
             self.guest.wait_for_txn(txn)
+
+    def pre_replication_demote(self):
+        LOG.debug("Calling pre_replication_demote on %s" % self.id)
+        self.guest.pre_replication_demote()
 
     def cleanup_source_on_replica_detach(self, replica_info):
         LOG.debug("Calling cleanup_source_on_replica_detach on %s" % self.id)

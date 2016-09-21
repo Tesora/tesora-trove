@@ -111,7 +111,9 @@ class Manager(periodic_task.PeriodicTasks):
             slave_ips = master_candidate.detach_public_ips()
             latest_txn_id = old_master.get_latest_txn_id()
             master_candidate.wait_for_txn(latest_txn_id)
-            master_candidate.detach_replica(old_master, for_failover=True)
+            old_master.pre_replication_demote()
+            master_candidate.detach_replica(old_master, for_failover=True,
+                                            for_promote=True)
             master_candidate.enable_as_master()
             old_master.attach_replica(master_candidate)
             master_candidate.attach_public_ips(master_ips)

@@ -473,6 +473,10 @@ class Manager(periodic_task.PeriodicTasks):
         """
         pass
 
+    def pre_replication_demote(self, context):
+        """Run steps needed before demoting the replication master."""
+        pass
+
     #################
     # Cluster related
     #################
@@ -862,7 +866,7 @@ class Manager(periodic_task.PeriodicTasks):
         raise exception.DatastoreOperationNotSupported(
             operation='attach_replication_slave', datastore=self.manager)
 
-    def detach_replica(self, context, for_failover=False):
+    def detach_replica(self, context, for_failover=False, for_promote=False):
         LOG.debug("Detaching replica.")
         raise exception.DatastoreOperationNotSupported(
             operation='detach_replica', datastore=self.manager)
