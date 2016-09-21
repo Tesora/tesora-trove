@@ -12,6 +12,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import collections
 import os
 import stat
 import tempfile
@@ -220,6 +221,32 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
                  '--server-add-password=password',
                  '--server-remove=8.8.8.8']),
             set(opts))
+
+        opts = app.build_admin()._build_command_options(
+            [collections.OrderedDict([
+                ('server-add', '0.0.0.0'),
+                ('server-add-username', 'user1'),
+                ('server-add-password', 'password1')]),
+             collections.OrderedDict([
+                 ('server-add', '1.2.3.4'),
+                 ('server-add-username', 'user2'),
+                 ('server-add-password', 'password2')]),
+             {'server-remove': ['8.8.8.8']}])
+        self.assertEqual(
+            ['--server-add=0.0.0.0',
+             '--server-add-username=user1',
+             '--server-add-password=password1',
+             '--server-add=1.2.3.4',
+             '--server-add-username=user2',
+             '--server-add-password=password2',
+             '--server-remove=8.8.8.8'],
+            opts)
+
+        opts = app.build_admin()._build_command_options(
+            [{'server-remove': ['8.8.8.8']}])
+        self.assertEqual(
+            ['--server-remove=8.8.8.8'],
+            opts)
 
     def test_parse_bucket_list(self):
         app = couch_service.CouchbaseApp(Mock())

@@ -385,6 +385,29 @@ class CouchbaseAdmin(object):
         return utils.execute(' '.join(cmd_tokens), shell=True, **kwargs)
 
     def _build_command_options(self, options):
+        """Build options for a Couchbase CLI command.
+        Couchbase options take form of '--name=value' or '--name'.
+
+        The options must be provided in a Python dict where the key
+        is the 'name'.
+        The value is the actual option value or None in case of simple flags.
+        The value may also be a list in which case the option gets repeated
+        for each value.
+
+        The options argument may be a single dict or a list of dicts
+        in which the options from each dict get appended iteratively.
+
+        :param options:          The option name-value pairs.
+        :type options:           dict or list-of-dicts
+        """
+
+        def append_option_group(opt_group, cmd_opts):
+            for name, value in opt_group.items():
+                if utils.is_collection(value):
+                    for item in value:
+                        append_option(name, item, cmd_opts)
+                else:
+                    append_option(name, value, cmd_opts)
 
         def append_option(name, value, cmd_opts):
             tokens = [name]
@@ -394,12 +417,11 @@ class CouchbaseAdmin(object):
 
         cmd_opts = []
         if options:
-            for name, value in options.items():
-                if utils.is_collection(value):
-                    for item in value:
-                        append_option(name, item, cmd_opts)
-                else:
-                    append_option(name, value, cmd_opts)
+            if isinstance(options, (list, tuple)):
+                for opt_group in options:
+                    append_option_group(opt_group, cmd_opts)
+            else:
+                append_option_group(options, cmd_opts)
 
         return cmd_opts
 
