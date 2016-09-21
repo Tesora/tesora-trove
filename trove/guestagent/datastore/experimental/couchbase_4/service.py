@@ -13,6 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import collections
+
 from oslo_log import log as logging
 
 from trove.common import cfg
@@ -95,14 +97,18 @@ class Couchbase4Admin(community_service.CouchbaseAdmin):
 
     def run_rebalance(self, added_nodes, removed_nodes, enabled_services):
         LOG.debug("Rebalancing the cluster.")
-        options = {}
+        options = []
         if added_nodes:
-            options.update({'server-add': added_nodes,
-                            'server-add-username': self._user.name,
-                            'server-add-password': self._user.password,
-                            'services': ','.join(enabled_services)})
+            for node_ip in added_nodes:
+                options.append(
+                    collections.OrderedDict([
+                        ('server-add', node_ip),
+                        ('server-add-username', self._user.name),
+                        ('server-add-password', self._user.password)]))
+            options.append({'services': ','.join(enabled_services)})
+
         if removed_nodes:
-            options.update({'server-remove': removed_nodes})
+            options.append({'server-remove': removed_nodes})
 
         if options:
             self._run_couchbase_command('rebalance', options)
