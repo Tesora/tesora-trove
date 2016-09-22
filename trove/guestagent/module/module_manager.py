@@ -49,12 +49,13 @@ class ModuleManager(object):
     @classmethod
     def apply_module(cls, driver, module_type, name, tenant,
                      datastore, ds_version, contents, module_id, md5,
-                     auto_apply, visible, admin_module):
+                     auto_apply, visible, admin_module, use_root=False):
         tenant = tenant or cls.MODULE_APPLY_TO_ALL
         datastore = datastore or cls.MODULE_APPLY_TO_ALL
         ds_version = ds_version or cls.MODULE_APPLY_TO_ALL
         module_dir = cls.build_module_dir(module_type, module_id)
-        data_file = cls.write_module_contents(module_dir, contents, md5)
+        data_file = cls.write_module_contents(module_dir, contents, md5,
+                                              use_root=use_root)
         applied = True
         message = None
         now = cls.get_current_timestamp()
@@ -100,11 +101,12 @@ class ModuleManager(object):
         return module_dir
 
     @classmethod
-    def write_module_contents(cls, module_dir, contents, md5):
+    def write_module_contents(cls, module_dir, contents, md5, use_root=False):
         contents_file = cls.build_contents_filename(module_dir)
         operating_system.write_file(contents_file, contents,
                                     codec=stream_codecs.Base64Codec(),
-                                    encode=False)
+                                    encode=False,
+                                    as_root=use_root)
         return contents_file
 
     @classmethod

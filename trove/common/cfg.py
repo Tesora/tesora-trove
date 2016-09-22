@@ -463,7 +463,8 @@ common_opts = [
     cfg.StrOpt('module_aes_cbc_key', default='module_aes_cbc_key',
                help='OpenSSL aes_cbc key for module encryption.'),
     cfg.ListOpt('module_types', default=['ping', 'new_relic_license',
-                                         'package_install'],
+                                         'package_install',
+                                         'db_command_executor'],
                 help='A list of module types supported. A module type '
                      'corresponds to the name of a ModuleDriver.'),
     cfg.StrOpt('guest_log_container_name',
