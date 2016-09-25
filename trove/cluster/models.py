@@ -311,6 +311,24 @@ class Cluster(object):
     def shrink(self, instance_ids):
         raise exception.BadRequest(_("Action 'shrink' not supported"))
 
+    def rolling_upgrade(self, datastore_version):
+        """Upgrades a cluster to a new datastore version."""
+        LOG.debug("Upgrading cluster %s." % self.id)
+
+        self.validate_cluster_available()
+        self.db_info.update(task_status=ClusterTasks.UPGRADING_CLUSTER)
+        try:
+            cluster_id = self.db_info.id
+            ds_ver_id = datastore_version.id
+            task_api.load(self.context, self.ds_version.manager
+                          ).upgrade_cluster(cluster_id, ds_ver_id)
+        except Exception:
+            self.db_info.update(task_status=ClusterTasks.NONE)
+            raise
+
+        return self.__class__(self.context, self.db_info,
+                              self.ds, self.ds_version)
+
     def upgrade(self, datastore_version):
             raise exception.BadRequest(_("Action 'upgrade' not supported"))
 
