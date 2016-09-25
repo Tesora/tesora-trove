@@ -627,6 +627,9 @@ mysql_opts = [
                     'in order to be logged in the slow_query log.'),
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
 ]
 
 # MySQL EE (mostly uses same options as MySQL community edition).
@@ -747,6 +750,9 @@ oracle_ra_opts = [
                help='Root controller implementation for Oracle Remote Agent.'),
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
 ]
 
 # Oracle RAC
@@ -839,6 +845,9 @@ oracle_rac_opts = [
     cfg.IntOpt('configuration_timeout', default=3600,
                help="Maximum time (in seconds) guest should wait for Oracle "
                     "RAC installation and configuration operations."),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
 ]
 
 # Oracle
@@ -937,6 +946,9 @@ oracle_opts = [
                     'logic.'),
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
 ]
 
 # Percona
@@ -1020,6 +1032,9 @@ percona_opts = [
     cfg.IntOpt('default_password_length',
                default='${mysql.default_password_length}',
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
 ]
 
 # Percona XtraDB Cluster
@@ -1107,6 +1122,9 @@ pxc_opts = [
     cfg.IntOpt('default_password_length',
                default='${mysql.default_password_length}',
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
 ]
 
 
@@ -1183,6 +1201,9 @@ redis_opts = [
                help='List of Guest Logs to expose for publishing.'),
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
 ]
 
 # Cassandra
@@ -1264,6 +1285,9 @@ cassandra_opts = [
                     'logic.'),
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
 ]
 
 cassandra_3_group = cfg.OptGroup(
@@ -1385,6 +1409,9 @@ couchbase_opts = [
     cfg.StrOpt('bucket_type', default='couchbase',
                choices='couchbase,memcached',
                help='Default bucket type.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
 ]
 
 couchbase_4_group = cfg.OptGroup(
@@ -1483,6 +1510,9 @@ mongodb_opts = [
                help='List of Guest Logs to expose for publishing.'),
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
 ]
 
 # PostgreSQL
@@ -1554,6 +1584,9 @@ postgresql_opts = [
                     "statement logging."),
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
 ]
 
 # EDB (mostly uses same options as Postgresql community edition).
@@ -1658,6 +1691,9 @@ couchdb_opts = [
                 deprecated_group='DEFAULT'),
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
 ]
 
 # Vertica
@@ -1726,6 +1762,9 @@ vertica_opts = [
                help='Minimum k-safety setting permitted for vertica clusters'),
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
 ]
 
 # DB2
@@ -1784,6 +1823,9 @@ db2_opts = [
                help='List of Guest Logs to expose for publishing.'),
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
 ]
 
 # MariaDB
@@ -1885,6 +1927,9 @@ mariadb_opts = [
     cfg.IntOpt('default_password_length',
                default='${mysql.default_password_length}',
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
 ]
 
 # RPC version groups
