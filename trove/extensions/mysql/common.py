@@ -65,6 +65,7 @@ def populate_users(users, initial_databases=None):
                 raise exception.DatabaseForUserNotInDatabaseListError(
                     user=u.name, database=user_db_name)
             u.databases = user_db_name
+        u.roles = user.get('roles', [])
         users_data.append(u.serialize())
     return users_data
 

@@ -124,6 +124,15 @@ nics = {
     }
 }
 
+roles_list = {
+    "type": "array",
+    "uniqueItems": True,
+    "items": {
+        "type": "object",
+        "required": ["name"]
+    }
+}
+
 databases_ref_list = {
     "type": "array",
     "minItems": 0,
@@ -199,7 +208,8 @@ users_list = {
             "name": name_string,
             "password": non_empty_string,
             "host": host_string,
-            "databases": databases_ref_list
+            "databases": databases_ref_list,
+            "roles": roles_list
         }
     }
 }

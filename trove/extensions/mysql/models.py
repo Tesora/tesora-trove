@@ -38,13 +38,14 @@ def persisted_models():
 
 class User(object):
 
-    _data_fields = ['name', 'host', 'password', 'databases']
+    _data_fields = ['name', 'host', 'password', 'databases', 'roles']
 
-    def __init__(self, name, host, password, databases):
+    def __init__(self, name, host, password, databases, roles):
         self.name = name
         self.host = host
         self.password = password
         self.databases = databases
+        self.roles = roles
 
     @classmethod
     def load(cls, context, instance_id, username, hostname, root_user=False):
@@ -64,7 +65,8 @@ class User(object):
         return cls(found_user['_name'],
                    found_user['_host'],
                    found_user['_password'],
-                   database_names)
+                   database_names,
+                   found_user.get('_roles'))
 
     @classmethod
     def create(cls, context, instance_id, users):
@@ -209,7 +211,8 @@ class Users(object):
             model_users.append(User(mysql_user.name,
                                     mysql_user.host,
                                     mysql_user.password,
-                                    dbs))
+                                    dbs,
+                                    mysql_user.roles))
         return model_users, next_marker
 
 

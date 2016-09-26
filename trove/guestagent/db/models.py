@@ -680,6 +680,7 @@ class DatastoreUser(Base):
         self._password = None
         self._host = None
         self._databases = []
+        self._roles = []
 
         # need only one of: deserializing, name, or (name and password)
         if ((not (bool(deserializing) != bool(name))) or
@@ -735,6 +736,23 @@ class DatastoreUser(Base):
     def databases(self, value):
         mydb = self._build_database_schema(value)
         self._databases.append(mydb.serialize())
+
+    @property
+    def roles(self):
+        if not hasattr(self, '_roles'):
+            self._roles = []
+        return self._roles
+
+    @roles.setter
+    def roles(self, value):
+        if isinstance(value, list):
+            self._roles.extend(value)
+        else:
+            self._roles.append(value)
+
+    def revoke_role(self, role):
+        if role in self.roles:
+            self._roles.remove(role)
 
     @property
     def host(self):
@@ -847,7 +865,6 @@ class MongoDBUser(DatastoreUser):
     def __init__(self, name=None, password=None, *args, **kwargs):
         self._username = None
         self._database = None
-        self._roles = []
         super(MongoDBUser, self).__init__(name, password, *args, **kwargs)
 
     @property
@@ -865,6 +882,15 @@ class MongoDBUser(DatastoreUser):
     @database.setter
     def database(self, value):
         self._update_name(database=value)
+
+    @property
+    def databases(self):
+        return [MongoDBSchema(role['database']).serialize()
+                for role in self.roles if role['name'] == 'readWrite']
+
+    @databases.setter
+    def databases(self, value):
+        self.add_access_role(value)
 
     @property
     def name(self):
@@ -896,27 +922,47 @@ class MongoDBUser(DatastoreUser):
         self._username = username
         self._database = self._build_database_schema(database).serialize()
 
-    @property
-    def roles(self):
-        return self._roles
+    def convert_role_mongo_to_trove(self, role):
+        return {'name': role['role'], 'database': role['db']}
 
-    @roles.setter
-    def roles(self, value):
-        if isinstance(value, list):
-            for role in value:
-                self._add_role(role)
+    def convert_role_trove_to_mongo(self, role):
+        if role.get('database'):
+            return {'role': role['name'], 'db': role['database']}
         else:
-            self._add_role(value)
+            return {'role': role['name'], 'db': self.database.name}
 
-    def revoke_role(self, role):
-        if role in self.roles:
-            self._roles.remove(role)
+    @property
+    def mongo_roles(self):
+        return [self.convert_role_trove_to_mongo(role)
+                for role in self.roles]
+
+    @mongo_roles.setter
+    def mongo_roles(self, value):
+        if isinstance(value, list):
+            for mongo_role in value:
+                self._roles.append(
+                    self.convert_role_mongo_to_trove(mongo_role))
+        else:
+            self._roles.append(self.convert_role_mongo_to_trove(value))
 
     def _init_roles(self):
         if '_roles' not in self.__dict__:
             self._roles = []
+        if '_databases' in self.__dict__:
             for db in self._databases:
-                self._roles.append({'db': db['_name'], 'role': 'readWrite'})
+                self.add_access_role(db['_name'])
+            del self._databases
+
+    def access_role(self, value):
+        return {'name': 'readWrite', 'database': value}
+
+    def add_access_role(self, value):
+        """Access is tracked not via the old-style _databases but via _roles,
+        so if given access to a database convert it to the readWrite role.
+        """
+        access_role = self.access_role(value)
+        if access_role not in self._roles:
+            self._roles.append(access_role)
 
     @classmethod
     def deserialize_user(cls, value):
@@ -924,6 +970,12 @@ class MongoDBUser(DatastoreUser):
         user.name = user._name
         user._init_roles()
         return user
+
+    def serialize(self):
+        dbs = self.databases
+        d = super(MongoDBUser, self).serialize()
+        d['_databases'] = dbs
+        return d
 
     def _build_database_schema(self, name):
         return MongoDBSchema(name)
@@ -949,20 +1001,6 @@ class MongoDBUser(DatastoreUser):
         return True
 
     def _is_valid_password(self, value):
-        return True
-
-    def _add_role(self, value):
-        if not self._is_valid_role(value):
-            raise ValueError(_('Role %s is invalid.') % value)
-        self._roles.append(value)
-        if value['role'] == 'readWrite':
-            self.databases = value['db']
-
-    def _is_valid_role(self, value):
-        if not isinstance(value, dict):
-            return False
-        if not {'db', 'role'} == set(value):
-            return False
         return True
 
     @classmethod
@@ -1039,6 +1077,7 @@ class MySQLUser(Base):
         self._host = None
         self._password = None
         self._databases = []
+        self._roles = []
         self._ignore_users = cfg.get_ignored_users()
 
     def _is_valid(self, value):
@@ -1107,6 +1146,23 @@ class MySQLUser(Base):
         mydb = ValidatedMySQLDatabase()
         mydb.name = value
         self._databases.append(mydb.serialize())
+
+    @property
+    def roles(self):
+        if not hasattr(self, '_roles'):
+            self._roles = []
+        return self._roles
+
+    @roles.setter
+    def roles(self, value):
+        if isinstance(value, list):
+            self._roles.extend(value)
+        else:
+            self._roles.append(value)
+
+    def revoke_role(self, role):
+        if role in self.roles:
+            self._roles.remove(role)
 
     @property
     def host(self):
@@ -1228,6 +1284,7 @@ class MySQLRootUser(MySQLUser):
             self._password = utils.generate_random_password()
         else:
             self._password = password
+        self.roles = {'name': 'root'}
 
 
 class PostgreSQLRootUser(PostgreSQLUser):
@@ -1238,6 +1295,7 @@ class PostgreSQLRootUser(PostgreSQLUser):
             password = utils.generate_random_password()
         super(PostgreSQLRootUser, self).__init__("postgres", password=password,
                                                  *args, **kwargs)
+        self.roles = {'name': 'root'}
 
 
 class EnterpriseDBRootUser(PostgreSQLUser):
@@ -1248,6 +1306,7 @@ class EnterpriseDBRootUser(PostgreSQLUser):
             password = utils.generate_random_password()
         super(EnterpriseDBRootUser, self).__init__(
             "enterprisedb", password=password, *args, **kwargs)
+        self.roles = {'name': 'root'}
 
 
 class CassandraRootUser(CassandraUser):
@@ -1258,6 +1317,7 @@ class CassandraRootUser(CassandraUser):
             password = utils.generate_random_password()
         super(CassandraRootUser, self).__init__("cassandra", password=password,
                                                 *args, **kwargs)
+        self.roles = {'name': 'root'}
 
 
 class CouchbaseRootUser(CouchbaseUser):
@@ -1271,3 +1331,4 @@ class CouchbaseRootUser(CouchbaseUser):
         # TODO(pmalik): Name should really be 'Administrator' instead.
         super(CouchbaseRootUser, self).__init__("root", password=password,
                                                 *args, **kwargs)
+        self.roles = {'name': 'root'}
