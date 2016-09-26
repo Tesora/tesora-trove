@@ -26,6 +26,7 @@ from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance
 from trove.common.notification import EndNotification
+from trove.common import stream_codecs
 from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.common.operating_system import FileMode
@@ -369,6 +370,8 @@ class Manager(periodic_task.PeriodicTasks):
                               users, device_path, mount_point, backup_info,
                               config_contents, root_password, overrides,
                               cluster_config, snapshot)
+            if CONF.get(self.manager).get('enable_saslauthd'):
+                self.enable_ldap()
             LOG.info(_("Post prepare for '%s' datastore completed.") %
                      self.manager)
         except Exception as ex:
@@ -419,6 +422,38 @@ class Manager(periodic_task.PeriodicTasks):
     def restart(self, context):
         """Restart the database service."""
         pass
+
+    def enable_ldap(self):
+        LOG.debug("Starting saslauthd for LDAP support.")
+        # Ubuntu and RHEL have different ways of enabling the service
+        saslauthd_init_file = operating_system.file_discovery(
+            ['/etc/default/saslauthd'])
+        if saslauthd_init_file:
+            saslauthd_init = operating_system.read_file(
+                saslauthd_init_file, stream_codecs.KeyValueCodec(),
+                as_root=True)
+            saslauthd_init['START'] = 'yes'
+            operating_system.write_file(
+                saslauthd_init_file, saslauthd_init,
+                stream_codecs.KeyValueCodec(), as_root=True)
+        elif operating_system.file_discovery(['/etc/sysconfig/saslauthd']):
+            operating_system.enable_service_on_boot(['saslauth'])
+        else:
+            LOG.exception(_("Cannot find saslauthd service to enable for LDAP "
+                            "client. Skipping."))
+            return
+        operating_system.start_service(['saslauth'])
+        saslauthd_conf_file = '/etc/saslauthd.conf'
+        saslauthd_conf = operating_system.read_file(
+            saslauthd_conf_file, stream_codecs.YamlCodec(), as_root=True)
+        saslauthd_conf.update({
+            'ldap_servers': CONF.get(self.manager).get('ldap_servers'),
+            'ldap_search_base': CONF.get(self.manager).get('ldap_search_base')
+        })
+        operating_system.write_file(
+            saslauthd_conf_file, saslauthd_conf,
+            stream_codecs.YamlCodec(), as_root=True)
+        LOG.debug("Enabled saslauthd as an LDAP client.")
 
     #####################
     # File System related
