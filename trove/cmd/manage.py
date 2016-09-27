@@ -31,6 +31,7 @@ from trove.common import utils
 from trove.configuration import models as config_models
 from trove.datastore import models as datastore_models
 from trove.db import get_db_api
+from trove.report import usage_report
 
 
 CONF = cfg.CONF
@@ -165,6 +166,9 @@ class Commands(object):
         except exception.DatastoreVersionNotFound as e:
             print(e)
 
+    def usage_report(self, start_date, end_date, output_file):
+        usage_report.usage_report(start_date, end_date, output_file)
+
     def params_of(self, command_name):
         if Commands.has(command_name):
             return utils.MethodInspector(getattr(self, command_name))
@@ -288,6 +292,17 @@ def main():
         parser.add_argument('datastore_name', help='Name of the datastore.')
         parser.add_argument('datastore_version_name', help='Name of the '
                             'datastore version.')
+
+        parser = subparser.add_parser(
+            'usage_report',
+            help='Reports high watermark of active instances daily over '
+            'a date range')
+        parser.add_argument('start_date', help='First date in range '
+                            'for report (CCYY-MM-DD)')
+        parser.add_argument('end_date', help='Last date in range '
+                            'for report (CCYY-MM-DD)')
+        parser.add_argument('output_file', help='Path to file to output '
+                            'to. Will be in CSV format')
 
     cfg.custom_parser('action', actions)
     cfg.parse_args(sys.argv)
