@@ -1081,9 +1081,11 @@ class Instance(BuiltInstance):
             if cluster_config:
                 cluster_id = cluster_config.get("id", None)
                 shard_id = cluster_config.get("shard_id", None)
-                instance_type = cluster_config.get("instance_type", None)
+                instance_types = cluster_config.get("instance_type", None)
+                if isinstance(instance_types, list):
+                    instance_types = ','.join(instance_types)
             else:
-                cluster_id = shard_id = instance_type = None
+                cluster_id = shard_id = instance_types = None
 
             ids = []
             names = []
@@ -1097,7 +1099,7 @@ class Instance(BuiltInstance):
                     task_status=InstanceTasks.BUILDING,
                     configuration_id=configuration_id,
                     slave_of_id=slave_of_id, cluster_id=cluster_id,
-                    shard_id=shard_id, type=instance_type,
+                    shard_id=shard_id, type=instance_types,
                     region_id=region_name)
                 LOG.debug("Tenant %(tenant)s created new Trove instance "
                           "%(db)s in region %(region)s.",

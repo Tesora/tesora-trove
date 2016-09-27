@@ -73,6 +73,9 @@ class Manager(periodic_task.PeriodicTasks):
         self.__manager = None
         self.__prepare_error = False
 
+        # Cluster properties
+        self._cluster_config = None
+
         # Guest log
         self._guest_log_context = None
         self._guest_log_loaded_context = None
@@ -139,6 +142,14 @@ class Manager(periodic_task.PeriodicTasks):
         it should override this to return it.
         """
         return None
+
+    @property
+    def cluster_config(self):
+        return self._cluster_config
+
+    @cluster_config.setter
+    def cluster_config(self, cluster_config):
+        self._cluster_config = cluster_config
 
     @property
     def datastore_log_defs(self):
@@ -286,6 +297,7 @@ class Manager(periodic_task.PeriodicTasks):
                  cluster_config, snapshot, modules):
         LOG.info(_("Starting datastore prepare for '%s'.") % self.manager)
         self.status.begin_install()
+        self.cluster_config = cluster_config
         if (cluster_config or (
                 snapshot and
                 self.post_processing_required_for_replication(None))):

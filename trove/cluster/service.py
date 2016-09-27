@@ -13,6 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import six
+
 from oslo_config.cfg import NoSuchOptError
 from oslo_log import log as logging
 
@@ -192,6 +194,11 @@ class ClusterController(wsgi.Controller):
                 availability_zone = node['availability_zone']
             if 'modules' in node:
                 modules = node['modules']
+            instance_type = None
+            if 'type' in node:
+                instance_type = node['type']
+                if isinstance(instance_type, six.string_types):
+                    instance_type = instance_type.split(',')
 
             instances.append({"flavor_id": flavor_id,
                               "volume_size": volume_size,
@@ -199,7 +206,8 @@ class ClusterController(wsgi.Controller):
                               "nics": nics,
                               "availability_zone": availability_zone,
                               'region_name': node.get('region_name'),
-                              "modules": modules})
+                              "modules": modules,
+                              "instance_type": instance_type})
 
         locality = body['cluster'].get('locality')
         if locality:

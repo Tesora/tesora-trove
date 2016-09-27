@@ -13,15 +13,13 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from trove.guestagent.datastore.experimental.couchbase import (
-    manager as community_manager
-)
+from trove.guestagent.datastore.experimental.couchbase_4 import manager
 from trove.guestagent.datastore.experimental.couchbase_4 import service
 
 
-class Manager(community_manager.Manager):
+class Manager(manager.Manager):
 
-    def __init__(self, manager_name='couchbase_4'):
+    def __init__(self, manager_name='couchbase_ee'):
         super(Manager, self).__init__(manager_name=manager_name)
 
     def build_app(self):

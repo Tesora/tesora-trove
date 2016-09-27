@@ -13,6 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import six
+
 from oslo_log import log as logging
 
 from novaclient import exceptions as nova_exceptions
@@ -282,6 +284,11 @@ class Cluster(object):
                     if 'availability_zone' in node:
                         instance['availability_zone'] = (
                             node['availability_zone'])
+                    if 'type' in node:
+                        instance_type = node['type']
+                        if isinstance(instance_type, six.string_types):
+                            instance_type = instance_type.split(',')
+                        instance['instance_type'] = instance_type
                     instances.append(instance)
                 return self.grow(instances)
         elif action == 'shrink':

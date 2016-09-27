@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import collections
 import json
 import os
 import psutil
@@ -115,10 +116,10 @@ class CouchbaseApp(object):
     def apply_post_restore_updates(self, backup_info):
         self.status = CouchbaseAppStatus(self.build_admin())
 
-    def initialize_cluster(self):
+    def initialize_cluster(self, node_info):
         """Initialize this node as cluster.
         """
-        self.build_admin().run_cluster_init(self.ramsize_quota_mb)
+        self.build_admin().run_cluster_init(node_info, self.ramsize_quota_mb)
 
     def get_cluster_admin(self):
         cluster_password = self.get_password()
@@ -188,8 +189,8 @@ class CouchbaseApp(object):
     def reset_configuration(self, configuration):
         pass
 
-    def rebalance_cluster(self, added_nodes=None, removed_nodes=None):
-        self.build_admin().run_rebalance(added_nodes, removed_nodes)
+    def rebalance_cluster(self, add_node_info=None, remove_node_info=None):
+        self.build_admin().run_rebalance(add_node_info, remove_node_info)
 
     def get_cluster_rebalance_status(self):
         """Return whether rebalancing is currently running.
@@ -273,19 +274,31 @@ class CouchbaseAdmin(object):
     def run_node_init(self, data_path, index_path, hostname):
         LOG.debug("Configuring node-specific parameters.")
         self._run_couchbase_command(
-            'node-init', {'node-init-data-path': data_path,
-                          'node-init-index-path': index_path,
-                          'node-init-hostname': hostname})
+            'node-init', self.get_node_init_options(
+                data_path, index_path, hostname))
 
-    def run_cluster_init(self, ramsize_quota_mb):
+    def get_node_init_options(self, data_path, index_path, hostname):
+        return {
+            'node-init-data-path': data_path,
+            'node-init-index-path': index_path,
+            'node-init-hostname': hostname
+        }
+
+    def run_cluster_init(self, node_info, ramsize_quota_mb):
         LOG.debug("Configuring cluster parameters.")
         self._run_couchbase_command(
-            'cluster-init', {'cluster-init-username': self._user.name,
-                             'cluster-init-password': self._user.password,
-                             'cluster-init-port': self._http_client_port,
-                             'cluster-ramsize': ramsize_quota_mb})
+            'cluster-init', self.get_cluster_init_options(
+                node_info, ramsize_quota_mb))
 
-    def run_rebalance(self, added_nodes, removed_nodes):
+    def get_cluster_init_options(self, node_info, ramsize_quota_mb):
+        return {
+            'cluster-init-username': self._user.name,
+            'cluster-init-password': self._user.password,
+            'cluster-init-port': self._http_client_port,
+            'cluster-ramsize': ramsize_quota_mb,
+        }
+
+    def run_rebalance(self, add_node_info, remove_node_info):
         """Rebalance the cluster by adding and/or removing nodes.
         Rebalance moves the data around the cluster so that the data is
         distributed across the entire cluster.
@@ -296,18 +309,32 @@ class CouchbaseAdmin(object):
         """
 
         LOG.debug("Rebalancing the cluster.")
-        options = {}
-        if added_nodes:
-            options.update({'server-add': added_nodes,
-                            'server-add-username': self._user.name,
-                            'server-add-password': self._user.password})
-        if removed_nodes:
-            options.update({'server-remove': removed_nodes})
+        options = []
+        if add_node_info:
+            options.extend(self.get_cluster_add_options(add_node_info))
+        if remove_node_info:
+            options.extend(self.get_cluster_remove_options(remove_node_info))
 
         if options:
             self._run_couchbase_command('rebalance', options)
         else:
             LOG.info(_("No changes to the topology, skipping rebalance."))
+
+    def get_cluster_add_options(self, node_info):
+
+        add_options = []
+        for node in node_info:
+            options = collections.OrderedDict()
+            options['server-add'] = node['host']
+            options['server-add-username'] = self._user.name
+            options['server-add-password'] = self._user.password
+            add_options.append(options)
+
+        return add_options
+
+    def get_cluster_remove_options(self, node_info):
+
+        return {'server-remove': [ni['host'] for ni in node_info]}
 
     def get_cluster_rebalance_status(self):
         """Return whether rebalancing is currently running.

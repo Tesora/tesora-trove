@@ -90,11 +90,13 @@ class ClusterView(object):
                 instance_dict["flavor"] = self._build_flavor_info(
                     instance.flavor_id)
             instance_ips = instance.get_visible_ip_addresses()
+            instance_types = instance.type.split(',')
             if self.load_servers and instance_ips:
                 instance_dict["ip"] = instance_ips
-                if instance.type in ip_to_be_published_for:
+                if any(t in instance_types for t in ip_to_be_published_for):
                     ip_list.append(instance_ips[0])
-            if instance.type in instance_dict_to_be_published_for:
+            if any(t in instance_types
+                   for t in instance_dict_to_be_published_for):
                 instances.append(instance_dict)
         ip_list.sort()
         return instances, ip_list

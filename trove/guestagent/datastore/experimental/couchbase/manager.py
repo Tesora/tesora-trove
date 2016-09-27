@@ -187,8 +187,8 @@ class Manager(manager.Manager):
         with EndNotification(context):
             backup.backup(context, backup_info)
 
-    def initialize_cluster(self, context):
-        self.app.initialize_cluster()
+    def initialize_cluster(self, context, node_info):
+        self.app.initialize_cluster(node_info=node_info)
 
     def get_cluster_password(self, context):
         return self.app.get_cluster_admin().password
@@ -196,11 +196,11 @@ class Manager(manager.Manager):
     def get_cluster_rebalance_status(self, context):
         return self.app.get_cluster_rebalance_status()
 
-    def add_nodes(self, context, nodes):
-        self.app.rebalance_cluster(added_nodes=nodes)
+    def add_nodes(self, context, node_info):
+        self.app.rebalance_cluster(add_node_info=node_info)
 
-    def remove_nodes(self, context, nodes):
-        self.app.rebalance_cluster(removed_nodes=nodes)
+    def remove_nodes(self, context, node_info):
+        self.app.rebalance_cluster(remove_node_info=node_info)
 
     def pre_upgrade(self, context):
         LOG.debug('Preparing Couchbase for upgrade.')
