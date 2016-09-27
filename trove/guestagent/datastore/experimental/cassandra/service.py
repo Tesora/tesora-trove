@@ -19,6 +19,7 @@ import stat
 
 from cassandra.auth import PlainTextAuthProvider
 from cassandra.cluster import Cluster
+from cassandra.cluster import NoHostAvailable
 from cassandra import OperationTimedOut
 from cassandra.policies import ConstantReconnectionPolicy
 from oslo_log import log as logging
@@ -795,10 +796,15 @@ class CassandraAppStatus(service.BaseDbStatus):
         return self.__client
 
     def _get_actual_db_status(self):
-        if self.client.local_node_is_up():
-            return rd_instance.ServiceStatuses.RUNNING
-        else:
+        try:
+            if self.client.local_node_is_up():
+                return rd_instance.ServiceStatuses.RUNNING
+        except NoHostAvailable:
             return rd_instance.ServiceStatuses.SHUTDOWN
+        except Exception:
+            LOG.exception(_("Error getting Cassandra status."))
+
+        return rd_instance.ServiceStatuses.SHUTDOWN
 
     def cleanup_stalled_db_services(self):
         utils.execute_with_timeout(CassandraApp.CASSANDRA_KILL_CMD, shell=True)
