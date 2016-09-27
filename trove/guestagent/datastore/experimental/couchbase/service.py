@@ -439,24 +439,64 @@ class CouchbaseAdmin(object):
         return '/opt/couchbase/bin'
 
     def create_user(self, context, users):
-        if len(users) > 1:
-            raise exception.UnprocessableEntity(
-                _("Only a single user can be created on the instance."))
-
-        user = models.CouchbaseUser.deserialize_user(users[0])
-        if user.roles:
-            if user.roles[0].get('name') == 'read-only':
-                self._set_read_only_user(user)
+        read_only_users = []
+        buckets = []
+        user_models = [models.CouchbaseUser.deserialize_user(user)
+                       for user in users]
+        for item in user_models:
+            if item.roles and item.roles[0].get('name') == 'read-only':
+                read_only_users.append(item)
             else:
-                raise exception.UnprocessableEntity(
-                    _("Unrecognized role(s): %s.") % user.roles)
-        else:
-            user_list = self._list_buckets()
-            if user_list:
-                raise exception.UnprocessableEntity(
-                    _("There already is a user on this instance: %s")
-                    % user_list[0].name)
+                buckets.append(item)
+
+        if read_only_users:
+            self._set_read_only_user(read_only_users[0])
+
+        self.create_buckets(buckets)
+
+    def create_buckets(self, users):
+        self._compute_bucket_mem_allocations(users)
+        for user in users:
             self._create_bucket(user)
+
+    def _compute_bucket_mem_allocations(self, users):
+        """Compute memory allocation for Couchbase users.
+
+        Trove will use whatever is set for every given user.
+        It will fail if the total exceeds the available memory.
+        Users without memory quota will evenly split the remaining available
+        memory.
+        """
+
+        users_without_quota = set()
+        user_alloc_mb = 0
+        for user in users:
+            if user.bucket_ramsize_mb is not None:
+                user_alloc_mb += user.bucket_ramsize_mb
+            else:
+                users_without_quota.add(user)
+
+        total_quota_mb = self.get_memory_quota_mb()
+        used_quota_mb = self.get_used_quota_mb()
+        available_quota_mb = total_quota_mb - used_quota_mb
+        available_for_auto_alloc_mb = available_quota_mb - user_alloc_mb
+        num_users_without_quota = len(users_without_quota)
+        auto_alloc_per_bucket_mb = (
+            available_for_auto_alloc_mb / max(num_users_without_quota, 1))
+
+        if ((available_for_auto_alloc_mb < 0) or
+            (num_users_without_quota > 0 and
+             auto_alloc_per_bucket_mb <
+             models.CouchbaseUser.MIN_BUCKET_RAMSIZE_MB)):
+            required = user_alloc_mb - available_quota_mb
+            raise exception.TroveError(
+                _("Not enough memory for Couchbase buckets. "
+                  "Additional %dMB is required.") % required)
+
+        for user in users_without_quota:
+            user.bucket_ramsize_mb = auto_alloc_per_bucket_mb
+
+        return users
 
     def _set_read_only_user(self, user):
         LOG.debug("Setting the read-only user: %s" % user.name)
@@ -494,11 +534,13 @@ class CouchbaseAdmin(object):
                                 int(CONF.couchbase.enable_index_replica))
         bucket_priority = (user.bucket_priority or
                            CONF.couchbase.bucket_priority)
+        bucket_port = (user.bucket_port or
+                       CONF.couchbase.bucket_port)
 
         self.run_bucket_create(
             user.name,
             user.password,
-            CONF.couchbase.bucket_port,
+            bucket_port,
             CONF.couchbase.bucket_type,
             bucket_ramsize_quota_mb,
             enable_index_replica,
@@ -509,6 +551,11 @@ class CouchbaseAdmin(object):
     def get_memory_quota_mb(self):
         server_info = self.run_server_info()
         return server_info['memoryQuota']
+
+    def get_used_quota_mb(self):
+        server_info = self.run_server_info()
+        ram_info = server_info['storageTotals']['ram']
+        return ram_info['quotaUsedPerNode'] / 1048576
 
     def get_num_cluster_nodes(self):
         server_list = self.run_server_list()
@@ -580,13 +627,14 @@ class CouchbaseAdmin(object):
                 "a new one."))
 
     def change_passwords(self, context, users):
-        if len(users) > 1:
-            raise exception.UnprocessableEntity(
-                _("There is only one user on the instance."))
+        user_models = [models.CouchbaseUser.deserialize_user(users)
+                       for user in users]
 
-        user = models.CouchbaseUser.deserialize_user(users[0])
-        self._block_read_only_user_edit(user.name)
-        self._edit_bucket(user)
+        for item in user_models:
+            self._block_read_only_user_edit(item.name)
+
+        for item in user_models:
+            self._edit_bucket(item)
 
     def _edit_bucket(self, user):
         # When changing the active bucket configuration,
@@ -605,11 +653,13 @@ class CouchbaseAdmin(object):
                                 int(CONF.couchbase.enable_index_replica))
         bucket_priority = (user.bucket_priority or
                            CONF.couchbase.bucket_priority)
+        bucket_port = (user.bucket_port or
+                       CONF.couchbase.bucket_port)
 
         self.run_bucket_edit(
             user.name,
             user.password,
-            CONF.couchbase.bucket_port,
+            bucket_port,
             CONF.couchbase.bucket_type,
             bucket_ramsize_quota_mb,
             enable_index_replica,

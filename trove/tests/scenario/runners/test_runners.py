@@ -160,6 +160,8 @@ class InstanceTestInfo(object):
         self.user = None  # The user instance who owns the instance.
         self.users = None  # The users created on the instance.
         self.databases = None  # The databases created on the instance.
+        self.helper_user = None  # Test helper user if exists.
+        self.helper_database = None  # Test helper database if exists.
 
 
 class SkipKnownBug(proboscis.SkipTest):
@@ -724,6 +726,15 @@ class TestRunner(object):
                             'databases': databases}
             return None
 
+        def _build_user_def(creds, user_properties):
+            user_def = _get_credentials(creds)
+            if user_def:
+                if user_properties:
+                    user_def.update(user_properties)
+                return user_def
+
+            return None
+
         credentials = self.test_helper.get_helper_credentials()
         if credentials:
             database = credentials.get('database')
@@ -731,9 +742,10 @@ class TestRunner(object):
                 database_def = {'name': database}
         credentials_root = self.test_helper.get_helper_credentials_root()
 
+        user_properties = self.test_helper.get_helper_user_properties()
         return (database_def,
-                _get_credentials(credentials),
-                _get_credentials(credentials_root))
+                _build_user_def(credentials, user_properties),
+                _build_user_def(credentials_root, user_properties))
 
     def wait_for_user_create(self, instance_id, expected_user_defs):
         expected_user_names = {user_def['name']

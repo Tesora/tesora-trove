@@ -1240,6 +1240,7 @@ class CouchbaseUser(DatastoreUser):
 
     MAX_PASSWORD_LEN = 24
     MAX_REPLICA_COUNT = 3
+    MIN_BUCKET_RAMSIZE_MB = 100
     VALID_BUCKET_PRIORITY = ['low', 'high']
     VALID_BUCKET_EVICTION_POLICY = ['valueOnly', 'fullEviction']
 
@@ -1251,7 +1252,8 @@ class CouchbaseUser(DatastoreUser):
                  enable_index_replica=None,
                  bucket_eviction_policy=None,
                  bucket_priority=None,
-                 used_ram_mb=None, * args, **kwargs):
+                 used_ram_mb=None,
+                 bucket_port=None, * args, **kwargs):
         super(CouchbaseUser, self).__init__(name, password, roles=roles,
                                             *args, **kwargs)
         self._bucket_ramsize_mb = None
@@ -1260,6 +1262,7 @@ class CouchbaseUser(DatastoreUser):
         self._bucket_eviction_policy = None
         self._bucket_priority = None
         self._used_ram_mb = used_ram_mb
+        self._bucket_port = bucket_port
 
         if bucket_ramsize_mb is not None:
             self.bucket_ramsize_mb = bucket_ramsize_mb
@@ -1295,9 +1298,9 @@ class CouchbaseUser(DatastoreUser):
 
     @bucket_ramsize_mb.setter
     def bucket_ramsize_mb(self, value):
-        if not self._is_non_negative_int(value):
+        if not self._is_integer(value, self.MIN_BUCKET_RAMSIZE_MB, None):
             raise ValueError(
-                _("Bucket ramsize quota must be a non-negative integer."))
+                _("Bucket RAM quota cannot be less than 100MB."))
         self._bucket_ramsize_mb = value
 
     def _is_non_negative_int(self, value):
@@ -1363,6 +1366,10 @@ class CouchbaseUser(DatastoreUser):
     @property
     def used_ram_mb(self):
         return self._used_ram_mb
+
+    @property
+    def bucket_port(self):
+        return self._bucket_port
 
     @classmethod
     def _dict_requirements(cls):

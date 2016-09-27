@@ -29,10 +29,20 @@ class CouchbaseHelper(TestHelper):
         self._data_cache = dict()
 
     def get_valid_user_definitions(self):
-        return [{'name': 'bucket1', 'password': 'password1'}]
+        return [{'name': 'bucket1', 'password': 'password1'},
+                {'name': 'bucket2', 'password': 'password2',
+                 'bucket_ramsize': 100, 'bucket_replica': 0},
+                {'name': 'bucket3', 'password': 'password3',
+                 'bucket_ramsize': 110, 'bucket_replica': 1,
+                 'enable_index_replica': 1,
+                 'bucket_eviction_policy': 'fullEviction',
+                 'bucket_priority': 'high'}]
 
     def get_helper_credentials(self):
         return {'name': 'lite', 'password': 'litepass'}
+
+    def get_helper_user_properties(self):
+        return {'bucket_ramsize': 100}
 
     def create_client(self, host, *args, **kwargs):
         user = self.get_helper_credentials()
