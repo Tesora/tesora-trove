@@ -232,6 +232,9 @@ class CouchbaseClusterTasks(task_models.ClusterTasks):
         for node in removed_nodes:
             Instance.delete(node['instance'])
 
+    def upgrade_cluster(self, context, cluster_id, datastore_version):
+        self.rolling_upgrade_cluster(context, cluster_id, datastore_version)
+
 
 class CouchbaseTaskManagerAPI(task_api.API):
     pass
