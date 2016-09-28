@@ -133,7 +133,7 @@ class VolumeDevice(object):
                              self.device_path)
 
     def unmount(self, mount_point):
-        if os.path.exists(mount_point):
+        if os.path.exists(mount_point) and os.path.ismount(mount_point):
             cmd = "sudo umount %s" % mount_point
             child = pexpect.spawn(cmd)
             child.expect(pexpect.EOF)

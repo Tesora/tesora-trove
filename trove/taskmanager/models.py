@@ -1844,7 +1844,6 @@ class ResizeVolumeAction(object):
         self._attach_volume(recover_func=self._fail)
         # some platforms (e.g. RHEL) auto-mount attached volumes
         # make sure to issue an explicit unmount
-        # this will be a no-op if the volume is not mounted
         # NOTE: this sleep was added because the unmount caused
         #       a race condition on RHEL (DBAAS-1037)
         time.sleep(2)

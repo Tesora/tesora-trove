@@ -158,8 +158,10 @@ class VolumeDeviceTest(trove_testtools.TestCase):
 
     @patch.object(pexpect, 'spawn', Mock())
     def _test_unmount(self, positive=True):
-        origin_ = os.path.exists
+        origin_exists = os.path.exists
+        origin_ismount = os.path.ismount
         os.path.exists = MagicMock(return_value=positive)
+        os.path.ismount = MagicMock(return_value=positive)
         fake_spawn = _setUp_fake_spawn()
 
         self.volumeDevice.unmount('/mnt/volume')
@@ -167,7 +169,8 @@ class VolumeDeviceTest(trove_testtools.TestCase):
         if not positive:
             COUNT = 0
         self.assertEqual(COUNT, fake_spawn.expect.call_count)
-        os.path.exists = origin_
+        os.path.exists = origin_exists
+        os.path.ismount = origin_ismount
 
     @patch.object(utils, 'execute', return_value=('/var/lib/mysql', ''))
     def test_mount_points(self, mock_execute):
