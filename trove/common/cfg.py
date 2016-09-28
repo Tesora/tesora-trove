@@ -636,8 +636,8 @@ mysql_opts = [
     cfg.BoolOpt('enable_cluster_instance_backup',
                 default=False,
                 help='Allows backup of single instance in the cluster.'),
-    cfg.StrOpt('enable_saslauthd', default=False,
-               help='Enable the saslauth daemon.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
 ]
 
 # MySQL EE (mostly uses same options as MySQL community edition).
@@ -761,8 +761,8 @@ oracle_ra_opts = [
     cfg.BoolOpt('enable_cluster_instance_backup',
                 default=False,
                 help='Allows backup of single instance in the cluster.'),
-    cfg.StrOpt('enable_saslauthd', default=False,
-               help='Enable the saslauth daemon.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
 ]
 
 # Oracle RAC
@@ -858,8 +858,8 @@ oracle_rac_opts = [
     cfg.BoolOpt('enable_cluster_instance_backup',
                 default=False,
                 help='Allows backup of single instance in the cluster.'),
-    cfg.StrOpt('enable_saslauthd', default=False,
-               help='Enable the saslauth daemon.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
 ]
 
 # Oracle
@@ -961,8 +961,8 @@ oracle_opts = [
     cfg.BoolOpt('enable_cluster_instance_backup',
                 default=False,
                 help='Allows backup of single instance in the cluster.'),
-    cfg.StrOpt('enable_saslauthd', default=False,
-               help='Enable the saslauth daemon.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
 ]
 
 # Percona
@@ -1049,8 +1049,8 @@ percona_opts = [
     cfg.BoolOpt('enable_cluster_instance_backup',
                 default=False,
                 help='Allows backup of single instance in the cluster.'),
-    cfg.StrOpt('enable_saslauthd', default=False,
-               help='Enable the saslauth daemon.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
 ]
 
 # Percona XtraDB Cluster
@@ -1141,8 +1141,8 @@ pxc_opts = [
     cfg.BoolOpt('enable_cluster_instance_backup',
                 default=False,
                 help='Allows backup of single instance in the cluster.'),
-    cfg.StrOpt('enable_saslauthd', default=False,
-               help='Enable the saslauth daemon.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
 ]
 
 
@@ -1222,8 +1222,8 @@ redis_opts = [
     cfg.BoolOpt('enable_cluster_instance_backup',
                 default=False,
                 help='Allows backup of single instance in the cluster.'),
-    cfg.StrOpt('enable_saslauthd', default=False,
-               help='Enable the saslauth daemon.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
 ]
 
 # Cassandra
@@ -1308,8 +1308,8 @@ cassandra_opts = [
     cfg.BoolOpt('enable_cluster_instance_backup',
                 default=False,
                 help='Allows backup of single instance in the cluster.'),
-    cfg.StrOpt('enable_saslauthd', default=False,
-               help='Enable the saslauth daemon.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
 ]
 
 cassandra_3_group = cfg.OptGroup(
@@ -1434,8 +1434,8 @@ couchbase_opts = [
     cfg.BoolOpt('enable_cluster_instance_backup',
                 default=False,
                 help='Allows backup of single instance in the cluster.'),
-    cfg.StrOpt('enable_saslauthd', default=False,
-               help='Enable the saslauth daemon.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
 ]
 
 couchbase_4_group = cfg.OptGroup(
@@ -1537,8 +1537,8 @@ mongodb_opts = [
     cfg.BoolOpt('enable_cluster_instance_backup',
                 default=False,
                 help='Allows backup of single instance in the cluster.'),
-    cfg.StrOpt('enable_saslauthd', default=False,
-               help='Enable the saslauth daemon.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
 ]
 
 # PostgreSQL
@@ -1613,8 +1613,8 @@ postgresql_opts = [
     cfg.BoolOpt('enable_cluster_instance_backup',
                 default=False,
                 help='Allows backup of single instance in the cluster.'),
-    cfg.StrOpt('enable_saslauthd', default=False,
-               help='Enable the saslauth daemon.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
 ]
 
 # EDB (mostly uses same options as Postgresql community edition).
@@ -1722,8 +1722,8 @@ couchdb_opts = [
     cfg.BoolOpt('enable_cluster_instance_backup',
                 default=False,
                 help='Allows backup of single instance in the cluster.'),
-    cfg.StrOpt('enable_saslauthd', default=False,
-               help='Enable the saslauth daemon.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
 ]
 
 # Vertica
@@ -1795,8 +1795,8 @@ vertica_opts = [
     cfg.BoolOpt('enable_cluster_instance_backup',
                 default=False,
                 help='Allows backup of single instance in the cluster.'),
-    cfg.StrOpt('enable_saslauthd', default=False,
-               help='Enable the saslauth daemon.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
 ]
 
 # DB2
@@ -1858,8 +1858,8 @@ db2_opts = [
     cfg.BoolOpt('enable_cluster_instance_backup',
                 default=False,
                 help='Allows backup of single instance in the cluster.'),
-    cfg.StrOpt('enable_saslauthd', default=False,
-               help='Enable the saslauth daemon.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
 ]
 
 # MariaDB
@@ -1964,8 +1964,8 @@ mariadb_opts = [
     cfg.BoolOpt('enable_cluster_instance_backup',
                 default=False,
                 help='Allows backup of single instance in the cluster.'),
-    cfg.StrOpt('enable_saslauthd', default=False,
-               help='Enable the saslauth daemon.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
 ]
 
 # RPC version groups
