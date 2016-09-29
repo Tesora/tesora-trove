@@ -1475,6 +1475,12 @@ couchbase_4_opts = _update_options(
     cfg.ListOpt('default_services', default=['data', 'index', 'query'],
                 help='Couchbase services enabled on a new node.'))
 
+couchbase_ee_group = cfg.OptGroup(
+    'couchbase_ee', title='Couchbase Enterprise Edition 4.x options',
+    help="Oslo option group designed for Couchbase EE 4.x datastore")
+couchbase_ee_opts = _update_options(
+    couchbase_4_opts)
+
 # MongoDB
 mongodb_group = cfg.OptGroup(
     'mongodb', title='MongoDB options',
@@ -2053,6 +2059,7 @@ CONF.register_group(cassandra_3_group)
 CONF.register_group(dse_group)
 CONF.register_group(couchbase_group)
 CONF.register_group(couchbase_4_group)
+CONF.register_group(couchbase_ee_group)
 CONF.register_group(mongodb_group)
 CONF.register_group(postgresql_group)
 CONF.register_group(couchdb_group)
@@ -2074,6 +2081,7 @@ CONF.register_opts(cassandra_3_opts, cassandra_3_group)
 CONF.register_opts(dse_opts, dse_group)
 CONF.register_opts(couchbase_opts, couchbase_group)
 CONF.register_opts(couchbase_4_opts, couchbase_4_group)
+CONF.register_opts(couchbase_ee_opts, couchbase_ee_group)
 CONF.register_opts(mongodb_opts, mongodb_group)
 CONF.register_opts(postgresql_opts, postgresql_group)
 CONF.register_opts(edb_opts, edb_group)

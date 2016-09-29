@@ -175,5 +175,7 @@ class TestCase(testtools.TestCase):
         conf_patcher = mock.patch.object(
             target, property_name,
             new_callable=mock.PropertyMock(return_value=value))
+        mock_conf = conf_patcher.start()
         self.addCleanup(conf_patcher.stop)
-        return conf_patcher.start()
+
+        return mock_conf

@@ -58,13 +58,17 @@ class GuestAgentCouchbase4ManagerTest(trove_testtools.TestCase):
                           admin._compute_mem_allocations_mb(512,
                                                             ['data', 'index']))
 
-        assert_mem_values(['2048', '0'],
+        assert_mem_values(['1792', '256'],
                           admin._compute_mem_allocations_mb(2048, ['data']))
-        assert_mem_values(['512', '0'],
+        assert_mem_values(['256', '256'],
                           admin._compute_mem_allocations_mb(512, ['data']))
-        assert_mem_values(['256', '0'],
-                          admin._compute_mem_allocations_mb(256, ['data']))
 
+        self.assertRaisesRegexp(
+            TroveError,
+            "Not enough memory for Couchbase services. "
+            "Additional 1MB is required.",
+            admin._compute_mem_allocations_mb, 511, ['data', 'index']
+        )
         self.assertRaisesRegexp(
             TroveError,
             "Not enough memory for Couchbase services. "
@@ -80,6 +84,18 @@ class GuestAgentCouchbase4ManagerTest(trove_testtools.TestCase):
         self.assertRaisesRegexp(
             TroveError,
             "Not enough memory for Couchbase services. "
+            "Additional 1MB is required.",
+            admin._compute_mem_allocations_mb, 511, ['data']
+        )
+        self.assertRaisesRegexp(
+            TroveError,
+            "Not enough memory for Couchbase services. "
             "Additional 128MB is required.",
+            admin._compute_mem_allocations_mb, 384, ['data']
+        )
+        self.assertRaisesRegexp(
+            TroveError,
+            "Not enough memory for Couchbase services. "
+            "Additional 384MB is required.",
             admin._compute_mem_allocations_mb, 128, ['data']
         )

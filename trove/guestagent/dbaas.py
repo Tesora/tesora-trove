@@ -56,6 +56,8 @@ defaults = {
     'trove.guestagent.datastore.experimental.couchbase.manager.Manager',
     'couchbase_4':
     'trove.guestagent.datastore.experimental.couchbase_4.manager.Manager',
+    'couchbase_ee':
+    'trove.guestagent.datastore.experimental.couchbase_ee.manager.Manager',
     'mongodb':
     'trove.guestagent.datastore.experimental.mongodb.manager.Manager',
     'postgresql':

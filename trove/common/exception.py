@@ -624,6 +624,13 @@ class ClusterOperationNotSupported(TroveError):
     message = _("The '%(operation)s' operation is not supported for cluster.")
 
 
+class ClusterInstanceTypeMissing(TroveError):
+
+    message = _("Instance(s) missing one or more required types. "
+                "'%(types)s' was specified but '%(req)s' is required "
+                "(per instance: %(per)s).")
+
+
 class TroveOperationAuthError(TroveError):
     message = _("Operation not allowed for tenant %(tenant_id)s.")
 
