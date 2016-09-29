@@ -228,15 +228,17 @@ register(["db2_supported"], common_groups,
          database_actions_groups, user_actions_groups)
 register(["cassandra_supported"], common_groups,
          user_actions_groups, database_actions_groups,
-         backup_groups, configuration_groups, cluster_actions_groups)
+         backup_groups, configuration_groups, cluster_actions_groups,
+         instance_upgrade_groups, root_actions_groups)
 register(["couchbase_supported"], common_groups, backup_groups,
-         root_actions_groups, user_actions_groups, cluster_actions_groups)
+         root_actions_groups, user_actions_groups, cluster_actions_groups,
+         instance_upgrade_groups)
 register(["couchdb_supported"], common_groups, backup_groups,
          user_actions_groups, database_actions_groups, root_actions_groups)
 register(["postgresql_supported"], common_groups,
          backup_groups, database_actions_groups, configuration_groups,
          root_actions_groups, user_actions_groups,
-         backup_incremental_groups, replication_groups)
+         backup_incremental_groups, replication_promote_groups)
 register(["mysql_supported", "percona_supported"], common_groups,
          backup_groups, configuration_groups, database_actions_groups,
          replication_promote_groups, instance_upgrade_groups,
@@ -258,8 +260,9 @@ register(["vertica_supported"], common_groups,
 
 # Tesora Downstream test groups
 register(["dse_supported"], common_groups,
-         backup_groups, user_actions_groups, database_actions_group,
-         root_actions_groups, cluster_actions_groups)
+         user_actions_groups, database_actions_groups,
+         backup_groups, configuration_groups, cluster_actions_groups,
+         instance_upgrade_groups, root_actions_groups)
 register(["edb_supported"], common_groups,
          backup_groups, database_actions_groups, configuration_groups,
-         root_actions_groups, user_actions_groups, replication_groups)
+         root_actions_groups, user_actions_groups, replication_promote_groups)
