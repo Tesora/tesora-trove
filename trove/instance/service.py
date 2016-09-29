@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from oslo_config.cfg import NoSuchOptError
 from oslo_log import log as logging
 from oslo_utils import strutils
 import webob.exc
@@ -22,6 +23,7 @@ from trove.backup import views as backup_views
 import trove.common.apischema as apischema
 from trove.common import cfg
 from trove.common import exception
+from trove.common.exception import DatabaseForUserNotInDatabaseListError
 from trove.common.i18n import _
 from trove.common.i18n import _LI
 from trove.common import notification
@@ -32,9 +34,10 @@ from trove.common.remote import create_guest_client
 from trove.common import utils
 from trove.common import wsgi
 from trove.datastore import models as datastore_models
-from trove.extensions.mysql.common import populate_users
+from trove.extensions.common.service import RoutingUserController
 from trove.extensions.mysql.common import populate_validated_databases
 from trove.instance import models, views
+from trove.guestagent.db import models as guest_models
 from trove.module import models as module_models
 from trove.module import views as module_views
 
@@ -277,20 +280,14 @@ class InstanceController(wsgi.Controller):
         datastore, datastore_version = (
             datastore_models.get_datastore_version(**datastore_args))
         image_id = datastore_version.image_id
+
         name = body['instance']['name']
         flavor_ref = body['instance']['flavorRef']
         flavor_id = utils.get_id_from_href(flavor_ref)
 
         configuration = self._configuration_parse(context, body)
-        databases = populate_validated_databases(
-            body['instance'].get('databases', []))
-        database_names = [database.get('_name', '') for database in databases]
-        users = None
-        try:
-            users = populate_users(body['instance'].get('users', []),
-                                   database_names)
-        except ValueError as ve:
-            raise exception.BadRequest(msg=ve)
+        users, databases = self._parse_users_and_databases(
+            datastore_version.manager, body)
 
         modules = body['instance'].get('modules')
 
@@ -362,6 +359,65 @@ class InstanceController(wsgi.Controller):
 
         view = views.InstanceDetailView(instance, req=req)
         return wsgi.Result(view.data(), 200)
+
+    def _parse_users_and_databases(self, manager, body):
+        """Parse user/database models from the request body.
+        Use the controllers for a given manager.
+        If the datastore does not support related operations
+        (i.e. does not have controller) ignore any payload.
+        If the datastore sets its controller to None
+        fail if the payload is non-empty.
+        """
+
+        try:
+            user_data = body['instance'].get('users', [])
+            user_models = []
+            user_controller = None
+            if user_data:
+                try:
+                    user_controller = RoutingUserController.load_controller(
+                        manager)
+                    if not user_controller:
+                        # Datastore supports user operations but the related
+                        # controller is undefined.
+                        raise exception.BadRequest(
+                            _("Datastore does not have user controller "
+                              "configured."))
+                    user_models = user_controller.parse_users_from_request(
+                        user_data)
+                except NoSuchOptError:
+                    # Datastore does not support users at all.
+                    pass
+
+            init_db_names = []
+            databases = populate_validated_databases(
+                body['instance'].get('databases', []))
+            for db in databases:
+                db_model = guest_models.MySQLDatabase()
+                db_model.deserialize(db)
+                init_db_names.append(db_model.name)
+
+            unique_user_ids = set()
+            for user_model in user_models:
+                user_id = user_controller.get_user_id(user_model)
+                if user_id in unique_user_ids:
+                    raise exception.DatabaseInitialUserDuplicateError()
+                unique_user_ids.add(user_id)
+
+                if hasattr(user_model, 'databases'):
+                    for db in user_model.databases:
+                        db_model = guest_models.MySQLDatabase()
+                        db_model.deserialize(db)
+                        db_name = db_model.name
+                        if db_name not in init_db_names:
+                            raise DatabaseForUserNotInDatabaseListError(
+                                user=user_id, database=db_name)
+
+            users = [user_model.serialize() for user_model in user_models]
+
+            return users, databases
+        except ValueError as ve:
+            raise exception.BadRequest(msg=ve)
 
     def _configuration_parse(self, context, body):
         if 'configuration' in body['instance']:

@@ -301,10 +301,11 @@ class InstanceCreateRunner(TestRunner):
         all_databases = self._get_names(
             self.test_helper.get_valid_database_definitions())
         for user in expected_users:
-            self.assert_is_sublist(
-                self._get_names(user['databases']), all_databases,
-                "Definition of user '%s' specifies databases not included in "
-                "the list of initial databases." % user['name'])
+            if 'databases' in user:
+                self.assert_is_sublist(
+                    self._get_names(user['databases']), all_databases,
+                    "Definition of user '%s' specifies databases not included "
+                    "in the list of initial databases." % user['name'])
 
     def run_initialized_instance_delete(self, expected_http_code=202):
         if self.init_inst_id:
