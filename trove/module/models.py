@@ -42,6 +42,7 @@ class Modules(object):
     ENCRYPT_KEY = CONF.module_aes_cbc_key
     VALID_MODULE_TYPES = [mt.lower() for mt in CONF.module_types]
     MATCH_ALL_NAME = 'all'
+    ANY_MODULE = 'any'
 
     @staticmethod
     def load(context, datastore=None):
@@ -139,7 +140,8 @@ class Module(object):
                description, tenant_id, datastore,
                datastore_version, auto_apply, visible, live_update,
                priority_apply, apply_order, full_access):
-        if module_type.lower() not in Modules.VALID_MODULE_TYPES:
+        if (module_type.lower() not in Modules.VALID_MODULE_TYPES and
+                Modules.ANY_MODULE not in Modules.VALID_MODULE_TYPES):
             LOG.error("Valid module types: %s" % Modules.VALID_MODULE_TYPES)
             raise exception.ModuleTypeNotFound(module_type=module_type)
         Module.validate_action(
