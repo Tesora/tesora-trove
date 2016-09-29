@@ -134,8 +134,11 @@ class CouchbaseUserModelTest(trove_testtools.TestCase):
         self.assertRaises(ValueError, setattr, self.cb_user, name, value)
 
     def test_bucket_ramsize_mb(self):
-        self._assert_valid_property('bucket_ramsize_mb', 25)
+        self._assert_valid_property('bucket_ramsize_mb', 100)
+        self._assert_valid_property('bucket_ramsize_mb', 256)
         self._assert_invalid_property('bucket_ramsize_mb', -25)
+        self._assert_invalid_property('bucket_ramsize_mb', 1)
+        self._assert_invalid_property('bucket_ramsize_mb', 99)
         self._assert_invalid_property('bucket_ramsize_mb', 25.3)
         self._assert_invalid_property('bucket_ramsize_mb', '')
         self._assert_invalid_property('bucket_ramsize_mb', None)

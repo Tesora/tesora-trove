@@ -26,6 +26,7 @@ from mock import PropertyMock
 from oslo_utils import netutils
 
 from trove.common.exception import ProcessExecutionError
+from trove.common.exception import TroveError
 from trove.common import utils
 from trove.guestagent import backup
 from trove.guestagent.common import operating_system
@@ -34,6 +35,7 @@ from trove.guestagent.datastore.experimental.couchbase import (
 from trove.guestagent.datastore.experimental.couchbase import (
     service as couch_service)
 from trove.guestagent.datastore.service import BaseDbStatus
+from trove.guestagent.db import models as guest_models
 from trove.guestagent import volume
 from trove.tests.unittests import trove_testtools
 
@@ -286,3 +288,79 @@ class GuestAgentCouchbaseManagerTest(trove_testtools.TestCase):
 
             available_ram_mock.return_value = 128
             self.assertEqual('256', str(app.ramsize_quota_mb))
+
+    @patch.object(couch_service.CouchbaseAdmin, 'get_used_quota_mb',
+                  return_value=0)
+    @patch.object(couch_service.CouchbaseAdmin, 'get_memory_quota_mb',
+                  return_value=1024)
+    def test_compute_bucket_mem_allocations(self, quota_mock, used_quota_mock):
+        app = couch_service.CouchbaseApp(Mock())
+        admin = app.build_admin()
+
+        buckets = [
+            guest_models.CouchbaseUser('b1', bucket_ramsize_mb=250),
+            guest_models.CouchbaseUser('b2', bucket_ramsize_mb=300),
+            guest_models.CouchbaseUser('b3', bucket_ramsize_mb=150)]
+        admin._compute_bucket_mem_allocations(buckets)
+        self.assertEqual(250, buckets[0].bucket_ramsize_mb)
+        self.assertEqual(300, buckets[1].bucket_ramsize_mb)
+        self.assertEqual(150, buckets[2].bucket_ramsize_mb)
+
+        buckets = [
+            guest_models.CouchbaseUser('b1', bucket_ramsize_mb=250),
+            guest_models.CouchbaseUser('b2', bucket_ramsize_mb=300),
+            guest_models.CouchbaseUser('b3', bucket_ramsize_mb=None)]
+        admin._compute_bucket_mem_allocations(buckets)
+        self.assertEqual(250, buckets[0].bucket_ramsize_mb)
+        self.assertEqual(300, buckets[1].bucket_ramsize_mb)
+        self.assertEqual(474, buckets[2].bucket_ramsize_mb)
+
+        buckets = [
+            guest_models.CouchbaseUser('b1', bucket_ramsize_mb=462),
+            guest_models.CouchbaseUser('b2', bucket_ramsize_mb=462),
+            guest_models.CouchbaseUser('b3', bucket_ramsize_mb=None)]
+        admin._compute_bucket_mem_allocations(buckets)
+        self.assertEqual(462, buckets[0].bucket_ramsize_mb)
+        self.assertEqual(462, buckets[1].bucket_ramsize_mb)
+        self.assertEqual(100, buckets[2].bucket_ramsize_mb)
+
+        buckets = [
+            guest_models.CouchbaseUser('b1', bucket_ramsize_mb=250),
+            guest_models.CouchbaseUser('b2', bucket_ramsize_mb=300),
+            guest_models.CouchbaseUser('b3', bucket_ramsize_mb=None),
+            guest_models.CouchbaseUser('b4', bucket_ramsize_mb=None)]
+        admin._compute_bucket_mem_allocations(buckets)
+        self.assertEqual(250, buckets[0].bucket_ramsize_mb)
+        self.assertEqual(300, buckets[1].bucket_ramsize_mb)
+        self.assertEqual(237, buckets[2].bucket_ramsize_mb)
+        self.assertEqual(237, buckets[3].bucket_ramsize_mb)
+
+        buckets = [
+            guest_models.CouchbaseUser('b1', bucket_ramsize_mb=None),
+            guest_models.CouchbaseUser('b2', bucket_ramsize_mb=None),
+            guest_models.CouchbaseUser('b3', bucket_ramsize_mb=None)]
+        admin._compute_bucket_mem_allocations(buckets)
+        self.assertEqual(341, buckets[0].bucket_ramsize_mb)
+        self.assertEqual(341, buckets[1].bucket_ramsize_mb)
+        self.assertEqual(341, buckets[2].bucket_ramsize_mb)
+
+        buckets = [
+            guest_models.CouchbaseUser('b1', bucket_ramsize_mb=512),
+            guest_models.CouchbaseUser('b2', bucket_ramsize_mb=512)]
+        self.assertEqual(512, buckets[0].bucket_ramsize_mb)
+        self.assertEqual(512, buckets[1].bucket_ramsize_mb)
+
+        buckets = [
+            guest_models.CouchbaseUser('b1', bucket_ramsize_mb=550),
+            guest_models.CouchbaseUser('b2', bucket_ramsize_mb=450),
+            guest_models.CouchbaseUser('b3', bucket_ramsize_mb=100),
+            guest_models.CouchbaseUser('b4', bucket_ramsize_mb=None)]
+        self.assertRaises(TroveError, admin._compute_bucket_mem_allocations,
+                          buckets)
+
+        buckets = [
+            guest_models.CouchbaseUser('b1', bucket_ramsize_mb=550),
+            guest_models.CouchbaseUser('b2', bucket_ramsize_mb=450),
+            guest_models.CouchbaseUser('b3', bucket_ramsize_mb=None)]
+        self.assertRaises(TroveError, admin._compute_bucket_mem_allocations,
+                          buckets)

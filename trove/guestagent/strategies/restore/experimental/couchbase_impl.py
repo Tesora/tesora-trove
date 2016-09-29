@@ -26,6 +26,8 @@ from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.experimental.couchbase import service
 from trove.guestagent.datastore.experimental.couchbase import system
+from trove.guestagent.db import models as guest_models
+from trove.guestagent import dbaas
 from trove.guestagent.strategies.restore import base
 
 
@@ -61,52 +63,57 @@ class CbBackup(base.RestoreRunner):
                     pw = f.read().rstrip("\n")
                     self.app.reset_admin_credentials(password=pw)
 
-            # Iterate through each bucket config
             buckets_json = system.COUCHBASE_DUMP_DIR + system.BUCKETS_JSON
-            with open(buckets_json, "r") as f:
-                out = f.read()
-                if out == "[]":
-                    # No buckets or data to restore. Done.
-                    return
-                d = json.loads(out)
-                for i in range(len(d)):
-                    bucket_name = d[i]["name"]
-                    bucket_type = d[i]["bucketType"]
-                    if bucket_type == "membase":
-                        bucket_type = "couchbase"
-                    if d[i]["authType"] != "none":
-                        bucket_password = d[i]["saslPassword"]
-                        # SASL buckets can be only on this port.
-                        bucket_port = "11211"
-                    else:
-                        bucket_password = None
-                        bucket_port = d[i]["proxyPort"]
-                    replica_count = d[i]["replicaNumber"]
-                    enable_index_replica = 1 if d[i]["replicaIndex"] else 0
+            buckets = self._parse_buckets(buckets_json)
+            admin = self.app.build_admin()
+            max_num_replicas = admin.get_num_cluster_nodes() - 1
+            for bucket in buckets:
+                bucket.bucket_replica_count = min(bucket.bucket_replica_count,
+                                                  max_num_replicas)
 
-                    self._create_restore_bucket(
-                        bucket_name, bucket_password, bucket_port, bucket_type,
-                        enable_index_replica, CONF.couchbase.eviction_policy,
-                        replica_count)
-
-                    self.run_cbrestore(bucket_name)
+            admin.create_buckets(buckets)
+            for bucket in buckets:
+                self.run_cbrestore(bucket.name)
 
         except exception.ProcessExecutionError as p:
             LOG.error(p)
             raise base.RestoreError("Couchbase restore failed.")
 
-    def _create_restore_bucket(self, bucket_name, bucket_password, bucket_port,
-                               bucket_type, enable_index_replica,
-                               eviction_policy, replica_count):
-        admin = self.app.build_admin()
-        bucket_ramsize_quota_mb = admin.get_memory_quota_mb()
-        num_cluster_nodes = admin.get_num_cluster_nodes()
-        replica_count = min(replica_count, num_cluster_nodes - 1)
+    def _parse_buckets(self, buckets_json):
+        with open(buckets_json, "r") as f:
+            out = f.read()
+            if out == "[]":
+                # No buckets or data to restore. Done.
+                return []
 
-        admin.run_bucket_create(
-            bucket_name, bucket_password, bucket_port,
-            bucket_type, bucket_ramsize_quota_mb,
-            enable_index_replica, eviction_policy, replica_count)
+            return [self._parse_bucket_metadata(item)
+                    for item in json.loads(out)]
+
+    def _parse_bucket_metadata(self, meta):
+        bucket_name = meta["name"]
+        bucket_type = meta["bucketType"]
+        if bucket_type == "membase":
+            bucket_type = "couchbase"
+        if meta["authType"] != "none":
+            bucket_password = meta["saslPassword"]
+            # SASL buckets can be only on this port.
+            bucket_port = "11211"
+        else:
+            bucket_password = None
+            bucket_port = meta["proxyPort"]
+        replica_count = meta["replicaNumber"]
+        bucket_ramsize_mb = int(dbaas.to_mb(meta["quota"]["ram"]))
+        enable_index_replica = 1 if meta["replicaIndex"] else 0
+
+        return guest_models.CouchbaseUser(
+            bucket_name,
+            password=bucket_password,
+            bucket_ramsize_mb=bucket_ramsize_mb,
+            bucket_replica_count=replica_count,
+            enable_index_replica=enable_index_replica,
+            bucket_eviction_policy=None,
+            bucket_priority=None,
+            bucket_port=bucket_port)
 
     def run_cbrestore(self, bucket_name):
         host_and_port = 'localhost:%d' % CONF.couchbase.couchbase_port
