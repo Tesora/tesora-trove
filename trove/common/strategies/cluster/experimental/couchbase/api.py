@@ -247,6 +247,9 @@ class CouchbaseCluster(models.Cluster):
 
         return CouchbaseCluster(context, db_info, datastore, datastore_version)
 
+    def upgrade(self, datastore_version):
+        self.rolling_upgrade(datastore_version)
+
 
 class CouchbaseClusterView(ClusterView):
 
