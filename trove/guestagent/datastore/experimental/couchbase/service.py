@@ -117,7 +117,7 @@ class CouchbaseApp(object):
     def apply_post_restore_updates(self, backup_info):
         self.status = CouchbaseAppStatus(self.build_admin())
 
-    def initialize_cluster(self, node_info):
+    def initialize_cluster(self, node_info=None):
         """Initialize this node as cluster.
         """
         self.build_admin().run_cluster_init(node_info, self.ramsize_quota_mb)
