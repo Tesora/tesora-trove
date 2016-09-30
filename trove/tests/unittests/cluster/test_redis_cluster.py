@@ -19,7 +19,6 @@ from novaclient import exceptions as nova_exceptions
 from trove.cluster.models import Cluster
 from trove.cluster.models import ClusterTasks
 from trove.cluster.models import DBCluster
-from trove.common import cfg
 from trove.common import exception
 from trove.common import remote
 from trove.common.strategies.cluster.experimental.redis import api as redis_api
@@ -29,8 +28,6 @@ from trove.instance.models import InstanceTasks
 from trove.quota.quota import QUOTAS
 from trove.taskmanager import api as task_api
 from trove.tests.unittests import trove_testtools
-
-CONF = cfg.CONF
 
 
 class FakeOptGroup(object):
@@ -101,7 +98,7 @@ class ClusterTest(trove_testtools.TestCase):
     def test_create_volume_no_specified(self, mock_conf, mock_client):
         mock_conf.get = Mock(
             return_value=FakeOptGroup(volume_support=True))
-        self.assertRaises(exception.VolumeSizeNotSpecified,
+        self.assertRaises(exception.ClusterVolumeSizeRequired,
                           Cluster.create,
                           Mock(),
                           self.cluster_name,

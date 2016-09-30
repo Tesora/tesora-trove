@@ -18,7 +18,6 @@ from oslo_log import log as logging
 from trove.backup.models import Backup
 from trove.backup import views
 from trove.common import apischema
-from trove.common import cfg
 from trove.common.i18n import _
 from trove.common import notification
 from trove.common.notification import StartNotification
@@ -26,7 +25,6 @@ from trove.common import pagination
 from trove.common import policy
 from trove.common import wsgi
 
-CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 
 
