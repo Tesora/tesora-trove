@@ -403,6 +403,12 @@ def assert_homogeneous_cluster(instances, required_flavor=None,
 
 
 def assert_same_instance_flavors(instances, required_flavor=None):
+    """Verify that all instances have the same flavor.
+
+    :param required_flavor            The flavor all instances should have or
+                                      None if no specific flavor is required.
+    :type required_flavor             flavor_id
+    """
     flavors = {instance['flavor_id'] for instance in instances}
     if len(flavors) != 1 or (required_flavor is not None and
                              required_flavor not in flavors):
@@ -413,8 +419,10 @@ def assert_same_instance_volumes(instances, required_size=None):
     """Verify that all instances have the same volume size (size = 0 if there
     is not a Trove volume for the instance).
 
-    :param required_size              Size in GB or 0 if there should be no
-                                      attached volumes.
+    :param required_size              Size in GB all instance's volumes should
+                                      have or 0 if there should be no attached
+                                      volumes.
+                                      None if no particular size is required.
     :type required_size               int
     """
     sizes = {instance.get('volume_size', 0) for instance in instances}
@@ -424,6 +432,7 @@ def assert_same_instance_volumes(instances, required_size=None):
 
 
 def validate_volume_size(size):
+    """Verify the volume size is within the maximum limit for Trove volumes."""
     if size is None:
         raise exception.VolumeSizeNotSpecified()
     max_size = CONF.max_accepted_volume_size
