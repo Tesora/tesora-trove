@@ -333,17 +333,11 @@ class DatastoreConfigurationParameters(object):
     def load_parameter_by_name(cls, datastore_version_id, config_param_name,
                                show_deleted=False):
         try:
-            if show_deleted:
-                return DBDatastoreConfigurationParameters.find_by(
-                    datastore_version_id=datastore_version_id,
-                    name=config_param_name
-                )
-            else:
-                return DBDatastoreConfigurationParameters.find_by(
-                    datastore_version_id=datastore_version_id,
-                    name=config_param_name,
-                    deleted=False
-                )
+            return DBDatastoreConfigurationParameters.find_by(
+                datastore_version_id=datastore_version_id,
+                name=config_param_name,
+                deleted=show_deleted
+            )
         except exception.NotFound:
             raise exception.NotFound(uuid=config_param_name)
 

@@ -118,6 +118,8 @@ class DatabaseModelBase(models.ModelBase):
 
     @classmethod
     def find_all(cls, **kwargs):
+        if hasattr(cls, 'deleted') and 'deleted' not in kwargs:
+            kwargs['deleted'] = 0
         return db_query.find_all(cls, **cls._process_conditions(kwargs))
 
     @classmethod
