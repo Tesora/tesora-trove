@@ -15,6 +15,7 @@
 
 from oslo_log import log as logging
 
+from trove.common import cfg
 from trove.common.exception import TroveError
 from trove.common.i18n import _
 from trove.guestagent.datastore.experimental.couchbase import (
@@ -40,11 +41,17 @@ class Couchbase4Admin(community_service.CouchbaseAdmin):
     def get_cluster_init_options(self, node_info, ramsize_quota_mb):
         init_options = super(Couchbase4Admin, self).get_cluster_init_options(
             node_info, ramsize_quota_mb)
-        services = node_info[0].get('services')
-        # get all services
-        service_lists = [node.get('services') for node in node_info]
-        all_services = set(
-            [item for subtypes in service_lists for item in subtypes])
+        if node_info:
+            services = node_info[0].get('services')
+            # get all services
+            service_lists = [node.get('services') for node in node_info]
+            all_services = set(
+                [item for subtypes in service_lists for item in subtypes])
+        else:
+            # Use datastore defaults if no node_info is provided
+            # (i.e. during single instance provisioning).
+            services = cfg.get_configuration_property('default_services')
+            all_services = services
 
         data_quota_mb, index_quota_mb = self._compute_mem_allocations_mb(
             ramsize_quota_mb, all_services)
