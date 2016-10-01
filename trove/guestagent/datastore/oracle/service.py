@@ -145,7 +145,7 @@ class OracleVMClient(service.OracleClient):
                  port=None,
                  user_id=None,
                  password=None,
-                 use_service=True,
+                 use_service=False,
                  mode=cx_Oracle.SYSDBA):
         port = port if port else CONF.get(MANAGER).listener_port
         user_id = user_id if user_id else ADMIN_USER_NAME
