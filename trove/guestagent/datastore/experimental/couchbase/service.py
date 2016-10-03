@@ -83,6 +83,20 @@ class CouchbaseApp(object):
     def couchbase_opt_etc_dir(self):
         return '/opt/couchbase/etc'
 
+    @property
+    def upgrade_copy_info(self):
+        return {
+            'save_etc': {
+                'is_dir': True,
+                'path': self.couchbase_conf_dir},
+            'save_opt_config_dat': {
+                'is_dir': False,
+                'path': '/opt/couchbase/var/lib/couchbase/config/config.dat'},
+            'save_opt_ip_start': {
+                'is_dir': False,
+                'path': '/opt/couchbase/var/lib/couchbase/ip_start'},
+        }
+
     def __init__(self, state_change_wait_time=None):
         """
         Sets default status and state_change_wait_time
@@ -240,30 +254,28 @@ class CouchbaseApp(object):
 
     def save_files_pre_upgrade(self, mount_point):
         LOG.debug('Saving files pre-upgrade.')
-        mnt_opt_etc = os.path.join(mount_point, 'save_opt_etc')
-        mnt_etc = os.path.join(mount_point, 'save_etc')
-        for save_dir in [mnt_opt_etc, mnt_etc]:
-            operating_system.remove(save_dir, force=True, as_root=True)
-        operating_system.copy(self.couchbase_opt_etc_dir, mnt_opt_etc,
-                              preserve=True, recursive=True, as_root=True)
-        operating_system.copy(self.couchbase_conf_dir,
-                              mnt_etc, preserve=True, recursive=True,
-                              as_root=True)
-        return {'save_opt_etc': mnt_opt_etc,
-                'save_etc': mnt_etc}
+        for save_dir, save_dir_info in self.upgrade_copy_info.items():
+            is_dir = save_dir_info['is_dir']
+            from_path = save_dir_info['path']
+            to_path = os.path.join(mount_point, save_dir)
+            operating_system.remove(to_path, force=True, as_root=True)
+            operating_system.copy(from_path, to_path,
+                                  preserve=True, recursive=is_dir,
+                                  as_root=True)
+        return {'copy_info': self.upgrade_copy_info}
 
     def restore_files_post_upgrade(self, upgrade_info):
         LOG.debug('Restoring files post-upgrade.')
-        operating_system.copy('%s/.' % upgrade_info['save_opt_etc'],
-                              self.couchbase_opt_etc_dir,
-                              preserve=True, recursive=True,
-                              force=True, as_root=True)
-        operating_system.copy(upgrade_info['save_etc'],
-                              self.couchbase_conf_dir,
-                              preserve=True, force=True, as_root=True)
-        for save_dir in [upgrade_info['save_opt_etc'],
-                         upgrade_info['save_etc']]:
-            operating_system.remove(save_dir, force=True, as_root=True)
+        mount_point = upgrade_info['mount_point']
+        upgrade_copy_info = upgrade_info['copy_info']
+        for save_dir, save_dir_info in upgrade_copy_info.items():
+            is_dir = save_dir_info['is_dir']
+            from_path = os.path.join(mount_point, save_dir)
+            files = os.path.join(from_path, '.') if is_dir else from_path
+            operating_system.copy(files, save_dir_info['path'],
+                                  preserve=True, recursive=is_dir,
+                                  force=True, as_root=True)
+            operating_system.remove(from_path, force=True, as_root=True)
 
 
 class CouchbaseAdmin(object):
