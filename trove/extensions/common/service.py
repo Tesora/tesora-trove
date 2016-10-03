@@ -440,7 +440,7 @@ class DatastoreUserController(UserController):
 
                 self.create_users(client, user_models)
             except (ValueError, AttributeError) as e:
-                raise exception.BadRequest(msg=str(e))
+                raise exception.BadRequest(str(e))
 
         return wsgi.Result(None, 202)
 
@@ -497,7 +497,7 @@ class DatastoreUserController(UserController):
 
                 self.delete_user(client, model)
             except (ValueError, AttributeError) as e:
-                raise exception.BadRequest(msg=str(e))
+                raise exception.BadRequest(str(e))
 
         return wsgi.Result(None, 202)
 
@@ -525,7 +525,7 @@ class DatastoreUserController(UserController):
 
             return wsgi.Result(view.data(), 200)
         except (ValueError, AttributeError) as e:
-            raise exception.BadRequest(msg=str(e))
+            raise exception.BadRequest(str(e))
 
     def update(self, req, body, tenant_id, instance_id, id):
         LOG.info(_LI("Updating user attributes for instance '%(id)s'\n"
@@ -558,7 +558,7 @@ class DatastoreUserController(UserController):
 
                 self.update_user(client, user_id, updates)
             except (ValueError, AttributeError) as e:
-                raise exception.BadRequest(msg=str(e))
+                raise exception.BadRequest(str(e))
 
         return wsgi.Result(None, 202)
 
@@ -609,7 +609,7 @@ class DatastoreUserController(UserController):
 
                 self.change_passwords(client, user_models)
             except (ValueError, AttributeError) as e:
-                raise exception.BadRequest(msg=str(e))
+                raise exception.BadRequest(str(e))
 
         return wsgi.Result(None, 202)
 
