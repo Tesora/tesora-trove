@@ -140,7 +140,6 @@ class Cluster(object):
         self.update_db(task_status=ClusterTasks.NONE)
 
     def reset_status(self):
-        self.validate_cluster_available([ClusterTasks.BUILDING_INITIAL])
         LOG.info(_("Resetting status to NONE on cluster %s") % self.id)
         self.reset_task()
         instances = inst_models.DBInstance.find_all(cluster_id=self.id,
