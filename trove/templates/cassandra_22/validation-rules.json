@@ -228,11 +228,6 @@
             "type": "string"
         },
         {
-            "name": "initial_token",
-            "restart_required": true,
-            "type": "string"
-        },
-        {
             "name": "num_tokens",
             "restart_required": true,
             "min": 0,
