@@ -107,6 +107,7 @@ class InstanceStatus(object):
     EJECT = "EJECT"
     UPGRADE = "UPGRADE"
     DETACH = "DETACH"
+    DELETING = "DELETING"
 
 
 def validate_volume_size(size):
@@ -314,12 +315,17 @@ class SimpleInstance(object):
         if self.db_info.task_status.is_error:
             return InstanceStatus.ERROR
 
-        # If we've reset the status, show it as an error
-        if tr_instance.ServiceStatuses.UNKNOWN == self.datastore_status.status:
+        action = self.db_info.task_status.action
+
+        # Check if we are resetting status or force deleting
+        if (tr_instance.ServiceStatuses.UNKNOWN == self.datastore_status.status
+                and action == InstanceTasks.DELETING.action):
+            return InstanceStatus.DELETING
+        elif (tr_instance.ServiceStatuses.UNKNOWN ==
+                self.datastore_status.status):
             return InstanceStatus.ERROR
 
         # Check for taskmanager status.
-        action = self.db_info.task_status.action
         if 'BUILDING' == action:
             if 'ERROR' == self.db_info.server_status:
                 return InstanceStatus.ERROR
@@ -754,18 +760,13 @@ class BaseInstance(SimpleInstance):
         return self._server_group
 
     def reset_status(self):
-        if self.is_building or self.is_error:
-            LOG.info(_LI("Resetting the status to ERROR on instance %s."),
-                     self.id)
-            self.reset_task_status()
+        LOG.info(_LI("Resetting the status to ERROR on instance %s."),
+                 self.id)
+        self.reset_task_status()
 
-            reset_instance = InstanceServiceStatus.find_by(instance_id=self.id)
-            reset_instance.set_status(tr_instance.ServiceStatuses.UNKNOWN)
-            reset_instance.save()
-        else:
-            raise exception.UnprocessableEntity(
-                "Instance %s status can only be reset in BUILD or ERROR "
-                "state." % self.id)
+        reset_instance = InstanceServiceStatus.find_by(instance_id=self.id)
+        reset_instance.set_status(tr_instance.ServiceStatuses.UNKNOWN)
+        reset_instance.save()
 
     def get_injected_files(self, datastore_manager):
         injected_config_location = CONF.get('injected_config_location')
