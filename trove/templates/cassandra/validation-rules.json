@@ -298,12 +298,6 @@
             "type": "integer"
         },
         {
-            "name": "counter_cache_keys_to_save",
-            "restart_required": true,
-            "min": 0,
-            "type": "integer"
-        },
-        {
             "name": "tombstone_warn_threshold",
             "restart_required": true,
             "min": 0,
