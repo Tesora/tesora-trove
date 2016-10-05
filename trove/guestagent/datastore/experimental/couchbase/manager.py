@@ -219,6 +219,7 @@ class Manager(manager.Manager):
                               device_path=upgrade_info['device'])
         self.app.restore_files_post_upgrade(upgrade_info)
         # password file has been restored at this point, need to refresh the
-        # credentials stored in the app by resetting the app.
+        # credentials stored in the app and admin by resetting them.
         self._app = None
+        self._admin = None
         self.app.start_db()
