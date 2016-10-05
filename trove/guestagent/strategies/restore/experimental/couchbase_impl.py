@@ -28,6 +28,7 @@ from trove.guestagent.datastore.experimental.couchbase import service
 from trove.guestagent.datastore.experimental.couchbase import system
 from trove.guestagent.db import models as guest_models
 from trove.guestagent import dbaas
+from trove.guestagent.strategies.backup.experimental import couchbase_impl
 from trove.guestagent.strategies.restore import base
 
 
@@ -40,7 +41,11 @@ class CbBackup(base.RestoreRunner):
     Implementation of Restore Strategy for Couchbase.
     """
     __strategy_name__ = 'cbbackup'
-    base_restore_cmd = 'sudo tar xpPf -'
+
+    # As of Ocata any new backups will have their paths already transformed.
+    # We still need to transform during restore to support older backups.
+    base_restore_cmd = ('sudo tar --transform="%s" -xpPf -'
+                        % couchbase_impl.CbBackup.BUCKET_PATH_TRANSFORM)
 
     def __init__(self, *args, **kwargs):
         self.app = service.CouchbaseApp()

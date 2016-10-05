@@ -119,8 +119,10 @@ PREPARE = ("sudo innobackupex"
            " 2>/tmp/innoprepare.log")
 CRYPTO_KEY = "default_aes_cbc_key"
 
-CBBACKUP_CMD = "tar cpPf - /tmp/backups"
-CBBACKUP_RESTORE = "sudo tar xpPf -"
+CBBACKUP_CMD = ('tar --transform="s#([0-9]){4}-([0-9]){2}-([0-9]){2}'
+                'T([0-9]){6}Z(-full)*/##gx" -cpPf - /tmp/backups')
+CBBACKUP_RESTORE = ('sudo tar --transform="s#([0-9]){4}-([0-9]){2}-([0-9]){2}'
+                    'T([0-9]){6}Z(-full)*/##gx" -xpPf -')
 
 MONGODUMP_CMD = "sudo tar cPf - /var/lib/mongodb/dump"
 MONGODUMP_RESTORE = "sudo tar xPf -"
