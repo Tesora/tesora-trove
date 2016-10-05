@@ -192,9 +192,9 @@ class OracleVMPaths(object):
             self.redo_logs_backup_dir = path.join(
                 self.db_fast_recovery_logs_dir, 'backupset')
             self.audit_dir = path.join(self.admin_dir, db_name, 'adump')
-            self.ctlfile1_file = path.join(self.db_data_dir, 'control01.ctl')
-            self.ctlfile2_file = path.join(
-                self.db_fast_recovery_dir, 'control02.ctl')
+            self.ctlfile1_dir = path.join(self.db_data_dir, 'controlfile')
+            self.ctlfile2_dir = path.join(self.db_fast_recovery_dir,
+                                          'controlfile')
             self.diag_dir = path.join(
                 self.oracle_base, 'diag', 'rdbms', db_name.lower(), db_name)
             self.alert_log_file = path.join(self.diag_dir, 'alert', 'log.xml')
