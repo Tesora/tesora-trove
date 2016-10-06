@@ -220,3 +220,15 @@ class PostgresqlDatabaseActionsRunner(DatabaseActionsRunner):
 
     def run_system_database_delete(self):
         raise SkipKnownBug(runners.BUG_WRONG_API_VALIDATION)
+
+
+class CassandraDatabaseActionsRunner(DatabaseActionsRunner):
+
+    def run_databases_list(self):
+        raise SkipKnownBug(runners.BUG_USER_DB_PAGINATION)
+
+    def run_system_database_create(self):
+        raise SkipKnownBug(runners.BUG_WRONG_API_VALIDATION)
+
+    def run_system_database_delete(self):
+        raise SkipKnownBug(runners.BUG_WRONG_API_VALIDATION)

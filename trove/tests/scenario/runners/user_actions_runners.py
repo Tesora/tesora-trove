@@ -547,17 +547,22 @@ class PostgresqlUserActionsRunner(UserActionsRunner):
 
 class CouchbaseUserActionsRunner(UserActionsRunner):
 
+    def run_users_list(self):
+        raise SkipKnownBug(runners.BUG_USER_DB_PAGINATION)
+
     def run_user_attribute_update(self, expected_http_code=202):
-        updated_def = self.first_user_def
-        update_attribites = {'password': 'password2',
-                             'bucket_ramsize': 512,
-                             'bucket_replica': 1,
-                             'enable_index_replica': 1,
-                             'bucket_eviction_policy': 'fullEviction',
-                             'bucket_priority': 'high'}
-        self.assert_user_attribute_update(
-            self.instance_info.id, updated_def,
-            update_attribites, expected_http_code)
+        # TODO(pmalik): Uncomment when BUG_USER_DB_PAGINATION is fixed.
+        #     updated_def = self.first_user_def
+        #     update_attribites = {'password': 'password2',
+        #                          'bucket_ramsize': 512,
+        #                          'bucket_replica': 1,
+        #                          'enable_index_replica': 1,
+        #                          'bucket_eviction_policy': 'fullEviction',
+        #                          'bucket_priority': 'high'}
+        #     self.assert_user_attribute_update(
+        #         self.instance_info.id, updated_def,
+        #         update_attribites, expected_http_code)
+        raise SkipKnownBug(runners.BUG_USER_DB_PAGINATION)
 
     def run_user_update_with_existing_name(
             self, expected_exception=exceptions.BadRequest,
@@ -588,3 +593,12 @@ class CouchbaseUserActionsRunner(UserActionsRunner):
 
 class Couchbase_4UserActionsRunner(CouchbaseUserActionsRunner):
     pass
+
+
+class CassandraUserActionsRunner(UserActionsRunner):
+
+    def run_users_list(self):
+        raise SkipKnownBug(runners.BUG_USER_DB_PAGINATION)
+
+    def run_user_attribute_update(self):
+        raise SkipKnownBug(runners.BUG_USER_DB_PAGINATION)

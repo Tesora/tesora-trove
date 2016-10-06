@@ -230,3 +230,9 @@ class CouchbaseRootActionsRunner(RootActionsRunner):
 
 class Couchbase_4RootActionsRunner(CouchbaseRootActionsRunner):
     pass
+
+
+class CassandraRootActionsRunner(RootActionsRunner):
+
+    def run_delete_root(self):
+        raise SkipKnownBug(runners.BUG_WRONG_API_VALIDATION)
