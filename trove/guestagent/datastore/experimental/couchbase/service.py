@@ -276,6 +276,7 @@ class CouchbaseApp(object):
                                   preserve=True, recursive=is_dir,
                                   force=True, as_root=True)
             operating_system.remove(from_path, force=True, as_root=True)
+        self.status.set_ready()
 
 
 class CouchbaseAdmin(object):

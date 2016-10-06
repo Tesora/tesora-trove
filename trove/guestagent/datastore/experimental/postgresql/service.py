@@ -563,6 +563,7 @@ class PgSqlApp(object):
                                   force=True, as_root=True)
             operating_system.remove(upgrade_info['save_etc'], force=True,
                                     as_root=True)
+        self.status.set_ready()
 
 
 class PgSqlAppStatus(service.BaseDbStatus):

@@ -418,13 +418,14 @@ class MongoDBApp(object):
                               system.CONFIG_DIR,
                               preserve=True, recursive=True,
                               force=True, as_root=True)
-        operating_system.copy('%s/.' % upgrade_info['save_creds'],
+        operating_system.copy(os.path.join(upgrade_info['save_creds'],
+                                           system.MONGO_ADMIN_CREDS_FILENAME),
                               os.path.expanduser('~'),
-                              preserve=True, recursive=True,
-                              force=True, as_root=True)
+                              preserve=True)
         for save_dir in [upgrade_info['save_confs'],
                          upgrade_info['save_creds']]:
             operating_system.remove(save_dir, force=True, as_root=True)
+        self.status.set_ready()
 
 
 class MongoDBAppStatus(service.BaseDbStatus):
