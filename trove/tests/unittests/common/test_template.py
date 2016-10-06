@@ -51,7 +51,7 @@ class TemplateTest(trove_testtools.TestCase):
         memsize = found_group.split(" ")[2]
         self.assertEqual("%sM" % (8 * flavor_multiplier), memsize)
         self.assertIsNotNone(server_id)
-        self.assertTrue(len(server_id) > 1)
+        self.assertGreater(len(server_id), 1)
 
     def test_rendering(self):
         rendered = self.template.render(flavor=self.flavor_dict,
@@ -107,7 +107,7 @@ class TemplateTest(trove_testtools.TestCase):
 
 class HeatTemplateLoadTest(trove_testtools.TestCase):
 
-    class FakeTemplate():
+    class FakeTemplate(object):
         def __init__(self):
             self.name = 'mysql/heat.template'
 
