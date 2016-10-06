@@ -99,7 +99,7 @@ class TestCase(testtools.TestCase):
         super(TestCase, self).setUp()
         root_logger.DefaultRootHandler.set_info(self.id())
 
-        # Default manager used by all unittsest unless explicitly overriden.
+        # Default manager used by all unittsest unless explicitly overridden.
         self.patch_datastore_manager('mysql')
 
         policy_patcher = mock.patch.object(policy, 'get_enforcer',

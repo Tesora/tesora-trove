@@ -113,7 +113,7 @@ class TestUtils(trove_testtools.TestCase):
         class TestEx3(Exception):
             pass
 
-        class TestExecutor():
+        class TestExecutor(object):
 
             def _test_foo(self, arg):
                 return arg

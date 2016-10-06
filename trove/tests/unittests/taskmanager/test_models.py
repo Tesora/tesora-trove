@@ -68,7 +68,7 @@ class FakeOptGroup(object):
         self.icmp = icmp
 
 
-class fake_Server:
+class fake_Server(object):
     def __init__(self):
         self.id = None
         self.name = None
@@ -81,7 +81,7 @@ class fake_Server:
         self.status = 'ACTIVE'
 
 
-class fake_ServerManager:
+class fake_ServerManager(object):
     def create(self, name, image_id, flavor_id, files, userdata,
                security_groups, block_device_mapping, availability_zone=None,
                nics=None, key_name=None, config_drive=False,
@@ -100,7 +100,7 @@ class fake_ServerManager:
         return server
 
 
-class fake_nova_client:
+class fake_nova_client(object):
     def __init__(self):
         self.servers = fake_ServerManager()
 
@@ -511,7 +511,7 @@ class ResizeVolumeTest(trove_testtools.TestCase):
                                                             self.old_vol_size,
                                                             self.new_vol_size)
 
-        class FakeGroup():
+        class FakeGroup(object):
             def __init__(self):
                 self.mount_point = 'var/lib/mysql'
                 self.device_path = '/dev/vdb'

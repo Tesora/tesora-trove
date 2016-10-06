@@ -102,7 +102,7 @@ FAKE_USER = [{"_name": "random", "_password": "guesswhat",
               "_host": "%", "_databases": [FAKE_DB]}]
 
 
-class FakeTime:
+class FakeTime(object):
     COUNTER = 0
 
     @classmethod
@@ -1626,7 +1626,7 @@ class MySqlAppMockTest(trove_testtools.TestCase):
                     self.assertRaises(RuntimeError, app.secure, None)
                     self.assertTrue(mock_execute.called)
                     # At least called twice
-                    self.assertTrue(mock_execute.call_count >= 2)
+                    self.assertGreaterEqual(mock_execute.call_count, 2)
                     (mock_status.wait_for_real_status_to_change_to.
                      assert_called_with(rd_instance.ServiceStatuses.SHUTDOWN,
                                         app.state_change_wait_time, False))
@@ -1701,7 +1701,7 @@ class MySqlRootStatusTest(trove_testtools.TestCase):
         enable_root_mock.assert_called_once_with(root_password=None)
 
 
-class MockStats:
+class MockStats(object):
     f_blocks = 1024 ** 2
     f_bsize = 4096
     f_bfree = 512 * 1024
