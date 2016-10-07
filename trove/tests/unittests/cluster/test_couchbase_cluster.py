@@ -335,7 +335,7 @@ class ClusterTest(trove_testtools.TestCase):
                 couchbase_4_manager, False,
                 exception.ClusterInstanceTypeMissing,
                 "Instance\(s\) missing one or more required types. "
-                "'data' was specified but 'data,index,query' is required "
+                "'data' specified but 'data,index,query' is required "
                 "\(per instance: True\)."
             ],
             [
@@ -343,7 +343,7 @@ class ClusterTest(trove_testtools.TestCase):
                 couchbase_4_manager, False,
                 exception.ClusterInstanceTypeMissing,
                 "Instance\(s\) missing one or more required types. "
-                "'query' was specified but 'data,index,query' is required "
+                "'query' specified but 'data,index,query' is required "
                 "\(per instance: True\)."
             ],
             # line 10
@@ -375,7 +375,7 @@ class ClusterTest(trove_testtools.TestCase):
                 couchbase_4_manager, False,
                 exception.ClusterInstanceTypeMissing,
                 "Instance\(s\) missing one or more required types. "
-                "'index' was specified but 'data,index,query' is required "
+                "'index' specified but 'data,index,query' is required "
                 "\(per instance: True\)."
             ],
             [
@@ -403,7 +403,7 @@ class ClusterTest(trove_testtools.TestCase):
                 couchbase_ee_manager, False,
                 exception.ClusterInstanceTypeMissing,
                 "Instance\(s\) missing one or more required types. "
-                "'query' was specified but 'data' is required "
+                "'query' specified but 'data' is required "
                 "\(per instance: False\)."
             ],
             [
@@ -505,7 +505,7 @@ class ClusterTest(trove_testtools.TestCase):
                 couchbase_4_manager, True,
                 exception.ClusterInstanceTypeMissing,
                 "Instance\(s\) missing one or more required types. "
-                "'data' was specified but 'data,index,query' is required "
+                "'data' specified but 'data,index,query' is required "
                 "\(per instance: True\)."
             ],
             [
@@ -513,7 +513,7 @@ class ClusterTest(trove_testtools.TestCase):
                 couchbase_4_manager, True,
                 exception.ClusterInstanceTypeMissing,
                 "Instance\(s\) missing one or more required types. "
-                "'query' was specified but 'data,index,query' is required "
+                "'query' specified but 'data,index,query' is required "
                 "\(per instance: True\)."
             ],
             [
@@ -545,7 +545,7 @@ class ClusterTest(trove_testtools.TestCase):
                 couchbase_4_manager, True,
                 exception.ClusterInstanceTypeMissing,
                 "Instance\(s\) missing one or more required types. "
-                "'index' was specified but 'data,index,query' is required "
+                "'index' specified but 'data,index,query' is required "
                 "\(per instance: True\)."
             ],
             [

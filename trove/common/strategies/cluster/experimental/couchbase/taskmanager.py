@@ -21,8 +21,8 @@ from oslo_log import log as logging
 from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
+from trove.common.notification import EndNotification
 from trove.common.strategies.cluster import base
-from trove.common import utils
 from trove.instance.models import DBInstance
 from trove.instance.models import Instance
 from trove.taskmanager import api as task_api
@@ -100,17 +100,23 @@ class CouchbaseClusterTasks(task_models.ClusterTasks):
 
             self._add_nodes(coordinator, add_node_info)
             coordinator['guest'].cluster_complete()
+            LOG.debug("Cluster create finished successfully.")
 
         timeout = Timeout(CONF.cluster_usage_timeout)
         try:
-            _create_cluster()
-            self.reset_task()
+            with EndNotification(context, cluster_id=cluster_id):
+                _create_cluster()
         except Timeout as t:
             if t is not timeout:
                 raise  # not my timeout
             LOG.exception(_("Timeout for building cluster."))
             self.update_statuses_on_failure(cluster_id)
+        except Exception:
+            LOG.exception(_("Error creating cluster."))
+            self.update_statuses_on_failure(cluster_id)
+            raise
         finally:
+            self.reset_task()
             timeout.cancel()
 
         LOG.debug("End create_cluster for id: %s." % cluster_id)
@@ -130,16 +136,20 @@ class CouchbaseClusterTasks(task_models.ClusterTasks):
             ','.join(self.REQUIRED_SERVICES[manager]))
 
     def _add_nodes(self, coordinator, add_node_info):
-        LOG.debug("Adding nodes and rebalacing the cluster.")
+        LOG.debug("Adding nodes and rebalancing the cluster.")
         guest_node_info = self.build_guest_node_info(add_node_info)
-        coordinator['guest'].add_nodes(guest_node_info)
+        result = coordinator['guest'].add_nodes(guest_node_info)
+        if not result or len(result) < 2:
+            raise exception.TroveError(
+                _("No status returned from adding nodes to cluster."))
 
-        LOG.debug("Waiting for the rebalancing process to finish.")
-        self._wait_for_rebalance_to_finish(coordinator)
-
-        LOG.debug("Marking added nodes active.")
-        for node in add_node_info:
-            node['guest'].cluster_complete()
+        if result[0]:
+            LOG.debug("Marking added nodes active.")
+            for node in add_node_info:
+                node['guest'].cluster_complete()
+        else:
+            raise exception.TroveError(
+                _("Could not add nodes to cluster: %s") % result[1])
 
     @classmethod
     def find_cluster_node_ids(cls, cluster_id):
@@ -201,41 +211,26 @@ class CouchbaseClusterTasks(task_models.ClusterTasks):
             # Clients can continue to store and retrieve information and
             # do not need to be aware that a rebalance operation is taking
             # place.
-            # The new nodes are marked active only if the rebalancing
-            # completes.
-            try:
-                coordinator = old_node_info[0]
-                self._add_nodes(coordinator, add_node_info)
-                LOG.debug("Cluster configuration finished successfully.")
-            except Exception:
-                LOG.exception(_("Error growing cluster."))
-                self.update_statuses_on_failure(cluster_id)
+            coordinator = old_node_info[0]
+            self._add_nodes(coordinator, add_node_info)
+            LOG.debug("Cluster grow finished successfully.")
 
         timeout = Timeout(CONF.cluster_usage_timeout)
         try:
-            _grow_cluster()
-            self.reset_task()
+            with EndNotification(context, cluster_id=cluster_id):
+                _grow_cluster()
         except Timeout as t:
             if t is not timeout:
                 raise  # not my timeout
             LOG.exception(_("Timeout for growing cluster."))
-            self.update_statuses_on_failure(cluster_id)
+        except Exception:
+            LOG.exception(_("Error growing cluster."))
+            raise
         finally:
+            self.reset_task()
             timeout.cancel()
 
         LOG.debug("End grow_cluster for id: %s." % cluster_id)
-
-    def _wait_for_rebalance_to_finish(self, coordinator):
-        try:
-            utils.poll_until(
-                lambda: coordinator['guest'],
-                lambda node: not node.get_cluster_rebalance_status(),
-                sleep_time=USAGE_SLEEP_TIME,
-                time_out=CONF.cluster_usage_timeout)
-        except exception.PollTimeOut as e:
-            LOG.exception(e)
-            raise exception.TroveError(_("Timed out while waiting for the "
-                                         "rebalancing process to finish."))
 
     def shrink_cluster(self, context, cluster_id, removal_ids):
         LOG.debug("Begin shrink_cluster for id: %s." % cluster_id)
@@ -253,46 +248,45 @@ class CouchbaseClusterTasks(task_models.ClusterTasks):
             LOG.debug("All nodes ready, proceeding with cluster setup.")
 
             # Rebalance the cluster via one of the remaining nodes.
-            try:
-                coordinator = remaining_node_info[0]
-                self._remove_nodes(coordinator, remove_node_info)
-                LOG.debug("Cluster configuration finished successfully.")
-            except Exception:
-                LOG.exception(_("Error shrinking cluster."))
-                self.update_statuses_on_failure(cluster_id)
+            coordinator = remaining_node_info[0]
+            self._remove_nodes(coordinator, remove_node_info)
+            LOG.debug("Cluster shrink finished successfully.")
 
         timeout = Timeout(CONF.cluster_usage_timeout)
         try:
-            _shrink_cluster()
-            self.reset_task()
+            with EndNotification(context, cluster_id=cluster_id):
+                _shrink_cluster()
         except Timeout as t:
             if t is not timeout:
                 raise  # not my timeout
             LOG.exception(_("Timeout for shrinking cluster."))
-            self.update_statuses_on_failure(cluster_id)
+        except Exception:
+            LOG.exception(_("Error shrinking cluster."))
+            raise
         finally:
+            self.reset_task()
             timeout.cancel()
 
         LOG.debug("End shrink_cluster for id: %s." % cluster_id)
 
     def _remove_nodes(self, coordinator, removed_nodes):
-        LOG.debug("Decommissioning nodes and rebalacing the cluster.")
+        LOG.debug("Decommissioning nodes and rebalancing the cluster.")
         guest_node_info = self.build_guest_node_info(removed_nodes)
-        coordinator['guest'].remove_nodes(guest_node_info)
+        result = coordinator['guest'].remove_nodes(guest_node_info)
+        if not result or len(result) < 2:
+            raise exception.TroveError(
+                _("No status returned from removing nodes from cluster."))
 
-        # Always remove decommissioned instances from the cluster,
-        # irrespective of the result of rebalancing.
-        for node in removed_nodes:
-            node['instance'].update_db(cluster_id=None)
-
-        LOG.debug("Waiting for the rebalancing process to finish.")
-        self._wait_for_rebalance_to_finish(coordinator)
-
-        # Delete decommissioned instances only when the cluster is in a
-        # consistent state.
-        LOG.debug("Deleting decommissioned instances.")
-        for node in removed_nodes:
-            Instance.delete(node['instance'])
+        if result[0]:
+            for node in removed_nodes:
+                instance = node['instance']
+                LOG.debug("Deleting decommissioned instance %s." %
+                          instance.id)
+                instance.update_db(cluster_id=None)
+                Instance.delete(instance)
+        else:
+            raise exception.TroveError(
+                _("Could not remove nodes from cluster: %s") % result[1])
 
     def upgrade_cluster(self, context, cluster_id, datastore_version):
         self.rolling_upgrade_cluster(context, cluster_id, datastore_version)

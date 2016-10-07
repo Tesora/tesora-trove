@@ -205,12 +205,8 @@ class CouchbaseApp(object):
         pass
 
     def rebalance_cluster(self, add_node_info=None, remove_node_info=None):
-        self.build_admin().run_rebalance(add_node_info, remove_node_info)
-
-    def get_cluster_rebalance_status(self):
-        """Return whether rebalancing is currently running.
-        """
-        return self.build_admin().get_cluster_rebalance_status()
+        return self.build_admin().run_rebalance(
+            add_node_info, remove_node_info)
 
     def store_admin_credentials(self, password=None):
         admin = models.CouchbaseRootUser(password=password)
@@ -322,6 +318,8 @@ class CouchbaseAdmin(object):
         """
 
         LOG.debug("Rebalancing the cluster.")
+        success = True
+        message = None
         options = []
         if add_node_info:
             options.extend(self.get_cluster_add_options(add_node_info))
@@ -329,9 +327,17 @@ class CouchbaseAdmin(object):
             options.extend(self.get_cluster_remove_options(remove_node_info))
 
         if options:
-            self._run_couchbase_command('rebalance', options)
+            try:
+                self._run_couchbase_command('rebalance', options)
+            except exception.ProcessExecutionError as ex:
+                success = False
+                message = str(ex.stdout)
+                if ex.stderr:
+                    message += ": %s" % str(ex.stderr)
         else:
             LOG.info(_("No changes to the topology, skipping rebalance."))
+
+        return success, message
 
     def get_cluster_add_options(self, node_info):
 
@@ -347,7 +353,7 @@ class CouchbaseAdmin(object):
 
     def get_cluster_remove_options(self, node_info):
 
-        return {'server-remove': [ni['host'] for ni in node_info]}
+        return [{'server-remove': [ni['host'] for ni in node_info]}]
 
     def get_cluster_rebalance_status(self):
         """Return whether rebalancing is currently running.

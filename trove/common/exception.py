@@ -627,7 +627,7 @@ class ClusterOperationNotSupported(TroveError):
 class ClusterInstanceTypeMissing(TroveError):
 
     message = _("Instance(s) missing one or more required types. "
-                "'%(types)s' was specified but '%(req)s' is required "
+                "'%(types)s' specified but '%(req)s' is required "
                 "(per instance: %(per)s).")
 
 
