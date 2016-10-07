@@ -109,7 +109,8 @@ class Manager(manager.Manager):
         if 'device' in upgrade_info:
             self.mount_volume(context,
                               mount_point=upgrade_info['mount_point'],
-                              device_path=upgrade_info['device'])
+                              device_path=upgrade_info['device'],
+                              write_to_fstab=True)
         self.app.restore_files_post_upgrade(upgrade_info)
         self.app.start_db()
 

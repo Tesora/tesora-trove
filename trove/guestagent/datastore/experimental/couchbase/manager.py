@@ -216,7 +216,8 @@ class Manager(manager.Manager):
         self.app.stop_db()
         if 'device' in upgrade_info:
             self.mount_volume(context, mount_point=upgrade_info['mount_point'],
-                              device_path=upgrade_info['device'])
+                              device_path=upgrade_info['device'],
+                              write_to_fstab=True)
         self.app.restore_files_post_upgrade(upgrade_info)
         # password file has been restored at this point, need to refresh the
         # credentials stored in the app and admin by resetting them.
