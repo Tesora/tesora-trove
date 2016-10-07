@@ -347,7 +347,7 @@ class CouchbaseAdmin(object):
 
     def get_cluster_remove_options(self, node_info):
 
-        return {'server-remove': [ni['host'] for ni in node_info]}
+        return [{'server-remove': [ni['host'] for ni in node_info]}]
 
     def get_cluster_rebalance_status(self):
         """Return whether rebalancing is currently running.
