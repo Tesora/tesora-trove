@@ -299,6 +299,19 @@ class CouchbaseCluster(models.Cluster):
 
         return CouchbaseCluster(context, db_info, datastore, datastore_version)
 
+    def _get_remaining_instance_services(self, cluster_id, removal_ids):
+        db_instances = inst_models.DBInstance.find_all(
+            cluster_id=cluster_id).all()
+        all_services = []
+        remaining_instances = [inst for inst in db_instances
+                               if inst.id not in removal_ids]
+        for instance in remaining_instances:
+            services = instance.type
+            if isinstance(services, six.string_types):
+                services = services.split(',')
+            all_services.append({"instance_type": services})
+        return all_services
+
     def shrink(self, removal_ids):
         LOG.debug("Processing a request for shrinking cluster: %s" % self.id)
 
@@ -308,6 +321,17 @@ class CouchbaseCluster(models.Cluster):
         db_info = self.db_info
         datastore = self.ds
         datastore_version = self.ds_version
+
+        # we have to make sure that there are nodes with all the required
+        # services left after the shrink
+        remaining_instance_services = self._get_remaining_instance_services(
+            db_info.id, removal_ids)
+        try:
+            self.validate_instance_types(
+                remaining_instance_services, datastore_version.manager)
+        except exception.ClusterInstanceTypeMissing as ex:
+            raise exception.TroveError(
+                _("The remaining instances would not be valid: %s") % str(ex))
 
         db_info.update(task_status=ClusterTasks.SHRINKING_CLUSTER)
 

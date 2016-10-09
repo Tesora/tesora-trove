@@ -43,19 +43,15 @@ class CouchbaseGuestAgentAPI(guest_api.API):
         return self._call("get_cluster_password",
                           guest_api.AGENT_LOW_TIMEOUT, self.version_cap)
 
-    def get_cluster_rebalance_status(self):
-        LOG.debug("Retrieving status of current cluster rebalance via node: %s"
-                  % self.id)
-        return self._call("get_cluster_rebalance_status",
-                          guest_api.AGENT_LOW_TIMEOUT, self.version_cap)
-
     def add_nodes(self, node_info):
         LOG.debug("Adding nodes to the cluster: %s" % self.id)
-        self._cast('add_nodes', self.version_cap, node_info=node_info)
+        return self._call('add_nodes', CONF.cluster_usage_timeout,
+                          self.version_cap, node_info=node_info)
 
     def remove_nodes(self, node_info):
         LOG.debug("Removing nodes from the cluster: %s" % self.id)
-        self._cast('remove_nodes', self.version_cap, node_info=node_info)
+        return self._call('remove_nodes', CONF.cluster_usage_timeout,
+                          self.version_cap, node_info=node_info)
 
     def cluster_complete(self):
         LOG.debug("Sending a setup completion notification for node: %s"
