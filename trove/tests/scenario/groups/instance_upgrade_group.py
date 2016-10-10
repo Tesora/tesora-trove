@@ -42,7 +42,8 @@ class DatabaseActionsRunnerFactory(test_runners.RunnerFactory):
 
 
 @test(depends_on_groups=[groups.INST_CREATE_WAIT],
-      groups=[GROUP, groups.INST_UPGRADE])
+      groups=[GROUP, groups.INST_UPGRADE],
+      runs_after_groups=[groups.INST_ACTIONS])
 class InstanceUpgradeGroup(TestGroup):
 
     def __init__(self):

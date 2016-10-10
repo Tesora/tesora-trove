@@ -124,6 +124,15 @@ nics = {
     }
 }
 
+roles_list = {
+    "type": "array",
+    "uniqueItems": True,
+    "items": {
+        "type": "object",
+        "required": ["name"]
+    }
+}
+
 databases_ref_list = {
     "type": "array",
     "minItems": 0,
@@ -199,7 +208,8 @@ users_list = {
             "name": name_string,
             "password": non_empty_string,
             "host": host_string,
-            "databases": databases_ref_list
+            "databases": databases_ref_list,
+            "roles": roles_list
         }
     }
 }
@@ -320,6 +330,21 @@ cluster = {
                     "properties": {
                         "id": uuid
                     }
+                }
+            }
+        }
+    },
+    "upgrade": {
+        "type": "object",
+        "required": ["upgrade"],
+        "additionalProperties": True,
+        "properties": {
+            "upgrade": {
+                "type": "object",
+                "required": ["datastore_version"],
+                "additionalProperties": True,
+                "properties": {
+                    "datastore_version": non_empty_string
                 }
             }
         }
@@ -566,6 +591,12 @@ module_contents = {
     "pattern": "^.*.+.*$"
 }
 
+module_apply_order = {
+    "type": "integer",
+    "minimum": 0,
+    "maximum": 9,
+}
+
 module = {
     "create": {
         "name": "module:create",
@@ -592,6 +623,9 @@ module = {
                     "all_tenants": boolean_string,
                     "visible": boolean_string,
                     "live_update": boolean_string,
+                    "priority_apply": boolean_string,
+                    "apply_order": module_apply_order,
+                    "full_access": boolean_string,
                 }
             }
         }
@@ -620,8 +654,13 @@ module = {
                     },
                     "auto_apply": boolean_string,
                     "all_tenants": boolean_string,
+                    "all_datastores": boolean_string,
+                    "all_datastore_versions": boolean_string,
                     "visible": boolean_string,
                     "live_update": boolean_string,
+                    "priority_apply": boolean_string,
+                    "apply_order": module_apply_order,
+                    "full_access": boolean_string,
                 }
             }
         }

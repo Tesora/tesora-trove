@@ -495,6 +495,8 @@ class GuestAgentOracleReplicationTest(trove_testtools.TestCase):
             mock.call({'key3': 'value3'})])
         mock_gen_spfile.assert_has_calls([mock.call(), mock.call()])
 
+    @mock.patch.object(operating_system, 'list_files_in_directory',
+                       return_value=['/u01/oracle/controlfile/test.ctl'])
     @mock.patch.object(operating_system, 'remove')
     @mock.patch.object(operating_system, 'read_file')
     @mock.patch.object(netutils, 'get_my_ipv4')
@@ -508,12 +510,12 @@ class GuestAgentOracleReplicationTest(trove_testtools.TestCase):
 
         mock_query().__enter__().execute.assert_has_calls([
             mock.call("ALTER DATABASE CREATE STANDBY CONTROLFILE "
-                      "AS '/tmp/%s_stby.ctl'" % self.dbname),
+                      "AS '/tmp/test.ctl.bak'"),
             mock.call("SELECT VALUE FROM V$PARAMETER WHERE "
                       "NAME = 'fal_server'")])
         mock_exec.assert_called_with(
             'tar', '-Pczvf', '/tmp/oradata.tar.gz',
-            '/tmp/%s_stby.ctl' % self.dbname,
+            '/tmp/test.ctl.bak',
             '/u01/app/oracle/product/dbaas/dbs/orapw%s' % self.dbname,
             '/etc/oratab', '/etc/oracle/oracle.cnf',
             run_as_root=True, root_helper='sudo')

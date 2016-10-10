@@ -159,7 +159,8 @@ class Manager(manager.Manager):
         self.app.stop_db()
         if 'device' in upgrade_info:
             self.mount_volume(context, mount_point=upgrade_info['mount_point'],
-                              device_path=upgrade_info['device'])
+                              device_path=upgrade_info['device'],
+                              write_to_fstab=True)
         self.app.restore_files_post_upgrade(upgrade_info)
         self.app.start_db()
 
@@ -257,8 +258,9 @@ class Manager(manager.Manager):
     def attach_replica(self, context, replica_info, slave_config):
         self.replication.enable_as_slave(self.app, replica_info, None)
 
-    def detach_replica(self, context, for_failover=False):
-        replica_info = self.replication.detach_slave(self.app, for_failover)
+    def detach_replica(self, context, for_failover=False, for_promote=False):
+        replica_info = self.replication.detach_slave(self.app, for_failover,
+                                                     for_promote)
         return replica_info
 
     def enable_as_master(self, context, replica_source_config):
@@ -342,3 +344,7 @@ class Manager(manager.Manager):
         }
 
         return replication_snapshot
+
+    def pre_replication_demote(self, context):
+        LOG.debug("Calling pre_replication_demote")
+        self.replication.pre_replication_demote(self.app)

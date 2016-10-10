@@ -160,7 +160,8 @@ class TestClusterController(trove_testtools.TestCase):
                 'region_name': None,
                 "nics": [
                     {"net-id": "e89aa5fd-6b0a-436d-a75c-1545d34d5331"}
-                ]
+                ],
+                'instance_type': None,
             },
             {
                 "volume_size": None,
@@ -171,7 +172,8 @@ class TestClusterController(trove_testtools.TestCase):
                 'region_name': None,
                 "nics": [
                     {"net-id": "e89aa5fd-6b0a-436d-a75c-1545d34d5331"}
-                ]
+                ],
+                'instance_type': None,
             },
             {
                 "volume_size": None,
@@ -182,7 +184,8 @@ class TestClusterController(trove_testtools.TestCase):
                 'region_name': None,
                 "nics": [
                     {"net-id": "e89aa5fd-6b0a-436d-a75c-1545d34d5331"}
-                ]
+                ],
+                'instance_type': None,
             }
         ]
         mock_id_from_href.return_value = '1234'

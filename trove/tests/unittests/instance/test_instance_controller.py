@@ -19,11 +19,13 @@ from testtools.matchers import Is, Equals
 from testtools.testcase import skip
 
 from trove.common import apischema
+from trove.common import exception
 from trove.instance.service import InstanceController
 from trove.tests.unittests import trove_testtools
 
 
 class TestInstanceController(trove_testtools.TestCase):
+
     def setUp(self):
         super(TestInstanceController, self).setUp()
         self.controller = InstanceController()
@@ -320,3 +322,165 @@ class TestInstanceController(trove_testtools.TestCase):
         self.assertEqual(1, instance.detach_replica.call_count)
         self.assertEqual(1, instance.assign_configuration.call_count)
         instance.update_db.assert_called_once_with(**args)
+
+    def test_create_databases_none(self):
+        req = {'instance': {'databases': []}}
+        users, databases = self.controller._parse_users_and_databases(
+            'mysql', req)
+        self.assertEqual(0, len(users))
+        self.assertEqual(0, len(databases))
+
+    def test_create_databases_single(self):
+        req = {'instance': {'databases': [{'name': 'one_db'}]}}
+        users, databases = self.controller._parse_users_and_databases(
+            'mysql', req)
+        self.assertEqual(0, len(users))
+        self.assertEqual(1, len(databases))
+
+    def test_create_databases_unique(self):
+        req = {'instance':
+               {'databases': [{'name': 'one_db'}, {'name': 'diff_db'}]}}
+        users, databases = self.controller._parse_users_and_databases(
+            'mysql', req)
+        self.assertEqual(0, len(users))
+        self.assertEqual(2, len(databases))
+
+    def test_create_databases_duplicate(self):
+        req = {'instance':
+               {'users': [],
+                'databases': [{'name': 'same_db'}, {'name': 'same_db'}]}}
+        self.assertRaises(exception.DatabaseInitialDatabaseDuplicateError,
+                          self.controller._parse_users_and_databases,
+                          'mysql', req)
+
+    def test_create_databases_intermingled(self):
+        req = {'instance':
+               {'users': [],
+                'databases': [{'name': 'a_db'}, {'name': 'b_db'},
+                              {'name': 'a_db'}]}}
+        self.assertRaises(exception.DatabaseInitialDatabaseDuplicateError,
+                          self.controller._parse_users_and_databases,
+                          'mysql', req)
+
+    def test_populate_users_single(self):
+        req = {'instance':
+               {'users': [{'name': 'bob', 'password': 'x'}]}}
+        users, databases = self.controller._parse_users_and_databases(
+            'mysql', req)
+        self.assertEqual(1, len(users))
+        self.assertEqual(0, len(databases))
+
+    def test_populate_users_unique_host(self):
+        req = {'instance':
+               {'users':
+                [{'name': 'bob', 'password': 'x', 'host': '127.0.0.1'},
+                 {'name': 'bob', 'password': 'x', 'host': '128.0.0.1'}]}}
+        users, databases = self.controller._parse_users_and_databases(
+            'mysql', req)
+        self.assertEqual(2, len(users))
+        self.assertEqual(0, len(databases))
+
+    def test_populate_users_unique_name(self):
+        req = {'instance':
+               {'users':
+                [{'name': 'bob', 'password': 'x', 'host': '127.0.0.1'},
+                 {'name': 'tom', 'password': 'x', 'host': '127.0.0.1'}]}}
+        users, databases = self.controller._parse_users_and_databases(
+            'mysql', req)
+        self.assertEqual(2, len(users))
+        self.assertEqual(0, len(databases))
+
+    def test_create_users_duplicate(self):
+        req = {'instance':
+               {'users': [
+                   {'name': 'bob', 'password': 'x', 'host': '127.0.0.1'},
+                   {'name': 'bob', 'password': 'y', 'host': '127.0.0.1'}]}}
+        self.assertRaises(exception.DatabaseInitialUserDuplicateError,
+                          self.controller._parse_users_and_databases,
+                          'mysql', req)
+
+    def test_create_users_intermingled(self):
+        req = {'instance':
+               {'users': [
+                   {'name': 'bob', 'password': 'x', 'host': '127.0.0.1'},
+                   {'name': 'tom', 'password': 'y', 'host': '128.0.0.1'},
+                   {'name': 'bob', 'password': 'z', 'host': '127.0.0.1'}]}}
+        self.assertRaises(exception.DatabaseInitialUserDuplicateError,
+                          self.controller._parse_users_and_databases,
+                          'mysql', req)
+
+    def test_create_users_both_db_list_empty(self):
+        req = {'instance':
+               {'users': [{'name': 'bob', 'password': 'x'}],
+                'databases': []}}
+        users, databases = self.controller._parse_users_and_databases(
+            'mysql', req)
+        self.assertEqual(1, len(users))
+        self.assertEqual(0, len(databases))
+
+    def test_create_users_db_list_empty(self):
+        req = {'instance':
+               {'users': [{'name': 'bob', 'password': 'x',
+                           'databases': [{'name': 'my_db'}]}],
+                'databases': []}}
+        self.assertRaises(exception.DatabaseForUserNotInDatabaseListError,
+                          self.controller._parse_users_and_databases,
+                          'mysql', req)
+
+    def test_create_users_user_db_list_empty(self):
+        req = {'instance':
+               {'users': [{'name': 'bob', 'password': 'x'}],
+                'databases': [{'name': 'my_db'}]}}
+        users, databases = self.controller._parse_users_and_databases(
+            'mysql', req)
+        self.assertEqual(1, len(users))
+        self.assertEqual(1, len(databases))
+
+    def test_create_users_db_in_list(self):
+        req = {'instance':
+               {'users': [{'name': 'bob', 'password': 'x',
+                           'databases': [{'name': 'my_db'}]}],
+                'databases': [{'name': 'my_db'}]}}
+        users, databases = self.controller._parse_users_and_databases(
+            'mysql', req)
+        self.assertEqual(1, len(users))
+        self.assertEqual(1, len(databases))
+
+    def test_create_users_db_multi_in_list(self):
+        req = {'instance':
+               {'users': [{'name': 'bob', 'password': 'x',
+                           'databases': [{'name': 'a_db'}]},
+                          {'name': 'tom', 'password': 'y',
+                           'databases': [{'name': 'c_db'}]},
+                          {'name': 'sue', 'password': 'z',
+                           'databases': [{'name': 'c_db'}]}],
+                'databases': [{'name': 'a_db'}, {'name': 'b_db'},
+                              {'name': 'c_db'}, {'name': 'd_db'}]}}
+        users, databases = self.controller._parse_users_and_databases(
+            'mysql', req)
+        self.assertEqual(3, len(users))
+        self.assertEqual(4, len(databases))
+
+    def test_create_users_db_not_in_list(self):
+        req = {'instance':
+               {'users': [{'name': 'bob', 'password': 'x',
+                           'databases': [{'name': 'fake_db'}]}],
+                'databases': [{'name': 'a_db'}, {'name': 'b_db'},
+                              {'name': 'c_db'}, {'name': 'd_db'}]}}
+        self.assertRaises(
+            exception.DatabaseForUserNotInDatabaseListError,
+            self.controller._parse_users_and_databases, 'mysql', req)
+
+    def test_create_users_db_multi_not_in_list(self):
+        req = {'instance':
+               {'users': [{'name': 'bob', 'password': 'x',
+                           'databases': [{'name': 'a_db'}]},
+                          {'name': 'tom', 'password': 'y',
+                           'databases': [{'name': 'fake_db'}]},
+                          {'name': 'sue', 'password': 'z',
+                           'databases': [{'name': 'd_db'}]}],
+                'databases': [{'name': 'a_db'}, {'name': 'b_db'},
+                              {'name': 'c_db'}, {'name': 'd_db'}]}}
+        self.assertRaises(
+            exception.DatabaseForUserNotInDatabaseListError,
+            self.controller._parse_users_and_databases, 'mysql', req)

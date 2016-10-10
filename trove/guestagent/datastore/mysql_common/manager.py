@@ -242,12 +242,6 @@ class MySqlManager(manager.Manager):
         if snapshot:
             self.attach_replica(context, snapshot, snapshot['config'])
 
-        if databases:
-            self.create_database(context, databases)
-
-        if users:
-            self.create_user(context, users)
-
     def pre_upgrade(self, context):
         app = self.mysql_app(self.mysql_app_status.get())
         data_dir = app.get_data_dir()
@@ -283,7 +277,8 @@ class MySqlManager(manager.Manager):
         app.stop_db()
         if 'device' in upgrade_info:
             self.mount_volume(context, mount_point=upgrade_info['mount_point'],
-                              device_path=upgrade_info['device'])
+                              device_path=upgrade_info['device'],
+                              write_to_fstab=True)
 
         if operating_system.exists(upgrade_info['save_etc_dir'],
                                    is_directory=True, as_root=True):
@@ -384,7 +379,7 @@ class MySqlManager(manager.Manager):
         LOG.debug("Calling wait_for_txn.")
         self.mysql_app(self.mysql_app_status.get()).wait_for_txn(txn)
 
-    def detach_replica(self, context, for_failover=False):
+    def detach_replica(self, context, for_failover=False, for_promote=False):
         LOG.debug("Detaching replica.")
         app = self.mysql_app(self.mysql_app_status.get())
         replica_info = self.replication.detach_slave(app, for_failover)

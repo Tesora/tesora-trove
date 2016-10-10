@@ -43,30 +43,38 @@ def populate_validated_databases(dbs):
         raise exception.BadRequest(safe_string)
 
 
-def populate_users(users, initial_databases=None):
-    """Create a serializable request containing users."""
-    users_data = []
-    unique_identities = set()
+def parse_users(users):
+    user_models = []
     for user in users:
-        u = guest_models.MySQLUser()
-        u.name = user.get('name', '')
-        u.host = user.get('host', '%')
-        user_identity = (u.name, u.host)
+        user_model = guest_models.MySQLUser()
+        user_model.name = user.get('name', '')
+        user_model.host = user.get('host', '%')
+        user_model.password = user.get('password', '')
+        user_dbs = user.get('databases', '')
+        user_db_names = [user_db.get('name', '') for user_db in user_dbs]
+        for user_db_name in user_db_names:
+            user_model.databases = user_db_name
+        user_models.append(user_model)
+        user_model.roles = user.get('roles', [])
+
+    return user_models
+
+
+def get_user_identity(user_model):
+    return '%s@%s' % (user_model.name, user_model.host)
+
+
+def populate_users(users):
+    """Create a serializable request containing users."""
+    user_models = parse_users(users)
+    unique_identities = set()
+    for model in user_models:
+        user_identity = get_user_identity(model)
         if user_identity in unique_identities:
             raise exception.DatabaseInitialUserDuplicateError()
         unique_identities.add(user_identity)
-        u.password = user.get('password', '')
-        user_dbs = user.get('databases', '')
-        # user_db_names guaranteed unique and non-empty by apischema
-        user_db_names = [user_db.get('name', '') for user_db in user_dbs]
-        for user_db_name in user_db_names:
-            if (initial_databases is not None and user_db_name not in
-                    initial_databases):
-                raise exception.DatabaseForUserNotInDatabaseListError(
-                    user=u.name, database=user_db_name)
-            u.databases = user_db_name
-        users_data.append(u.serialize())
-    return users_data
+
+    return [model.serialize() for model in user_models]
 
 
 def unquote_user_host(user_hostname):

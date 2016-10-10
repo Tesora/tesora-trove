@@ -21,15 +21,8 @@ from trove.guestagent.datastore.experimental.couchbase_4 import service
 
 class Manager(community_manager.Manager):
 
-    def __init__(self):
-        super(Manager, self).__init__(manager_name='couchbase_4')
+    def __init__(self, manager_name='couchbase_4'):
+        super(Manager, self).__init__(manager_name=manager_name)
 
     def build_app(self):
         return service.Couchbase4App()
-
-    def initialize_cluster(self, context, enabled_services=None):
-        self.app.initialize_cluster(enabled_services=enabled_services)
-
-    def add_nodes(self, context, nodes, enabled_services=None):
-        self.app.rebalance_cluster(
-            added_nodes=nodes, enabled_services=enabled_services)

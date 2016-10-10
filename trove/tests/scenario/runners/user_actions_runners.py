@@ -19,6 +19,8 @@ from proboscis import SkipTest
 
 from trove.common import exception
 from trove.common.utils import poll_until
+from trove.tests.scenario import runners
+from trove.tests.scenario.runners.test_runners import SkipKnownBug
 from trove.tests.scenario.runners.test_runners import TestRunner
 from troveclient.compat import exceptions
 
@@ -34,10 +36,15 @@ class UserActionsRunner(TestRunner):
     def __init__(self):
         super(UserActionsRunner, self).__init__()
         self.user_defs = []
+        self.renamed_user_orig_def = None
 
     @property
     def first_user_def(self):
         if self.user_defs:
+            # Try to use the first user with databases if any.
+            for user_def in self.user_defs:
+                if 'databases' in user_def and user_def['databases']:
+                    return user_def
             return self.user_defs[0]
         raise SkipTest("No valid user definitions provided.")
 
@@ -60,29 +67,8 @@ class UserActionsRunner(TestRunner):
                             expected_http_code):
         self.auth_client.users.create(instance_id, serial_users_def)
         self.assert_client_code(expected_http_code)
-        self._wait_for_user_create(instance_id, serial_users_def)
+        self.wait_for_user_create(instance_id, serial_users_def)
         return serial_users_def
-
-    def _wait_for_user_create(self, instance_id, expected_user_defs):
-        expected_user_names = {user_def['name']
-                               for user_def in expected_user_defs}
-        self.report.log("Waiting for all created users to appear in the "
-                        "listing: %s" % expected_user_names)
-
-        def _all_exist():
-            all_users = self._get_user_names(instance_id)
-            return all(usr in all_users for usr in expected_user_names)
-
-        try:
-            poll_until(_all_exist, time_out=self.GUEST_CAST_WAIT_TIMEOUT_SEC)
-            self.report.log("All users now exist on the instance.")
-        except exception.PollTimeOut:
-            self.fail("Some users were not created within the poll "
-                      "timeout: %ds" % self.GUEST_CAST_WAIT_TIMEOUT_SEC)
-
-    def _get_user_names(self, instance_id):
-        full_list = self.auth_client.users.list(instance_id)
-        return {user.name: user for user in full_list}
 
     def run_user_show(self, expected_http_code=200):
         for user_def in self.user_defs:
@@ -101,11 +87,22 @@ class UserActionsRunner(TestRunner):
 
     def _assert_user_matches(self, user, expected_user_def):
         user_name = expected_user_def['name']
-        self.assert_equal(expected_user_def['name'], user.name,
-                          "Mismatch of names for user: %s" % user_name)
-        self.assert_list_elements_equal(
-            expected_user_def['databases'], user.databases,
-            "Mismatch of databases for user: %s" % user_name)
+        for key, expected in expected_user_def.items():
+            if key not in self.ignored_user_attributes:
+                self.assert_true(
+                    hasattr(user, key),
+                    "Returned user '%s' does not have attribute '%s'."
+                    % (user_name, key))
+                actual = getattr(user, key)
+                if isinstance(expected, (list, tuple)):
+                    self.assert_list_elements_equal(
+                        expected, actual,
+                        "Mismatch element in list attribute '%s' of user: %s" %
+                        (user_name, key))
+                else:
+                    self.assert_equal(expected, actual,
+                                      "Mismatch in attribute '%s' of user: %s"
+                                      % (user_name, key))
 
     def run_users_list(self, expected_http_code=200):
         self.assert_users_list(
@@ -144,7 +141,8 @@ class UserActionsRunner(TestRunner):
             self.assert_is_none(list_page.next, "An extra page in the list.")
         marker = list_page.next
 
-        self.assert_pagination_match(list_page, full_list, 0, limit)
+        self.assert_pagination_match(list_page, full_list, 0, limit,
+                                     comp=self.users_equal)
         if marker:
             last_user = list_page[-1]
             expected_marker = self.as_pagination_marker(last_user)
@@ -154,10 +152,27 @@ class UserActionsRunner(TestRunner):
             list_page = self.auth_client.users.list(instance_id, marker=marker)
             self.assert_client_code(expected_http_code)
             self.assert_pagination_match(
-                list_page, full_list, limit, len(full_list))
+                list_page, full_list, limit, len(full_list),
+                comp=self.users_equal)
 
     def as_pagination_marker(self, user):
         return urllib_parse.quote(user.name)
+
+    def users_equal(self, a, b):
+        return self._users_equal(
+            a, b, ignored_attributes=self.ignored_user_attributes)
+
+    @property
+    def ignored_user_attributes(self):
+        """Any user properties that are either not returned from the server or
+        should not be take into account in comparisons.
+        """
+        return ['password']
+
+    def _users_equal(self, a, b, ignored_attributes=None):
+        a_dict = self.copy_dict(a.__dict__, ignored_keys=ignored_attributes)
+        b_dict = self.copy_dict(b.__dict__, ignored_keys=ignored_attributes)
+        return a_dict == b_dict
 
     def run_user_access_show(self, expected_http_code=200):
         for user_def in self.user_defs:
@@ -359,14 +374,39 @@ class UserActionsRunner(TestRunner):
         expected_def = None
         for user_def in self.user_defs:
             if user_def['name'] == user_name:
+                self.renamed_user_orig_def = dict(user_def)
                 user_def.update(update_attribites)
                 expected_def = user_def
 
-        self._wait_for_user_create(instance_id, self.user_defs)
+        self.wait_for_user_create(instance_id, self.user_defs)
 
         # Verify using 'user-show' and 'user-list'.
         self.assert_user_show(instance_id, expected_def, 200)
         self.assert_users_list(instance_id, self.user_defs, 200)
+
+    def run_user_recreate_with_no_access(self, expected_http_code=202):
+        if (self.renamed_user_orig_def and
+                self.renamed_user_orig_def['databases']):
+            self.assert_user_recreate_with_no_access(
+                self.instance_info.id, self.renamed_user_orig_def,
+                expected_http_code)
+        else:
+            raise SkipTest("No renamed users with databases.")
+
+    def assert_user_recreate_with_no_access(self, instance_id, original_def,
+                                            expected_http_code=202):
+        # Recreate a previously renamed user without assigning any access
+        # rights to it.
+        recreated_user_def = dict(original_def)
+        recreated_user_def.update({'databases': []})
+        user_def = self.assert_users_create(
+            instance_id, [recreated_user_def], expected_http_code)
+
+        # Append the new user to defs for cleanup.
+        self.user_defs.extend(user_def)
+
+        # Assert empty user access.
+        self.assert_user_access_show(instance_id, recreated_user_def, 200)
 
     def run_user_delete(self, expected_http_code=202):
         for user_def in self.user_defs:
@@ -385,7 +425,7 @@ class UserActionsRunner(TestRunner):
                         "listing: %s" % deleted_user_name)
 
         def _db_is_gone():
-            all_users = self._get_user_names(instance_id)
+            all_users = self.get_user_names(instance_id)
             return deleted_user_name not in all_users
 
         try:
@@ -489,35 +529,31 @@ class PxcUserActionsRunner(MysqlUserActionsRunner):
         super(PxcUserActionsRunner, self).__init__()
 
 
+class PostgresqlUserActionsRunner(UserActionsRunner):
+
+    def run_user_update_with_existing_name(self):
+        raise SkipKnownBug(runners.BUG_WRONG_API_VALIDATION)
+
+    def run_system_user_show(self):
+        raise SkipKnownBug(runners.BUG_WRONG_API_VALIDATION)
+
+    def run_system_user_attribute_update(self):
+        raise SkipKnownBug(runners.BUG_WRONG_API_VALIDATION)
+
+    def run_system_user_delete(self):
+        raise SkipKnownBug(runners.BUG_WRONG_API_VALIDATION)
+
+
 class CouchbaseUserActionsRunner(UserActionsRunner):
 
-    # Couchbase supports only one user per instance.
-    # Since we have already created the helper user, we need to
-    # delete it before and re-create after the tests.
-
-    def run_users_create(self, expected_http_code=202):
-        _, user_def, _ = self.build_helper_defs()
-        self.report.log("Deleting the helper user before proceeding.")
-        self.assert_user_delete(self.instance_info.id, user_def, None)
-        self.report.log("The helper user has been removed. "
-                        "Creating the test user now.")
-        super(CouchbaseUserActionsRunner, self).run_users_create(
-            expected_http_code=expected_http_code)
-
-    def run_user_delete(self, expected_http_code=202):
-        self.report.log("Deleting the test user now.")
-        super(CouchbaseUserActionsRunner, self).run_user_delete(
-            expected_http_code=expected_http_code)
-        self.report.log("The test user has been removed. "
-                        "Re-creating the helper user now.")
-        self.create_test_helper_on_instance(self.instance_info.id)
-        self.report.log("The helper user has been created.")
-
     def run_user_attribute_update(self, expected_http_code=202):
-        # Couchbase users cannot be renamed.
-        # We only test changing the password here.
         updated_def = self.first_user_def
-        update_attribites = {'password': 'password2'}
+        update_attribites = {'password': 'password2',
+                             'bucket_ramsize': 512,
+                             'bucket_replica': 1,
+                             'enable_index_replica': 1,
+                             'bucket_eviction_policy': 'fullEviction',
+                             'bucket_priority': 'high'}
         self.assert_user_attribute_update(
             self.instance_info.id, updated_def,
             update_attribites, expected_http_code)
@@ -536,9 +572,17 @@ class CouchbaseUserActionsRunner(UserActionsRunner):
     def run_user_access_grant(self):
         raise SkipTest("Operation is currently not supported.")
 
+    def run_user_recreate_with_no_access(self):
+        raise SkipTest("Couchbase users cannot be renamed.")
+
     def get_system_users(self):
         # Couchbase does not define 'ignore_users' property.
         return []
+
+    @property
+    def ignored_user_attributes(self):
+        return ['password', 'used_ram', 'bucket_priority',
+                'enable_index_replica', 'bucket_eviction_policy']
 
 
 class Couchbase_4UserActionsRunner(CouchbaseUserActionsRunner):

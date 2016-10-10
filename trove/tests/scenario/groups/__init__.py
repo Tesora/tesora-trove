@@ -82,6 +82,18 @@ INST_DELETE = "scenario.inst_delete_grp"
 INST_DELETE_WAIT = "scenario.inst_delete_wait_grp"
 
 
+# Instance Error Create Group
+INST_ERROR_CREATE = "scenario.inst_error_create_grp"
+INST_ERROR_CREATE_WAIT = "scenario.inst_error_create_wait_grp"
+INST_ERROR_DELETE = "scenario.inst_error_delete_grp"
+INST_ERROR_DELETE_WAIT = "scenario.inst_error_delete_wait_grp"
+
+
+# Instance Force Delete Group
+INST_FORCE_DELETE = "scenario.inst_force_delete_grp"
+INST_FORCE_DELETE_WAIT = "scenario.inst_force_delete_wait_grp"
+
+
 # Module Group
 MODULE_CREATE = "scenario.module_create_grp"
 MODULE_DELETE = "scenario.module_delete_grp"
@@ -99,6 +111,7 @@ REPL_INST_CREATE_WAIT = "scenario.repl_inst_create_wait_grp"
 REPL_INST_MULTI_CREATE = "scenario.repl_inst_multi_create_grp"
 REPL_INST_DELETE_NON_AFFINITY_WAIT = "scenario.repl_inst_delete_noaff_wait_grp"
 REPL_INST_MULTI_CREATE_WAIT = "scenario.repl_inst_multi_create_wait_grp"
+REPL_INST_MULTI_PROMOTE = "scenario.repl_inst_multi_promote_grp"
 REPL_INST_DELETE = "scenario.repl_inst_delete_grp"
 REPL_INST_DELETE_WAIT = "scenario.repl_inst_delete_wait_grp"
 

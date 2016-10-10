@@ -123,7 +123,7 @@ class OracleRACClient(service.OracleClient):
                  port=1521,
                  user_id=None,
                  password=None,
-                 use_service=True,
+                 use_service=False,
                  mode=cx_Oracle.SYSDBA):
         user_id = user_id if user_id else ADMIN_USER_NAME
         password = password if password else OracleRACConfig().admin_password
@@ -181,6 +181,8 @@ class OracleRACAdmin(service.OracleAdmin):
         with self.cursor(db_name,
                          user_id='sys',
                          password=sys_pwd) as sys_cursor:
+            sys_cursor.execute(str(sql_query.CreateTablespace(
+                ADMIN_USER_NAME)))
             sys_cursor.execute(str(sql_query.CreateUser(
                 ADMIN_USER_NAME, self.ora_config.admin_password)))
             sys_cursor.execute(str(

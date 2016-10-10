@@ -40,14 +40,8 @@ class CbBackup(base.BackupRunner):
     """
     __strategy_name__ = 'cbbackup'
 
-    pre_backup_commands = [
-        ['rm', '-rf', system.COUCHBASE_DUMP_DIR],
-        ['mkdir', '-p', system.COUCHBASE_DUMP_DIR],
-    ]
-
-    post_backup_commands = [
-        ['rm', '-rf', system.COUCHBASE_DUMP_DIR],
-    ]
+    BUCKET_PATH_TRANSFORM = (
+        's#([0-9]){4}-([0-9]){2}-([0-9]){2}T([0-9]){6}Z(-full)*/##gx')
 
     def __init__(self, filename, **kwargs):
         self.app = service.CouchbaseApp()
@@ -57,8 +51,20 @@ class CbBackup(base.BackupRunner):
     def cmd(self):
         """
         Creates backup dump dir, tars it up, and encrypts it.
+
+        Empty buckets will be backed up in:
+        '<backup_root>/bucket-<name>'
+
+        Buckets with data will be stored in:
+        '<backup_root>/<timestamp>/<timestamp>-full/bucket-<name>'
+
+        'cbrestore' requires full path to the bucket backup directory.
+
+        We transform the names such that they all extract into the backup root,
+        where 'cbrestore' can find them.
         """
-        cmd = 'tar cpPf - ' + system.COUCHBASE_DUMP_DIR
+        cmd = ('tar --transform="%s" -cpPf - %s' % (self.BUCKET_PATH_TRANSFORM,
+                                                    system.COUCHBASE_DUMP_DIR))
         return cmd + self.zip_cmd + self.encrypt_cmd
 
     def _save_buckets_config(self, password):
@@ -72,8 +78,9 @@ class CbBackup(base.BackupRunner):
 
     def _run_pre_backup(self):
         try:
-            for cmd in self.pre_backup_commands:
-                utils.execute_with_timeout(*cmd)
+            operating_system.remove(system.COUCHBASE_DUMP_DIR,
+                                    force=True, recursive=True)
+            operating_system.create_directory(system.COUCHBASE_DUMP_DIR)
             pw = self.app.get_password()
             self._save_buckets_config(pw)
             with open(OUTFILE, "r") as f:
@@ -102,12 +109,8 @@ class CbBackup(base.BackupRunner):
             raise p
 
     def _run_post_backup(self):
-        try:
-            for cmd in self.post_backup_commands:
-                utils.execute_with_timeout(*cmd)
-        except exception.ProcessExecutionError as p:
-            LOG.error(p)
-            raise p
+        operating_system.remove(system.COUCHBASE_DUMP_DIR,
+                                force=True, recursive=True)
 
     def run_cbbackup(self):
         host_and_port = 'localhost:%d' % CONF.couchbase.couchbase_port

@@ -327,7 +327,7 @@ class MongoDBApp(object):
         creds = self.store_admin_password(password)
         user = models.MongoDBUser(name='admin.%s' % creds.username,
                                   password=creds.password)
-        user.roles = system.MONGO_ADMIN_ROLES
+        user.mongo_roles = system.MONGO_ADMIN_ROLES
         # the driver engine is already cached, but we need to change it it
         with MongoDBClient(None, host='localhost',
                            port=MONGODB_PORT) as client:
@@ -418,13 +418,14 @@ class MongoDBApp(object):
                               system.CONFIG_DIR,
                               preserve=True, recursive=True,
                               force=True, as_root=True)
-        operating_system.copy('%s/.' % upgrade_info['save_creds'],
+        operating_system.copy(os.path.join(upgrade_info['save_creds'],
+                                           system.MONGO_ADMIN_CREDS_FILENAME),
                               os.path.expanduser('~'),
-                              preserve=True, recursive=True,
-                              force=True, as_root=True)
+                              preserve=True)
         for save_dir in [upgrade_info['save_confs'],
                          upgrade_info['save_creds']]:
             operating_system.remove(save_dir, force=True, as_root=True)
+        self.status.set_ready()
 
 
 class MongoDBAppStatus(service.BaseDbStatus):
@@ -493,7 +494,7 @@ class MongoDBAdmin(object):
     def _create_user_with_client(self, user, client):
         """Run the add user command."""
         client[user.database.name].add_user(
-            user.username, password=user.password, roles=user.roles
+            user.username, password=user.password, roles=user.mongo_roles
         )
 
     def create_validated_user(self, user, client=None):
@@ -502,7 +503,7 @@ class MongoDBAdmin(object):
         :param user:   a MongoDBUser object
         """
         LOG.debug('Creating user %s on database %s with roles %s.'
-                  % (user.username, user.database.name, str(user.roles)))
+                  % (user.username, user.database.name, str(user.mongo_roles)))
 
         if not user.password:
             raise exception.BadRequest(_("User's password is empty."))
@@ -567,7 +568,7 @@ class MongoDBAdmin(object):
                     {'user': user.username, 'db': user.database.name})
         if not user_info:
             return None
-        user.roles = user_info['roles']
+        user.mongo_roles = user_info['roles']
         return user
 
     def get_user(self, name):
@@ -584,7 +585,7 @@ class MongoDBAdmin(object):
         with MongoDBClient(self._admin_user()) as admin_client:
             for user_info in admin_client.admin.system.users.find():
                 user = models.MongoDBUser(name=user_info['_id'])
-                user.roles = user_info['roles']
+                user.mongo_roles = user_info['roles']
                 if self._is_modifiable_user(user.name):
                     users.append(user.serialize())
         LOG.debug('users = ' + str(users))
@@ -626,7 +627,7 @@ class MongoDBAdmin(object):
             LOG.debug('Generating root user password.')
             password = utils.generate_random_password()
         root_user = models.MongoDBUser(name='admin.root', password=password)
-        root_user.roles = {'db': 'admin', 'role': 'root'}
+        root_user.mongo_roles = {'db': 'admin', 'role': 'root'}
         self.create_validated_user(root_user)
         return root_user.serialize()
 
@@ -640,7 +641,7 @@ class MongoDBAdmin(object):
     def _update_user_roles(self, user):
         with MongoDBClient(self._admin_user()) as admin_client:
             admin_client[user.database.name].add_user(
-                user.username, roles=user.roles
+                user.username, roles=user.mongo_roles
             )
 
     def grant_access(self, username, databases):
@@ -653,14 +654,9 @@ class MongoDBAdmin(object):
         for db_name in databases:
             # verify the database name
             models.MongoDBSchema(db_name)
-            role = {'db': db_name, 'role': 'readWrite'}
-            if role not in user.roles:
-                LOG.debug('Adding role %s to user %s.'
-                          % (str(role), username))
-                user.roles = role
-            else:
-                LOG.debug('User %s already has role %s.'
-                          % (username, str(role)))
+            LOG.debug('Granting access on %s to user %s.'
+                      % (db_name, username))
+            user.databases = db_name
         LOG.debug('Updating user %s.' % username)
         self._update_user_roles(user)
 
@@ -673,7 +669,7 @@ class MongoDBAdmin(object):
                 '%(user)s') % {'user': username})
         # verify the database name
         models.MongoDBSchema(database)
-        role = {'db': database, 'role': 'readWrite'}
+        role = user.access_role(database)
         LOG.debug('Removing role %s from user %s.'
                   % (str(role), username))
         user.revoke_role(role)

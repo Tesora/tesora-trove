@@ -107,6 +107,7 @@ class InstanceStatus(object):
     EJECT = "EJECT"
     UPGRADE = "UPGRADE"
     DETACH = "DETACH"
+    DELETING = "DELETING"
 
 
 def validate_volume_size(size):
@@ -314,8 +315,17 @@ class SimpleInstance(object):
         if self.db_info.task_status.is_error:
             return InstanceStatus.ERROR
 
-        # Check for taskmanager status.
         action = self.db_info.task_status.action
+
+        # Check if we are resetting status or force deleting
+        if (tr_instance.ServiceStatuses.UNKNOWN == self.datastore_status.status
+                and action == InstanceTasks.DELETING.action):
+            return InstanceStatus.DELETING
+        elif (tr_instance.ServiceStatuses.UNKNOWN ==
+                self.datastore_status.status):
+            return InstanceStatus.ERROR
+
+        # Check for taskmanager status.
         if 'BUILDING' == action:
             if 'ERROR' == self.db_info.server_status:
                 return InstanceStatus.ERROR
@@ -576,6 +586,33 @@ def load_server_group_info(instance, context, compute_id):
         instance.locality = srv_grp.ServerGroup.get_locality(server_group)
 
 
+def validate_modules(modules, datastore_id, datastore_version_id):
+    module_list = []
+    for module in modules:
+        if (module.datastore_id and
+                module.datastore_id != datastore_id):
+            reason = (_("Module '%(mod)s' cannot be applied "
+                        " (Wrong datastore '%(ds)s' - expected '%(ds2)s')")
+                      % {'mod': module.name, 'ds': module.datastore_id,
+                         'ds2': datastore_id})
+            raise exception.ModuleInvalid(reason=reason)
+        if (module.datastore_version_id and
+                module.datastore_version_id != datastore_version_id):
+            reason = (_("Module '%(mod)s' cannot be applied "
+                        " (Wrong datastore version '%(ver)s' "
+                        "- expected '%(ver2)s')")
+                      % {'mod': module.name,
+                         'ver': module.datastore_version_id,
+                         'ver2': datastore_version_id})
+            raise exception.ModuleInvalid(reason=reason)
+        module.contents = module_models.Module.deprocess_contents(
+            module.contents)
+        module_info = module_views.DetailedModuleView(module).data(
+            include_contents=True)
+        module_list.append(module_info)
+    return module_list
+
+
 class BaseInstance(SimpleInstance):
     """Represents an instance.
     -----------
@@ -624,8 +661,9 @@ class BaseInstance(SimpleInstance):
     def delete(self):
         def _delete_resources():
             if self.is_building:
-                raise exception.UnprocessableEntity("Instance %s is not ready."
-                                                    % self.id)
+                raise exception.UnprocessableEntity(
+                    "Instance %s is not ready. (Status is %s)." %
+                    (self.id, self.status))
             LOG.debug("Deleting instance with compute id = %s.",
                       self.db_info.compute_instance_id)
 
@@ -712,6 +750,24 @@ class BaseInstance(SimpleInstance):
                  self.id)
         self.update_db(task_status=InstanceTasks.NONE)
 
+    @property
+    def server_group(self):
+        # The server group could be empty, so we need a flag to cache it
+        if not self._server_group_loaded:
+            self._server_group = srv_grp.ServerGroup.load(
+                self.context, self.db_info.compute_instance_id)
+            self._server_group_loaded = True
+        return self._server_group
+
+    def reset_status(self):
+        LOG.info(_LI("Resetting the status to ERROR on instance %s."),
+                 self.id)
+        self.reset_task_status()
+
+        reset_instance = InstanceServiceStatus.find_by(instance_id=self.id)
+        reset_instance.set_status(tr_instance.ServiceStatuses.UNKNOWN)
+        reset_instance.save()
+
     def get_injected_files(self, datastore_manager):
         injected_config_location = CONF.get('injected_config_location')
         guest_info = CONF.get('guest_info')
@@ -739,29 +795,6 @@ class BaseInstance(SimpleInstance):
 
         return files
 
-    @property
-    def server_group(self):
-        # The server group could be empty, so we need a flag to cache it
-        if not self._server_group_loaded:
-            self._server_group = srv_grp.ServerGroup.load(
-                self.context, self.db_info.compute_instance_id)
-            self._server_group_loaded = True
-        return self._server_group
-
-    def reset_status(self):
-        if self.is_building or self.is_error:
-            LOG.info(_LI("Resetting the status to NONE on instance %s."),
-                     self.id)
-            self.reset_task_status()
-
-            reset_instance = InstanceServiceStatus.find_by(instance_id=self.id)
-            reset_instance.set_status(tr_instance.ServiceStatuses.UNKNOWN)
-            reset_instance.save()
-        else:
-            raise exception.UnprocessableEntity(
-                "Instance %s status can only be reset in BUILD or ERROR "
-                "state." % self.id)
-
 
 class FreshInstance(BaseInstance):
     @classmethod
@@ -771,8 +804,8 @@ class FreshInstance(BaseInstance):
 
 class BuiltInstance(BaseInstance):
     @classmethod
-    def load(cls, context, id):
-        return load_instance(cls, context, id, needs_server=True)
+    def load(cls, context, id, needs_server=True):
+        return load_instance(cls, context, id, needs_server=needs_server)
 
 
 class Instance(BuiltInstance):
@@ -1041,22 +1074,19 @@ class Instance(BuiltInstance):
         for aa_module in auto_apply_modules:
             if aa_module.id not in module_ids:
                 modules.append(aa_module)
-        module_list = []
-        for module in modules:
-            module.contents = module_models.Module.deprocess_contents(
-                module.contents)
-            module_info = module_views.DetailedModuleView(module).data(
-                include_contents=True)
-            module_list.append(module_info)
+        module_list = validate_modules(modules, datastore.id,
+                                       datastore_version.id)
 
         def _create_resources():
 
             if cluster_config:
                 cluster_id = cluster_config.get("id", None)
                 shard_id = cluster_config.get("shard_id", None)
-                instance_type = cluster_config.get("instance_type", None)
+                instance_types = cluster_config.get("instance_type", None)
+                if isinstance(instance_types, list):
+                    instance_types = ','.join(instance_types)
             else:
-                cluster_id = shard_id = instance_type = None
+                cluster_id = shard_id = instance_types = None
 
             ids = []
             names = []
@@ -1070,7 +1100,7 @@ class Instance(BuiltInstance):
                     task_status=InstanceTasks.BUILDING,
                     configuration_id=configuration_id,
                     slave_of_id=slave_of_id, cluster_id=cluster_id,
-                    shard_id=shard_id, type=instance_type,
+                    shard_id=shard_id, type=instance_types,
                     region_id=region_name)
                 LOG.debug("Tenant %(tenant)s created new Trove instance "
                           "%(db)s in region %(region)s.",

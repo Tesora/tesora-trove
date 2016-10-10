@@ -344,6 +344,7 @@ class DatastoreConfigurationParameters(object):
                     name=config_param_name,
                     deleted=False
                 )
+
         except exception.NotFound:
             raise exception.NotFound(uuid=config_param_name)
 

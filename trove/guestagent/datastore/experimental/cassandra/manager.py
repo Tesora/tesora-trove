@@ -80,9 +80,11 @@ class Manager(manager.Manager):
 
     def guest_log_enable(self, context, log_name, disable):
         if disable:
+            LOG.debug("Disabling system log.")
             self.app.set_logging_level('OFF')
         else:
             log_level = CONF.get(self.manager_name).get('system_log_level')
+            LOG.debug("Enabling system log with logging level: %s" % log_level)
             self.app.set_logging_level(log_level)
 
         return False
@@ -101,11 +103,13 @@ class Manager(manager.Manager):
         self.app.stop_db()
         if 'device' in upgrade_info:
             self.mount_volume(context, mount_point=upgrade_info['mount_point'],
-                              device_path=upgrade_info['device'])
+                              device_path=upgrade_info['device'],
+                              write_to_fstab=True)
         self.app.restore_files_post_upgrade(upgrade_info)
         # cqlshrc has been restored at this point, need to refresh the
-        # credentials stored in the app by resetting the app.
+        # credentials stored in the app and admin by resetting them.
         self._app = None
+        self._admin = None
         self.app.start_db()
 
     def restart(self, context):

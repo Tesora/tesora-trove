@@ -181,15 +181,12 @@ class OracleClient(object):
     def __enter__(self):
         os.environ['ORACLE_HOME'] = self.oracle_home
         os.environ['ORACLE_SID'] = self.sid
+        ora_dsn = ''
         if self.use_service:
             ora_dsn = cx_Oracle.makedsn(self.hostname,
                                         self.port,
                                         service_name=self.sid)
-        else:
-            ora_dsn = cx_Oracle.makedsn(self.hostname,
-                                        self.port,
-                                        self.sid)
-        LOG.debug("Connecting to Oracle with DSN: %s" % ora_dsn)
+            LOG.debug("Connecting to Oracle with DSN: %s" % ora_dsn)
         self.conn = cx_Oracle.connect(user=self.user_id,
                                       password=self.password,
                                       dsn=ora_dsn,
@@ -252,6 +249,11 @@ class OracleAdmin(object):
         # Create the cloud user role for identifying dbaas-managed users
         with self.cursor(db_name) as cursor:
             cursor.execute(str(sql_query.CreateRole(self.cloud_role_name)))
+            privileges = ['CREATE SESSION', 'CREATE TABLE',
+                          'CREATE TABLESPACE', 'DROP TABLESPACE',
+                          'CREATE USER', 'DROP USER']
+            cursor.execute(str(sql_query.Grant(self.cloud_role_name,
+                                               privileges)))
 
     def _delete_database(self, db_name):
         pass
@@ -319,12 +321,9 @@ class OracleAdmin(object):
             user = models.OracleUser.deserialize_user(item)
             LOG.debug("Creating user %s." % user.name)
             with self.cursor(self.database_name) as cursor:
+                cursor.execute(str(sql_query.CreateTablespace(user.name)))
                 cursor.execute(str(
                     sql_query.CreateUser(user.name, user.password)))
-                roles = ['CREATE SESSION', 'CREATE TABLE', 'SELECT ANY TABLE',
-                         'UPDATE ANY TABLE', 'INSERT ANY TABLE',
-                         'DROP ANY TABLE']
-                cursor.execute(str(sql_query.Grant(user.name, roles)))
                 cursor.execute(str(
                     sql_query.Grant(user.name, 'UNLIMITED TABLESPACE')))
                 cursor.execute(str(
@@ -337,6 +336,10 @@ class OracleAdmin(object):
         with self.cursor(self.database_name) as cursor:
             cursor.execute(str(
                 sql_query.DropUser(oracle_user.name, cascade=True)))
+            cursor.execute(str(
+                sql_query.DropTablespace(oracle_user.name,
+                                         datafiles=True,
+                                         cascade=True)))
 
     def list_users(self, limit=None, marker=None, include_marker=False):
         LOG.debug("Listing users (limit of %s, marker %s, "

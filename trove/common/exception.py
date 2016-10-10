@@ -242,6 +242,17 @@ class UserAlreadyExists(BadRequest):
     message = _('A user with the name "%(name)s" already exists.')
 
 
+class ReservedUserId(BadRequest):
+
+    message = _('Cannot access or modify reserved user "%(name)s".')
+
+
+class DuplicateUserId(BadRequest):
+
+    message = _('All created users must be unique. '
+                'User "%(name)s" appears multiple times.')
+
+
 class InstanceAssignedToConfiguration(BadRequest):
 
     message = _('A configuration group cannot be deleted if it is '
@@ -253,11 +264,6 @@ class InstanceAssignedToConfiguration(BadRequest):
 class UnprocessableEntity(TroveError):
 
     message = _("Unable to process the contained request.")
-
-
-class UnauthorizedRequest(TroveError):
-
-    message = _("Unauthorized request.")
 
 
 class CannotResizeToSameSize(TroveError):
@@ -326,6 +332,11 @@ class PollTimeOut(TroveError):
 class Forbidden(TroveError):
 
     message = _("User does not have admin privileges.")
+
+
+class PolicyNotAuthorized(Forbidden):
+
+    message = _("Policy doesn't allow %(action)s to be performed.")
 
 
 class InvalidModelError(TroveError):
@@ -549,7 +560,7 @@ class ModuleAccessForbidden(Forbidden):
 
 class ModuleInvalid(Forbidden):
 
-    message = _("The module you are applying is invalid: %(reason)s")
+    message = _("The module is invalid: %(reason)s")
 
 
 class ClusterNotFound(NotFound):
@@ -613,6 +624,13 @@ class ClusterOperationNotSupported(TroveError):
     message = _("The '%(operation)s' operation is not supported for cluster.")
 
 
+class ClusterInstanceTypeMissing(TroveError):
+
+    message = _("Instance(s) missing one or more required types. "
+                "'%(types)s' specified but '%(req)s' is required "
+                "(per instance: %(per)s).")
+
+
 class TroveOperationAuthError(TroveError):
     message = _("Operation not allowed for tenant %(tenant_id)s.")
 
@@ -636,3 +654,8 @@ class ImageNotFound(NotFound):
 class DatastoreVersionAlreadyExists(BadRequest):
 
     message = _("A datastore version with the name '%(name)s' already exists.")
+
+
+class LogAccessForbidden(Forbidden):
+
+    message = _("You must be admin to %(action)s log '%(log)s'.")

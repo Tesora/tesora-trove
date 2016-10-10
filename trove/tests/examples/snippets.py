@@ -417,6 +417,11 @@ class Users(Example):
                         {
                             "name": "databaseC"
                         }
+                    ],
+                    "roles": [
+                        {
+                            "name": "read-only"
+                        }
                     ]
                 }, {
                     "name": "dbuser3",

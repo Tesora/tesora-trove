@@ -563,6 +563,7 @@ class PgSqlApp(object):
                                   force=True, as_root=True)
             operating_system.remove(upgrade_info['save_etc'], force=True,
                                     as_root=True)
+        self.status.set_ready()
 
 
 class PgSqlAppStatus(service.BaseDbStatus):
@@ -650,20 +651,11 @@ class PgSqlAdmin(object):
         """List database for which the given user as access.
         Return a list of serialized Postgres databases.
         """
-        if self.user_exists(username):
-            return [db.serialize() for db in self._get_databases_for(username)]
+        user = self._find_user(context, username)
+        if user is not None:
+            return user.databases
 
         raise exception.UserNotFound(username)
-
-    def _get_databases_for(self, username):
-        """Return all Postgres databases accessible by a given user."""
-        results = self.query(
-            pgsql_query.AccessQuery.list(user=username),
-            timeout=30,
-        )
-        return [models.PostgreSQLSchema(
-            row[0].strip(), character_set=row[1], collate=row[2])
-            for row in results]
 
     def create_database(self, context, databases):
         """Create the list of specified databases.
@@ -816,18 +808,23 @@ class PgSqlAdmin(object):
             pgsql_query.UserQuery.list(ignore=self.ignore_users),
             timeout=30,
         )
-        return [self._build_user(context, row[0].strip()) for row in results]
 
-    def _build_user(self, context, username):
+        names = set([row[0].strip() for row in results])
+        return [self._build_user(context, name, results) for name in names]
+
+    def _build_user(self, context, username, acl=None):
         """Build a model representation of a Postgres user.
         Include all databases it has access to.
         """
         user = models.PostgreSQLUser(username)
-        # The setter for DatastoreScema.databases is broken; manually
-        # rebuild the list of dbs this user has access to
-        dbs = self.list_access(context, username, None)
-        for d in dbs:
-            user.databases.append(d)
+        if acl:
+            dbs = [models.PostgreSQLSchema(row[1].strip(),
+                                           character_set=row[2],
+                                           collate=row[3])
+                   for row in acl if row[0] == username and row[1] is not None]
+            for d in dbs:
+                user.databases.append(d.serialize())
+
         return user
 
     def delete_user(self, context, user):
@@ -874,7 +871,7 @@ class PgSqlAdmin(object):
         )
 
         if results:
-            return self._build_user(context, username)
+            return self._build_user(context, username, results)
 
         return None
 

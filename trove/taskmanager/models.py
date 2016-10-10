@@ -18,6 +18,7 @@ import traceback
 
 from cinderclient import exceptions as cinder_exceptions
 from eventlet import greenthread
+from eventlet.timeout import Timeout
 from heatclient import exc as heat_exceptions
 from novaclient import exceptions as nova_exceptions
 from oslo_log import log as logging
@@ -46,6 +47,9 @@ from trove.common.i18n import _
 from trove.common import instance as rd_instance
 from trove.common.instance import ServiceStatuses
 from trove.common.notification import (
+    DBaaSInstanceUpgrade,
+    EndNotification,
+    StartNotification,
     TroveInstanceCreate,
     TroveInstanceModifyVolume,
     TroveInstanceModifyFlavor,
@@ -363,6 +367,48 @@ class ClusterTasks(Cluster):
         cluster.save()
         LOG.debug("end delete_cluster for id: %s" % cluster_id)
 
+    def rolling_upgrade_cluster(self, context, cluster_id, datastore_version):
+        LOG.debug("Begin rolling cluster upgrade for id: %s." % cluster_id)
+
+        def _upgrade_cluster_instance(instance):
+            LOG.debug("Upgrading instance with id: %s." % instance.id)
+            context.notification = (
+                DBaaSInstanceUpgrade(context, **request_info))
+            with StartNotification(
+                    context, instance_id=instance.id,
+                    datastore_version_id=datastore_version.id):
+                with EndNotification(context):
+                    instance.update_db(
+                        datastore_version_id=datastore_version.id,
+                        task_status=InstanceTasks.UPGRADING)
+                    instance.upgrade(datastore_version)
+
+        timeout = Timeout(CONF.cluster_usage_timeout)
+        cluster_notification = context.notification
+        request_info = cluster_notification.serialize(context)
+        try:
+            for db_inst in DBInstance.find_all(cluster_id=cluster_id).all():
+                instance = BuiltInstanceTasks.load(
+                    context, db_inst.id)
+                _upgrade_cluster_instance(instance)
+
+            self.reset_task()
+        except Timeout as t:
+            if t is not timeout:
+                raise  # not my timeout
+            LOG.exception(_("Timeout for upgrading cluster."))
+            self.update_statuses_on_failure(
+                cluster_id, status=InstanceTasks.UPGRADING_ERROR)
+        except Exception:
+            LOG.exception(_("Error upgrading cluster %s.") % cluster_id)
+            self.update_statuses_on_failure(
+                cluster_id, status=InstanceTasks.UPGRADING_ERROR)
+        finally:
+            context.notification = cluster_notification
+            timeout.cancel()
+
+        LOG.debug("End upgrade_cluster for id: %s." % cluster_id)
+
 
 class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
 
@@ -667,7 +713,9 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
            status == rd_instance.ServiceStatuses.INSTANCE_READY):
                 return True
         elif status not in [rd_instance.ServiceStatuses.NEW,
-                            rd_instance.ServiceStatuses.BUILDING]:
+                            rd_instance.ServiceStatuses.BUILDING,
+                            rd_instance.ServiceStatuses.UNKNOWN,
+                            rd_instance.ServiceStatuses.DELETED]:
             raise TroveError(_("Service not active, status: %s") % status)
 
         c_id = self.db_info.compute_instance_id
@@ -1127,11 +1175,17 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         LOG.debug("Begin _delete_resources for instance %s" % self.id)
         server_id = self.db_info.compute_instance_id
         old_server = self.nova_client.servers.get(server_id)
-        LOG.debug("Stopping datastore on instance %s before deleting any "
-                  "resources." % self.id)
         result = None
         try:
-            result = self.guest.stop_db()
+            # The server may have already been marked as 'SHUTDOWN'
+            # but check for 'ACTIVE' in case of any race condition
+            # We specifically don't want to attempt to stop db if
+            # the server is in 'ERROR' or 'FAILED" state, as it will
+            # result in a long timeout
+            if self.server_status_matches(['ACTIVE', 'SHUTDOWN'], server=self):
+                LOG.debug("Stopping datastore on instance %s before deleting "
+                          "any resources." % self.id)
+                result = self.guest.stop_db()
         except Exception:
             LOG.exception(_("Error stopping the datastore before attempting "
                             "to delete instance id %s.") % self.id)
@@ -1274,10 +1328,10 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         return run_with_quotas(self.context.tenant, {'backups': 1},
                                _get_replication_snapshot)
 
-    def detach_replica(self, master, for_failover=False):
+    def detach_replica(self, master, for_failover=False, for_promote=False):
         LOG.debug("Calling detach_replica on %s" % self.id)
         try:
-            self.guest.detach_replica(for_failover)
+            self.guest.detach_replica(for_failover, for_promote)
             self.update_db(slave_of_id=None)
             self.slave_list = None
         except (GuestError, GuestTimeout):
@@ -1362,6 +1416,10 @@ class BuiltInstanceTasks(BuiltInstance, NotifyMixin, ConfigurationMixin):
         LOG.debug("Calling wait_for_txn on %s" % self.id)
         if txn:
             self.guest.wait_for_txn(txn)
+
+    def pre_replication_demote(self):
+        LOG.debug("Calling pre_replication_demote on %s" % self.id)
+        self.guest.pre_replication_demote()
 
     def cleanup_source_on_replica_detach(self, replica_info):
         LOG.debug("Calling cleanup_source_on_replica_detach on %s" % self.id)
@@ -1792,7 +1850,6 @@ class ResizeVolumeAction(object):
         self._attach_volume(recover_func=self._fail)
         # some platforms (e.g. RHEL) auto-mount attached volumes
         # make sure to issue an explicit unmount
-        # this will be a no-op if the volume is not mounted
         # NOTE: this sleep was added because the unmount caused
         #       a race condition on RHEL (DBAAS-1037)
         time.sleep(2)

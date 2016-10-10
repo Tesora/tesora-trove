@@ -20,9 +20,8 @@ import csv
 import json
 import re
 import six
+from six.moves.configparser import SafeConfigParser
 import yaml
-
-from ConfigParser import SafeConfigParser
 
 from trove.common import utils as trove_utils
 from trove.common import xmltodict
@@ -186,16 +185,24 @@ class IniCodec(StreamCodec):
     }
     """
 
-    def __init__(self, default_value=None, comment_markers=('#', ';')):
+    def __init__(self, default_value=None, comment_markers=('#', ';'),
+                 strip_spaces=True):
         """
         :param default_value:  Default value for keys with no value.
                                If set, all keys are written as 'key = value'.
                                The key is written without trailing '=' if None.
         :type default_value:   string
+        :param strip_spaces:   Default value is to strip the spaces between
+                               each line when parsing.
+                               If set to False, the value will be parsed with
+                               the same amount of spaces as initially provided.
+        :type stip_spaces:     boolean
+
         """
         self._value_converter = StringConverter({default_value: None})
         self._default_value = default_value
         self._comment_markers = comment_markers
+        self._strip_spaces = strip_spaces
 
     def serialize(self, dict_data):
         parser = self._init_config_parser(dict_data)
@@ -218,7 +225,10 @@ class IniCodec(StreamCodec):
             # Ignore commented lines.
             if not line.startswith(self._comment_markers):
                 # Strip leading and trailing whitespaces from each line.
-                buf.write(line.strip() + '\n')
+                if self._strip_spaces:
+                    buf.write(line.strip() + '\n')
+                else:
+                    buf.write(line)
 
         # Rewind the output buffer.
         buf.flush()

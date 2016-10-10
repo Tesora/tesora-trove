@@ -111,7 +111,9 @@ class Manager(periodic_task.PeriodicTasks):
             slave_ips = master_candidate.detach_public_ips()
             latest_txn_id = old_master.get_latest_txn_id()
             master_candidate.wait_for_txn(latest_txn_id)
-            master_candidate.detach_replica(old_master, for_failover=True)
+            old_master.pre_replication_demote()
+            master_candidate.detach_replica(old_master, for_failover=True,
+                                            for_promote=True)
             master_candidate.enable_as_master()
             old_master.attach_replica(master_candidate)
             master_candidate.attach_public_ips(master_ips)
@@ -462,6 +464,11 @@ class Manager(periodic_task.PeriodicTasks):
     def shrink_cluster(self, context, cluster_id, instance_ids):
         cluster_tasks = models.load_cluster_tasks(context, cluster_id)
         cluster_tasks.shrink_cluster(context, cluster_id, instance_ids)
+
+    def upgrade_cluster(self, context, cluster_id, datastore_version_id):
+        datastore_version = DatastoreVersion.load_by_uuid(datastore_version_id)
+        cluster_tasks = models.load_cluster_tasks(context, cluster_id)
+        cluster_tasks.upgrade_cluster(context, cluster_id, datastore_version)
 
     def delete_cluster(self, context, cluster_id):
         with EndNotification(context):

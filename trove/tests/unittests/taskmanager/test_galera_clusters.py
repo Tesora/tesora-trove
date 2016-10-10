@@ -29,7 +29,7 @@ from trove.instance.models import DBInstance
 from trove.instance.models import Instance
 from trove.instance.models import InstanceServiceStatus
 from trove.instance.models import InstanceTasks
-from trove.taskmanager.models import ServiceStatuses
+from trove.taskmanager.models import ServiceStatuses, BuiltInstanceTasks
 from trove.tests.unittests import trove_testtools
 from trove.tests.unittests.util import util
 
@@ -76,11 +76,11 @@ class GaleraClusterTasksTest(trove_testtools.TestCase):
                                   type="member")
         mock_ds1 = Mock()
         mock_ds1.name = 'pxc'
-        mock_dv1 = Mock()
-        mock_dv1.name = '7.1'
+        self.mock_dv1 = Mock()
+        self.mock_dv1.name = '7.1'
         self.clustertasks = GaleraCommonClusterTasks(
             Mock(), self.db_cluster, datastore=mock_ds1,
-            datastore_version=mock_dv1)
+            datastore_version=self.mock_dv1)
         self.cluster_context = {
             'replication_user': {
                 'name': "name",
@@ -228,6 +228,28 @@ class GaleraClusterTasksTest(trove_testtools.TestCase):
         mock_update_status.assert_called_with(
             '1234',
             status=InstanceTasks.SHRINKING_ERROR)
+
+    @patch.object(BuiltInstanceTasks, 'upgrade')
+    @patch.object(GaleraCommonClusterTasks, 'reset_task')
+    @patch.object(BuiltInstanceTasks, 'load', return_value=Mock())
+    @patch.object(DBInstance, 'find_all')
+    @patch.object(GaleraCommonClusterTasks, 'get_guest')
+    @patch.object(GaleraCommonClusterTasks, 'get_ip')
+    @patch.object(GaleraCommonClusterTasks, '_render_cluster_config')
+    def test_upgrade_cluster_success(self, mock_render, mock_ip, mock_guest,
+                                     mock_find_all, mock_load,
+                                     mock_reset_task, mock_upgrade):
+
+        mock_find_all.return_value.all.return_value = [
+            self.dbinst1, self.dbinst2, self.dbinst3]
+        context = trove_testtools.TroveTestContext(self)
+        mock_ip.return_value = "10.0.0.2"
+        mock_guest.get_cluster_context = Mock(
+            return_value=self.cluster_context)
+        self.clustertasks.upgrade_cluster(context, self.cluster_id,
+                                          self.mock_dv1)
+        self.assertEqual(3, mock_load.return_value.upgrade.call_count)
+        mock_reset_task.assert_called_with()
 
 
 class GaleraTaskManagerStrategyTest(trove_testtools.TestCase):

@@ -463,7 +463,8 @@ common_opts = [
     cfg.StrOpt('module_aes_cbc_key', default='module_aes_cbc_key',
                help='OpenSSL aes_cbc key for module encryption.'),
     cfg.ListOpt('module_types', default=['ping', 'new_relic_license',
-                                         'package_install'],
+                                         'package_install',
+                                         'db_command_executor'],
                 help='A list of module types supported. A module type '
                      'corresponds to the name of a ModuleDriver.'),
     cfg.StrOpt('guest_log_container_name',
@@ -488,6 +489,12 @@ common_opts = [
     cfg.StrOpt('password_special_charset', default='!^+?_',
                help='List of special characters that can be used in randomly '
                     'generated database passwords.'),
+    cfg.StrOpt('ldap_servers', default='',
+               help='If saslauthd is enabled, set the saslauthd.conf '
+                    'configuration option.'),
+    cfg.StrOpt('ldap_search_base', default='',
+               help='If saslauthd is enabled, set the saslauthd.conf '
+                    'configuration option.'),
 ]
 
 
@@ -626,6 +633,14 @@ mysql_opts = [
                     'in order to be logged in the slow_query log.'),
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # MySQL EE (mostly uses same options as MySQL community edition).
@@ -746,6 +761,14 @@ oracle_ra_opts = [
                help='Root controller implementation for Oracle Remote Agent.'),
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # Oracle RAC
@@ -838,6 +861,14 @@ oracle_rac_opts = [
     cfg.IntOpt('configuration_timeout', default=3600,
                help="Maximum time (in seconds) guest should wait for Oracle "
                     "RAC installation and configuration operations."),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # Oracle
@@ -936,6 +967,14 @@ oracle_opts = [
                     'logic.'),
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # Percona
@@ -1019,6 +1058,14 @@ percona_opts = [
     cfg.IntOpt('default_password_length',
                default='${mysql.default_password_length}',
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # Percona XtraDB Cluster
@@ -1106,6 +1153,14 @@ pxc_opts = [
     cfg.IntOpt('default_password_length',
                default='${mysql.default_password_length}',
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 
@@ -1182,6 +1237,11 @@ redis_opts = [
                help='List of Guest Logs to expose for publishing.'),
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
 ]
 
 # Cassandra
@@ -1263,6 +1323,15 @@ cassandra_opts = [
                     'logic.'),
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.cassandra.service.'
+               'CassandraUserController',
+               help='User controller implementation.'),
 ]
 
 cassandra_3_group = cfg.OptGroup(
@@ -1379,11 +1448,23 @@ couchbase_opts = [
     cfg.BoolOpt('enable_index_replica', default=True,
                 help='Whether to create replica indexes.'),
     cfg.StrOpt('eviction_policy', default='valueOnly',
-               choices='valueOnly,fullEviction',
+               choices=['valueOnly', 'fullEviction'],
                help='Default bucket metadata ejection policy.'),
+    cfg.StrOpt('bucket_priority', default='low',
+               choices=['low', 'high'],
+               help='Bucket priority compared to other buckets.'),
     cfg.StrOpt('bucket_type', default='couchbase',
-               choices='couchbase,memcached',
+               choices=['couchbase', 'memcached'],
                help='Default bucket type.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.couchbase.service.'
+               'CouchbaseUserController',
+               help='User controller implementation.'),
 ]
 
 couchbase_4_group = cfg.OptGroup(
@@ -1393,6 +1474,12 @@ couchbase_4_opts = _update_options(
     couchbase_opts,
     cfg.ListOpt('default_services', default=['data', 'index', 'query'],
                 help='Couchbase services enabled on a new node.'))
+
+couchbase_ee_group = cfg.OptGroup(
+    'couchbase_ee', title='Couchbase Enterprise Edition 4.x options',
+    help="Oslo option group designed for Couchbase EE 4.x datastore")
+couchbase_ee_opts = _update_options(
+    couchbase_4_opts)
 
 # MongoDB
 mongodb_group = cfg.OptGroup(
@@ -1482,6 +1569,14 @@ mongodb_opts = [
                help='List of Guest Logs to expose for publishing.'),
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # PostgreSQL
@@ -1553,6 +1648,14 @@ postgresql_opts = [
                     "statement logging."),
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # EDB (mostly uses same options as Postgresql community edition).
@@ -1657,6 +1760,14 @@ couchdb_opts = [
                 deprecated_group='DEFAULT'),
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # Vertica
@@ -1725,6 +1836,14 @@ vertica_opts = [
                help='Minimum k-safety setting permitted for vertica clusters'),
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # DB2
@@ -1783,6 +1902,14 @@ db2_opts = [
                help='List of Guest Logs to expose for publishing.'),
     cfg.IntOpt('default_password_length', default=36,
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # MariaDB
@@ -1884,6 +2011,14 @@ mariadb_opts = [
     cfg.IntOpt('default_password_length',
                default='${mysql.default_password_length}',
                help='Character length of generated passwords.'),
+    cfg.BoolOpt('enable_cluster_instance_backup',
+                default=False,
+                help='Allows backup of single instance in the cluster.'),
+    cfg.BoolOpt('enable_saslauthd', default=False,
+                help='Enable the saslauth daemon.'),
+    cfg.StrOpt('user_controller',
+               default='trove.extensions.mysql.service.MySQLUserController',
+               help='User controller implementation.'),
 ]
 
 # RPC version groups
@@ -1924,6 +2059,7 @@ CONF.register_group(cassandra_3_group)
 CONF.register_group(dse_group)
 CONF.register_group(couchbase_group)
 CONF.register_group(couchbase_4_group)
+CONF.register_group(couchbase_ee_group)
 CONF.register_group(mongodb_group)
 CONF.register_group(postgresql_group)
 CONF.register_group(couchdb_group)
@@ -1945,6 +2081,7 @@ CONF.register_opts(cassandra_3_opts, cassandra_3_group)
 CONF.register_opts(dse_opts, dse_group)
 CONF.register_opts(couchbase_opts, couchbase_group)
 CONF.register_opts(couchbase_4_opts, couchbase_4_group)
+CONF.register_opts(couchbase_ee_opts, couchbase_ee_group)
 CONF.register_opts(mongodb_opts, mongodb_group)
 CONF.register_opts(postgresql_opts, postgresql_group)
 CONF.register_opts(edb_opts, edb_group)

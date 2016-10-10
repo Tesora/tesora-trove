@@ -101,7 +101,7 @@ class TestManager(trove_testtools.TestCase):
                 self.context, 'some-inst-id')
 
         self.mock_slave1.detach_replica.assert_called_with(
-            self.mock_old_master, for_failover=True)
+            self.mock_old_master, for_failover=True, for_promote=True)
         self.mock_old_master.attach_replica.assert_called_with(
             self.mock_slave1)
         self.mock_slave1.make_read_only.assert_called_with(False)

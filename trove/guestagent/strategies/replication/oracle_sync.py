@@ -91,8 +91,10 @@ class OracleSyncReplication(base.Replication):
 
     def get_master_ref(self, service, snapshot_info):
         """Capture information from a master node"""
-        ctlfile = path.join(TMP_DIR,
-                            '%s_stby.ctl' % service.admin.database_name)
+        ctlfile = path.basename(sorted(operating_system.list_files_in_directory(
+            service.paths.ctlfile1_dir, recursive=True,
+            as_root=True))[0]) + '.bak'
+        ctlfile = path.join(TMP_DIR, ctlfile)
         datafile = path.join(TMP_DIR, 'oradata.tar.gz')
 
         def _cleanup_tmp_files():
@@ -379,13 +381,24 @@ class OracleSyncReplication(base.Replication):
                                    run_as_root=True, root_helper='sudo')
 
         # Put the control file in place
-        tmp_ctlfile_path = path.join(TMP_DIR, '%s_stby.ctl' % db_name)
-        operating_system.move(tmp_ctlfile_path,
-                              service.paths.ctlfile1_file,
-                              as_root=True)
-        operating_system.copy(service.paths.ctlfile1_file,
-                              service.paths.ctlfile2_file,
-                              preserve=True, as_root=True)
+        tmp_ctlfile_path = sorted(
+            operating_system.list_files_in_directory(TMP_DIR,
+                                                     pattern='*.ctl.bak$',
+                                                     recursive=True,
+                                                     as_root=True))[0]
+        ctlfile_name = path.basename(tmp_ctlfile_path)[:-4]
+        ctlfile1_path = path.join(service.paths.ctlfile1_dir, ctlfile_name)
+        operating_system.create_directory(service.paths.ctlfile1_dir,
+                                          force=True, user='oracle',
+                                          group='oinstall', as_root=True)
+        operating_system.create_directory(service.paths.ctlfile2_dir,
+                                          force=True, user='oracle',
+                                          group='oinstall', as_root=True)
+        operating_system.move(
+            tmp_ctlfile_path, ctlfile1_path, as_root=True)
+        operating_system.copy(
+            ctlfile1_path,
+            service.paths.ctlfile2_dir, preserve=True, as_root=True)
 
         # Set the db_name and db_unique_name via the PFILE which will be
         # removed later

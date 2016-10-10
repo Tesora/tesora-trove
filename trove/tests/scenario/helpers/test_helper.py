@@ -172,6 +172,11 @@ class TestHelper(object):
         """
         pass
 
+    def get_helper_user_properties(self):
+        """Return any additional properties for the helper user.
+        """
+        return {}
+
     ##############
     # Root related
     ##############

@@ -1,6 +1,7 @@
 {
     "users": [
         {
+            "roles": [],
             "databases": [
                 {
                     "name": "databaseA"
@@ -10,6 +11,11 @@
             "name": "dbuser1"
         },
         {
+            "roles": [
+                {
+                    "name": "read-only"
+                }
+            ],
             "databases": [
                 {
                     "name": "databaseB"
@@ -22,6 +28,7 @@
             "name": "dbuser2"
         },
         {
+            "roles": [],
             "databases": [
                 {
                     "name": "databaseD"
@@ -31,6 +38,7 @@
             "name": "dbuser3"
         },
         {
+            "roles": [],
             "databases": [
                 {
                     "name": "sampledb"
@@ -41,4 +49,3 @@
         }
     ]
 }
-

@@ -202,7 +202,8 @@ class MongoDbCluster(models.Cluster):
     def _parse_grow_item(self, item):
         used_keys = []
 
-        def _check_option(key, required=False, valid_values=None):
+        def _check_option(key, required=False, valid_values=None,
+                          flatten_value=False):
             if required and key not in item:
                 raise exception.TroveError(
                     _('An instance with the options %(given)s is missing '
@@ -210,10 +211,12 @@ class MongoDbCluster(models.Cluster):
                     % {'given': item.keys(), 'expected': key}
                 )
             value = item.get(key, None)
+            if value and flatten_value and isinstance(value, list):
+                value = ','.join(value)
             if valid_values and value not in valid_values:
                 raise exception.TroveError(
-                    _('The value %(value)s for key %(key)s is invalid. '
-                      'Allowed values are %(valid)s.')
+                    _("The value '%(value)s' for key '%(key)s' is invalid. "
+                      "Allowed values are %(valid)s.")
                     % {'value': value, 'key': key, 'valid': valid_values}
                 )
             used_keys.append(key)
@@ -224,7 +227,8 @@ class MongoDbCluster(models.Cluster):
         volume_size = int(_check_option('volume', required=True)['size'])
         instance_type = _check_option('type', required=True,
                                       valid_values=['replica',
-                                                    'query_router'])
+                                                    'query_router'],
+                                      flatten_value=True)
         name = _check_option('name')
         related_to = _check_option('related_to')
         nics = _check_option('nics')
@@ -501,7 +505,7 @@ class MongoDbCluster(models.Cluster):
         replicas = []
         query_routers = []
         for item in instances:
-            if item['instance_type'] == 'replica':
+            if 'replica' in item['instance_type']:
                 replica_requirements = ['related_to', 'name']
                 if not all(key in item for key in replica_requirements):
                     raise exception.TroveError(
@@ -509,7 +513,7 @@ class MongoDbCluster(models.Cluster):
                           '%s.') % replica_requirements
                     )
                 replicas.append(item)
-            elif item['instance_type'] == 'query_router':
+            elif 'query_router' in item['instance_type']:
                 query_routers.append(item)
             else:
                 raise exception.TroveError(

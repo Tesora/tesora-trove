@@ -15,6 +15,7 @@
 
 import datetime
 import os
+import proboscis
 import time as timer
 
 from oslo_config.cfg import NoSuchOptError
@@ -125,7 +126,7 @@ class RunnerFactory(object):
                 # such as a missing override class.  Anything else
                 # shouldn't be suppressed.
                 l_msg = ie.message.lower()
-                if load_type not in l_msg or (
+                if (load_type and load_type not in l_msg) or (
                         'no module named' not in l_msg and
                         'cannot be found' not in l_msg):
                     raise
@@ -159,6 +160,21 @@ class InstanceTestInfo(object):
         self.user = None  # The user instance who owns the instance.
         self.users = None  # The users created on the instance.
         self.databases = None  # The databases created on the instance.
+        self.helper_user = None  # Test helper user if exists.
+        self.helper_database = None  # Test helper database if exists.
+
+
+class SkipKnownBug(proboscis.SkipTest):
+    """Skip test failures due to known bug(s).
+    These should get fixed sometime in the future.
+    """
+
+    def __init__(self, *bugs):
+        """
+        :param bugs:    One or more bug references (e.g. link, bug #).
+        """
+        bug_ref = '; '.join(map(str, bugs))
+        super(SkipKnownBug, self).__init__("Known bug: %s" % bug_ref)
 
 
 class TestRunner(object):
@@ -203,7 +219,7 @@ class TestRunner(object):
         self.def_timeout = timeout
 
         self.instance_info.name = "TEST_" + datetime.datetime.strftime(
-            datetime.datetime.now(), '%Y-%m-%d_%H:%M:%S')
+            datetime.datetime.now(), '%Y_%m_%d__%H_%M_%S')
         self.instance_info.dbaas_datastore = CONFIG.dbaas_datastore
         self.instance_info.dbaas_datastore_version = (
             CONFIG.dbaas_datastore_version)
@@ -434,9 +450,11 @@ class TestRunner(object):
                 fast_fail_status=fast_fail_status,
                 require_all_states=require_all_states)
 
-        tasks = [build_polling_task(_make_fn(instance_id),
-                 sleep_time=self.def_sleep_time, time_out=self.def_timeout)
-                 for instance_id in instance_ids]
+        tasks = [
+            build_polling_task(
+                _make_fn(instance_id),
+                sleep_time=self.def_sleep_time,
+                time_out=self.def_timeout) for instance_id in instance_ids]
         poll_until(lambda: all(poll_task.ready() for poll_task in tasks),
                    sleep_time=self.def_sleep_time, time_out=self.def_timeout)
 
@@ -502,10 +520,18 @@ class TestRunner(object):
                                else [instance_ids], expected_last_status)
 
     def assert_pagination_match(
-            self, list_page, full_list, start_idx, end_idx):
-        self.assert_equal(full_list[start_idx:end_idx], list(list_page),
-                          "List page does not match the expected full "
-                          "list section.")
+            self, list_page, full_list, start_idx, end_idx,
+            comp=lambda a, b: a == b):
+        expected = full_list[start_idx:end_idx]
+        actual = list(list_page)
+        self.assert_equal(len(expected), len(actual),
+                          "List page has an unexpected length.")
+        for idx, exp_val in enumerate(expected):
+            self.assert_true(
+                comp(exp_val, actual[idx]),
+                "List page does not match the expected full "
+                "list section at index %d: '%s' (expected '%s')."
+                % (idx, actual, expected))
 
     def _wait_all_deleted(self, instance_ids, expected_last_status):
         self.report.log("Waiting for instances to be gone: %s (status %s)" %
@@ -514,9 +540,11 @@ class TestRunner(object):
         def _make_fn(inst_id):
             return lambda: self._wait_for_delete(inst_id, expected_last_status)
 
-        tasks = [build_polling_task(_make_fn(instance_id),
-                 sleep_time=self.def_sleep_time, time_out=self.def_timeout)
-                 for instance_id in instance_ids]
+        tasks = [
+            build_polling_task(
+                _make_fn(instance_id),
+                sleep_time=self.def_sleep_time,
+                time_out=self.def_timeout) for instance_id in instance_ids]
         poll_until(lambda: all(poll_task.ready() for poll_task in tasks),
                    sleep_time=self.def_sleep_time, time_out=self.def_timeout)
 
@@ -665,12 +693,14 @@ class TestRunner(object):
                 "Creating a helper database '%s' on instance: %s"
                 % (database_def['name'], instance_id))
             self.auth_client.databases.create(instance_id, [database_def])
+            self.wait_for_database_create(instance_id, [database_def])
 
         if user_def:
             self.report.log(
                 "Creating a helper user '%s:%s' on instance: %s"
                 % (user_def['name'], user_def['password'], instance_id))
             self.auth_client.users.create(instance_id, [user_def])
+            self.wait_for_user_create(instance_id, [user_def])
 
         if root_def:
             # Not enabling root on a single instance of the cluster here
@@ -696,6 +726,15 @@ class TestRunner(object):
                             'databases': databases}
             return None
 
+        def _build_user_def(creds, user_properties):
+            user_def = _get_credentials(creds)
+            if user_def:
+                if user_properties:
+                    user_def.update(user_properties)
+                return user_def
+
+            return None
+
         credentials = self.test_helper.get_helper_credentials()
         if credentials:
             database = credentials.get('database')
@@ -703,9 +742,52 @@ class TestRunner(object):
                 database_def = {'name': database}
         credentials_root = self.test_helper.get_helper_credentials_root()
 
+        user_properties = self.test_helper.get_helper_user_properties()
         return (database_def,
-                _get_credentials(credentials),
-                _get_credentials(credentials_root))
+                _build_user_def(credentials, user_properties),
+                _build_user_def(credentials_root, user_properties))
+
+    def wait_for_user_create(self, instance_id, expected_user_defs):
+        expected_user_names = {user_def['name']
+                               for user_def in expected_user_defs}
+        self.report.log("Waiting for all created users to appear in the "
+                        "listing: %s" % expected_user_names)
+
+        def _all_exist():
+            all_users = self.get_user_names(instance_id)
+            return all(usr in all_users for usr in expected_user_names)
+
+        try:
+            poll_until(_all_exist, time_out=self.GUEST_CAST_WAIT_TIMEOUT_SEC)
+            self.report.log("All users now exist on the instance.")
+        except exception.PollTimeOut:
+            self.fail("Some users were not created within the poll "
+                      "timeout: %ds" % self.GUEST_CAST_WAIT_TIMEOUT_SEC)
+
+    def get_user_names(self, instance_id):
+        full_list = self.auth_client.users.list(instance_id)
+        return {user.name: user for user in full_list}
+
+    def wait_for_database_create(self, instance_id, expected_database_defs):
+        expected_db_names = {db_def['name']
+                             for db_def in expected_database_defs}
+        self.report.log("Waiting for all created databases to appear in the "
+                        "listing: %s" % expected_db_names)
+
+        def _all_exist():
+            all_dbs = self.get_db_names(instance_id)
+            return all(db in all_dbs for db in expected_db_names)
+
+        try:
+            poll_until(_all_exist, time_out=self.GUEST_CAST_WAIT_TIMEOUT_SEC)
+            self.report.log("All databases now exist on the instance.")
+        except exception.PollTimeOut:
+            self.fail("Some databases were not created within the poll "
+                      "timeout: %ds" % self.GUEST_CAST_WAIT_TIMEOUT_SEC)
+
+    def get_db_names(self, instance_id):
+        full_list = self.auth_client.databases.list(instance_id)
+        return {database.name: database for database in full_list}
 
 
 class CheckInstance(AttrCheck):

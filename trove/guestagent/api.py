@@ -383,6 +383,12 @@ class API(object):
                           AGENT_LOW_TIMEOUT,
                           self.version_cap)
 
+    def pre_replication_demote(self):
+        LOG.debug("Running steps needed before demoting the replication "
+                  "master.")
+        return self._call("pre_replication_demote", AGENT_LOW_TIMEOUT,
+                          self.version_cap)
+
     def get_replication_snapshot(self, snapshot_info=None,
                                  replica_source_config=None):
         LOG.debug("Retrieving replication snapshot from instance %s.", self.id)
@@ -396,10 +402,11 @@ class API(object):
         self._cast("attach_replication_slave", self.version_cap,
                    snapshot=snapshot, slave_config=replica_config)
 
-    def detach_replica(self, for_failover=False):
+    def detach_replica(self, for_failover=False, for_promote=False):
         LOG.debug("Detaching replica %s from its replication source.", self.id)
         return self._call("detach_replica", AGENT_HIGH_TIMEOUT,
-                          self.version_cap, for_failover=for_failover)
+                          self.version_cap, for_failover=for_failover,
+                          for_promote=for_promote)
 
     def get_replica_context(self):
         LOG.debug("Getting replica context.")

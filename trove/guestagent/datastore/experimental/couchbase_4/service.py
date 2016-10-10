@@ -13,8 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import collections
-
 from oslo_log import log as logging
 
 from trove.common import cfg
@@ -30,21 +28,6 @@ LOG = logging.getLogger(__name__)
 
 class Couchbase4App(community_service.CouchbaseApp):
 
-    def initialize_cluster(self, enabled_services=None):
-        enabled_services = (enabled_services or
-                            cfg.get_configuration_property('default_services'))
-        LOG.info(_("Enabling Couchbase services: %s") % enabled_services)
-        self.build_admin().run_cluster_init(self.ramsize_quota_mb,
-                                            enabled_services)
-
-    def rebalance_cluster(self, added_nodes=None, removed_nodes=None,
-                          enabled_services=None):
-        enabled_services = (enabled_services or
-                            cfg.get_configuration_property('default_services'))
-        LOG.info(_("Enabling Couchbase services: %s") % enabled_services)
-        self.build_admin().run_rebalance(added_nodes, removed_nodes,
-                                         enabled_services)
-
     def build_admin(self):
         return Couchbase4Admin(self.get_cluster_admin())
 
@@ -55,21 +38,31 @@ class Couchbase4Admin(community_service.CouchbaseAdmin):
     # indexing service.
     INDEX_MEM_RATIO = 0.25
 
-    def run_cluster_init(self, ramsize_quota_mb, enabled_services):
-        LOG.debug("Configuring cluster parameters.")
+    def get_cluster_init_options(self, node_info, ramsize_quota_mb):
+        init_options = super(Couchbase4Admin, self).get_cluster_init_options(
+            node_info, ramsize_quota_mb)
+        if node_info:
+            services = node_info[0].get('services')
+            # get all services
+            service_lists = [node.get('services') for node in node_info]
+            all_services = set(
+                [item for subtypes in service_lists for item in subtypes])
+        else:
+            # Use datastore defaults if no node_info is provided
+            # (i.e. during single instance provisioning).
+            services = cfg.get_configuration_property('default_services')
+            all_services = services
+
         data_quota_mb, index_quota_mb = self._compute_mem_allocations_mb(
-            ramsize_quota_mb, enabled_services)
+            ramsize_quota_mb, all_services)
+        init_options['cluster-ramsize'] = data_quota_mb
+        init_options['cluster-index-ramsize'] = index_quota_mb
+        if services:
+            if isinstance(services, list):
+                services = ','.join(services)
+            init_options['service'] = services
 
-        options = {'cluster-init-username': self._user.name,
-                   'cluster-init-password': self._user.password,
-                   'cluster-init-port': self._http_client_port,
-                   'cluster-ramsize': data_quota_mb,
-                   'services': ','.join(enabled_services)}
-
-        if index_quota_mb > 0:
-            options.update({'cluster-index-ramsize': index_quota_mb})
-
-        self._run_couchbase_command('cluster-init', options)
+        return init_options
 
     def _compute_mem_allocations_mb(self, ramsize_quota_mb, enabled_services):
         """Couchbase 4.x and higher split the available memory quota between
@@ -78,13 +71,13 @@ class Couchbase4Admin(community_service.CouchbaseAdmin):
         256MB.
 
         Compute the index quota as 25% of the total and use the rest for data
-        services. Return '0' quota if the service is not enabled.
+        services. Return '256' quota (the min) if the service is not enabled.
         """
         if 'index' in enabled_services:
             index_quota_mb = max(int(self.INDEX_MEM_RATIO * ramsize_quota_mb),
                                  Couchbase4App.MIN_RAMSIZE_QUOTA_MB)
         else:
-            index_quota_mb = 0
+            index_quota_mb = Couchbase4App.MIN_RAMSIZE_QUOTA_MB
 
         data_quota_mb = ramsize_quota_mb - index_quota_mb
 
@@ -95,22 +88,15 @@ class Couchbase4Admin(community_service.CouchbaseAdmin):
 
         return data_quota_mb, index_quota_mb
 
-    def run_rebalance(self, added_nodes, removed_nodes, enabled_services):
-        LOG.debug("Rebalancing the cluster.")
-        options = []
-        if added_nodes:
-            for node_ip in added_nodes:
-                options.append(
-                    collections.OrderedDict([
-                        ('server-add', node_ip),
-                        ('server-add-username', self._user.name),
-                        ('server-add-password', self._user.password)]))
-            options.append({'services': ','.join(enabled_services)})
+    def get_cluster_add_options(self, node_info):
+        add_options = super(Couchbase4Admin, self).get_cluster_add_options(
+            node_info)
+        for index, node in enumerate(node_info):
+            services = node.get('services')
+            if services:
+                options = add_options[index]
+                if isinstance(services, list):
+                    services = ','.join(services)
+                options['services'] = services
 
-        if removed_nodes:
-            options.append({'server-remove': removed_nodes})
-
-        if options:
-            self._run_couchbase_command('rebalance', options)
-        else:
-            LOG.info(_("No changes to the topology, skipping rebalance."))
+        return add_options

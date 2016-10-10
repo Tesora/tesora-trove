@@ -14,13 +14,15 @@
 #    under the License.
 
 from eventlet.timeout import Timeout
+import six
+
 from oslo_log import log as logging
 
 from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
+from trove.common.notification import EndNotification
 from trove.common.strategies.cluster import base
-from trove.common import utils
 from trove.instance.models import DBInstance
 from trove.instance.models import Instance
 from trove.taskmanager import api as task_api
@@ -45,6 +47,30 @@ class CouchbaseTaskManagerStrategy(base.BaseTaskManagerStrategy):
 
 class CouchbaseClusterTasks(task_models.ClusterTasks):
 
+    # These define the validation rules for the different managers
+    VALID_SERVICES = {
+        "couchbase": [""],
+        "couchbase_4": ["data", "index", "query"],
+        "couchbase_ee": ["data", "index", "query"],
+    }
+    REQUIRED_SERVICES = {
+        "couchbase": [],
+        "couchbase_4": ["data", "index", "query"],
+        "couchbase_ee": ["data"],
+    }
+    REQUIRE_ALL_SERVICES = {
+        "couchbase": True,
+        "couchbase_4": True,
+        "couchbase_ee": False,
+    }
+    # This defines which instances which are displayed with cluster-instances
+    # command.  By default, all valid services are displayed as defined
+    # in all the managers.
+    EXPOSED_SERVICES = set(
+        item for sublist in
+        [VALID_SERVICES[key] for key in VALID_SERVICES.keys()]
+        for item in sublist)
+
     def create_cluster(self, context, cluster_id):
         LOG.debug("Begin create_cluster for id: %s." % cluster_id)
 
@@ -57,43 +83,73 @@ class CouchbaseClusterTasks(task_models.ClusterTasks):
                 return
 
             cluster_nodes = self.load_cluster_nodes(context, cluster_node_ids)
-            coordinator = cluster_nodes[0]
+            coordinator = self._get_coordinator_node(cluster_nodes)
 
             LOG.debug("Initializing the cluster on node '%s'."
                       % coordinator['ip'])
-            coordinator['guest'].initialize_cluster()
 
-            added_nodes = [node for node in cluster_nodes
-                           if node != coordinator]
+            # start with the coordinator as it will have all the required
+            # services.
+            guest_node_info = self.build_guest_node_info([coordinator])
+            # now add all the other nodes so we can get a list of all services
+            # needed to calculate the memory allocation properly.
+            add_node_info = [node for node in cluster_nodes
+                             if node != coordinator]
+            guest_node_info.extend(self.build_guest_node_info(add_node_info))
+            coordinator['guest'].initialize_cluster(guest_node_info)
 
-            self._add_nodes(coordinator, added_nodes)
-
+            self._add_nodes(coordinator, add_node_info)
             coordinator['guest'].cluster_complete()
+            LOG.debug("Cluster create finished successfully.")
 
         timeout = Timeout(CONF.cluster_usage_timeout)
         try:
-            _create_cluster()
-            self.reset_task()
+            with EndNotification(context, cluster_id=cluster_id):
+                _create_cluster()
         except Timeout as t:
             if t is not timeout:
                 raise  # not my timeout
             LOG.exception(_("Timeout for building cluster."))
             self.update_statuses_on_failure(cluster_id)
+        except Exception:
+            LOG.exception(_("Error creating cluster."))
+            self.update_statuses_on_failure(cluster_id)
+            raise
         finally:
+            self.reset_task()
             timeout.cancel()
 
         LOG.debug("End create_cluster for id: %s." % cluster_id)
 
-    def _add_nodes(self, coordinator, added_nodes):
-        LOG.debug("Adding nodes and rebalacing the cluster.")
-        coordinator['guest'].add_nodes({node['ip'] for node in added_nodes})
+    def _get_coordinator_node(self, node_info):
+        # The coordinator node must be one with all the required services.
+        # If we can't find one, then we can't continue - this would
+        # likely indicate a hole in the validation process.
+        for node in node_info:
+            manager = node['instance'].datastore_version.manager
+            guest_node_info = self.build_guest_node_info([node])
+            if set(self.REQUIRED_SERVICES[manager]).issubset(
+                    guest_node_info[0]['services']):
+                return node
+        raise exception.TroveError(
+            _("Could not find instance with all required types (%s).") %
+            ','.join(self.REQUIRED_SERVICES[manager]))
 
-        LOG.debug("Waiting for the rebalancing process to finish.")
-        self._wait_for_rebalance_to_finish(coordinator)
+    def _add_nodes(self, coordinator, add_node_info):
+        LOG.debug("Adding nodes and rebalancing the cluster.")
+        guest_node_info = self.build_guest_node_info(add_node_info)
+        result = coordinator['guest'].add_nodes(guest_node_info)
+        if not result or len(result) < 2:
+            raise exception.TroveError(
+                _("No status returned from adding nodes to cluster."))
 
-        LOG.debug("Marking added nodes active.")
-        for node in added_nodes:
-            node['guest'].cluster_complete()
+        if result[0]:
+            LOG.debug("Marking added nodes active.")
+            for node in add_node_info:
+                node['guest'].cluster_complete()
+        else:
+            raise exception.TroveError(
+                _("Could not add nodes to cluster: %s") % result[1])
 
     @classmethod
     def find_cluster_node_ids(cls, cluster_id):
@@ -113,6 +169,22 @@ class CouchbaseClusterTasks(task_models.ClusterTasks):
                 'id': instance.id,
                 'ip': cls.get_ip(instance)}
 
+    @classmethod
+    def build_guest_node_info(cls, node_info):
+        # This is the node_info that will be sent down to the guest.
+        guest_node_info = []
+        for node in node_info:
+            services = node['instance'].type
+            if isinstance(services, six.string_types):
+                services = services.split(',')
+            guest_node = {
+                'host': node['ip'],
+                'services': services
+            }
+            guest_node_info.append(guest_node)
+
+        return guest_node_info
+
     def grow_cluster(self, context, cluster_id, new_instance_ids):
         LOG.debug("Begin grow_cluster for id: %s." % cluster_id)
 
@@ -124,56 +196,41 @@ class CouchbaseClusterTasks(task_models.ClusterTasks):
 
             new_instances = [Instance.load(context, instance_id)
                              for instance_id in new_instance_ids]
-            added_nodes = [self.build_node_info(instance)
-                           for instance in new_instances]
+            add_node_info = [self.build_node_info(instance)
+                             for instance in new_instances]
 
             LOG.debug("All nodes ready, proceeding with cluster setup.")
 
             cluster_node_ids = self.find_cluster_node_ids(cluster_id)
             cluster_nodes = self.load_cluster_nodes(context, cluster_node_ids)
 
-            old_nodes = [node for node in cluster_nodes
-                         if node['id'] not in new_instance_ids]
+            old_node_info = [node for node in cluster_nodes
+                             if node['id'] not in new_instance_ids]
 
             # Rebalance the cluster via one of the existing nodes.
             # Clients can continue to store and retrieve information and
             # do not need to be aware that a rebalance operation is taking
             # place.
-            # The new nodes are marked active only if the rebalancing
-            # completes.
-            try:
-                coordinator = old_nodes[0]
-                self._add_nodes(coordinator, added_nodes)
-                LOG.debug("Cluster configuration finished successfully.")
-            except Exception:
-                LOG.exception(_("Error growing cluster."))
-                self.update_statuses_on_failure(cluster_id)
+            coordinator = old_node_info[0]
+            self._add_nodes(coordinator, add_node_info)
+            LOG.debug("Cluster grow finished successfully.")
 
         timeout = Timeout(CONF.cluster_usage_timeout)
         try:
-            _grow_cluster()
-            self.reset_task()
+            with EndNotification(context, cluster_id=cluster_id):
+                _grow_cluster()
         except Timeout as t:
             if t is not timeout:
                 raise  # not my timeout
             LOG.exception(_("Timeout for growing cluster."))
-            self.update_statuses_on_failure(cluster_id)
+        except Exception:
+            LOG.exception(_("Error growing cluster."))
+            raise
         finally:
+            self.reset_task()
             timeout.cancel()
 
         LOG.debug("End grow_cluster for id: %s." % cluster_id)
-
-    def _wait_for_rebalance_to_finish(self, coordinator):
-        try:
-            utils.poll_until(
-                lambda: coordinator['guest'],
-                lambda node: not node.get_cluster_rebalance_status(),
-                sleep_time=USAGE_SLEEP_TIME,
-                time_out=CONF.cluster_usage_timeout)
-        except exception.PollTimeOut as e:
-            LOG.exception(e)
-            raise exception.TroveError(_("Timed out while waiting for the "
-                                         "rebalancing process to finish."))
 
     def shrink_cluster(self, context, cluster_id, removal_ids):
         LOG.debug("Begin shrink_cluster for id: %s." % cluster_id)
@@ -182,55 +239,57 @@ class CouchbaseClusterTasks(task_models.ClusterTasks):
             cluster_node_ids = self.find_cluster_node_ids(cluster_id)
             cluster_nodes = self.load_cluster_nodes(context, cluster_node_ids)
 
-            removed_nodes = CouchbaseClusterTasks.load_cluster_nodes(
+            remove_node_info = CouchbaseClusterTasks.load_cluster_nodes(
                 context, removal_ids)
 
-            remaining_nodes = [node for node in cluster_nodes
-                               if node['id'] not in removal_ids]
+            remaining_node_info = [node for node in cluster_nodes
+                                   if node['id'] not in removal_ids]
 
             LOG.debug("All nodes ready, proceeding with cluster setup.")
 
             # Rebalance the cluster via one of the remaining nodes.
-            try:
-                coordinator = remaining_nodes[0]
-                self._remove_nodes(coordinator, removed_nodes)
-                LOG.debug("Cluster configuration finished successfully.")
-            except Exception:
-                LOG.exception(_("Error shrinking cluster."))
-                self.update_statuses_on_failure(cluster_id)
+            coordinator = remaining_node_info[0]
+            self._remove_nodes(coordinator, remove_node_info)
+            LOG.debug("Cluster shrink finished successfully.")
 
         timeout = Timeout(CONF.cluster_usage_timeout)
         try:
-            _shrink_cluster()
-            self.reset_task()
+            with EndNotification(context, cluster_id=cluster_id):
+                _shrink_cluster()
         except Timeout as t:
             if t is not timeout:
                 raise  # not my timeout
             LOG.exception(_("Timeout for shrinking cluster."))
-            self.update_statuses_on_failure(cluster_id)
+        except Exception:
+            LOG.exception(_("Error shrinking cluster."))
+            raise
         finally:
+            self.reset_task()
             timeout.cancel()
 
         LOG.debug("End shrink_cluster for id: %s." % cluster_id)
 
     def _remove_nodes(self, coordinator, removed_nodes):
-        LOG.debug("Decommissioning nodes and rebalacing the cluster.")
-        coordinator['guest'].remove_nodes({node['ip']
-                                           for node in removed_nodes})
+        LOG.debug("Decommissioning nodes and rebalancing the cluster.")
+        guest_node_info = self.build_guest_node_info(removed_nodes)
+        result = coordinator['guest'].remove_nodes(guest_node_info)
+        if not result or len(result) < 2:
+            raise exception.TroveError(
+                _("No status returned from removing nodes from cluster."))
 
-        # Always remove decommissioned instances from the cluster,
-        # irrespective of the result of rebalancing.
-        for node in removed_nodes:
-            node['instance'].update_db(cluster_id=None)
+        if result[0]:
+            for node in removed_nodes:
+                instance = node['instance']
+                LOG.debug("Deleting decommissioned instance %s." %
+                          instance.id)
+                instance.update_db(cluster_id=None)
+                Instance.delete(instance)
+        else:
+            raise exception.TroveError(
+                _("Could not remove nodes from cluster: %s") % result[1])
 
-        LOG.debug("Waiting for the rebalancing process to finish.")
-        self._wait_for_rebalance_to_finish(coordinator)
-
-        # Delete decommissioned instances only when the cluster is in a
-        # consistent state.
-        LOG.debug("Deleting decommissioned instances.")
-        for node in removed_nodes:
-            Instance.delete(node['instance'])
+    def upgrade_cluster(self, context, cluster_id, datastore_version):
+        self.rolling_upgrade_cluster(context, cluster_id, datastore_version)
 
 
 class CouchbaseTaskManagerAPI(task_api.API):

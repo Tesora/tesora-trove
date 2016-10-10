@@ -51,7 +51,7 @@ class Mysql(extensions.ExtensionDescriptor):
 
         resource = extensions.ResourceExtension(
             'users',
-            mysql_service.UserController(),
+            common_service.RoutingUserController(),
             parent={'member_name': 'instance',
                     'collection_name': '{tenant_id}/instances'},
             member_actions={'update': 'PUT'},

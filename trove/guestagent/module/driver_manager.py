@@ -17,7 +17,8 @@
 from oslo_log import log as logging
 import stevedore
 
-from trove.common import base_exception as exception
+import pkg_resources
+
 from trove.common import cfg
 from trove.common.i18n import _
 
@@ -28,6 +29,7 @@ CONF = cfg.CONF
 class ModuleDriverManager(object):
 
     MODULE_DRIVER_NAMESPACE = 'trove.guestagent.module.drivers'
+    ANY_MODULE = 'any'
 
     def __init__(self):
         LOG.info(_('Initializing module driver manager.'))
@@ -64,7 +66,8 @@ class ModuleDriverManager(object):
                     raise AttributeError(
                         _("Driver '%(type)s' missing attribute: %(attr)s")
                         % {'type': driver.get_type(), 'attr': attr})
-            if driver.get_type() in self._module_types:
+            if (driver.get_type() in self._module_types or
+                    self.ANY_MODULE in self._module_types):
                 supported = True
             else:
                 LOG.info(_("Driver '%s' not supported, skipping"),
@@ -84,13 +87,29 @@ class ModuleDriverManager(object):
         driver_type = driver.get_type()
         LOG.info(_('Loaded module driver: %s'), driver_type)
 
-        if driver_type in self._drivers:
-            raise exception.Error(_("Found duplicate driver: %s") %
-                                  driver_type)
-        self._drivers[driver_type] = driver
+        if driver_type not in self._drivers:
+            self._drivers[driver_type] = driver
+        else:
+            LOG.info("Found duplicate driver: Type: %s, Description: %s" % (
+                driver_type, driver.get_description()))
+
+    def _load_new_driver(self, driver):
+        try:
+            driver_version = pkg_resources.get_distribution(driver).version
+            pkg_resources.load_entry_point("%s==%s" % (driver, driver_version),
+                                           self.MODULE_DRIVER_NAMESPACE,
+                                           "%s" % driver)
+            stevedore.extension.ExtensionManager.ENTRY_POINT_CACHE = {}
+            self._load_drivers()
+        except Exception:
+            LOG.exception("Error when loading the driver: %s" % driver)
 
     def get_driver(self, driver_type):
         found = None
+
+        if driver_type not in self._drivers:
+            self._load_new_driver(driver_type)
+
         if driver_type in self._drivers:
             found = self._drivers[driver_type]
         return found

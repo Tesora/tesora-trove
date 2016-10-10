@@ -13,6 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import six
+
 from oslo_log import log as logging
 
 from novaclient import exceptions as nova_exceptions
@@ -21,8 +23,9 @@ from trove.cluster.tasks import ClusterTasks
 from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
-from trove.common.notification import DBaaSClusterGrow, DBaaSClusterShrink, \
-    DBaaSClusterResetStatus
+from trove.common.notification import (DBaaSClusterGrow, DBaaSClusterShrink,
+                                       DBaaSClusterResetStatus)
+from trove.common.notification import DBaaSClusterUpgrade
 from trove.common.notification import StartNotification
 from trove.common import remote
 from trove.common import server_group as srv_grp
@@ -137,7 +140,6 @@ class Cluster(object):
         self.update_db(task_status=ClusterTasks.NONE)
 
     def reset_status(self):
-        self.validate_cluster_available([ClusterTasks.BUILDING_INITIAL])
         LOG.info(_("Resetting status to NONE on cluster %s") % self.id)
         self.reset_task()
         instances = inst_models.DBInstance.find_all(cluster_id=self.id,
@@ -215,9 +217,15 @@ class Cluster(object):
     @property
     def server_group(self):
         # The server group could be empty, so we need a flag to cache it
-        if not self._server_group_loaded:
-            self._server_group = self.instances[0].server_group
-        self._server_group_loaded = True
+        if not self._server_group_loaded and self.instances:
+            self._server_group = None
+            # Not all the instances may have the server group loaded, so
+            # check them all
+            for instance in self.instances:
+                if instance.server_group:
+                    self._server_group = instance.server_group
+                    break
+            self._server_group_loaded = True
         return self._server_group
 
     @classmethod
@@ -275,6 +283,11 @@ class Cluster(object):
                     if 'availability_zone' in node:
                         instance['availability_zone'] = (
                             node['availability_zone'])
+                    if 'type' in node:
+                        instance_type = node['type']
+                        if isinstance(instance_type, six.string_types):
+                            instance_type = instance_type.split(',')
+                        instance['instance_type'] = instance_type
                     instances.append(instance)
                 return self.grow(instances)
         elif action == 'shrink':
@@ -288,6 +301,13 @@ class Cluster(object):
             with StartNotification(context, cluster_id=self.id):
                 return self.reset_status()
 
+        elif action == 'upgrade':
+            context.notification = DBaaSClusterUpgrade(context, request=req)
+            dv_id = param['datastore_version']
+            dv = datastore_models.DatastoreVersion.load(self.datastore, dv_id)
+            with StartNotification(context, cluster_id=self.id,
+                                   datastore_version=dv.id):
+                return self.upgrade(dv)
         else:
             raise exception.BadRequest(_("Action %s not supported") % action)
 
@@ -296,6 +316,27 @@ class Cluster(object):
 
     def shrink(self, instance_ids):
         raise exception.BadRequest(_("Action 'shrink' not supported"))
+
+    def rolling_upgrade(self, datastore_version):
+        """Upgrades a cluster to a new datastore version."""
+        LOG.debug("Upgrading cluster %s." % self.id)
+
+        self.validate_cluster_available()
+        self.db_info.update(task_status=ClusterTasks.UPGRADING_CLUSTER)
+        try:
+            cluster_id = self.db_info.id
+            ds_ver_id = datastore_version.id
+            task_api.load(self.context, self.ds_version.manager
+                          ).upgrade_cluster(cluster_id, ds_ver_id)
+        except Exception:
+            self.db_info.update(task_status=ClusterTasks.NONE)
+            raise
+
+        return self.__class__(self.context, self.db_info,
+                              self.ds, self.ds_version)
+
+    def upgrade(self, datastore_version):
+            raise exception.BadRequest(_("Action 'upgrade' not supported"))
 
     @staticmethod
     def load_instance(context, cluster_id, instance_id):

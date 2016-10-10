@@ -15,6 +15,7 @@
 #
 
 import datetime
+import operator
 import os
 
 from oslo_log import log as logging
@@ -43,25 +44,26 @@ class ModuleManager(object):
 
     @classmethod
     def get_current_timestamp(cls):
-        return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[0:22]
 
     @classmethod
     def apply_module(cls, driver, module_type, name, tenant,
                      datastore, ds_version, contents, module_id, md5,
-                     auto_apply, visible):
+                     auto_apply, visible, admin_module, use_root=False):
         tenant = tenant or cls.MODULE_APPLY_TO_ALL
         datastore = datastore or cls.MODULE_APPLY_TO_ALL
         ds_version = ds_version or cls.MODULE_APPLY_TO_ALL
         module_dir = cls.build_module_dir(module_type, module_id)
-        data_file = cls.write_module_contents(module_dir, contents, md5)
+        data_file = cls.write_module_contents(module_dir, contents, md5,
+                                              use_root=use_root)
         applied = True
         message = None
         now = cls.get_current_timestamp()
         default_result = cls.build_default_result(
             module_type, name, tenant, datastore,
-            ds_version, module_id, md5, auto_apply, visible, now)
+            ds_version, module_id, md5,
+            auto_apply, visible, now, admin_module)
         result = cls.read_module_result(module_dir, default_result)
-        admin_module = cls.is_admin_module(tenant, auto_apply, visible)
         try:
             driver.configure(name, datastore, ds_version, data_file)
             applied, message = driver.apply(
@@ -85,7 +87,7 @@ class ModuleManager(object):
             result['tenant'] = tenant
             result['auto_apply'] = auto_apply
             result['visible'] = visible
-            result['admin_only'] = admin_module
+            result['is_admin'] = admin_module
             cls.write_module_result(module_dir, result)
         return result
 
@@ -99,11 +101,12 @@ class ModuleManager(object):
         return module_dir
 
     @classmethod
-    def write_module_contents(cls, module_dir, contents, md5):
+    def write_module_contents(cls, module_dir, contents, md5, use_root=False):
         contents_file = cls.build_contents_filename(module_dir)
         operating_system.write_file(contents_file, contents,
                                     codec=stream_codecs.Base64Codec(),
-                                    encode=False)
+                                    encode=False,
+                                    as_root=use_root)
         return contents_file
 
     @classmethod
@@ -115,8 +118,7 @@ class ModuleManager(object):
     @classmethod
     def build_default_result(cls, module_type, name, tenant,
                              datastore, ds_version, module_id, md5,
-                             auto_apply, visible, now):
-        admin_module = cls.is_admin_module(tenant, auto_apply, visible)
+                             auto_apply, visible, now, admin_module):
         result = {
             'type': module_type,
             'name': name,
@@ -132,7 +134,7 @@ class ModuleManager(object):
             'removed': None,
             'auto_apply': auto_apply,
             'visible': visible,
-            'admin_only': admin_module,
+            'is_admin': admin_module,
             'contents': None,
         }
         return result
@@ -185,7 +187,9 @@ class ModuleManager(object):
                     (is_admin or result.get('visible'))):
                 if include_contents:
                     codec = stream_codecs.Base64Codec()
-                    if not is_admin and result.get('admin_only'):
+                    # keep admin_only for backwards compatibility
+                    if not is_admin and (result.get('is_admin') or
+                                         result.get('admin_only')):
                         contents = (
                             "Must be admin to retrieve contents for module %s"
                             % result.get('name', 'Unknown'))
@@ -197,6 +201,7 @@ class ModuleManager(object):
                         result['contents'] = operating_system.read_file(
                             contents_file, codec=codec, decode=False)
                 results.append(result)
+        results.sort(key=operator.itemgetter('updated'), reverse=True)
         return results
 
     @classmethod

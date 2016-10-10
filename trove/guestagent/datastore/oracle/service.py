@@ -145,7 +145,7 @@ class OracleVMClient(service.OracleClient):
                  port=None,
                  user_id=None,
                  password=None,
-                 use_service=True,
+                 use_service=False,
                  mode=cx_Oracle.SYSDBA):
         port = port if port else CONF.get(MANAGER).listener_port
         user_id = user_id if user_id else ADMIN_USER_NAME
@@ -192,9 +192,9 @@ class OracleVMPaths(object):
             self.redo_logs_backup_dir = path.join(
                 self.db_fast_recovery_logs_dir, 'backupset')
             self.audit_dir = path.join(self.admin_dir, db_name, 'adump')
-            self.ctlfile1_file = path.join(self.db_data_dir, 'control01.ctl')
-            self.ctlfile2_file = path.join(
-                self.db_fast_recovery_dir, 'control02.ctl')
+            self.ctlfile1_dir = path.join(self.db_data_dir, 'controlfile')
+            self.ctlfile2_dir = path.join(self.db_fast_recovery_dir,
+                                          'controlfile')
             self.diag_dir = path.join(
                 self.oracle_base, 'diag', 'rdbms', db_name.lower(), db_name)
             self.alert_log_file = path.join(self.diag_dir, 'alert', 'log.xml')
@@ -372,6 +372,8 @@ class OracleVMAdmin(service.OracleAdmin):
         with self.cursor(db_name,
                          user_id='sys',
                          password=sys_pwd) as sys_cursor:
+            sys_cursor.execute(str(sql_query.CreateTablespace(
+                ADMIN_USER_NAME)))
             sys_cursor.execute(str(sql_query.CreateUser(ADMIN_USER_NAME,
                                                         admin_pwd)))
             sys_cursor.execute(str(

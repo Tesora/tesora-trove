@@ -111,7 +111,7 @@ class Manager(manager.OracleManager):
                     db = models.ValidatedMySQLDatabase()
                     # no database name provided so default to first 8 valid
                     # characters of instance name (alphanumeric, no '_')
-                    db.name = re.sub(r'[\W_]', '', CONF.guest_name[:8])
+                    db.name = re.sub(r'[\W_]', '', CONF.guest_name)[:8]
                     database = [db.serialize()]
                 self.admin.create_database(database)
 
@@ -215,7 +215,7 @@ class Manager(manager.OracleManager):
         LOG.debug("Calling sync_data_to_slaves.")
         self.replication.sync_data_to_slaves(self.app)
 
-    def detach_replica(self, context, for_failover=False):
+    def detach_replica(self, context, for_failover=False, for_promote=False):
         LOG.debug("Detaching replica.")
         replica_info = self.replication.detach_slave(self.app, for_failover)
         return replica_info

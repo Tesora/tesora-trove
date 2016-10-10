@@ -878,3 +878,33 @@ def get_package_name(package_file):
         raise exception.UnprocessableEntity(
             _("Unhandled package type: %s)") % pkg_cmd)
     return package_name
+
+
+def owned_by_root(data_file):
+    file_stats = os.stat(data_file)
+
+    if file_stats[stat.ST_UID] == 0 and file_stats[stat.ST_GID] == 0 and \
+            oct(file_stats[stat.ST_MODE])[-3:] == "600":
+        return True
+    else:
+        return False
+
+
+def get_device(path, as_root=False):
+    """Get the device that a given path exists on."""
+    stdout = _execute_shell_cmd('df', [], path, as_root=as_root)
+    return stdout.splitlines()[1].split()[0]
+
+
+def is_mount(path):
+    """Check if the given directory path is a mountpoint. Try the standard
+    ismount first. This fails if the path is not accessible though, so resort
+    to checking as the root user (which is slower).
+    """
+    if os.access(path, os.R_OK):
+        return os.path.ismount(path)
+    if not exists(path, is_directory=True, as_root=True):
+        return False
+    directory_dev = get_device(path, as_root=True)
+    parent_dev = get_device(os.path.join(path, '..'), as_root=True)
+    return directory_dev != parent_dev
