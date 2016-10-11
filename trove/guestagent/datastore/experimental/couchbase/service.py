@@ -80,15 +80,14 @@ class CouchbaseApp(object):
         return '/etc/couchbase'
 
     @property
-    def couchbase_opt_etc_dir(self):
-        return '/opt/couchbase/etc'
-
-    @property
     def upgrade_copy_info(self):
         return {
             'save_etc': {
                 'is_dir': True,
                 'path': self.couchbase_conf_dir},
+            'save_opt_etc': {
+                'is_dir': True,
+                'path': '/opt/couchbase/etc'},
             'save_opt_config_dat': {
                 'is_dir': False,
                 'path': '/opt/couchbase/var/lib/couchbase/config/config.dat'},
