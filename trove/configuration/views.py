@@ -14,6 +14,7 @@
 #    under the License.
 
 from oslo_log import log as logging
+from oslo_utils import strutils
 
 LOG = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ class DetailedConfigurationView(object):
             "id": self.configuration.id,
             "name": self.configuration.name,
             "description": self.configuration.description,
-            "values": values,
+            "values": strutils.mask_dict_password(values),
             "created": self.configuration.created,
             "updated": self.configuration.updated,
             "instance_count":
