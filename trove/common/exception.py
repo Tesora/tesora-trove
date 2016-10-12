@@ -237,6 +237,17 @@ class DatabaseAlreadyExists(BadRequest):
     message = _('A database with the name "%(name)s" already exists.')
 
 
+class ReservedDatabaseId(BadRequest):
+
+    message = _('Cannot access or modify reserved database "%(name)s".')
+
+
+class DuplicateDatabaseId(BadRequest):
+
+    message = _('All created databases must be unique. '
+                'Database "%(name)s" appears multiple times.')
+
+
 class UserAlreadyExists(BadRequest):
 
     message = _('A user with the name "%(name)s" already exists.')
@@ -251,6 +262,12 @@ class DuplicateUserId(BadRequest):
 
     message = _('All created users must be unique. '
                 'User "%(name)s" appears multiple times.')
+
+
+class DatabaseNotInAccessList(NotFound):
+
+    message = _("Database %(database_name)s is not on the access list of user "
+                "%(user_name)s.")
 
 
 class InstanceAssignedToConfiguration(BadRequest):
@@ -561,6 +578,10 @@ class ModuleAccessForbidden(Forbidden):
 class ModuleInvalid(Forbidden):
 
     message = _("The module is invalid: %(reason)s")
+
+
+class InstanceNotFound(NotFound):
+    message = _("Instance '%(instance)s' cannot be found.")
 
 
 class ClusterNotFound(NotFound):

@@ -39,7 +39,7 @@ class ClusterRunner(TestRunner):
     EXTRA_INSTANCE_NAME = "named_instance"
 
     def __init__(self):
-        super(ClusterRunner, self).__init__()
+        super(ClusterRunner, self).__init__(timeout=2700)
 
         self.cluster_name = 'test_cluster'
         self.cluster_id = 0
@@ -166,7 +166,7 @@ class ClusterRunner(TestRunner):
         self._assert_cluster_values(cluster, expected_task_name,
                                     check_locality=True)
 
-    def run_cluster_root_enable(self, expected_task_name=None,
+    def run_cluster_root_enable(self, expected_task_name='NONE',
                                 expected_http_code=200):
         root_credentials = self.test_helper.get_helper_credentials_root()
         if not root_credentials or not root_credentials.get('name'):

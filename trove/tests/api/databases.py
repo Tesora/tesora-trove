@@ -68,7 +68,7 @@ class TestDatabases(object):
 
     dbname2 = "seconddb"
     created_dbs = [dbname, dbname2]
-    system_dbs = ['information_schema', 'mysql', 'lost+found']
+    system_dbs = ['information_schema', 'mysql']
 
     @before_class
     def setUp(self):

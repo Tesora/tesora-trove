@@ -617,7 +617,7 @@ mysql_opts = [
     cfg.StrOpt('root_controller',
                default='trove.extensions.mysql.service.MySQLRootController',
                help='Root controller implementation for mysql.'),
-    cfg.ListOpt('ignore_users', default=['os_admin', 'root'],
+    cfg.ListOpt('ignore_users', default=['os_admin@127.0.0.1', 'root@%'],
                 help='Users to exclude when listing users.',
                 deprecated_name='ignore_users',
                 deprecated_group='DEFAULT'),
@@ -641,6 +641,14 @@ mysql_opts = [
     cfg.StrOpt('user_controller',
                default='trove.extensions.mysql.service.MySQLUserController',
                help='User controller implementation.'),
+    cfg.StrOpt('database_controller',
+               default='trove.extensions.mysql.service.'
+               'MySQLDatabaseController',
+               help='Database controller implementation.'),
+    cfg.StrOpt('user_access_controller',
+               default='trove.extensions.mysql.service.'
+               'MySQLUserAccessController',
+               help='User access controller implementation.'),
 ]
 
 # MySQL EE (mostly uses same options as MySQL community edition).
@@ -769,6 +777,10 @@ oracle_ra_opts = [
     cfg.StrOpt('user_controller',
                default='trove.extensions.mysql.service.MySQLUserController',
                help='User controller implementation.'),
+    cfg.StrOpt('database_controller',
+               default='trove.extensions.mysql.service.'
+               'MySQLDatabaseController',
+               help='Database controller implementation.'),
 ]
 
 # Oracle RAC
@@ -1066,6 +1078,14 @@ percona_opts = [
     cfg.StrOpt('user_controller',
                default='trove.extensions.mysql.service.MySQLUserController',
                help='User controller implementation.'),
+    cfg.StrOpt('database_controller',
+               default='trove.extensions.mysql.service.'
+               'MySQLDatabaseController',
+               help='Database controller implementation.'),
+    cfg.StrOpt('user_access_controller',
+               default='trove.extensions.mysql.service.'
+               'MySQLUserAccessController',
+               help='User access controller implementation.'),
 ]
 
 # Percona XtraDB Cluster
@@ -1161,6 +1181,14 @@ pxc_opts = [
     cfg.StrOpt('user_controller',
                default='trove.extensions.mysql.service.MySQLUserController',
                help='User controller implementation.'),
+    cfg.StrOpt('database_controller',
+               default='trove.extensions.mysql.service.'
+               'MySQLDatabaseController',
+               help='Database controller implementation.'),
+    cfg.StrOpt('user_access_controller',
+               default='trove.extensions.mysql.service.'
+               'MySQLUserAccessController',
+               help='User access controller implementation.'),
 ]
 
 
@@ -1332,6 +1360,14 @@ cassandra_opts = [
                default='trove.extensions.cassandra.service.'
                'CassandraUserController',
                help='User controller implementation.'),
+    cfg.StrOpt('database_controller',
+               default='trove.extensions.cassandra.service.'
+               'CassandraDatabaseController',
+               help='Database controller implementation.'),
+    cfg.StrOpt('user_access_controller',
+               default='trove.extensions.cassandra.service.'
+               'CassandraUserAccessController',
+               help='User access controller implementation.'),
 ]
 
 cassandra_3_group = cfg.OptGroup(
@@ -1577,6 +1613,14 @@ mongodb_opts = [
     cfg.StrOpt('user_controller',
                default='trove.extensions.mysql.service.MySQLUserController',
                help='User controller implementation.'),
+    cfg.StrOpt('database_controller',
+               default='trove.extensions.mysql.service.'
+               'MySQLDatabaseController',
+               help='Database controller implementation.'),
+    cfg.StrOpt('user_access_controller',
+               default='trove.extensions.mysql.service.'
+               'MySQLUserAccessController',
+               help='User access controller implementation.'),
 ]
 
 # PostgreSQL
@@ -1656,6 +1700,14 @@ postgresql_opts = [
     cfg.StrOpt('user_controller',
                default='trove.extensions.mysql.service.MySQLUserController',
                help='User controller implementation.'),
+    cfg.StrOpt('database_controller',
+               default='trove.extensions.mysql.service.'
+               'MySQLDatabaseController',
+               help='Database controller implementation.'),
+    cfg.StrOpt('user_access_controller',
+               default='trove.extensions.mysql.service.'
+               'MySQLUserAccessController',
+               help='User access controller implementation.'),
 ]
 
 # EDB (mostly uses same options as Postgresql community edition).
@@ -1768,6 +1820,14 @@ couchdb_opts = [
     cfg.StrOpt('user_controller',
                default='trove.extensions.mysql.service.MySQLUserController',
                help='User controller implementation.'),
+    cfg.StrOpt('database_controller',
+               default='trove.extensions.mysql.service.'
+               'MySQLDatabaseController',
+               help='Database controller implementation.'),
+    cfg.StrOpt('user_access_controller',
+               default='trove.extensions.mysql.service.'
+               'MySQLUserAccessController',
+               help='User access controller implementation.'),
 ]
 
 # Vertica
@@ -1844,6 +1904,14 @@ vertica_opts = [
     cfg.StrOpt('user_controller',
                default='trove.extensions.mysql.service.MySQLUserController',
                help='User controller implementation.'),
+    cfg.StrOpt('database_controller',
+               default='trove.extensions.mysql.service.'
+               'MySQLDatabaseController',
+               help='Database controller implementation.'),
+    cfg.StrOpt('user_access_controller',
+               default='trove.extensions.mysql.service.'
+               'MySQLUserAccessController',
+               help='User access controller implementation.'),
 ]
 
 # DB2
@@ -1910,6 +1978,14 @@ db2_opts = [
     cfg.StrOpt('user_controller',
                default='trove.extensions.mysql.service.MySQLUserController',
                help='User controller implementation.'),
+    cfg.StrOpt('database_controller',
+               default='trove.extensions.mysql.service.'
+               'MySQLDatabaseController',
+               help='Database controller implementation.'),
+    cfg.StrOpt('user_access_controller',
+               default='trove.extensions.mysql.service.'
+               'MySQLUserAccessController',
+               help='User access controller implementation.'),
 ]
 
 # MariaDB
@@ -2019,6 +2095,14 @@ mariadb_opts = [
     cfg.StrOpt('user_controller',
                default='trove.extensions.mysql.service.MySQLUserController',
                help='User controller implementation.'),
+    cfg.StrOpt('database_controller',
+               default='trove.extensions.mysql.service.'
+               'MySQLDatabaseController',
+               help='Database controller implementation.'),
+    cfg.StrOpt('user_access_controller',
+               default='trove.extensions.mysql.service.'
+               'MySQLUserAccessController',
+               help='User access controller implementation.'),
 ]
 
 # RPC version groups

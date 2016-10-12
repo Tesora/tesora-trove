@@ -38,6 +38,10 @@ def load_and_verify(context, instance_id):
         return instance
 
 
+def persisted_models():
+    return {'root_enabled_history': RootHistory}
+
+
 class Root(object):
 
     @classmethod

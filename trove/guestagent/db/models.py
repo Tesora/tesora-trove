@@ -315,6 +315,7 @@ class MySQLDatabase(Base):
     __charset__ = "utf8"
     __collation__ = "utf8_general_ci"
     dbname = re.compile("^[A-Za-z0-9_-]+[\s\?\#\@]*[A-Za-z0-9_-]+$")
+    _ignore_dbs = []
 
     # Complete list of acceptable values
     charset = {"big5": ["big5_chinese_ci", "big5_bin"],
@@ -1074,6 +1075,7 @@ class MySQLUser(Base):
     """Represents a MySQL User and its associated properties."""
 
     not_supported_chars = re.compile("^\s|\s$|'|\"|;|`|,|/|\\\\")
+    _ignore_users = []
 
     def __init__(self):
         self._name = None

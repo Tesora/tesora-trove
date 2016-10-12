@@ -213,11 +213,8 @@ class FakeGuest(object):
         self._check_username(username)
         for (u, h) in self.users:
             print("%r @ %r" % (u, h))
-        if (username, hostname) not in self.users:
-            raise rd_exception.UserNotFound(
-                "User %s@%s cannot be found on the instance."
-                % (username, hostname))
-        return self.users.get((username, hostname), None)
+        f = self.users.get((username, hostname), None)
+        return dict(f) if f is not None else None
 
     def prepare(self, memory_mb, packages, databases, users, device_path=None,
                 mount_point=None, backup_info=None, config_contents=None,

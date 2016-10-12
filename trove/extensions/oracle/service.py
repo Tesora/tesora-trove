@@ -14,17 +14,7 @@
 #    under the License.
 
 from trove.extensions.common.service import DefaultRootController
-from trove.extensions.mysql import models
-from trove.guestagent.db import models as guest_models
 
 
 class OracleRootController(DefaultRootController):
-
-    def _find_root_user(self, context, instance_id):
-        user = guest_models.OracleUser('sys')
-        # TODO(mvandijk): This should be ultimately using Oracle model
-        # extensions. MySQL extensions will work for now, but may lead to
-        # future bugs as it makes use of the 'host' field which
-        # does not exist/has different meaning in Postgres.
-        return models.User.load(
-            context, instance_id, user.name, user.host, root_user=True)
+    pass

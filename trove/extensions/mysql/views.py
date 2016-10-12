@@ -13,64 +13,56 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-
-class UserView(object):
-
-    def __init__(self, user):
-        self.user = user
-
-    def data(self):
-        user_dict = {
-            "name": self.user.name,
-            "host": self.user.host,
-            "databases": self.user.databases,
-            "roles": self.user.roles
-        }
-        return {"user": user_dict}
+from trove.extensions.common import views as common_views
+from trove.guestagent.db import models as guest_models
 
 
-class UsersView(object):
-
-    def __init__(self, users):
-        self.users = users
-
-    def data(self):
-        userlist = [{"name": user.name,
-                     "host": user.host,
-                     "databases": user.databases,
-                     "roles": user.roles}
-                    for user in self.users]
-
-        return {"users": userlist}
-
-
-class UserAccessView(object):
-    def __init__(self, databases):
-        self.databases = databases
-
-    def data(self):
-        dbs = [{"name": db.name} for db in self.databases]
-        return {"databases": dbs}
-
-
-class SchemaView(object):
+class DatabaseView(common_views.SingleModelView):
 
     def __init__(self, schema):
-        self.schema = schema
+        super(DatabaseView, self).__init__('database', schema)
 
-    def data(self):
-        return {"name": self.schema.name}
+    @classmethod
+    def deserialize_model(cls, schema):
+        return {'name': schema.name}
 
 
-class SchemasView(object):
+class DatabasesView(common_views.ModelCollectionView):
 
     def __init__(self, schemas):
-        self.schemas = schemas
+        super(DatabasesView, self).__init__('databases', schemas)
 
-    def data(self):
-        data = []
-        # These are model instances
-        for schema in self.schemas:
-            data.append(SchemaView(schema).data())
+    @classmethod
+    def deserialize_model(cls, schema):
+        return DatabaseView.deserialize_model(schema)
 
-        return {"databases": data}
+
+class UserView(common_views.SingleModelView):
+
+    def __init__(self, user):
+        super(UserView, self).__init__('user', user)
+
+    @classmethod
+    def deserialize_model(cls, user):
+        item = {
+            "name": user.name,
+            "host": user.host,
+        }
+        # Database models are stored in serialized form.
+        schema_models = []
+        for db in user.databases:
+            database_model = guest_models.MySQLDatabase()
+            database_model.deserialize(db)
+            schema_models.append(database_model)
+        item.update(DatabasesView(schema_models).data())
+        return item
+
+
+class UsersView(common_views.ModelCollectionView):
+
+    def __init__(self, users):
+        super(UsersView, self).__init__('users', users)
+
+    @classmethod
+    def deserialize_model(cls, user):
+        return UserView.deserialize_model(user)

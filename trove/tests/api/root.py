@@ -85,7 +85,7 @@ class TestRoot(object):
     @test
     def test_delete_user_os_admin_failure(self):
         assert_raises(exceptions.BadRequest, self.dbaas.users.delete,
-                      instance_info.id, "os_admin")
+                      instance_info.id, "os_admin", "127.0.0.1")
 
     @test(depends_on=[test_root_initially_disabled],
           enabled=not test_config.values['root_removed_from_instance_api'])
