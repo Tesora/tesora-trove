@@ -34,7 +34,7 @@ from trove.tests.api import users
 from trove.tests.api import versions
 from trove.tests.scenario import groups
 from trove.tests.scenario.groups import backup_group
-from trove.tests.scenario.groups import cluster_actions_group
+from trove.tests.scenario.groups import cluster_group
 from trove.tests.scenario.groups import configuration_group
 from trove.tests.scenario.groups import database_actions_group
 from trove.tests.scenario.groups import guest_log_group
@@ -136,9 +136,25 @@ base_groups = [
 ]
 
 # Cluster-based groups
-cluster_actions_groups = list(base_groups)
-cluster_actions_groups.extend([cluster_actions_group.GROUP,
-                               negative_cluster_actions_group.GROUP])
+cluster_create_groups = list(base_groups)
+cluster_create_groups.extend([groups.CLUSTER_DELETE_WAIT])
+
+cluster_actions_groups = list(cluster_create_groups)
+cluster_actions_groups.extend([groups.CLUSTER_ACTIONS_SHRINK_WAIT])
+
+cluster_negative_actions_groups = list(negative_cluster_actions_group.GROUP)
+
+cluster_root_groups = list(cluster_create_groups)
+cluster_root_groups.extend([groups.CLUSTER_ACTIONS_ROOT_ENABLE])
+
+cluster_root_actions_groups = list(cluster_actions_groups)
+cluster_root_actions_groups.extend([groups.CLUSTER_ACTIONS_ROOT_ACTIONS])
+
+cluster_upgrade_groups = list(cluster_create_groups)
+cluster_upgrade_groups.extend([groups.CLUSTER_UPGRADE_WAIT])
+
+cluster_groups = list(cluster_actions_groups)
+cluster_groups.extend([cluster_group.GROUP])
 
 # Single-instance based groups
 instance_create_groups = list(base_groups)
@@ -207,7 +223,13 @@ common_groups.extend([guest_log_groups, module_groups])
 # Register: Component based groups
 register(["backup"], backup_groups)
 register(["backup_incremental"], backup_incremental_groups)
-register(["cluster"], cluster_actions_groups)
+register(["cluster"], cluster_groups)
+register(["cluster_actions"], cluster_actions_groups)
+register(["cluster_create"], cluster_create_groups)
+register(["cluster_negative_actions"], cluster_negative_actions_groups)
+register(["cluster_root"], cluster_root_groups)
+register(["cluster_root_actions"], cluster_root_actions_groups)
+register(["cluster_upgrade"], cluster_upgrade_groups)
 register(["common"], common_groups)
 register(["configuration"], configuration_groups)
 register(["configuration_create"], configuration_create_groups)
@@ -241,6 +263,7 @@ register(
     backup_groups,
     database_actions_groups,
     cluster_actions_groups,
+    cluster_upgrade_groups,
     configuration_groups,
     instance_upgrade_groups,
     root_actions_groups,
@@ -251,6 +274,7 @@ register(
     ["couchbase_supported"], common_groups,
     backup_groups,
     cluster_actions_groups,
+    cluster_upgrade_groups,
     instance_upgrade_groups,
     root_actions_groups,
     user_actions_groups,
@@ -289,6 +313,7 @@ register(
     ["mariadb_supported"], common_groups,
     backup_incremental_groups,
     cluster_actions_groups,
+    cluster_upgrade_groups,
     configuration_groups,
     database_actions_groups,
     replication_promote_groups,
@@ -309,7 +334,7 @@ register(
 register(
     ["pxc_supported"], common_groups,
     backup_incremental_groups,
-    cluster_actions_groups,
+    cluster_groups,
     configuration_groups,
     database_actions_groups,
     root_actions_groups,
@@ -326,6 +351,7 @@ register(
 register(
     ["vertica_supported"], common_groups,
     cluster_actions_groups,
+    cluster_root_groups,
     configuration_groups,
     root_actions_groups,
 )
@@ -336,6 +362,7 @@ register(
     ["dse_supported"], common_groups,
     backup_groups,
     cluster_actions_groups,
+    cluster_upgrade_groups,
     configuration_groups,
     database_actions_groups,
     instance_upgrade_groups,
