@@ -16,6 +16,7 @@
 from eventlet.timeout import Timeout
 import six
 
+import netaddr
 from oslo_log import log as logging
 
 from trove.common import cfg
@@ -164,10 +165,16 @@ class CouchbaseClusterTasks(task_models.ClusterTasks):
     @classmethod
     def build_node_info(cls, instance):
         guest = cls.get_guest(instance)
+        ip = None
+        ips = instance.get_visible_ip_addresses()
+        if ips:
+            ipv4s = [i for i in ips if netaddr.valid_ipv4(i)]
+            if ipv4s:
+                ip = ipv4s[0]
         return {'instance': instance,
                 'guest': guest,
                 'id': instance.id,
-                'ip': cls.get_ip(instance)}
+                'ip': ip}
 
     @classmethod
     def build_guest_node_info(cls, node_info):
