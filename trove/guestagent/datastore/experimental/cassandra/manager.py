@@ -100,7 +100,7 @@ class Manager(manager.Manager):
 
     def post_upgrade(self, context, upgrade_info):
         LOG.debug('Finalizing Cassandra upgrade.')
-        self.app.stop_db()
+        self.app.initial_stop()
         if 'device' in upgrade_info:
             self.mount_volume(context, mount_point=upgrade_info['mount_point'],
                               device_path=upgrade_info['device'],
@@ -134,28 +134,9 @@ class Manager(manager.Manager):
 
         if config_contents or device_path or backup_info:
 
-            # FIXME(pmalik) Once the cassandra bug
-            # https://issues.apache.org/jira/browse/CASSANDRA-2356
-            # is fixed, this code may have to be revisited.
-            #
-            # Cassandra generates system keyspaces on the first start.
-            # The stored properties include the 'cluster_name', which once
-            # saved cannot be easily changed without removing the system
-            # tables. It is crucial that the service does not boot up in
-            # the middle of the configuration procedure.
-            # We wait here for the service to come up, stop it properly and
-            # remove the generated keyspaces before proceeding with
-            # configuration. If it does not start up within the time limit
-            # we assume it is not going to and proceed with configuration
-            # right away.
             LOG.debug("Waiting for database first boot.")
-            if (self.app.status.wait_for_real_status_to_change_to(
-                    trove_instance.ServiceStatuses.RUNNING,
-                    CONF.state_change_wait_time,
-                    False)):
-                LOG.debug("Stopping database prior to initial configuration.")
-                self.app.stop_db()
-                self.app._remove_system_tables()
+            self.app.initial_stop()
+            self.app.remove_system_tables()
 
             LOG.debug("Starting initial configuration.")
             if config_contents:
