@@ -190,13 +190,21 @@ class CassandraApp(object):
         self.status.restart_db_service(
             self.service_candidates, self.state_change_wait_time)
 
+    def initial_stop(self):
+        if (self.status.wait_for_real_status_to_change_to(
+                rd_instance.ServiceStatuses.RUNNING,
+                CONF.state_change_wait_time,
+                False)):
+            LOG.debug("Stopping database prior to configuration.")
+            self.stop_db()
+
     def _install_db(self, packages):
         """Install Cassandra server"""
         LOG.debug("Installing Cassandra server.")
         packager.pkg_install(packages, None, 10000)
         LOG.debug("Finished installing Cassandra server")
 
-    def _remove_system_tables(self):
+    def remove_system_tables(self):
         """
         Clean up the system keyspace.
 
