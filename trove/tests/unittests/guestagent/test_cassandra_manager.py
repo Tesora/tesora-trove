@@ -280,8 +280,8 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
             return_value=None)
         mock_app.restart = MagicMock(return_value=None)
         mock_app.start_db = MagicMock(return_value=None)
-        mock_app.stop_db = MagicMock(return_value=None)
-        mock_app._remove_system_tables = MagicMock(return_value=None)
+        mock_app.initial_stop = MagicMock(return_value=None)
+        mock_app.remove_system_tables = MagicMock(return_value=None)
         os.path.exists = MagicMock(return_value=True)
         volume.VolumeDevice.format = MagicMock(return_value=None)
         volume.VolumeDevice.migrate_data = MagicMock(return_value=None)
@@ -304,12 +304,12 @@ class GuestAgentCassandraDBManagerTest(trove_testtools.TestCase):
         # verification/assertion
         mock_status.begin_install.assert_any_call()
         mock_app.install_if_needed.assert_any_call(packages)
-        mock_app._remove_system_tables.assert_any_call()
+        mock_app.initial_stop.assert_any_call()
+        mock_app.remove_system_tables.assert_any_call()
         mock_app.init_storage_structure.assert_any_call('/var/lib/cassandra')
         mock_app.apply_initial_guestagent_configuration.assert_any_call(
             cluster_name=None)
         mock_app.start_db.assert_any_call(update_db=False)
-        mock_app.stop_db.assert_any_call()
         if backup_info:
             mock_app._apply_post_restore_updates.assert_called_once_with(
                 backup_info)
