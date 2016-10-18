@@ -55,6 +55,7 @@ import cx_Oracle
 from oslo_log import log as logging
 
 from trove.common import cfg
+from trove.common.db.oracle import models
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common import pagination
@@ -62,7 +63,6 @@ from trove.common import stream_codecs
 from trove.common import utils as utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.oracle_common import sql_query
-from trove.guestagent.db import models
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)

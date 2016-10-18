@@ -26,6 +26,7 @@ import pexpect
 import six
 
 from trove.common import cfg
+from trove.common.db.couchbase import models
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance as rd_instance
@@ -35,7 +36,6 @@ from trove.common import utils as utils
 from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.datastore import service
-from trove.guestagent.db import models
 from trove.guestagent import pkg
 
 
