@@ -19,6 +19,7 @@ import os
 from oslo_log import log as logging
 
 from trove.common import cfg
+from trove.common.db.postgresql import models
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance as trove_instance
@@ -29,7 +30,6 @@ from trove.guestagent.datastore.experimental.postgresql.service import (
     PgSqlAdmin)
 from trove.guestagent.datastore.experimental.postgresql.service import PgSqlApp
 from trove.guestagent.datastore import manager
-from trove.guestagent.db import models
 from trove.guestagent import guest_log
 from trove.guestagent import volume
 
@@ -233,6 +233,7 @@ class Manager(manager.Manager):
             self.app.set_current_admin_user(os_admin)
 
         if snapshot:
+            LOG.info("Found snapshot info: " + str(snapshot))
             self.attach_replica(context, snapshot, snapshot['config'])
 
         self.app.start_db()
@@ -274,6 +275,7 @@ class Manager(manager.Manager):
         pass
 
     def get_replica_context(self, context):
+        LOG.debug("Getting replica context.")
         return self.replication.get_replica_context(self.app)
 
     def get_latest_txn_id(self, context):
@@ -305,14 +307,17 @@ class Manager(manager.Manager):
                                  "offset to change to '%s'.") % txn)
 
     def cleanup_source_on_replica_detach(self, context, replica_info):
+        LOG.debug("Calling cleanup_source_on_replica_detach")
         self.replication.cleanup_source_on_replica_detach(self.app,
                                                           replica_info)
 
     def demote_replication_master(self, context):
+        LOG.debug("Calling demote_replication_master")
         self.replication.demote_master(self.app)
 
     def get_replication_snapshot(self, context, snapshot_info,
                                  replica_source_config=None):
+        LOG.debug("Getting replication snapshot.")
 
         self.app.enable_backups()
         self.replication.enable_as_master(self.app, None)

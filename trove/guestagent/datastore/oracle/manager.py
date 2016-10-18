@@ -53,6 +53,7 @@ import re
 from oslo_log import log as logging
 
 from trove.common import cfg
+from trove.common.db.oracle import models
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance as ds_instance
@@ -62,7 +63,6 @@ from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.oracle_common import manager
 from trove.guestagent.datastore.oracle import service
 from trove.guestagent import dbaas
-from trove.guestagent.db import models
 from trove.guestagent import guest_log
 from trove.guestagent import volume
 
@@ -104,14 +104,7 @@ class Manager(manager.OracleManager):
                     # only create 1 database
                     database = databases[:1]
                 else:
-                    # using ValidatedMySQLDatabase here for to simulate the
-                    # object that would normally be passed in via --databases,
-                    # and to bookmark this for when per-datastore validation is
-                    # added
-                    db = models.ValidatedMySQLDatabase()
-                    # no database name provided so default to first 8 valid
-                    # characters of instance name (alphanumeric, no '_')
-                    db.name = re.sub(r'[\W_]', '', CONF.guest_name[:8])
+                    db = models.OracleSchema(re.sub(r'[\W_]', '', CONF.guest_name[:8]))
                     database = [db.serialize()]
                 self.admin.create_database(database)
 

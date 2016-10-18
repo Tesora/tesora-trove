@@ -13,15 +13,15 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from trove.common.db.cassandra import models as guest_models
 from trove.extensions.common.service import DefaultRootController
 from trove.extensions.mysql import models
-from trove.guestagent.db import models as guest_models
 
 
 class CassandraRootController(DefaultRootController):
 
     def _find_root_user(self, context, instance_id):
-        user = guest_models.CassandraRootUser()
+        user = guest_models.CassandraUser.root()
         # TODO(pmalik): Using MySQL model until we have datastore specific
         # extensions (bug/1498573).
         return models.User.load(

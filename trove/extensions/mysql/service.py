@@ -21,6 +21,7 @@ import webob.exc
 
 import trove.common.apischema as apischema
 from trove.common import cfg
+from trove.common.db.mysql import models as guest_models
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common import notification
@@ -35,7 +36,6 @@ from trove.extensions.mysql.common import populate_validated_databases
 from trove.extensions.mysql.common import unquote_user_host
 from trove.extensions.mysql import models
 from trove.extensions.mysql import views
-from trove.guestagent.db import models as guest_models
 
 
 LOG = logging.getLogger(__name__)
@@ -88,7 +88,8 @@ class UserController(ExtensionController):
                 model_users = populate_users(users)
                 models.User.create(context, instance_id, model_users)
             except (ValueError, AttributeError) as e:
-                raise exception.BadRequest(msg=str(e))
+                raise exception.BadRequest(_("User create error: %(e)s")
+                                           % {'e': e})
         return wsgi.Result(None, 202)
 
     def delete(self, req, tenant_id, instance_id, id):
@@ -99,21 +100,21 @@ class UserController(ExtensionController):
         self.authorize_instance_action(context, 'user:delete', instance_id)
         id = correct_id_with_req(id, req)
         username, host = unquote_user_host(id)
+        user = None
         context.notification = notification.DBaaSUserDelete(context,
                                                             request=req)
         with StartNotification(context, instance_id=instance_id,
                                username=username):
-            user = None
             try:
-                user = guest_models.MySQLUser()
-                user.name = username
-                user.host = host
+                user = guest_models.MySQLUser(name=username,
+                                              host=host)
                 found_user = models.User.load(context, instance_id, username,
                                               host)
                 if not found_user:
                     user = None
             except (ValueError, AttributeError) as e:
-                raise exception.BadRequest(msg=str(e))
+                raise exception.BadRequest(_("User delete error: %(e)s")
+                                           % {'e': e})
             if not user:
                 raise exception.UserNotFound(uuid=id)
             models.User.delete(context, instance_id, user.serialize())
@@ -132,7 +133,8 @@ class UserController(ExtensionController):
         try:
             user = models.User.load(context, instance_id, username, host)
         except (ValueError, AttributeError) as e:
-            raise exception.BadRequest(msg=str(e))
+            raise exception.BadRequest(_("User show error: %(e)s")
+                                       % {'e': e})
         if not user:
             raise exception.UserNotFound(uuid=id)
         view = views.UserView(user)
@@ -157,14 +159,16 @@ class UserController(ExtensionController):
                 user = models.User.load(context, instance_id, username,
                                         hostname)
             except (ValueError, AttributeError) as e:
-                raise exception.BadRequest(msg=str(e))
+                raise exception.BadRequest(_("Error loading user: %(e)s")
+                                           % {'e': e})
             if not user:
                 raise exception.UserNotFound(uuid=id)
             try:
                 models.User.update_attributes(context, instance_id, username,
                                               hostname, user_attrs)
             except (ValueError, AttributeError) as e:
-                raise exception.BadRequest(msg=str(e))
+                raise exception.BadRequest(_("User update error: %(e)s")
+                                           % {'e': e})
         return wsgi.Result(None, 202)
 
     def update_all(self, req, body, tenant_id, instance_id):
@@ -177,16 +181,15 @@ class UserController(ExtensionController):
         context.notification = notification.DBaaSUserChangePassword(
             context, request=req)
         users = body['users']
+        model_users = []
         with StartNotification(context, instance_id=instance_id,
                                username=",".join([user['name']
                                                   for user in users])):
-            model_users = []
             for user in users:
                 try:
-                    mu = guest_models.MySQLUser()
-                    mu.name = user['name']
-                    mu.host = user.get('host')
-                    mu.password = user['password']
+                    mu = guest_models.MySQLUser(name=user['name'],
+                                                host=user.get('host'),
+                                                password=user['password'])
                     found_user = models.User.load(context, instance_id,
                                                   mu.name, mu.host)
                     if not found_user:
@@ -196,8 +199,14 @@ class UserController(ExtensionController):
                         raise exception.UserNotFound(uuid=user_and_host)
                     model_users.append(mu)
                 except (ValueError, AttributeError) as e:
-                    raise exception.BadRequest(msg=str(e))
-            models.User.change_password(context, instance_id, model_users)
+                    raise exception.BadRequest(_("Error loading user: %(e)s")
+                                               % {'e': e})
+            try:
+                models.User.change_password(context, instance_id, model_users)
+            except (ValueError, AttributeError) as e:
+                raise exception.BadRequest(_("User password update error: "
+                                             "%(e)s")
+                                           % {'e': e})
         return wsgi.Result(None, 202)
 
 
@@ -217,7 +226,8 @@ class UserAccessController(ExtensionController):
         try:
             user = models.User.load(context, instance_id, username, hostname)
         except (ValueError, AttributeError) as e:
-            raise exception.BadRequest(msg=str(e))
+            raise exception.BadRequest(_("Error loading user: %(e)s")
+                                       % {'e': e})
         if not user:
             raise exception.UserNotFound(uuid=user_id)
         return user
@@ -328,8 +338,12 @@ class SchemaController(ExtensionController):
         with StartNotification(context, instance_id=instance_id,
                                dbname=".".join([db['name']
                                                 for db in schemas])):
-            model_schemas = populate_validated_databases(schemas)
-            models.Schema.create(context, instance_id, model_schemas)
+            try:
+                model_schemas = populate_validated_databases(schemas)
+                models.Schema.create(context, instance_id, model_schemas)
+            except (ValueError, AttributeError) as e:
+                raise exception.BadRequest(_("Database create error: %(e)s")
+                                           % {'e': e})
         return wsgi.Result(None, 202)
 
     def delete(self, req, tenant_id, instance_id, id):
@@ -343,11 +357,12 @@ class SchemaController(ExtensionController):
             context, request=req)
         with StartNotification(context, instance_id=instance_id, dbname=id):
             try:
-                schema = guest_models.ValidatedMySQLDatabase()
-                schema.name = id
+                schema = guest_models.MySQLSchema(name=id)
+                schema.check_delete()
                 models.Schema.delete(context, instance_id, schema.serialize())
             except (ValueError, AttributeError) as e:
-                raise exception.BadRequest(msg=str(e))
+                raise exception.BadRequest(_("Database delete error: %(e)s")
+                                           % {'e': e})
         return wsgi.Result(None, 202)
 
     def show(self, req, tenant_id, instance_id, id):
@@ -360,7 +375,7 @@ class SchemaController(ExtensionController):
 class MySQLRootController(DefaultRootController):
 
     def _find_root_user(self, context, instance_id):
-        user = guest_models.MySQLRootUser()
+        user = guest_models.MySQLUser.root()
         return models.User.load(context, instance_id,
                                 user.name, user.host,
                                 root_user=True)

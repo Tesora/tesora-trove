@@ -54,12 +54,12 @@ import mock
 from oslo_utils import netutils
 
 from trove.common import cfg
+from trove.common.db.oracle import models
 import trove.common.context as context
 from trove.common import stream_codecs
 from trove.common import utils
 from trove.guestagent import backup
 from trove.guestagent.common import operating_system
-import trove.guestagent.db.models as models
 from trove.tests.unittests import trove_testtools
 
 
@@ -167,8 +167,7 @@ class GuestAgentOracleManagerTest(trove_testtools.TestCase):
         check_test('long_instance_name', 'ora1tool')
 
         test_db_name = 'testdb'
-        database = models.ValidatedMySQLDatabase()
-        database.name = test_db_name
+        database = models.OracleSchema(test_db_name)
         self.manager.do_prepare(None, None,
                                 [database.serialize()],
                                 None, None)
