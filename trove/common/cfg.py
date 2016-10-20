@@ -379,8 +379,12 @@ common_opts = [
                          'pxc': '75a628c3-f81b-4ffb-b10a-4087c26bc854',
                          'redis': 'b216ffc5-1947-456c-a4cf-70f94c05f7d0',
                          'cassandra': '459a230d-4e97-4344-9067-2a54a310b0ed',
+                         'cassandra_22':
+                         '4deb47af-4153-4118-a5ae-d6f15ce02b10',
+                         'cassandra_3': '7b776ee5-b65d-4101-bed0-6c6d6eb34dcc',
                          'dse': '30352416-8603-4844-8629-1a3ec54d16b5',
                          'couchbase': 'fa62fe68-74d9-4779-a24e-36f19602c415',
+                         'couchbase_4': '931f776f-1770-4841-97be-37dc03cfff93',
                          'mongodb': 'c8c907af-7375-456f-b929-b637ff9209ee',
                          'postgresql': 'ac277e0d-4f21-40aa-b347-1ea31e571720',
                          'couchdb': 'f0a9ab7b-66f7-4352-93d7-071521d44c7c',
@@ -390,6 +394,8 @@ common_opts = [
                          'oracle': 'dc43ae4f-9480-4f52-a818-ceb06594893d',
                          'oracle_ra': '94d3fe48-3927-4041-8944-457a2fac86ce',
                          'oracle_rac': '984cb45a-4ab6-11e6-beb8-9e71128cae77',
+                         'edb': '8a0cb61a-847f-4b6c-b3aa-9344c9bc2d2b',
+                         'couchbase_ee': '9c42f94f-2094-45d0-8098-61dd4c0df452'
                          },
                 help='Unique ID to tag notification events.'),
     cfg.StrOpt('nova_proxy_admin_user', default='',
