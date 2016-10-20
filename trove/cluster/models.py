@@ -328,7 +328,8 @@ class Cluster(object):
             dv = datastore_models.DatastoreVersion.load(self.datastore, dv_id)
             with StartNotification(context, cluster_id=self.id,
                                    datastore_version=dv.id):
-                return self.upgrade(dv)
+                self.upgrade(dv)
+            self.update_db(datastore_version_id=dv.id)
         else:
             raise exception.BadRequest(_("Action %s not supported") % action)
 
