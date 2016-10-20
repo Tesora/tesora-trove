@@ -1,0 +1,34 @@
+set -e
+set -o xtrace
+
+export DEBIAN_FRONTEND=noninteractive
+
+cat > "/etc/sysctl.d/10-couchbase-performance.conf" << _EOF_
+# For the optimal Couchbase Server operations, set the swappiness to 0.
+# See 'http://docs.couchbase.com/admin/admin/Concepts/swap-space.html'
+vm.swappiness=0
+
+_EOF_
+
+cat > "/etc/rc.local" << _EOF_
+# Make sure to disable Linux kernel feature transparent huge pages,
+# it will affect greatly both memory usage and latency in a negative way.
+# See: http://docs.couchbase.com/admin/admin/Install/rhel-installing.html
+if test -f /sys/kernel/mm/transparent_hugepage/defrag; then
+  echo never > /sys/kernel/mm/transparent_hugepage/defrag
+fi
+if test -f /sys/kernel/mm/transparent_hugepage/enabled; then
+  echo never > /sys/kernel/mm/transparent_hugepage/enabled
+fi
+
+exit \$?
+
+_EOF_
+
+apt-get -qy update
+apt-get -qy install curl
+
+# Install deb package
+# Do not start instance when installation is complete
+COUCHBASE_PACKAGE="/tmp/in_target.d/couchbase-server-enterprise-4.1.0-ubuntu14.04_amd64.deb"
+INSTALL_DONT_START_SERVER=1 dpkg -i "$COUCHBASE_PACKAGE"

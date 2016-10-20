@@ -1,0 +1,6 @@
+#!/bin/bash
+
+set -e
+set -o xtrace
+
+yum remove -y chrony avahi man-db emacs-filesystem mesa-libGL mesa-libEGL mesa-libgbm mesa-libglapi pixman traceroute tcpdump ppp

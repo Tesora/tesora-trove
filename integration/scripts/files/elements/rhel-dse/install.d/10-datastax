@@ -1,0 +1,26 @@
+#!/bin/bash
+
+set -ex
+set -o xtrace
+
+export DEBIAN_FRONTEND=noninteractive
+
+cat > "/etc/sysctl.d/10-cassandra-performance.conf" << _EOF_
+# See 'http://docs.datastax.com/en/cassandra/2.1/cassandra/install/installRecommendSettings.html'
+# for recommended production settings.
+vm.max_map_count = 131072
+
+_EOF_
+
+yum -y install java-1.8.0-openjdk dse-full-4.8.4*
+
+pip install -U setuptools
+
+# The Python Driver 2.0 for Apache Cassandra.
+pip install cassandra-driver blist
+
+# Create a volatile directory for PID.
+echo "d /var/run/cassandra/ 0755 cassandra cassandra" > /lib/tmpfiles.d/cassandra.conf
+
+systemctl start dse
+chkconfig dse on

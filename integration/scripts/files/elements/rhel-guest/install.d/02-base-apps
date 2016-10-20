@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# CONTEXT: GUEST during CONSTRUCTION as ROOT
+# PURPOSE: Install basic services and applications
+
+set -e
+set -o xtrace
+
+yum install -y ntp ntpupdate curl wget
+systemctl enable ntpd

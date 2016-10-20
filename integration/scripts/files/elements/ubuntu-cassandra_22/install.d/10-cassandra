@@ -1,0 +1,44 @@
+#!/bin/bash
+
+set -ex
+set -o xtrace
+
+export DEBIAN_FRONTEND=noninteractive
+
+cat > "/etc/sysctl.d/10-cassandra-performance.conf" << _EOF_
+# See 'http://docs.datastax.com/en/cassandra/2.2/cassandra/install/installRecommendSettings.html'
+# for recommended production settings.
+vm.max_map_count = 131072
+
+_EOF_
+
+echo "deb http://www.apache.org/dist/cassandra/debian 22x main" >> /etc/apt/sources.list.d/cassandra.sources.list
+
+gpg --keyserver pgp.mit.edu --recv-keys F758CE318D77295D
+gpg --export --armor F758CE318D77295D | sudo apt-key add -
+
+gpg --keyserver pgp.mit.edu --recv-keys 2B5C1B00
+gpg --export --armor 2B5C1B00 | sudo apt-key add -
+
+gpg --keyserver pgp.mit.edu --recv-keys 0353B12C
+gpg --export --armor 0353B12C | sudo apt-key add -
+
+#This repo is needed to install 'openjdk-8-jre'
+add-apt-repository -y ppa:openjdk-r/ppa
+
+apt-get update
+
+apt-get install -y openjdk-8-jre python-dev
+
+apt-get install -y cassandra
+
+# The Python Driver 2.0 for Apache Cassandra.
+pip install cassandra-driver
+# Sorted sets support for the Python driver.
+pip install blist
+
+cat >> "/etc/cassandra/cassandra-env.sh" << _EOF_
+# Workaround for CASSANDRA-11942
+JVM_OPTS="\$JVM_OPTS -Dcassandra.superuser_setup_delay_ms=0"
+
+_EOF_

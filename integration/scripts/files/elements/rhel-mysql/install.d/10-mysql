@@ -1,0 +1,38 @@
+#!/bin/sh
+
+# CONTEXT: GUEST during CONSTRUCTION as ROOT
+# PURPOSE: Install controller base required packages
+
+set -e
+set -o xtrace
+
+# Instal the mysql community repository
+yum -y install http://dev.mysql.com/get/mysql-community-release-el7-5.noarch.rpm
+
+# Add yum utils to give us yum-config-manager
+yum -y install yum-utils
+
+# Setup the version of mysql we want
+# yum-config-manager --disable mysql56-community
+# yum-config-manager --enable mysql55-community
+# 5.6 is the default so do nothing
+
+yum -y install mysql-community-server percona-xtrabackup-22
+
+BASE_MY_CNF_FILE="/etc/my.cnf"
+MYSQL_CNF_DIR="/etc/mysql/"
+MYSQL_CNF_DIR_MY_CNF_FILE="${MYSQL_CNF_DIR}my.cnf"
+MYSQL_CONF_D="${MYSQL_CNF_DIR}conf.d/"
+
+mkdir -p "$MYSQL_CONF_D"
+
+if [ ! -d "$BASE_MY_CNF_FILE" ]; then
+    # The MySQL startup script on CentOS does
+    # not handle multiple 'my.cnf' files.
+    # Make sure we only have one 'my.cnf'
+    # on the default lookup path.
+    mv "$BASE_MY_CNF_FILE" "$MYSQL_CNF_DIR_MY_CNF_FILE"
+    echo "!includedir $MYSQL_CONF_D" >> "$MYSQL_CNF_DIR_MY_CNF_FILE"
+fi
+
+systemctl enable mysqld

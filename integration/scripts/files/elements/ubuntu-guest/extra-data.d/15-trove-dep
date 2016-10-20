@@ -38,7 +38,8 @@ else
 
     set +e
     curl -o "${UC_DIR}/${UC_FILE}" \
-        https://git.openstack.org/cgit/openstack/requirements/plain/${UC_FILE}?h=${UC_BRANCH}
+        https://raw.githubusercontent.com/Tesora/tesora-requirements/${UC_BRANCH}/${UC_FILE}
+ 
     set -e
 
     if [ -f "${UC_DIR}/${UC_FILE}" ]; then

@@ -44,6 +44,16 @@ function get_default_host_ip() {
     echo `LC_ALL=C ip -f inet addr show ${host_iface} | awk '/inet/ {split($2,parts,"/");  print parts[1]}' | head -1`
 }
 
+function is_branch_juno_kilo() {
+    branch=$1
+    [[ $branch == "stable/juno" || $branch == "stable/kilo" || $branch == "dev/EE-1.4" || $branch == "dev/EE-1.5" ]]
+}
+
+function is_branch_liberty() {
+    branch=$1
+    [[ $branch == "stable/liberty" || $branch == "dev/EE-1.6" || $branch == "dev/EE-1.7" ]]
+}
+
 # Load functions devstack style
 . $TROVESTACK_SCRIPTS/functions
 . $TROVESTACK_SCRIPTS/functions_qemu
@@ -226,14 +236,14 @@ function add_flavor() {
             memory=${FLAVOR_MEMORY_MB}
             vcpus=${FLAVOR_VCPUS}
             if [[ $ephemeral != 0 ]]; then
-                if [[ $BRANCH_OVERRIDE == "stable/juno" || $BRANCH_OVERRIDE == "stable/kilo" ]]; then
+                if is_branch_juno_kilo $BRANCH_OVERRIDE; then
                     id=1${id}
                 else
                     id=${id}e
                 fi
             fi
             if [[ $name == ${resize_name} ]]; then
-                if [[ $BRANCH_OVERRIDE == "stable/juno" || $BRANCH_OVERRIDE == "stable/kilo" ]]; then
+                if is_branch_juno_kilo $BRANCH_OVERRIDE; then
                     id=2${id}
                 else
                     id=${id}r
@@ -546,12 +556,15 @@ function set_mysql_pkg() {
 function cmd_set_datastore() {
     IMAGEID=$1
     DATASTORE_TYPE=$2
+    DATASTORE_MANAGER=$DATASTORE_TYPE
     # rd_manage datastore_update <datastore_name> <default_version>
     rd_manage datastore_update "$DATASTORE_TYPE" ""
     PACKAGES=${PACKAGES:-""}
     if [ "$DATASTORE_TYPE" == "mysql" ]; then
         set_mysql_pkg
         PACKAGES=${PACKAGES:-$MYSQL_PKG}
+        VERSION="5.6"
+    elif [ "$DATASTORE_TYPE" == "mysql_ee" ]; then
         VERSION="5.6"
     elif [ "$DATASTORE_TYPE" == "percona" ]; then
         PACKAGES=${PACKAGES:-"percona-server-server-5.6"}
@@ -569,14 +582,22 @@ function cmd_set_datastore() {
         PACKAGES=${PACKAGES:-"redis-server"}
         VERSION="3.0"
     elif [ "$DATASTORE_TYPE" == "cassandra" ]; then
-        PACKAGES=${PACKAGES:-"cassandra"}
-        VERSION="2.1.0"
+        PACKAGES=${PACKAGES:-""}
+        VERSION="2.1"
+    elif [ "$DATASTORE_TYPE" == "cassandra_22" ]; then
+        PACKAGES=${PACKAGES:-""}
+        VERSION="2.2"
+    elif [ "$DATASTORE_TYPE" == "cassandra_3" ]; then
+        PACKAGES=${PACKAGES:-""}
+        VERSION="3.0"
     elif [ "$DATASTORE_TYPE" == "couchbase" ]; then
         PACKAGES=${PACKAGES:-"couchbase-server"}
-        VERSION="2.2.0"
+        VERSION="3.0"
+    elif [ "$DATASTORE_TYPE" == "couchbase_4" ]; then
+        VERSION="4.0"
     elif [ "$DATASTORE_TYPE" == "postgresql" ]; then
-        PACKAGES=${PACKAGES:-"postgresql-9.4"}
-        VERSION="9.4"
+        PACKAGES=${PACKAGES:-""}
+        VERSION=${DATABASE_VERSION:-"9.4"}
     elif [ "$DATASTORE_TYPE" == "couchdb" ]; then
         PACKAGES=${PACKAGES:-"couchdb"}
         VERSION="1.6.1"
@@ -586,6 +607,20 @@ function cmd_set_datastore() {
     elif [ "$DATASTORE_TYPE" == "db2" ]; then
         PACKAGES=${PACKAGES:-""}
         VERSION="10.5"
+    elif [ "$DATASTORE_TYPE" == "oracle" ]; then
+        VERSION="11.2"
+    elif [ "$DATASTORE_TYPE" == "oracle_ra" ]; then
+        VERSION="12.1"
+    elif [ "$DATASTORE_TYPE" == "dse" ]; then
+        VERSION="4.8"
+    elif [ "$DATASTORE_TYPE" == "couchbase_ee" ]; then
+        VERSION="4.1"
+        DATASTORE_MANAGER="couchbase_ee"
+    elif [ "$DATASTORE_TYPE" == "couchbase_ee45" ]; then
+        VERSION="4.5"
+        DATASTORE_MANAGER="couchbase_ee"
+    elif [ "$DATASTORE_TYPE" == "edb" ]; then
+        VERSION="9.4"
     else
         echo "Unrecognized datastore type. ($DATASTORE_TYPE)"
         exit 1
@@ -595,19 +630,19 @@ function cmd_set_datastore() {
     sed -i "s/%datastore_version%/$VERSION/g" $TEST_CONF
 
     #rd_manage datastore_version_update <datastore_name> <version_name> <datastore_manager> <image_id> <packages> <active>
-    rd_manage datastore_version_update "$DATASTORE_TYPE" "$VERSION" "$DATASTORE_TYPE" $IMAGEID "$PACKAGES" 1
+    rd_manage datastore_version_update "$DATASTORE_TYPE" "$VERSION" "$DATASTORE_MANAGER" $IMAGEID "$PACKAGES" 1
     rd_manage datastore_version_update "$DATASTORE_TYPE" "inactive_version" "manager1" $IMAGEID "" 0
     rd_manage datastore_update "$DATASTORE_TYPE" "$VERSION"
     rd_manage datastore_update Test_Datastore_1 ""
 
     if [ -f "$PATH_TROVE"/trove/templates/$DATASTORE_TYPE/validation-rules.json ]; then
         # add the configuration parameters to the database for the kick-start datastore
-        rd_manage db_load_datastore_config_parameters "$DATASTORE_TYPE" "$VERSION" "$PATH_TROVE"/trove/templates/$DATASTORE_TYPE/validation-rules.json
+        rd_manage db_load_datastore_config_parameters "$DATASTORE_TYPE" "$VERSION" "$PATH_TROVE"/trove/templates/$DATASTORE_MANAGER/validation-rules.json
     fi
 
     cmd_stop
     iniset $TROVE_CONF DEFAULT default_datastore "$DATASTORE_TYPE"
-    sleep 1.5
+    sleep 5
     cmd_start
 }
 
@@ -659,7 +694,21 @@ function rd_manage() {
 }
 
 function install_test_packages() {
+    DATASTORE_TYPE=$1
+
     sudo -H $HTTP_PROXY pip install openstack.nose_plugin proboscis pexpect
+
+    if [ "$DATASTORE_TYPE" = "couchbase" ] ||
+           [ "$DATASTORE_TYPE" = "couchbase_4" ] ||
+           [ "$DATASTORE_TYPE" = "couchbase_ee" ] ||
+           [ "$DATASTORE_TYPE" = "couchbase_ee45" ]; then
+        # Install Couchbase SDK for scenario tests.
+        sudo -H $HTTP_PROXY curl http://packages.couchbase.com/ubuntu/couchbase.key | sudo apt-key add -
+        echo "deb http://packages.couchbase.com/ubuntu trusty trusty/main" | sudo tee /etc/apt/sources.list.d/couchbase-csdk.list
+        sudo -H $HTTP_PROXY apt-get update
+        sudo -H $HTTP_PROXY apt-get -y install libcouchbase-dev
+        sudo -H $HTTP_PROXY pip install --upgrade couchbase
+    fi
 }
 
 function mod_confs() {
@@ -715,6 +764,20 @@ function mod_confs() {
         sed -i "/%shared_network_subnet%/d" $TEST_CONF
     fi
 
+    # Increase default quota.
+    iniset $TROVE_CONF DEFAULT max_accepted_volume_size 10
+    iniset $TROVE_CONF DEFAULT max_instances_per_user 10
+    iniset $TROVE_CONF DEFAULT max_volumes_per_user 10
+
+    # Test instance properties.
+    TROVE_VOLUME_SUPPORT="true"
+    TROVE_VOLUME_SIZE="1"
+
+    INSTANCE_FLAVOR="test.small"
+    EPH_INSTANCE_FLAVOR="test.eph.small"
+    BIGGER_INSTANCE_FLAVOR="test.small.resize"
+    BIGGER_EPH_INSTANCE_FLAVOR="test.eph.small.resize"
+
     if [ "$DATASTORE_TYPE" = "vertica" ]; then
         # Vertica needs more time than mysql for its boot/start/stop operations.
         setup_cluster_configs cluster_member_count 3
@@ -765,7 +828,7 @@ function cmd_test_init() {
     exclaim 'Initializing Configuration for Running Tests...'
 
     exclaim "Installing python test packages."
-    install_test_packages
+    install_test_packages $1
 
     exclaim "Modifying test.conf and guest.conf with appropriate values."
     mod_confs $1
@@ -1215,7 +1278,7 @@ function cmd_dsvm_gate_tests() {
     CONTROLLER_IP=${5:-'10.1.0.1'}
     ESCAPED_PATH_TROVE=${6:-'\/opt\/stack\/new\/trove'}
 
-    if [[ $BRANCH_OVERRIDE == "stable/liberty" ]]; then
+    if is_branch_liberty $BRANCH_OVERRIDE; then
         # Devstack in liberty doesn't copy the clouds.yaml file to /etc so we need to
         # ensure we have access to the clouds.yaml file set up by devstack-gate
         sudo mkdir -p ~/.config/openstack
@@ -1233,7 +1296,11 @@ function cmd_dsvm_gate_tests() {
     iniset $TROVE_GUESTAGENT_CONF DEFAULT rabbit_host $CONTROLLER_IP
     iniset $TROVE_GUESTAGENT_CONF oslo_messaging_rabbit rabbit_hosts $CONTROLLER_IP
     cd $TROVESTACK_SCRIPTS
+
+    # Install required packages.
     sudo -H $HTTP_PROXY pip install --upgrade pip dib-utils
+    sudo -H $HTTP_PROXY apt-get -y install libpq-dev
+    sudo -H $HTTP_PROXY pip install --upgrade -c "$DEST/requirements/upper-constraints.txt" -r "$PATH_TROVE/test-requirements.txt"
 
     cmd_kick_start $DATASTORE_TYPE
 
@@ -1241,7 +1308,7 @@ function cmd_dsvm_gate_tests() {
     source $DEST/devstack/accrc/admin/admin
     # NOTE(mriedem): We have to treat stable branches before liberty special
     # due to constraints with older versions of python-openstackclient.
-    if [[ $BRANCH_OVERRIDE == "stable/juno" || $BRANCH_OVERRIDE == "stable/kilo" ]]; then
+    if is_branch_juno_kilo $BRANCH_OVERRIDE; then
         SWIFT_ENDPOINT=$(openstack endpoint list | grep 'swift' | get_field 1)
         openstack endpoint create swift --region RegionOne --publicurl 'http://'$CONTROLLER_IP':8080/v1/AUTH_$(tenant_id)s' \
             --internalurl 'http://'$CONTROLLER_IP':8080/v1/AUTH_$(tenant_id)s' --adminurl 'http://'$CONTROLLER_IP':8080'
@@ -1268,7 +1335,13 @@ function cmd_clone_projects() {
     for project in $(cat $PROJECT_LIST_FILES); do
         if [ ! -d $PATH_DEVSTACK_OUTPUT/$project ]; then
             echo "Creating a new clone of $project..."
-            git_clone $GIT_OPENSTACK/"$project".git ${PATH_DEVSTACK_OUTPUT}/$project master
+
+            GIT_BRANCH=${DEVSTACK_BRANCH:-master}
+            if [ $project == "diskimage-builder" ] || [ $project == "tripleo-image-elements" ]; then
+                GIT_BRANCH="master"
+            fi
+
+            git_clone $GIT_OPENSTACK/"$project".git ${PATH_DEVSTACK_OUTPUT}/$project $GIT_BRANCH
         else
             if [ $UPDATE_PROJECTS != "force_update" ]; then
                 echo "$project was already cloned or exists in a shared folder. Ignoring..."
@@ -1422,6 +1495,7 @@ function run_command() {
         "wipe-queues" ) shift; cmd_wipe_queues $@;;
         "example-tests" ) shift; cmd_example_tests $@;;
         "repl" ) shift; cmd_repl $@;;
+        "source" ) echo "Sourced redstack.";;
         "help" ) print_usage;;
         * )
             echo "'$1' not a valid command"

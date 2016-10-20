@@ -1,0 +1,47 @@
+#!/bin/sh
+
+# CONTEXT: GUEST during CONSTRUCTION as ROOT
+# PURPOSE: Install controller base required packages
+
+set -e
+set -o xtrace
+
+mkdir /var/lib/mysql
+
+yum -y install MariaDB-server MariaDB-client percona-xtrabackup-22
+
+wget https://www.percona.com/downloads/XtraBackup/Percona-XtraBackup-2.3.2/binary/redhat/7/x86_64/percona-xtrabackup-2.3.2-1.el7.x86_64.rpm
+yum -y localinstall percona-xtrabackup-2.3.2-1.el7.x86_64.rpm
+rm -f yum percona-xtrabackup-2.3.2-1.el7.x86_64.rpm
+
+BASE_MY_CNF_FILE="/etc/my.cnf"
+MYSQL_CNF_DIR="/etc/mysql/"
+MYSQL_CNF_DIR_MY_CNF_FILE="${MYSQL_CNF_DIR}my.cnf"
+MYSQL_CONF_D="${MYSQL_CNF_DIR}conf.d/"
+
+mkdir -p "$MYSQL_CONF_D"
+
+if [ ! -d "$BASE_MY_CNF_FILE" ]; then
+    # Keep '/etc/my.cnf' with includes
+    # from the other config paths for datastores
+    # that lookup only in '/etc'.
+    # That file should contain only the includes
+    # and nothing else. Not all datastores
+    # handle duplicate setting values well.
+    # Watch for infinite include recursions.
+    # Keep the original permissions.
+    cp -p "$BASE_MY_CNF_FILE" "$MYSQL_CNF_DIR_MY_CNF_FILE"
+
+    # Provide a pid-file for initial boot so MariaDB doesn't
+    # get confused during server restart
+    echo "[mysqld]" > "$BASE_MY_CNF_FILE"
+    echo "pid-file=/var/lib/mysql/mysqld.pid" >> "$BASE_MY_CNF_FILE"
+
+    echo "!includedir $MYSQL_CNF_DIR" >> "$BASE_MY_CNF_FILE"
+    echo "!includedir $MYSQL_CONF_D" >> "$BASE_MY_CNF_FILE"
+    echo "!includedir $MYSQL_CONF_D" >> "$MYSQL_CNF_DIR_MY_CNF_FILE"
+fi
+
+rm -f /etc/init.d/mysql
+
+chkconfig mariadb on

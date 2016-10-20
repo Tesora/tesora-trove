@@ -1,0 +1,35 @@
+#!/bin/bash
+
+set -ex
+set -o xtrace
+
+export DEBIAN_FRONTEND=noninteractive
+
+cat > "/etc/sysctl.d/10-cassandra-performance.conf" << _EOF_
+# See 'http://docs.datastax.com/en/cassandra/2.1/cassandra/install/installRecommendSettings.html'
+# for recommended production settings.
+vm.max_map_count = 131072
+
+_EOF_
+
+DATASTAX_USER="andrew_tesora.com"
+DATASTAX_PWD="cSIwj8bK6d33ih4"
+
+echo "deb http://${DATASTAX_USER}:${DATASTAX_PWD}@debian.datastax.com/enterprise stable main" >> /etc/apt/sources.list.d/datastax.sources.list
+
+apt-get install -qy wget
+wget -q -O - http://debian.datastax.com/debian/repo_key | apt-key add -
+
+#This repo is needed to install 'openjdk-8-jre'
+add-apt-repository -y ppa:openjdk-r/ppa
+
+apt-get update
+
+apt-get install -y openjdk-8-jre python-dev
+
+apt-get install -y dse-full=4.8.*
+
+# The Python Driver 2.0 for Apache Cassandra.
+pip install cassandra-driver
+# Sorted sets support for the Python driver.
+pip install blist
