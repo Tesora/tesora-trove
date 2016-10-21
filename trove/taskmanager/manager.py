@@ -215,7 +215,8 @@ class Manager(periodic_task.PeriodicTasks):
 
             master_ips = old_master.detach_public_ips()
             slave_ips = master_candidate.detach_public_ips()
-            master_candidate.detach_replica(old_master, for_failover=True)
+            master_candidate.detach_replica(old_master, for_failover=True,
+                                            for_promote=True)
             master_candidate.enable_as_master()
             master_candidate.attach_public_ips(master_ips)
             master_candidate.make_read_only(False)

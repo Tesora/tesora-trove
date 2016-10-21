@@ -185,6 +185,7 @@ class PostgresqlReplicationStreaming(base.Replication):
         self.enable_hot_standby(service)
         # Ensure the WAL arch is empty before restoring
         service.recreate_wal_archive_dir()
+        service.restart()
 
     def detach_slave(self, service, for_failover, for_promote):
         """Touch trigger file in to disable recovery mode"""
@@ -206,11 +207,6 @@ class PostgresqlReplicationStreaming(base.Replication):
             except exception.PollTimeOut:
                 raise RuntimeError(_("Timeout occurred waiting for slave to"
                                      " exit recovery mode"))
-        else:
-            LOG.info(
-                _("Detaching ordinary slave."
-                  " Restarting the database service."))
-            service.restart()
 
     def cleanup_source_on_replica_detach(self, admin_service, replica_info):
         pass
