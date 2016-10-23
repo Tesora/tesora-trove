@@ -1,0 +1,32 @@
+set -e
+set -o xtrace
+
+cat > "/etc/sysctl.d/10-couchbase-performance.conf" << _EOF_
+# For the optimal Couchbase Server operations, set the swappiness to 0.
+# See 'http://docs.couchbase.com/admin/admin/Concepts/swap-space.html'
+vm.swappiness=0
+
+_EOF_
+
+cat > "/etc/rc.local" << _EOF_
+# Make sure to disable Linux kernel feature transparent huge pages,
+# it will affect greatly both memory usage and latency in a negative way.
+# See: http://docs.couchbase.com/admin/admin/Install/rhel-installing.html
+if test -f /sys/kernel/mm/redhat_transparent_hugepage/defrag; then
+  echo never > /sys/kernel/mm/redhat_transparent_hugepage/defrag
+fi
+if test -f /sys/kernel/mm/redhat_transparent_hugepage/enabled; then
+  echo never > /sys/kernel/mm/redhat_transparent_hugepage/enabled
+fi
+
+exit \$?
+
+_EOF_
+
+yum clean metadata
+yum makecache
+yum install curl
+
+# Install the community package.
+# Do not start when finished.
+INSTALL_DONT_START_SERVER=1 yum -y install "http://packages.couchbase.com/releases/4.0.0/couchbase-server-community-4.0.0-centos7.x86_64.rpm"

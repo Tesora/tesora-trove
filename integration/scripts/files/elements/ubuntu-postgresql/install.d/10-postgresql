@@ -33,6 +33,8 @@ _EOF_
 
 apt-get -y install postgresql-9.4 postgresql-contrib-9.4 postgresql-server-dev-9.4
 
+rm -rf "/var/lib/postgresql/9.4/main/"
+su - postgres -c "/usr/lib/postgresql/9.4/bin/initdb --encoding=UTF8 --locale=en_US.UTF8 /var/lib/postgresql/9.4/main/"
 ###########################################
 # Hack alert:
 # For Postgresql 9.4, pg_rewind is not in the main source tree and

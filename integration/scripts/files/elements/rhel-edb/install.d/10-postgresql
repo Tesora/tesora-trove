@@ -1,0 +1,61 @@
+#!/bin/sh
+
+set -e
+set -o xtrace
+
+cat > "/etc/sysctl.d/10-postgresql-performance.conf" << _EOF_
+# See 'http://www.postgresql.org/docs/9.4/static/kernel-resources.html'
+# for best practices.
+# It is recommended to disable memory overcommit,
+# but the Python interpreter may require it on smaller flavors.
+# We therefore stick with the heuristic overcommit setting.
+vm.overcommit_memory=0
+vm.nr_hugepages=64
+
+_EOF_
+
+cat > "/etc/rc.local" << _EOF_
+# See 'http://www.postgresql.org/docs/9.4/static/kernel-resources.html'
+# Postgres 9.4 added support for THP. Using huge pages reduces overhead when
+# using large contiguous chunks of memory, like PostgreSQL does.
+if test -f /sys/kernel/mm/redhat_transparent_hugepage/defrag; then
+  echo never > /sys/kernel/mm/redhat_transparent_hugepage/defrag
+fi
+if test -f /sys/kernel/mm/redhat_transparent_hugepage/enabled; then
+  echo always > /sys/kernel/mm/redhat_transparent_hugepage/enabled
+fi
+
+exit \$?
+
+_EOF_
+
+EDB_USER="tesora"
+if [ -z "$REPO_PW" ]; then
+    echo "Environment variable REPO_PW isn't set"
+    exit 1
+fi
+
+yum install -y "http://${EDB_USER}:${REPO_PW}@yum.enterprisedb.com/reporpms/ppas94-repo-9.4-1.noarch.rpm"
+
+sed -i "s/<username>:<password>/${EDB_USER}:${REPO_PW}/" /etc/yum.repos.d/ppas94.repo
+
+yum install -y ppas
+yum install -y python-devel
+
+export PATH=$PATH:/usr/ppas-9.4/bin
+
+# Create a volatile directory for runtime files.
+echo "d /var/run/postgresql/ 0755 enterprisedb enterprisedb" > /lib/tmpfiles.d/postgresql.conf
+
+pip install psycopg2
+
+ln -s /etc/init.d/ppas-9.4 /etc/init.d/postgresql
+# Work around flakiness in pgsql ga that prevents us from discovering where
+# these 'extra' binaries are found in ppas
+ln -s /usr/ppas-9.4/bin/pg_basebackup /usr/bin/pg_basebackup
+ln -s /usr/ppas-9.4/bin/pg_rewind /usr/bin/pg_rewind
+
+/etc/init.d/ppas-9.4 initdb
+
+systemctl enable ppas-9.4
+systemctl start ppas-9.4

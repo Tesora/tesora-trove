@@ -1,0 +1,17 @@
+#!/bin/sh
+
+# CONTEXT: GUEST during PRE-CONSTRUCTION as ROOT
+# PURPOSE: Setup apt-repo list so that we can connect to Percona's repo
+
+set -e
+set -o xtrace
+
+cat <<EOL > /etc/yum.repos.d/mariadb.repo
+[mariadb]
+name = MariaDB
+baseurl = http://yum.mariadb.org/10.1/rhel7-amd64
+gpgkey=http://yum.mariadb.org/RPM-GPG-KEY-MariaDB
+gpgcheck=1
+EOL
+
+yum clean metadata

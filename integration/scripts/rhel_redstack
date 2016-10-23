@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+set -e
+
+[ -n "$DIB_LOCAL_IMAGE" ] || { echo "DIB_LOCAL_IMAGE not set"; exit 1; }
+
+export DISTRO=rhel
+export GUEST_USERNAME=${GUEST_USERNAME:-fedora}
+
+# This is used as the 'package' during kick-start to
+# prevent the guest failing on startup since it can't
+# find the packages kick-start puts in by default
+export PACKAGES=curl
+
+# Setup the following for the RHEL subscription manager
+export REG_REPOS='rhel-7-server-optional-rpms,rhel-7-server-extras-rpms'
+export REG_AUTO_ATTACH=true
+export REG_USER='tesora-build'
+export REG_PASSWORD=t3s0ragu35t
+export REG_METHOD=portal
+
+./trovestack "$@"

@@ -1,0 +1,18 @@
+#!/bin/sh
+
+set -e
+set -o xtrace
+
+DATASTAX_USER="andrew_tesora.com"
+DATASTAX_PWD="cSIwj8bK6d33ih4"
+
+cat <<EOL > /etc/yum.repos.d/datastax.repo
+[datastax] 
+name = DataStax Repo for DataStax Enterprise
+baseurl=https://${DATASTAX_USER}:${DATASTAX_PWD}@rpm.datastax.com/enterprise
+enabled=1
+gpgcheck=0
+EOL
+
+yum clean metadata
+yum makecache

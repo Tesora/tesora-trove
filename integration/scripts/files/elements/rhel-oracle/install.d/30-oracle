@@ -1,0 +1,213 @@
+#!/bin/sh
+
+# CONTEXT: GUEST during CONSTRUCTION as ROOT
+# PURPOSE: Install Oracle software
+# REFERENCES: Section numbers used in this script are based on this document:
+# Deploying Oracle Database 11g R2 on Red Hat Enterprise Linux 6
+# https://www.redhat.com/en/resources/deploying-oracle-database-11g-r2-red-hat-enterprise-linux-6
+
+set -o xtrace
+
+# 3.3.2 - Install required packages
+yum -y groupinstall "Base"
+yum -y groupinstall "Core"
+yum -y install cloog-ppl compat-libcap1 compat-libstdc++-33 cpp gcc gcc-c++ glibc-devel glibc-headers kernel-headers ksh libXmu libXt libXv libXxf86dga libXxf86misc libXxf86vm libaio-devel libdmx libstdc++-devel mpfr make ppl xorg-x11-utils xorg-x11-xauth
+
+# Security rules are managed at the OpenStack level, remove the firewalld service that was
+# installed from the "Core" group
+yum -y remove firewalld
+
+# 3.3.3 - Configuring Security-Enhanced Linux (SELinux)
+# Skip
+
+# 3.3.4 - Configure Firewall Settings
+# Note: Guest images don't need this, rules are managed at the OpenStack level.
+
+# 3.3.5 - 3.3.11
+cat <<EOT >> /etc/sysctl.conf
+# Settings required by Oracle
+
+# Setting Virtual Memory
+vm.swappiness = 0
+vm.dirty_background_ratio = 3
+vm.dirty_ratio = 80
+vm.dirty_expire_centisecs = 500
+vm.dirty_writeback_centisecs = 100
+
+# Setting Shared Memory
+kernel.shmmni = 4096
+
+# Setting Semaphores
+kernel.sem = 250 32000 100 128
+
+# Ephemeral Network Ports
+net.ipv4.ip_local_port_range = 9000 65500
+
+# Optimizing Network Settings
+net.core.rmem_default = 262144
+net.core.rmem_max = 4194304
+net.core.wmem_default = 262144
+net.core.wmem_max = 1048576
+
+# Increasing synchronous I/O Requests
+fs.aio-max-nr = 1048576
+
+# Increasing File Handles
+fs.file-max = 6815744
+EOT
+
+sysctl -p
+
+# 3.3.12 - User Accounts & Groups
+groupadd --gid 54321 oinstall
+groupadd --gid 54322 dba
+groupadd --gid 54323 asmdba
+groupadd --gid 54324 asmoper
+groupadd --gid 54325 asmadmin
+groupadd --gid 54326 oper
+useradd --uid 54321 --gid oinstall --groups dba,oper,asmdba,asmoper oracle
+sudo echo oracle:hab7juKaya | /usr/sbin/chpasswd
+useradd --uid 54322 --gid oinstall --groups dba,asmadmin,asmdba,asmoper grid
+sudo echo grid:BewUF8ketr | /usr/sbin/chpasswd
+
+# 3.3.13 - Setting Shell Limits for the Grid and Oracle User
+cat <<EOT >> /etc/security/limits.d/99-grid-oracle-limits.conf
+oracle soft nproc 2047
+oracle hard nproc 16384
+oracle soft nofile 1024
+oracle hard nofile 65536
+oracle soft stack 10240
+oracle hard stack 32768
+grid soft nproc 2047
+grid hard nproc 16384
+grid soft nofile 1024
+grid hard nofile 65536
+grid soft stack 10240
+grid hard stack 32768
+EOT
+
+cat <<EOT >> /etc/profile.d/oracle-grid.sh
+#Setting the appropriate ulimits for oracle and grid user
+if [ $USER = "oracle" ]; then
+	if [ $SHELL = "/bin/ksh" ]; then
+		ulimit -u 16384
+		ulimit -n 65536
+	else
+		ulimit -u 16384 -n 65536
+	fi
+fi
+if [ $USER = "grid" ]; then
+	if [ $SHELL = "/bin/ksh" ]; then
+		ulimit -u 16384
+		ulimit -n 65536
+	else
+		ulimit -u 16384 -n 65536
+	fi
+fi
+EOT
+
+# Needed later for changing the installation files
+yum -y install java-1.7.0-openjdk-devel
+
+# Unpack Oracle installation files
+ORACLE_BASE=/u01/app/oracle
+ORACLE_INST=$ORACLE_BASE/oracle-software
+ORACLE_HOME=$ORACLE_BASE/product/dbaas
+
+mkdir -p $ORACLE_INST
+chown -R oracle.oinstall /u01
+
+cp $(dirname $0)/files/oracle-setup.rsp /home/oracle
+chown oracle.oinstall /home/oracle/oracle-setup.rsp
+
+cp /tmp/in_target.d/p13390677_112040_Linux-x86-64_1of7.zip $ORACLE_INST
+chown oracle.oinstall $ORACLE_INST/p13390677_112040_Linux-x86-64_1of7.zip
+runuser -l oracle -c "unzip $ORACLE_INST/p13390677_112040_Linux-x86-64_1of7.zip -d $ORACLE_INST"
+rm $ORACLE_INST/p13390677_112040_Linux-x86-64_1of7.zip
+
+cp /tmp/in_target.d/p13390677_112040_Linux-x86-64_2of7.zip $ORACLE_INST
+chown oracle.oinstall $ORACLE_INST/p13390677_112040_Linux-x86-64_2of7.zip
+runuser -l oracle -c "unzip $ORACLE_INST/p13390677_112040_Linux-x86-64_2of7.zip -d $ORACLE_INST"
+rm $ORACLE_INST/p13390677_112040_Linux-x86-64_2of7.zip
+
+# Change distro to at least RHEL 6
+runuser -l oracle -c "sed -i -e 's/^CV_ASSUME_DISTID=.*/CV_ASSUME_DISTID=OEL6/g'  $ORACLE_INST/database/stage/cvu/cv/admin/cvu_config"
+
+# Change files to avoid unexpected installation errors on RHEL 7
+# See http://www.torkwrench.com/2014/10/16/automating-oracle-11-2-installation-on-rhel-7/
+# for details
+runuser -l oracle -c "cd $ORACLE_INST/database/stage/Components && \
+unzip ./oracle.sysman.agent/10.2.0.4.5/1/DataFiles/filegroup38.jar sysman/lib/ins_emagent.mk && \
+sed -i -e 's/\$(MK_EMAGENT_NMECTL)/\$(MK_EMAGENT_NMECTL) -lnnz11/g' sysman/lib/ins_emagent.mk && \
+jar -uvf  ./oracle.sysman.agent/10.2.0.4.5/1/DataFiles/filegroup38.jar sysman/lib/ins_emagent.mk"
+
+# JDK is no longer needed beyond this point, remove it
+yum -y remove java-1.7.0-openjdk-devel
+
+# Ignore prerequisite check errors during installation
+runuser -l oracle -c "sed -i -e 's/<RUNLEVEL>/<RUNLEVEL SEVERITY=\x22IGNORABLE\x22>/g' $ORACLE_INST/database/stage/cvu/cvu_prereq.xml"
+
+# Create the inventory directory before runInstaller, otherwise installation will fail in progress
+mkdir -p /u01/app/oraInventory
+chown oracle.oinstall /u01/app/oraInventory
+
+# runInstaller returns with exit code 6, which means success with warning.
+# The warnings are caused by missing pre-requisites which doesn't apply to our use case.
+set +e
+runuser -l oracle -c "$ORACLE_INST/database/runInstaller -silent -waitforcompletion -responseFile /home/oracle/oracle-setup.rsp; echo DEBUG Exit Code $?"
+set -e
+
+# Run root scripts required by Oracle after installation
+/u01/app/oraInventory/orainstRoot.sh
+/u01/app/oracle/product/dbaas/root.sh
+
+# Install the Oracle listener
+runuser -l oracle -c "cp $ORACLE_INST/database/response/netca.rsp /home/oracle"
+runuser -l oracle -c "$ORACLE_HOME/bin/netca -silent -responseFile /home/oracle/netca.rsp"
+
+# Copy the custom template files into the default template directory
+cp /tmp/in_target.d/General_Purpose_ArchiveLog.dfb $ORACLE_HOME/assistants/dbca/templates
+cp /tmp/in_target.d/General_Purpose_ArchiveLog.dbc $ORACLE_HOME/assistants/dbca/templates
+chown oracle.oinstall $ORACLE_HOME/assistants/dbca/templates/General_Purpose_ArchiveLog.*
+
+# Remove the listener.ora file generated by netca because in some cases it would cause
+# the listener to bind to the wrong network interface on start
+rm $ORACLE_HOME/network/admin/listener.ora
+
+# Cleaning up the Oracle installation files
+rm -rf $ORACLE_INST
+
+# Configure scripts to start the lisener and DB's on boot
+cat <<EOT >> /etc/profile.d/oracle-path.sh
+export ORACLE_HOME=$ORACLE_HOME
+export PATH=\$PATH:\$ORACLE_HOME/bin
+export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:\$ORACLE_HOME/lib
+EOT
+
+cat <<EOT >> /usr/lib/systemd/system/dbora.service
+[Unit]
+Description=The Oracle Database Service
+After=syslog.target network.target cloud-final.service
+
+[Service]
+Environment="ORACLE_HOME=$ORACLE_HOME"
+Type=forking
+User=oracle
+Group=oinstall
+ExecStart=$ORACLE_HOME/bin/dbstart \$ORACLE_HOME
+ExecStop=$ORACLE_HOME/bin/dbshut \$ORACLE_HOME
+
+[Install]
+WantedBy=multi-user.target
+EOT
+
+ln -s /usr/lib/systemd/system/dbora.service /etc/systemd/system/dbora.service
+
+systemctl enable dbora.service
+
+# Install the cx_Oracle libary
+export ORACLE_HOME=$ORACLE_HOME
+export LD_LIBRARY_PATH=$ORACLE_HOME/lib/:$LD_LIBRARY_PATH
+echo "$ORACLE_HOME/lib/" > /etc/ld.so.conf.d/oracle.conf
+ldconfig
+pip install cx_Oracle

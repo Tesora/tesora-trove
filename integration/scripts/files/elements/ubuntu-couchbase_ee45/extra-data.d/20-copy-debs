@@ -1,0 +1,8 @@
+#!/bin/bash
+
+set -e
+set -o xtrace
+
+[ -n "$TMP_HOOKS_PATH." ] || die "Temp hook path not set"
+
+scp -o StrictHostKeyChecking=no gw2.elasticdb.org:/mnt/opt/build/couchbase-enterprise-4.5/couchbase-server-enterprise_4.5.1-ubuntu14.04_amd64.deb  $TMP_HOOKS_PATH/.

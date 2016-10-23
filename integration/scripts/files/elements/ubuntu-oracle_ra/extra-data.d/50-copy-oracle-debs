@@ -1,0 +1,15 @@
+#!/bin/bash
+
+set -e
+set -o xtrace
+
+source $_LIB/die
+
+[ -n "$TMP_HOOKS_PATH." ] || die "Temp hook path not set"
+[ -n "${DATASTORE_PKG_LOCATION}" ] || die "DATASTORE_PKG_LOCATION not set"
+
+if [ -e "${DATASTORE_PKG_LOCATION}" ]; then
+    cp "${DATASTORE_PKG_LOCATION}"/* ${TMP_HOOKS_PATH}/.
+else
+    die "Unable to find Oracle setup directory ${DATASTORE_PKG_LOCATION}"
+fi

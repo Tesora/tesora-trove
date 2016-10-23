@@ -1,0 +1,15 @@
+[[local|localrc]]
+
+disable_service heat h-api h-api-cfn h-api-cw h-eng
+
+PRECACHE_IMAGES=False
+
+if [ x"$SMOKE_TEST" != x"" ]; then
+    disable_service horizon
+    disable_service tempest
+fi
+
+[[post-config|\$TROVE_TASKMANAGER_CONF]]
+[DEFAULT]
+use_nova_server_config_drive = True
+

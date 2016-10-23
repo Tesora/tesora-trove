@@ -1,0 +1,17 @@
+UNIQUE_OCTETS=$(hostname -I | grep -o 10.240.[0-9]*.[0-9]* | cut -d. -f3-4)
+export SUBNET=10.${UNIQUE_OCTETS}
+export BRIDGE_IP=${SUBNET}.1
+export NETWORK_GATEWAY=${BRIDGE_IP}
+export FIXED_RANGE=${SUBNET}.0/24
+export SERVICE_HOST=10.240.${UNIQUE_OCTETS}
+echo "Using gateway: $NETWORK_GATEWAY"
+RESULT=$(sudo iptables -t nat -A POSTROUTING -s $FIXED_RANGE -o br100 -j MASQUERADE)
+
+LIBS_FROM_GIT_ALL_CLIENTS=false
+LIBS_FROM_GIT_ALL_OSLO=false
+
+export TROVE_GIT_BASE=https://github.com
+export TROVE_REPO=${TROVE_GIT_BASE}/Tesora/tesora-trove.git
+export TROVECLIENT_REPO=${TROVE_GIT_BASE}/Tesora/tesora-python-troveclient.git
+export REQUIREMENTS_REPO=${TROVE_GIT_BASE}/Tesora/tesora-requirements.git
+export TROVEDASHBOARD_REPO=${TROVE_GIT_BASE}/Tesora/tesora-trove-dashboard.git

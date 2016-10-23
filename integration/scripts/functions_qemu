@@ -18,6 +18,8 @@ function build_vm() {
     readonly SSH_DIR=${KEY_DIR:-${HOMEDIR}/.ssh}
     manage_ssh_keys
 
+    DISTRO_ELEMENT=$DISTRO
+
     if [ $DISTRO == 'ubuntu' ]; then
         export RELEASE=trusty
         export DIB_RELEASE=$RELEASE
@@ -30,6 +32,10 @@ function build_vm() {
     fi
     if [ $DISTRO == 'fedora' ]; then
         EXTRA_ELEMENTS=selinux-permissive
+    fi
+    if [ $DISTRO == 'rhel' ]; then
+        EXTRA_ELEMENTS=selinux-permissive
+        DISTRO_ELEMENT=rhel7
     fi
 
     export HOST_USERNAME
@@ -53,7 +59,7 @@ function build_vm() {
     export DIB_CLOUD_INIT_ETC_HOSTS=true
     local QEMU_IMG_OPTIONS=$(! $(qemu-img | grep -q 'version 1') && echo "--qemu-img-options compat=0.10")
     ${PATH_DISKIMAGEBUILDER}/bin/disk-image-create -a amd64 -o "${VM}" \
-        -x ${QEMU_IMG_OPTIONS} ${DISTRO} ${EXTRA_ELEMENTS} vm heat-cfntools \
+        -x ${QEMU_IMG_OPTIONS} ${DISTRO_ELEMENT} ${EXTRA_ELEMENTS} vm heat-cfntools \
         cloud-init-datasources ${DISTRO}-guest ${DISTRO}-${SERVICE_TYPE}
 }
 
@@ -65,7 +71,8 @@ function build_guest_image() {
         exit 1
     fi
     SERVICE_TYPE=$1
-    VALID_SERVICES='mysql percona mariadb redis cassandra couchbase mongodb postgresql couchdb vertica db2 pxc'
+    VALID_SERVICES='mysql percona mariadb redis cassandra cassandra_22 cassandra_3 couchbase couchbase_4 mongodb postgresql couchdb vertica db2 pxc mysql_ee'
+    VALID_SERVICES="$VALID_SERVICES oracle oracle_ra dse couchbase_ee couchbase_ee45 edb"
     if ! [[ " $VALID_SERVICES " =~ " $SERVICE_TYPE " ]]; then
         exclaim "You did not pass in a valid image type. Valid types are:" $VALID_SERVICES
         exit 1
