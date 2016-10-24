@@ -23,6 +23,7 @@ from sqlalchemy import text
 
 from trove.common import cfg
 from trove.common import exception
+from trove.common.i18n import _
 from trove.datastore.models import DBDatastoreVersion
 from trove.db import get_db_api
 from trove.instance.models import DBInstance
@@ -238,27 +239,11 @@ def _run_query(start_date, end_date):
     return union_query.all()
 
 
-def usage_report(start_date, end_date, output_file):
+def _get_current_date():
+    return datetime.datetime.now()
 
-    start_date_dt = datetime.datetime.strptime(start_date, '%Y-%m-%d')
-    start_date_d = start_date_dt.date()
-    end_date_dt = datetime.datetime.strptime(end_date, '%Y-%m-%d') +\
-        datetime.timedelta(hours=23, minutes=59, seconds=59)
-    end_date_d = end_date_dt.date()
 
-    if end_date_dt <= start_date_dt:
-        raise Exception("ERROR: Start date (%s) must be before end date (%s)."
-                        % (start_date_d, end_date_d))
-
-    db_api.configure_db(CONF)
-
-    LOG.debug("Calling run_query for range %s to %s" %
-              (start_date_dt, end_date_dt))
-    result = _run_query(start_date_dt, end_date_dt)
-
-    LOG.debug("Calling process_data with %s rows" % len(result))
-    (daily, overall) = process_data(result, start_date_d, end_date_d)
-
+def _generate_csv_file(output_file, daily, overall):
     LOG.debug("Generating CSV file (%s)" % output_file)
     with open(output_file, 'w') as outfile:
         csv_fields = ['start_date', 'end_date']
@@ -285,3 +270,35 @@ def usage_report(start_date, end_date, output_file):
                overall.get_date_range()[1].strftime('%Y-%m-%d'),
                overall.get_hwm()))
         print("Detailed output written to %s" % outfile.name)
+
+
+def usage_report(start_date, end_date, output_file):
+
+    start_date_dt = datetime.datetime.strptime(start_date, '%Y-%m-%d')
+    start_date_d = start_date_dt.date()
+    end_date_dt = datetime.datetime.strptime(end_date, '%Y-%m-%d') +\
+        datetime.timedelta(hours=23, minutes=59, seconds=59)
+    end_date_d = end_date_dt.date()
+
+    if end_date_d > _get_current_date().date():
+        raise exception.BadValue(_(
+            "End date ({enddt}) must be today's date or before "
+            "({today}).").format(enddt=end_date_d,
+                                 today=_get_current_date().date()))
+
+    if end_date_dt <= start_date_dt:
+        raise exception.BadValue(_(
+            "Start date ({startdt}) must be before "
+            "end date ({enddt}).").format(startdt=start_date_d,
+                                          enddt=end_date_d))
+
+    db_api.configure_db(CONF)
+
+    LOG.debug("Calling run_query for range %s to %s" %
+              (start_date_dt, end_date_dt))
+    result = _run_query(start_date_dt, end_date_dt)
+
+    LOG.debug("Calling process_data with %s rows" % len(result))
+    (daily, overall) = process_data(result, start_date_d, end_date_d)
+
+    _generate_csv_file(output_file, daily, overall)
