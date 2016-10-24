@@ -124,6 +124,29 @@ class Manager(manager.OracleManager):
             if root_password:
                 self.admin.enable_root(root_password)
 
+    def pre_upgrade(self, context):
+        LOG.debug('Preparing Oracle for upgrade.')
+        app = self.app
+        app.status.begin_restart()
+        app.stop_db()
+        mount_point = app.paths.data_dir
+        upgrade_info = app.save_files_pre_upgrade(mount_point)
+        upgrade_info['mount_point'] = mount_point
+        return upgrade_info
+
+    def post_upgrade(self, context, upgrade_info):
+        LOG.debug('Finalizing Oracle upgrade.')
+        app = self.app
+        app.stop_db()
+        if 'device' in upgrade_info:
+            self.mount_volume(context,
+                              mount_point=upgrade_info['mount_point'],
+                              device_path=upgrade_info['device'],
+                              write_to_fstab=True)
+        app.restore_files_post_upgrade(upgrade_info)
+        # don't use the cached app now
+        self.app.start_db()
+
     def create_database(self, context, databases):
         raise exception.DatastoreOperationNotSupported(
             operation='create_database', datastore=self.manager)

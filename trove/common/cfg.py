@@ -939,7 +939,7 @@ oracle_opts = [
                default='/u01/app/oracle/product/dbaas',
                help='Default $ORACLE_HOME directory'),
     cfg.StrOpt('fast_recovery_area',
-               default='/u01/app/oracle/fast_recovery_area',
+               default='/u01/app/oracle/oradata/fast_recovery_area',
                help='Default fast recovery area directory'),
     cfg.StrOpt('conf_file',
                default='/etc/oracle/oracle.cnf',
