@@ -42,6 +42,19 @@ TEST_HELPER_MODULE_NAME = 'test_helper'
 TEST_HELPER_BASE_NAME = 'TestHelper'
 
 
+class SkipKnownBug(proboscis.SkipTest):
+    """Skip test failures due to known bug(s).
+    These should get fixed sometime in the future.
+    """
+
+    def __init__(self, *bugs):
+        """
+        :param bugs:    One or more bug references (e.g. link, bug #).
+        """
+        bug_ref = '; '.join(map(str, bugs))
+        super(SkipKnownBug, self).__init__("Known bug: %s" % bug_ref)
+
+
 class RunnerFactory(object):
 
     _test_runner = None
@@ -162,19 +175,6 @@ class InstanceTestInfo(object):
         self.databases = None  # The databases created on the instance.
         self.helper_user = None  # Test helper user if exists.
         self.helper_database = None  # Test helper database if exists.
-
-
-class SkipKnownBug(proboscis.SkipTest):
-    """Skip test failures due to known bug(s).
-    These should get fixed sometime in the future.
-    """
-
-    def __init__(self, *bugs):
-        """
-        :param bugs:    One or more bug references (e.g. link, bug #).
-        """
-        bug_ref = '; '.join(map(str, bugs))
-        super(SkipKnownBug, self).__init__("Known bug: %s" % bug_ref)
 
 
 class TestRunner(object):
