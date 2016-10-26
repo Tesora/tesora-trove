@@ -91,8 +91,11 @@ class CouchbaseCluster(models.Cluster):
 
     @classmethod
     def create(cls, context, name, datastore, datastore_version,
-               instances, extended_properties, locality):
+               instances, extended_properties, locality, configuration):
         LOG.debug("Processing a request for creating a new cluster.")
+
+        if configuration:
+            raise exception.ConfigurationNotSupported()
 
         cls.validate_instance_types(instances, datastore_version.manager,
                                     for_grow=False)

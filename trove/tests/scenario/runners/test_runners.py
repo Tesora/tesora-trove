@@ -14,6 +14,7 @@
 #    under the License.
 
 import datetime
+import json
 import os
 import proboscis
 import time as timer
@@ -788,6 +789,25 @@ class TestRunner(object):
     def get_db_names(self, instance_id):
         full_list = self.auth_client.databases.list(instance_id)
         return {database.name: database for database in full_list}
+
+    def create_initial_configuration(self, expected_http_code):
+        dynamic_config = self.test_helper.get_dynamic_group()
+        non_dynamic_config = self.test_helper.get_non_dynamic_group()
+        values = dynamic_config or non_dynamic_config
+        if values:
+            json_def = json.dumps(values)
+            result = self.auth_client.configurations.create(
+                'initial_configuration_for_create_tests',
+                json_def,
+                "Configuration group used by create tests.",
+                datastore=self.instance_info.dbaas_datastore,
+                datastore_version=self.instance_info.dbaas_datastore_version)
+            self.assert_client_code(expected_http_code,
+                                    client=self.auth_client)
+
+            return (result.id, dynamic_config is None)
+
+        return (None, False)
 
 
 class CheckInstance(AttrCheck):

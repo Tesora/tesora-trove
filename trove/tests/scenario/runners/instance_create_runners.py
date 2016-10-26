@@ -13,8 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import json
-
 from proboscis import SkipTest
 
 from trove.tests.config import CONFIG
@@ -64,21 +62,9 @@ class InstanceCreateRunner(TestRunner):
         self.instance_info.helper_database = instance_info.helper_database
 
     def run_initial_configuration_create(self, expected_http_code=200):
-        dynamic_config = self.test_helper.get_dynamic_group()
-        non_dynamic_config = self.test_helper.get_non_dynamic_group()
-        values = dynamic_config or non_dynamic_config
-        if values:
-            json_def = json.dumps(values)
-            result = self.auth_client.configurations.create(
-                'initial_configuration_for_instance_create',
-                json_def,
-                "Configuration group used by instance create tests.",
-                datastore=self.instance_info.dbaas_datastore,
-                datastore_version=self.instance_info.dbaas_datastore_version)
-            self.assert_client_code(expected_http_code,
-                                    client=self.auth_client)
-
-            self.config_group_id = result.id
+        group_id, _ = self.create_initial_configuration(expected_http_code)
+        if group_id:
+            self.config_group_id = group_id
         else:
             raise SkipTest("No groups defined.")
 
