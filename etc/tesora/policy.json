@@ -1,5 +1,6 @@
 {
     "admin_or_owner":  "role:admin or is_admin:True or tenant:%(tenant)s",
+    "default": "rule:admin_or_owner",
 
     "instance:create": "rule:admin_or_owner",
     "instance:delete": "rule:admin_or_owner",
