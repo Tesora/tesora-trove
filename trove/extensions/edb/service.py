@@ -49,17 +49,7 @@
 # the logo is not reasonably feasible for technical reasons.
 
 from trove.extensions.postgresql.service import PostgreSQLRootController
-from trove.extensions.mysql import models
-from trove.guestagent.db import models as guest_models
 
 
 class EnterpriseDBRootController(PostgreSQLRootController):
-
-    def _find_root_user(self, context, instance_id):
-        user = guest_models.EnterpriseDBRootUser()
-        # TODO(pmalik): This should be ultimately using Postgres model
-        # extensions. MySQL extensions will work for now, but may lead to
-        # future bugs as it makes use of the 'host' field which
-        # does not exist/has different meaning in Postgres.
-        return models.User.load(
-            context, instance_id, user.name, user.host, root_user=True)
+    pass

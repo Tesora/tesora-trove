@@ -17,7 +17,6 @@ from oslo_log import log as logging
 
 from trove.common import extensions
 from trove.extensions.common import service as common_service
-from trove.extensions.mysql import service as mysql_service
 
 LOG = logging.getLogger(__name__)
 
@@ -44,7 +43,7 @@ class Mysql(extensions.ExtensionDescriptor):
 
         resource = extensions.ResourceExtension(
             'databases',
-            mysql_service.SchemaController(),
+            common_service.RoutingDatabaseController(),
             parent={'member_name': 'instance',
                     'collection_name': '{tenant_id}/instances'})
         resources.append(resource)
@@ -61,7 +60,7 @@ class Mysql(extensions.ExtensionDescriptor):
         collection_url = '{tenant_id}/instances/:instance_id/users'
         resource = extensions.ResourceExtension(
             'databases',
-            mysql_service.UserAccessController(),
+            common_service.RoutingUserAccessController(),
             parent={'member_name': 'user',
                     'collection_name': collection_url},
             collection_actions={'update': 'PUT'})

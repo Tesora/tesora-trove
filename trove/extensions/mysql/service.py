@@ -13,31 +13,18 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from urllib import unquote
 
 from oslo_log import log as logging
 from oslo_utils import importutils
-from oslo_utils import strutils
-import webob.exc
 
-import trove.common.apischema as apischema
 from trove.common import cfg
-from trove.common import exception
-from trove.common.i18n import _
-from trove.common import notification
-from trove.common.notification import StartNotification
-from trove.common import pagination
-from trove.common.utils import correct_id_with_req
-from trove.common import wsgi
+from trove.extensions.common.service import DatastoreDatabaseController
+from trove.extensions.common.service import DatastoreUserAccessController
+from trove.extensions.common.service import DatastoreUserController
 from trove.extensions.common.service import DefaultRootController
-from trove.extensions.common.service import ExtensionController
-from trove.extensions.common.service import UserController
-from trove.extensions.mysql.common import get_user_identity
-from trove.extensions.mysql.common import parse_users
-from trove.extensions.mysql.common import populate_users
-from trove.extensions.mysql.common import populate_validated_databases
-from trove.extensions.mysql.common import unquote_user_host
-from trove.extensions.mysql import models
-from trove.extensions.mysql import views
+
+from trove.extensions.mysql import views as mysql_views
 from trove.guestagent.db import models as guest_models
 
 
@@ -46,320 +33,115 @@ import_class = importutils.import_class
 CONF = cfg.CONF
 
 
-class MySQLUserController(UserController):
+class MySQLUserController(DatastoreUserController):
 
-    def parse_users_from_request(self, users):
-        return parse_users(users)
+    def is_reserved_id(self, user_id):
+        user_id = self._to_canonical(user_id)
+        return user_id in cfg.get_ignored_users(manager='mysql')
+
+    def _to_canonical(self, user_id):
+        username, hostname = self.parse_user_id(user_id)
+        hostname = hostname or '%'
+        return '%s@%s' % (username, hostname)
+
+    def build_model_view(self, user_model):
+        return mysql_views.UserView(user_model)
+
+    def build_model_collection_view(self, user_models):
+        return mysql_views.UsersView(user_models)
+
+    def parse_user_from_response(self, user_data):
+        user_model = guest_models.MySQLUser()
+        user_model.deserialize(user_data)
+        return user_model
+
+    def parse_user_from_request(self, user_data):
+        name = user_data['name']
+        host = user_data.get('host', '%')
+        password = user_data['password']
+        databases = user_data.get('databases', [])
+        user_model = guest_models.MySQLUser()
+        user_model.name = name
+        user_model.host = host
+        user_model.password = password
+        for db in databases:
+            user_model.databases = db['name']
+        return user_model
 
     def get_user_id(self, user_model):
-        return get_user_identity(user_model)
+        return '%s@%s' % (user_model.name, user_model.host)
 
-    def index(self, req, tenant_id, instance_id):
-        """Return all users."""
-        LOG.info(_("Listing users for instance '%(id)s'\n"
-                   "req : '%(req)s'\n\n") %
-                 {"id": instance_id, "req": req})
-        context = req.environ[wsgi.CONTEXT_KEY]
-        self.authorize_instance_action(context, 'user:index', instance_id)
-        users, next_marker = models.Users.load(context, instance_id)
-        view = views.UsersView(users)
-        paged = pagination.SimplePaginatedDataView(req.url, 'users', view,
-                                                   next_marker)
-        return wsgi.Result(paged.data(), 200)
+    def parse_user_id(self, user_id):
+        unquoted = unquote(user_id)
+        if '@' not in unquoted:
+            return unquoted, '%'
+        if unquoted.endswith('@'):
+            return unquoted, '%'
+        splitup = unquoted.split('@')
+        host = splitup[-1]
+        user = '@'.join(splitup[:-1])
+        return user, host
 
-    def create(self, req, body, tenant_id, instance_id):
-        """Creates a set of users."""
-        LOG.info(_("Creating users for instance '%(id)s'\n"
-                   "req : '%(req)s'\n\n"
-                   "body: '%(body)s'\n'n") %
-                 {"id": instance_id,
-                  "req": strutils.mask_password(req),
-                  "body": strutils.mask_password(body)})
-        context = req.environ[wsgi.CONTEXT_KEY]
-        self.authorize_instance_action(context, 'user:create', instance_id)
-        context.notification = notification.DBaaSUserCreate(context,
-                                                            request=req)
-        users = body['users']
-        with StartNotification(context, instance_id=instance_id,
-                               username=",".join([user['name']
-                                                  for user in users])):
-            try:
-                model_users = populate_users(users)
-                models.User.create(context, instance_id, model_users)
-            except (ValueError, AttributeError) as e:
-                raise exception.BadRequest(msg=str(e))
-        return wsgi.Result(None, 202)
+    def apply_user_updates(self, user_model, updates):
+        id_changed = False
+        updated_name = updates.get('name')
+        if updated_name is not None:
+            user_model.name = updated_name
+            id_changed = True
+        updated_host = updates.get('host')
+        if updated_host is not None:
+            user_model.host = updated_host
+            id_changed = True
+        updated_password = updates.get('password')
+        if updated_password is not None:
+            user_model.password = updated_password
 
-    def delete(self, req, tenant_id, instance_id, id):
-        LOG.info(_("Delete instance '%(id)s'\n"
-                   "req : '%(req)s'\n\n") %
-                 {"id": instance_id, "req": req})
-        context = req.environ[wsgi.CONTEXT_KEY]
-        self.authorize_instance_action(context, 'user:delete', instance_id)
-        id = correct_id_with_req(id, req)
-        username, host = unquote_user_host(id)
-        context.notification = notification.DBaaSUserDelete(context,
-                                                            request=req)
-        with StartNotification(context, instance_id=instance_id,
-                               username=username):
-            user = None
-            try:
-                user = guest_models.MySQLUser()
-                user.name = username
-                user.host = host
-                found_user = models.User.load(context, instance_id, username,
-                                              host)
-                if not found_user:
-                    user = None
-            except (ValueError, AttributeError) as e:
-                raise exception.BadRequest(msg=str(e))
-            if not user:
-                raise exception.UserNotFound(uuid=id)
-            models.User.delete(context, instance_id, user.serialize())
-        return wsgi.Result(None, 202)
+        return self.get_user_id(user_model) if id_changed else None
 
-    def show(self, req, tenant_id, instance_id, id):
-        """Return a single user."""
-        LOG.info(_("Showing a user for instance '%(id)s'\n"
-                   "req : '%(req)s'\n\n") %
-                 {"id": instance_id, "req": req})
-        context = req.environ[wsgi.CONTEXT_KEY]
-        self.authorize_instance_action(context, 'user:show', instance_id)
-        id = correct_id_with_req(id, req)
-        username, host = unquote_user_host(id)
-        user = None
-        try:
-            user = models.User.load(context, instance_id, username, host)
-        except (ValueError, AttributeError) as e:
-            raise exception.BadRequest(msg=str(e))
-        if not user:
-            raise exception.UserNotFound(uuid=id)
-        view = views.UserView(user)
-        return wsgi.Result(view.data(), 200)
-
-    def update(self, req, body, tenant_id, instance_id, id):
-        """Change attributes for one user."""
-        LOG.info(_("Updating user attributes for instance '%(id)s'\n"
-                   "req : '%(req)s'\n\n") %
-                 {"id": instance_id, "req": strutils.mask_password(req)})
-        context = req.environ[wsgi.CONTEXT_KEY]
-        self.authorize_instance_action(context, 'user:update', instance_id)
-        id = correct_id_with_req(id, req)
-        username, hostname = unquote_user_host(id)
-        user = None
-        user_attrs = body['user']
-        context.notification = notification.DBaaSUserUpdateAttributes(
-            context, request=req)
-        with StartNotification(context, instance_id=instance_id,
-                               username=username):
-            try:
-                user = models.User.load(context, instance_id, username,
-                                        hostname)
-            except (ValueError, AttributeError) as e:
-                raise exception.BadRequest(msg=str(e))
-            if not user:
-                raise exception.UserNotFound(uuid=id)
-            try:
-                models.User.update_attributes(context, instance_id, username,
-                                              hostname, user_attrs)
-            except (ValueError, AttributeError) as e:
-                raise exception.BadRequest(msg=str(e))
-        return wsgi.Result(None, 202)
-
-    def update_all(self, req, body, tenant_id, instance_id):
-        """Change the password of one or more users."""
-        LOG.info(_("Updating user password for instance '%(id)s'\n"
-                   "req : '%(req)s'\n\n") %
-                 {"id": instance_id, "req": strutils.mask_password(req)})
-        context = req.environ[wsgi.CONTEXT_KEY]
-        self.authorize_instance_action(context, 'user:update_all', instance_id)
-        context.notification = notification.DBaaSUserChangePassword(
-            context, request=req)
-        users = body['users']
-        with StartNotification(context, instance_id=instance_id,
-                               username=",".join([user['name']
-                                                  for user in users])):
-            model_users = []
-            for user in users:
-                try:
-                    mu = guest_models.MySQLUser()
-                    mu.name = user['name']
-                    mu.host = user.get('host')
-                    mu.password = user['password']
-                    found_user = models.User.load(context, instance_id,
-                                                  mu.name, mu.host)
-                    if not found_user:
-                        user_and_host = mu.name
-                        if mu.host:
-                            user_and_host += '@' + mu.host
-                        raise exception.UserNotFound(uuid=user_and_host)
-                    model_users.append(mu)
-                except (ValueError, AttributeError) as e:
-                    raise exception.BadRequest(msg=str(e))
-            models.User.change_password(context, instance_id, model_users)
-        return wsgi.Result(None, 202)
+    def change_passwords(self, client, user_models):
+        change_users = []
+        for user in user_models:
+            change_user = {'name': user.name,
+                           'host': user.host,
+                           'password': user.password,
+                           }
+            change_users.append(change_user)
+        return client.change_passwords(users=change_users)
 
 
-class UserAccessController(ExtensionController):
-    """Controller for adding and removing database access for a user."""
-    schemas = apischema.user
+class MySQLDatabaseController(DatastoreDatabaseController):
 
-    @classmethod
-    def get_schema(cls, action, body):
-        schema = {}
-        if 'update_all' == action:
-            schema = cls.schemas.get(action).get('databases')
-        return schema
+    def is_reserved_id(self, database_id):
+        return database_id in cfg.get_ignored_dbs(manager='mysql')
 
-    def _get_user(self, context, instance_id, user_id):
-        username, hostname = unquote_user_host(user_id)
-        try:
-            user = models.User.load(context, instance_id, username, hostname)
-        except (ValueError, AttributeError) as e:
-            raise exception.BadRequest(msg=str(e))
-        if not user:
-            raise exception.UserNotFound(uuid=user_id)
-        return user
+    def build_model_view(self, database_model):
+        return mysql_views.DatabaseView(database_model)
 
-    def index(self, req, tenant_id, instance_id, user_id):
-        """Show permissions for the given user."""
-        LOG.info(_("Showing user access for instance '%(id)s'\n"
-                   "req : '%(req)s'\n\n") %
-                 {"id": instance_id, "req": req})
+    def build_model_collection_view(self, database_models):
+        return mysql_views.DatabasesView(database_models)
 
-        context = req.environ[wsgi.CONTEXT_KEY]
-        self.authorize_instance_action(
-            context, 'user_access:index', instance_id)
-        # Make sure this user exists.
-        user_id = correct_id_with_req(user_id, req)
-        user = self._get_user(context, instance_id, user_id)
-        if not user:
-            LOG.error(_("No such user: %(user)s ") % {'user': user})
-            raise exception.UserNotFound(uuid=user)
-        username, hostname = unquote_user_host(user_id)
-        access = models.User.access(context, instance_id, username, hostname)
-        view = views.UserAccessView(access.databases)
-        return wsgi.Result(view.data(), 200)
+    def parse_database_from_response(self, database_data):
+        database_model = guest_models.MySQLDatabase()
+        database_model.deserialize(database_data)
+        return database_model
 
-    def update(self, req, body, tenant_id, instance_id, user_id):
-        """Grant access for a user to one or more databases."""
-        LOG.info(_("Granting user access for instance '%(id)s'\n"
-                   "req : '%(req)s'\n\n") %
-                 {"id": instance_id, "req": req})
-        context = req.environ[wsgi.CONTEXT_KEY]
-        self.authorize_instance_action(
-            context, 'user_access:update', instance_id)
-        context.notification = notification.DBaaSUserGrant(
-            context, request=req)
-        user_id = correct_id_with_req(user_id, req)
-        user = self._get_user(context, instance_id, user_id)
-        if not user:
-            LOG.error(_("No such user: %(user)s ") % {'user': user})
-            raise exception.UserNotFound(uuid=user)
-        username, hostname = unquote_user_host(user_id)
-        databases = [db['name'] for db in body['databases']]
-        with StartNotification(context, instance_id=instance_id,
-                               username=username, database=databases):
-            models.User.grant(context, instance_id, username, hostname,
-                              databases)
-        return wsgi.Result(None, 202)
-
-    def delete(self, req, tenant_id, instance_id, user_id, id):
-        """Revoke access for a user."""
-        LOG.info(_("Revoking user access for instance '%(id)s'\n"
-                   "req : '%(req)s'\n\n") %
-                 {"id": instance_id, "req": req})
-        context = req.environ[wsgi.CONTEXT_KEY]
-        self.authorize_instance_action(
-            context, 'user_access:delete', instance_id)
-        context.notification = notification.DBaaSUserRevoke(
-            context, request=req)
-        user_id = correct_id_with_req(user_id, req)
-        user = self._get_user(context, instance_id, user_id)
-        if not user:
-            LOG.error(_("No such user: %(user)s ") % {'user': user})
-            raise exception.UserNotFound(uuid=user)
-        username, hostname = unquote_user_host(user_id)
-        access = models.User.access(context, instance_id, username, hostname)
-        databases = [db.name for db in access.databases]
-        with StartNotification(context, instance_id=instance_id,
-                               username=username, database=databases):
-            if id not in databases:
-                raise exception.DatabaseNotFound(uuid=id)
-            models.User.revoke(context, instance_id, username, hostname, id)
-        return wsgi.Result(None, 202)
+    def parse_database_from_request(self, database_data):
+        name = database_data['name']
+        database_model = guest_models.ValidatedMySQLDatabase()
+        database_model.name = name
+        return database_model
 
 
-class SchemaController(ExtensionController):
-    """Controller for instance functionality."""
-    schemas = apischema.dbschema
+class MySQLUserAccessController(DatastoreUserAccessController):
 
-    def index(self, req, tenant_id, instance_id):
-        """Return all schemas."""
-        LOG.info(_("Listing schemas for instance '%(id)s'\n"
-                   "req : '%(req)s'\n\n") %
-                 {"id": instance_id, "req": req})
+    @property
+    def user_controller(self):
+        return MySQLUserController()
 
-        context = req.environ[wsgi.CONTEXT_KEY]
-        self.authorize_instance_action(
-            context, 'database:index', instance_id)
-        schemas, next_marker = models.Schemas.load(context, instance_id)
-        view = views.SchemasView(schemas)
-        paged = pagination.SimplePaginatedDataView(req.url, 'databases', view,
-                                                   next_marker)
-        return wsgi.Result(paged.data(), 200)
-
-    def create(self, req, body, tenant_id, instance_id):
-        """Creates a set of schemas."""
-        LOG.info(_("Creating schema for instance '%(id)s'\n"
-                   "req : '%(req)s'\n\n"
-                   "body: '%(body)s'\n'n") %
-                 {"id": instance_id,
-                  "req": req,
-                  "body": body})
-
-        context = req.environ[wsgi.CONTEXT_KEY]
-        self.authorize_instance_action(
-            context, 'database:create', instance_id)
-        schemas = body['databases']
-        context.notification = notification.DBaaSDatabaseCreate(context,
-                                                                request=req)
-        with StartNotification(context, instance_id=instance_id,
-                               dbname=".".join([db['name']
-                                                for db in schemas])):
-            model_schemas = populate_validated_databases(schemas)
-            models.Schema.create(context, instance_id, model_schemas)
-        return wsgi.Result(None, 202)
-
-    def delete(self, req, tenant_id, instance_id, id):
-        LOG.info(_("Deleting schema for instance '%(id)s'\n"
-                   "req : '%(req)s'\n\n") %
-                 {"id": instance_id, "req": req})
-        context = req.environ[wsgi.CONTEXT_KEY]
-        self.authorize_instance_action(
-            context, 'database:delete', instance_id)
-        context.notification = notification.DBaaSDatabaseDelete(
-            context, request=req)
-        with StartNotification(context, instance_id=instance_id, dbname=id):
-            try:
-                schema = guest_models.ValidatedMySQLDatabase()
-                schema.name = id
-                models.Schema.delete(context, instance_id, schema.serialize())
-            except (ValueError, AttributeError) as e:
-                raise exception.BadRequest(msg=str(e))
-        return wsgi.Result(None, 202)
-
-    def show(self, req, tenant_id, instance_id, id):
-        context = req.environ[wsgi.CONTEXT_KEY]
-        self.authorize_instance_action(
-            context, 'database:show', instance_id)
-        raise webob.exc.HTTPNotImplemented()
+    @property
+    def database_controller(self):
+        return MySQLDatabaseController()
 
 
 class MySQLRootController(DefaultRootController):
-
-    def _find_root_user(self, context, instance_id):
-        user = guest_models.MySQLRootUser()
-        return models.User.load(context, instance_id,
-                                user.name, user.host,
-                                root_user=True)
+    pass

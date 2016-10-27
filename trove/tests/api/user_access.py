@@ -331,7 +331,7 @@ class TestUserAccessPositive(UserAccessBase):
         # Grants to imaginary databases are acceptable, and are honored.
         self._reset_access()
         self._ensure_nothing_else_created()
-        self._grant_access_plural(self.users, self.ghostdbs)
+        self._grant_access_plural(self.users, self.ghostdbs, 404)
         self._ensure_nothing_else_created()
 
     @test(depends_on=[test_grant_full_access])
@@ -339,8 +339,7 @@ class TestUserAccessPositive(UserAccessBase):
         # Revokes to imaginary databases are acceptable, and are honored.
         self._reset_access()
         self._ensure_nothing_else_created()
-        self._grant_access_plural(self.users, self.ghostdbs)
-        self._revoke_access_plural(self.users, self.ghostdbs)
+        self._revoke_access_plural(self.users, self.ghostdbs, 404)
         self._ensure_nothing_else_created()
 
     @test(depends_on=[test_grant_full_access])

@@ -48,6 +48,7 @@ from trove.guestagent.db import models
 from trove.guestagent import pkg
 
 ADMIN_USER_NAME = "os_admin"
+ADMIN_HOST = "127.0.0.1"
 CONNECTION_STR_FORMAT = "mysql://%s:%s@127.0.0.1:3306"
 LOG = logging.getLogger(__name__)
 FLUSH = text(sql_query.FLUSH)
@@ -358,6 +359,9 @@ class BaseMySqlAdmin(object):
         user = models.MySQLUser()
         try:
             user.name = username  # Could possibly throw a BadRequest here.
+            if username == ADMIN_USER_NAME and hostname == ADMIN_HOST:
+                raise ValueError(
+                    "User %s@%s is reserved." % (ADMIN_USER_NAME, ADMIN_HOST))
         except ValueError as ve:
             LOG.exception(_("Error Getting user information"))
             raise exception.BadRequest(_("Username %(user)s is not valid"
@@ -450,7 +454,7 @@ class BaseMySqlAdmin(object):
             next_marker = None
             LOG.debug("database_names = %r." % database_names)
             for count, database in enumerate(database_names):
-                if count >= limit:
+                if limit is not None and count >= limit:
                     break
                 LOG.debug("database = %s." % str(database))
                 mysql_db = models.MySQLDatabase()
@@ -515,7 +519,7 @@ class BaseMySqlAdmin(object):
             next_marker = None
             LOG.debug("result = " + str(result))
             for count, row in enumerate(result):
-                if count >= limit:
+                if limit is not None and count >= limit:
                     break
                 LOG.debug("user = " + str(row))
                 mysql_user = models.MySQLUser()
@@ -726,7 +730,7 @@ class BaseMySqlApp(object):
     def _save_authentication_properties(self, admin_password):
         client_sect = {'client': {'user': ADMIN_USER_NAME,
                                   'password': admin_password,
-                                  'host': '127.0.0.1'}}
+                                  'host': ADMIN_HOST}}
         operating_system.write_file(self.get_client_auth_file(),
                                     client_sect, codec=self.CFG_CODEC)
 

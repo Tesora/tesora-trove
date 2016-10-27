@@ -64,7 +64,7 @@ from trove.common.strategies.storage import get_storage_strategy
 from trove.common import template
 from trove.common import utils
 from trove.common.utils import try_recover
-from trove.extensions.mysql import models as mysql_models
+from trove.extensions.common import models as api_ext_models
 from trove.extensions.security_group.models import (
     SecurityGroupInstanceAssociation)
 from trove.extensions.security_group.models import SecurityGroup
@@ -668,7 +668,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             self._log_and_raise(e_create, msg_create, err)
 
     def report_root_enabled(self):
-        mysql_models.RootHistory.create(self.context, self.id, 'root')
+        api_ext_models.RootHistory.create(self.context, self.id, 'root')
 
     def update_statuses_on_time_out(self):
 

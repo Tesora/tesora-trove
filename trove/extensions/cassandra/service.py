@@ -15,9 +15,10 @@
 
 from trove.common import cfg
 from trove.extensions.cassandra import views as cassandra_views
+from trove.extensions.common.service import DatastoreDatabaseController
+from trove.extensions.common.service import DatastoreUserAccessController
 from trove.extensions.common.service import DatastoreUserController
 from trove.extensions.common.service import DefaultRootController
-from trove.extensions.mysql import models
 from trove.guestagent.db import models as guest_models
 
 
@@ -45,11 +46,35 @@ class CassandraUserController(DatastoreUserController):
         return user_model
 
 
-class CassandraRootController(DefaultRootController):
+class CassandraDatabaseController(DatastoreDatabaseController):
 
-    def _find_root_user(self, context, instance_id):
-        user = guest_models.CassandraRootUser()
-        # TODO(pmalik): Using MySQL model until we have datastore specific
-        # extensions (bug/1498573).
-        return models.User.load(
-            context, instance_id, user.name, user.host, root_user=True)
+    def is_reserved_id(self, database_id):
+        return database_id in cfg.get_ignored_dbs(manager='cassandra')
+
+    def build_model_view(self, database_model):
+        return cassandra_views.DatabaseView(database_model)
+
+    def build_model_collection_view(self, database_models):
+        return cassandra_views.DatabasesView(database_models)
+
+    def parse_database_from_response(self, database_data):
+        return guest_models.CassandraSchema.deserialize_schema(database_data)
+
+    def parse_database_from_request(self, database_data):
+        name = database_data['name']
+        return guest_models.CassandraSchema(name)
+
+
+class CassandraUserAccessController(DatastoreUserAccessController):
+
+    @property
+    def user_controller(self):
+        return CassandraUserController()
+
+    @property
+    def database_controller(self):
+        return CassandraDatabaseController()
+
+
+class CassandraRootController(DefaultRootController):
+    pass

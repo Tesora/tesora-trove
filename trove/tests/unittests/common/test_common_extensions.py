@@ -24,6 +24,9 @@ from trove.extensions.common import models
 from trove.extensions.common.service import ClusterRootController
 from trove.extensions.common.service import DefaultRootController
 from trove.extensions.common.service import RootController
+from trove.extensions.common.service import RoutingDatabaseController
+from trove.extensions.common.service import RoutingUserAccessController
+from trove.extensions.common.service import RoutingUserController
 from trove.instance import models as instance_models
 from trove.instance.models import DBInstance
 from trove.tests.unittests import trove_testtools
@@ -104,7 +107,7 @@ class TestRootController(trove_testtools.TestCase):
         tenant_id = Mock()
         uuid = utils.generate_uuid()
         ds_manager = Mock()
-        is_cluster = Mock()
+        is_cluster = False
         service_get_datastore.return_value = (ds_manager, is_cluster)
         root_controller = Mock()
         ret = Mock()
@@ -128,7 +131,7 @@ class TestRootController(trove_testtools.TestCase):
         tenant_id = Mock()
         uuid = utils.generate_uuid()
         ds_manager = Mock()
-        is_cluster = Mock()
+        is_cluster = False
         service_get_datastore.return_value = (ds_manager, is_cluster)
         root_controller = Mock()
         ret = Mock()
@@ -155,7 +158,7 @@ class TestRootController(trove_testtools.TestCase):
         tenant_id = Mock()
         uuid = utils.generate_uuid()
         ds_manager = Mock()
-        is_cluster = Mock()
+        is_cluster = False
         service_get_datastore.return_value = (ds_manager, is_cluster)
         service_load_root_controller.return_value = None
 
@@ -314,3 +317,131 @@ class TestClusterRootController(trove_testtools.TestCase):
         mock_cluster_root_create.assert_called_with(
             self.context, instance_id, self.context.user, password,
             cluster_instances)
+
+
+class RoutingControllerTest(trove_testtools.TestCase):
+
+    def setUp(self, controller):
+        super(RoutingControllerTest, self).setUp()
+        self.controller = controller
+        self.datastore_controller = Mock()
+
+    def _assert_api_call(self, call_name, *args):
+        self._assert_api_call_route(call_name, False, *args)
+        self._assert_api_call_route(call_name, True, *args)
+
+    def _assert_api_call_route(self, call_name, is_cluster, *args):
+        ctrl_call = getattr(self.controller, call_name)
+        ds_api_call = getattr(self.datastore_controller, call_name)
+        ds_cluster_api_call = getattr(self.datastore_controller,
+                                      'cluster_' + call_name)
+        with patch.object(
+                self.controller, 'get_controller',
+                return_value=(self.datastore_controller, is_cluster)):
+            ctrl_call(*args)
+            if is_cluster:
+                ds_api_call.assert_not_called()
+                ds_cluster_api_call.assert_called_once_with(*args)
+            else:
+                ds_api_call.assert_called_once_with(*args)
+                ds_cluster_api_call.assert_not_called()
+
+        self.datastore_controller.reset_mock()
+
+
+class TestUserController(RoutingControllerTest):
+
+    def setUp(self):
+        super(TestUserController, self).setUp(RoutingUserController())
+        self.req = Mock()
+        self.body = Mock()
+        self.tenant_id = Mock()
+        self.instance_id = Mock()
+        self.coordinator_id = Mock()
+        self.user_id = Mock()
+
+    def test_index(self):
+        self._assert_api_call(
+            'index', self.req, self.tenant_id, self.instance_id)
+
+    def test_create(self):
+        self._assert_api_call(
+            'create', self.req, self.body, self.tenant_id, self.instance_id)
+
+    def test_delete(self):
+        self._assert_api_call(
+            'delete', self.req, self.tenant_id, self.instance_id,
+            self.user_id)
+
+    def test_show(self):
+        self._assert_api_call(
+            'show', self.req, self.tenant_id, self.instance_id,
+            self.user_id)
+
+    def test_update(self):
+        self._assert_api_call(
+            'update', self.req, self.body, self.tenant_id, self.instance_id,
+            self.user_id)
+
+    def test_update_all(self):
+        self._assert_api_call(
+            'update_all', self.req, self.body, self.tenant_id,
+            self.instance_id)
+
+
+class TestDatabaseController(RoutingControllerTest):
+
+    def setUp(self):
+        super(TestDatabaseController, self).setUp(RoutingDatabaseController())
+        self.req = Mock()
+        self.body = Mock()
+        self.tenant_id = Mock()
+        self.instance_id = Mock()
+        self.coordinator_id = Mock()
+        self.database_id = Mock()
+
+    def test_index(self):
+        self._assert_api_call(
+            'index', self.req, self.tenant_id, self.instance_id)
+
+    def test_create(self):
+        self._assert_api_call(
+            'create', self.req, self.body, self.tenant_id, self.instance_id)
+
+    def test_delete(self):
+        self._assert_api_call(
+            'delete', self.req, self.tenant_id, self.instance_id,
+            self.database_id)
+
+    def test_show(self):
+        self._assert_api_call(
+            'show', self.req, self.tenant_id, self.instance_id,
+            self.database_id)
+
+
+class TestUserAccessController(RoutingControllerTest):
+
+    def setUp(self):
+        super(TestUserAccessController, self).setUp(
+            RoutingUserAccessController())
+        self.req = Mock()
+        self.body = Mock()
+        self.tenant_id = Mock()
+        self.instance_id = Mock()
+        self.coordinator_id = Mock()
+        self.database_id = Mock()
+        self.user_id = Mock()
+
+    def test_index(self):
+        self._assert_api_call(
+            'index', self.req, self.tenant_id, self.instance_id, self.user_id)
+
+    def test_update(self):
+        self._assert_api_call(
+            'update', self.req, self.body, self.tenant_id, self.instance_id,
+            self.user_id)
+
+    def test_delete(self):
+        self._assert_api_call(
+            'delete', self.req, self.tenant_id, self.instance_id,
+            self.user_id, self.database_id)
