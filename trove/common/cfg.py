@@ -1624,8 +1624,8 @@ mongodb_opts = [
                'MySQLDatabaseController',
                help='Database controller implementation.'),
     cfg.StrOpt('user_access_controller',
-               default='trove.extensions.mysql.service.'
-               'MySQLUserAccessController',
+               default='trove.extensions.mongodb.service.'
+               'MongoDBUserAccessController',
                help='User access controller implementation.'),
 ]
 
