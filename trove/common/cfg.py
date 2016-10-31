@@ -787,6 +787,10 @@ oracle_ra_opts = [
                default='trove.extensions.mysql.service.'
                'MySQLDatabaseController',
                help='Database controller implementation.'),
+    cfg.StrOpt('user_access_controller',
+               default='trove.extensions.mysql.service.'
+                       'MySQLUserAccessController',
+               help='User access controller implementation.'),
 ]
 
 # Oracle RAC
@@ -887,6 +891,14 @@ oracle_rac_opts = [
     cfg.StrOpt('user_controller',
                default='trove.extensions.mysql.service.MySQLUserController',
                help='User controller implementation.'),
+    cfg.StrOpt('database_controller',
+               default='trove.extensions.mysql.service.'
+               'MySQLDatabaseController',
+               help='Database controller implementation.'),
+    cfg.StrOpt('user_access_controller',
+               default='trove.extensions.mysql.service.'
+               'MySQLUserAccessController',
+               help='User access controller implementation.'),
 ]
 
 # Oracle
@@ -993,6 +1005,14 @@ oracle_opts = [
     cfg.StrOpt('user_controller',
                default='trove.extensions.mysql.service.MySQLUserController',
                help='User controller implementation.'),
+    cfg.StrOpt('database_controller',
+               default='trove.extensions.mysql.service.'
+                       'MySQLDatabaseController',
+               help='Database controller implementation.'),
+    cfg.StrOpt('user_access_controller',
+               default='trove.extensions.mysql.service.'
+                       'MySQLUserAccessController',
+               help='User access controller implementation.'),
 ]
 
 # Percona
