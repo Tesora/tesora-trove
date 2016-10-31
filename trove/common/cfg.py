@@ -1617,11 +1617,12 @@ mongodb_opts = [
     cfg.BoolOpt('enable_saslauthd', default=False,
                 help='Enable the saslauth daemon.'),
     cfg.StrOpt('user_controller',
-               default='trove.extensions.mysql.service.MySQLUserController',
+               default='trove.extensions.mongodb.service.'
+                       'MongoDBUserController',
                help='User controller implementation.'),
     cfg.StrOpt('database_controller',
-               default='trove.extensions.mysql.service.'
-               'MySQLDatabaseController',
+               default='trove.extensions.mongodb.service.'
+               'MongoDBDatabaseController',
                help='Database controller implementation.'),
     cfg.StrOpt('user_access_controller',
                default='trove.extensions.mongodb.service.'
