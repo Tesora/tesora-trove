@@ -47,6 +47,7 @@ from trove.common.i18n import _
 from trove.common import instance as rd_instance
 from trove.common.instance import ServiceStatuses
 from trove.common.notification import (
+    DBaaSInstanceRestart,
     DBaaSInstanceUpgrade,
     EndNotification,
     StartNotification,
@@ -366,6 +367,46 @@ class ClusterTasks(Cluster):
         cluster.task_status = tasks.ClusterTasks.NONE
         cluster.save()
         LOG.debug("end delete_cluster for id: %s" % cluster_id)
+
+    def rolling_restart_cluster(self, context, cluster_id, delay_sec=0):
+        LOG.debug("Begin rolling cluster restart for id: %s" % cluster_id)
+
+        def _restart_cluster_instance(instance):
+            LOG.debug("Restarting instance with id: %s" % instance.id)
+            context.notification = (
+                DBaaSInstanceRestart(context, **request_info))
+            with StartNotification(context, instance_id=instance.id):
+                with EndNotification(context):
+                    instance.update_db(task_status=InstanceTasks.REBOOTING)
+                    instance.restart()
+
+        timeout = Timeout(CONF.cluster_usage_timeout)
+        cluster_notification = context.notification
+        request_info = cluster_notification.serialize(context)
+        try:
+            node_db_inst = DBInstance.find_all(cluster_id=cluster_id).all()
+            for index, db_inst in enumerate(node_db_inst):
+                if index > 0:
+                    LOG.debug(
+                        "Waiting (%ds) for restarted nodes to rejoin the "
+                        "cluster before proceeding." % delay_sec)
+                    time.sleep(delay_sec)
+                instance = BuiltInstanceTasks.load(context, db_inst.id)
+                _restart_cluster_instance(instance)
+        except Timeout as t:
+            if t is not timeout:
+                raise  # not my timeout
+            LOG.exception(_("Timeout for restarting cluster."))
+            raise
+        except Exception:
+            LOG.exception(_("Error restarting cluster.") % cluster_id)
+            raise
+        finally:
+            context.notification = cluster_notification
+            timeout.cancel()
+            self.reset_task()
+
+        LOG.debug("End rolling restart for id: %s." % cluster_id)
 
     def rolling_upgrade_cluster(self, context, cluster_id, datastore_version):
         LOG.debug("Begin rolling cluster upgrade for id: %s." % cluster_id)

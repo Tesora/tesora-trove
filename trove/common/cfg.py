@@ -1394,6 +1394,9 @@ cassandra_opts = [
                default='trove.extensions.cassandra.service.'
                'CassandraUserAccessController',
                help='User access controller implementation.'),
+    cfg.IntOpt('node_sync_time', default=60,
+               help='Time (in seconds) given to a node after a state change '
+               'to finish rejoining the cluster.'),
 ]
 
 cassandra_3_group = cfg.OptGroup(

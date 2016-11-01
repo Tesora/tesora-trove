@@ -206,6 +206,9 @@ class CassandraCluster(models.Cluster):
 
         return CassandraCluster(context, db_info, datastore, datastore_version)
 
+    def restart(self):
+        self.rolling_restart()
+
     def upgrade(self, datastore_version):
         self.rolling_upgrade(datastore_version)
 

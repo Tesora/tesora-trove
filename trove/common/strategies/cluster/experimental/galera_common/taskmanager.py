@@ -326,5 +326,8 @@ class GaleraCommonClusterTasks(task_models.ClusterTasks):
 
         LOG.debug("End shrink_cluster for id: %s." % cluster_id)
 
+    def restart_cluster(self, context, cluster_id):
+        self.rolling_restart_cluster(context, cluster_id)
+
     def upgrade_cluster(self, context, cluster_id, datastore_version):
         self.rolling_upgrade_cluster(context, cluster_id, datastore_version)
