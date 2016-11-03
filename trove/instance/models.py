@@ -19,6 +19,7 @@ from datetime import datetime
 from datetime import timedelta
 import os.path
 import re
+from sqlalchemy import func
 
 from novaclient import exceptions as nova_exceptions
 from oslo_config.cfg import NoSuchOptError
@@ -586,33 +587,6 @@ def load_server_group_info(instance, context, compute_id):
         instance.locality = srv_grp.ServerGroup.get_locality(server_group)
 
 
-def validate_modules(modules, datastore_id, datastore_version_id):
-    module_list = []
-    for module in modules:
-        if (module.datastore_id and
-                module.datastore_id != datastore_id):
-            reason = (_("Module '%(mod)s' cannot be applied "
-                        " (Wrong datastore '%(ds)s' - expected '%(ds2)s')")
-                      % {'mod': module.name, 'ds': module.datastore_id,
-                         'ds2': datastore_id})
-            raise exception.ModuleInvalid(reason=reason)
-        if (module.datastore_version_id and
-                module.datastore_version_id != datastore_version_id):
-            reason = (_("Module '%(mod)s' cannot be applied "
-                        " (Wrong datastore version '%(ver)s' "
-                        "- expected '%(ver2)s')")
-                      % {'mod': module.name,
-                         'ver': module.datastore_version_id,
-                         'ver2': datastore_version_id})
-            raise exception.ModuleInvalid(reason=reason)
-        module.contents = module_models.Module.deprocess_contents(
-            module.contents)
-        module_info = module_views.DetailedModuleView(module).data(
-            include_contents=True)
-        module_list.append(module_info)
-    return module_list
-
-
 class BaseInstance(SimpleInstance):
     """Represents an instance.
     -----------
@@ -1074,8 +1048,9 @@ class Instance(BuiltInstance):
         for aa_module in auto_apply_modules:
             if aa_module.id not in module_ids:
                 modules.append(aa_module)
-        module_list = validate_modules(modules, datastore.id,
-                                       datastore_version.id)
+        module_models.Modules.validate(
+            modules, datastore.id, datastore_version.id)
+        module_list = module_views.convert_modules(modules)
 
         def _create_resources():
 
@@ -1551,13 +1526,12 @@ class Instances(object):
                       'deleted': False}
         if not include_clustered:
             query_opts['cluster_id'] = None
-        if instance_ids and len(instance_ids) > 1:
-            raise exception.DatastoreOperationNotSupported(
-                operation='module-instances', datastore='current')
-            db_infos = DBInstance.query().filter_by(**query_opts)
+        if instance_ids:
+            if context.is_admin:
+                query_opts.pop('tenant_id')
+            filters = [DBInstance.id.in_(instance_ids)]
+            db_infos = DBInstance.find_by_filter(filters=filters, **query_opts)
         else:
-            if instance_ids:
-                query_opts['id'] = instance_ids[0]
             db_infos = DBInstance.find_all(**query_opts)
         limit = utils.pagination_limit(context.limit, Instances.DEFAULT_LIMIT)
         data_view = DBInstance.find_by_pagination('instances', db_infos, "foo",
@@ -1664,6 +1638,40 @@ class DBInstance(dbmodels.DatabaseModelBase):
         self.task_description = value.db_text
 
     task_status = property(get_task_status, set_task_status)
+
+
+def module_instance_count(context, module_id, include_clustered=False):
+    """Returns a summary of the instances that have applied a given
+    module.  We use the SQLAlchemy query object directly here as there's
+    functionality needed that's not exposed in the trove/db/__init__.py/Query
+    object.
+    """
+    columns = [module_models.DBModule.name,
+               module_models.DBInstanceModule.module_id,
+               module_models.DBInstanceModule.md5,
+               func.count(module_models.DBInstanceModule.md5),
+               (module_models.DBInstanceModule.md5 ==
+                module_models.DBModule.md5),
+               func.min(module_models.DBInstanceModule.updated),
+               func.max(module_models.DBInstanceModule.updated)]
+    filters = [module_models.DBInstanceModule.module_id == module_id,
+               module_models.DBInstanceModule.deleted == 0]
+    query = module_models.DBInstanceModule.query()
+    query = query.join(
+        module_models.DBModule,
+        module_models.DBInstanceModule.module_id == module_models.DBModule.id)
+    query = query.join(
+        DBInstance,
+        module_models.DBInstanceModule.instance_id == DBInstance.id)
+    if not include_clustered:
+        filters.append(DBInstance.cluster_id.is_(None))
+    if not context.is_admin:
+        filters.append(DBInstance.tenant_id == context.tenant)
+    query = query.group_by(module_models.DBInstanceModule.md5)
+    query = query.add_columns(*columns)
+    query = query.filter(*filters)
+    query = query.order_by(module_models.DBInstanceModule.updated)
+    return query.all()
 
 
 def persist_instance_fault(notification, event_qualifier):

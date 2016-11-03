@@ -609,8 +609,9 @@ class InstanceController(wsgi.Controller):
         self.authorize_instance_action(context, 'module_apply', instance)
         module_ids = [mod['id'] for mod in body.get('modules', [])]
         modules = module_models.Modules.load_by_ids(context, module_ids)
-        module_list = models.validate_modules(
+        module_models.Modules.validate(
             modules, instance.datastore.id, instance.datastore_version.id)
+        module_list = module_views.convert_modules(modules)
         client = create_guest_client(context, id)
         result_list = client.module_apply(module_list)
         models.Instance.add_instance_modules(context, id, modules)
