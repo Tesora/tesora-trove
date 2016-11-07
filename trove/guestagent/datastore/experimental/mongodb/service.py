@@ -426,6 +426,7 @@ class MongoDBApp(object):
                          upgrade_info['save_creds']]:
             operating_system.remove(save_dir, force=True, as_root=True)
         self.status.set_ready()
+        self.configuration_manager.refresh_cache()
 
 
 class MongoDBAppStatus(service.BaseDbStatus):

@@ -547,6 +547,7 @@ class OracleVMApp(service.OracleApp):
             operating_system.copy(path.join(save_dir, item), saves[item],
                                   recursive=True, preserve=True, as_root=True)
         operating_system.remove(save_dir, force=True, as_root=True)
+        self.configuration_manager.refresh_cache()
         self.status.set_ready()
 
     def prep_pfile_management(self):
