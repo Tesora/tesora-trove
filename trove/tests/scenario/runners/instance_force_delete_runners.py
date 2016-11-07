@@ -46,7 +46,9 @@ class InstanceForceDeleteRunner(TestRunner):
 
     def run_delete_build_instance(self, expected_http_code=202):
         if self.build_inst_id:
-            self.auth_client.instances.force_delete(self.build_inst_id)
+            self.auth_client.instances.reset_status(self.build_inst_id,
+                                                    force_delete=True)
+            self.auth_client.instances.delete(self.build_inst_id)
             self.assert_client_code(expected_http_code)
 
     def run_wait_for_force_delete(self):
