@@ -98,9 +98,10 @@ class RmanBackup(base.BackupRunner):
                 as_root=True)
             cmds = [
                 "configure backup optimization on",
+                ("configure channel device type disk format "
+                 "'%s/%%I_%%u_%%s_%s.dat'" % (bkp_dir, self.backup_id)),
                 ("backup incremental level=%s as compressed backupset "
-                 "database format '%s/%%I_%%u_%%s_%s.dat' plus archivelog"
-                 % (self.backup_level, bkp_dir, self.backup_id)),
+                 "database plus archivelog" % self.backup_level),
                 ("backup current controlfile format '%s/%%I_%%u_%%s_%s.ctl'"
                  % (bkp_dir, self.backup_id))]
             script = self.app.rman_scripter(
@@ -117,9 +118,8 @@ class RmanBackup(base.BackupRunner):
     @property
     def cmd(self):
         """Tars and streams the backup data to the stdout"""
-        cmd = 'sudo tar cPf - %s %s %s %s %s' % (
+        cmd = 'sudo tar cPf - %s %s %s %s' % (
             self.app.paths.backup_dir,
-            self.app.paths.redo_logs_backup_dir,
             self.app.paths.orapw_file,
             self.app.paths.base_spfile,
             CONF.get(MANAGER).conf_file)
