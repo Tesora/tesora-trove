@@ -21,6 +21,8 @@ import hashlib
 import six
 from sqlalchemy.sql.expression import or_
 
+from oslo_log import log as logging
+
 from trove.common import cfg
 from trove.common import crypto_utils
 from trove.common import exception
@@ -28,8 +30,6 @@ from trove.common.i18n import _
 from trove.common import utils
 from trove.datastore import models as datastore_models
 from trove.db import models
-
-from oslo_log import log as logging
 
 
 CONF = cfg.CONF
@@ -348,14 +348,8 @@ class InstanceModules(object):
 
     @staticmethod
     def load(context, instance_id=None, module_id=None, md5=None):
-        selection = {'deleted': False}
-        if instance_id:
-            selection['instance_id'] = instance_id
-        if module_id:
-            selection['module_id'] = module_id
-        if md5:
-            selection['md5'] = md5
-        db_info = DBInstanceModule.find_all(**selection)
+        db_info = InstanceModules.load_all(
+            context, instance_id=instance_id, module_id=module_id, md5=md5)
         if db_info.count() == 0:
             LOG.debug("No instance module records found")
 
@@ -365,6 +359,17 @@ class InstanceModules(object):
             'modules', db_info, 'foo', limit=limit, marker=context.marker)
         next_marker = data_view.next_page_marker
         return data_view.collection, next_marker
+
+    @staticmethod
+    def load_all(context, instance_id=None, module_id=None, md5=None):
+        query_opts = {'deleted': False}
+        if instance_id:
+            query_opts['instance_id'] = instance_id
+        if module_id:
+            query_opts['module_id'] = module_id
+        if md5:
+            query_opts['md5'] = md5
+        return DBInstanceModule.find_all(**query_opts)
 
 
 class InstanceModule(object):
@@ -376,10 +381,33 @@ class InstanceModule(object):
 
     @staticmethod
     def create(context, instance_id, module_id, md5):
-        instance_module = DBInstanceModule.create(
-            instance_id=instance_id,
-            module_id=module_id,
-            md5=md5)
+        instance_module = None
+        # First mark any 'old' records as deleted and/or update the
+        # current one.
+        deleted_records = 0
+        old_ims = InstanceModules.load_all(
+            context, instance_id=instance_id, module_id=module_id)
+        for old_im in old_ims:
+            if old_im.md5 == md5 and not instance_module:
+                instance_module = old_im
+                InstanceModule.update(context, instance_module)
+            else:
+                if old_im.md5 == md5 and instance_module:
+                    LOG.debug("Found dupe IM record %s; marking as deleted." %
+                              old_im.id)
+                InstanceModule.delete(context, old_im)
+                deleted_records += 1
+        if deleted_records:
+            LOG.debug("Marked %s instance module record(s) as deleted" %
+                      deleted_records)
+
+        # If we don't have an instance module, it means we need to create
+        # a new one.
+        if not instance_module:
+            instance_module = DBInstanceModule.create(
+                instance_id=instance_id,
+                module_id=module_id,
+                md5=md5)
         return instance_module
 
     @staticmethod
