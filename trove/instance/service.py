@@ -186,6 +186,11 @@ class InstanceController(wsgi.Controller):
         return wsgi.Result(None, 202)
 
     def _action_reset_status(self, context, req, instance, body):
+        if 'force_delete' in body['reset_status']:
+            self.authorize_instance_action(context, 'force_delete', instance)
+        else:
+            self.authorize_instance_action(
+                context, 'reset_status', instance)
         context.notification = notification.DBaaSInstanceResetStatus(
             context, request=req)
         with StartNotification(context, instance_id=instance.id):
