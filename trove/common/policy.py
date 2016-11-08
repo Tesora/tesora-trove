@@ -69,4 +69,4 @@ def __authorize(context, rule, target=None):
     target = target or {'tenant': context.tenant}
     return get_enforcer().enforce(
         rule, target, context.to_dict(), do_raise=True,
-        exc=trove_exceptions.PolicyNotAuthorized)
+        exc=trove_exceptions.PolicyNotAuthorized, action=rule)
