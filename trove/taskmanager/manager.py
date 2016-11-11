@@ -125,28 +125,31 @@ class Manager(periodic_task.PeriodicTasks):
             # and possibly some number of "orphaned" slaves
 
             exception_replicas = []
+            error_messages = ""
             for replica in replica_models:
                 try:
                     if replica.id != master_candidate.id:
                         replica.detach_replica(old_master, for_failover=True)
                         replica.attach_replica(master_candidate)
-                except exception.TroveError:
-                    msg = _("promote-to-replica-source: Unable to migrate "
-                            "replica %(slave)s from old replica source "
-                            "%(old_master)s to new source %(new_master)s.")
-                    msg_values = {
-                        "slave": replica.id,
-                        "old_master": old_master.id,
-                        "new_master": master_candidate.id
-                    }
-                    LOG.exception(msg % msg_values)
+                except exception.TroveError as ex:
+                    msg = (_("Unable to migrate replica %(slave)s from "
+                             "old replica source %(old_master)s to "
+                             "new source %(new_master)s on promote.") %
+                           {"slave": replica.id,
+                            "old_master": old_master.id,
+                            "new_master": master_candidate.id})
+                    LOG.exception(msg)
                     exception_replicas.append(replica)
+                    error_messages += "%s (%s)\n" % (msg, ex)
 
             try:
                 old_master.demote_replication_master()
-            except Exception:
-                LOG.exception(_("Exception demoting old replica source"))
+            except Exception as ex:
+                msg = (_("Exception demoting old replica source %s.") %
+                       old_master.id)
+                LOG.exception(msg)
                 exception_replicas.append(old_master)
+                error_messages += "%s (%s)\n" % (msg, ex)
 
             if master_candidate.post_processing_required_for_replication():
                 new_slaves = list(replica_models)
@@ -161,13 +164,12 @@ class Manager(periodic_task.PeriodicTasks):
             if exception_replicas:
                 self._set_task_status(exception_replicas,
                                       InstanceTasks.PROMOTION_ERROR)
-                msg = _("promote-to-replica-source %(id)s: The following "
-                        "replicas may not have been switched: %(replicas)s")
-                msg_values = {
-                    "id": master_candidate.id,
-                    "replicas": exception_replicas
-                }
-                raise ReplicationSlaveAttachError(msg % msg_values)
+                msg = (_("promote-to-replica-source %(id)s: The following "
+                         "replicas may not have been switched: %(replicas)s") %
+                       {"id": master_candidate.id,
+                        "replicas": [repl.id for repl in exception_replicas]})
+                raise ReplicationSlaveAttachError("%s:\n%s" %
+                                                  (msg, error_messages))
 
         with EndNotification(context):
             master_candidate = BuiltInstanceTasks.load(context, instance_id)
@@ -213,29 +215,30 @@ class Manager(periodic_task.PeriodicTasks):
 
             master_ips = old_master.detach_public_ips()
             slave_ips = master_candidate.detach_public_ips()
-            master_candidate.detach_replica(old_master, for_failover=True)
+            master_candidate.detach_replica(old_master, for_failover=True,
+                                            for_promote=True)
             master_candidate.enable_as_master()
             master_candidate.attach_public_ips(master_ips)
             master_candidate.make_read_only(False)
             old_master.attach_public_ips(slave_ips)
 
             exception_replicas = []
+            error_messages = ""
             for replica in replica_models:
                 try:
                     if replica.id != master_candidate.id:
                         replica.detach_replica(old_master, for_failover=True)
                         replica.attach_replica(master_candidate)
-                except exception.TroveError:
-                    msg = _("eject-replica-source: Unable to migrate "
-                            "replica %(slave)s from old replica source "
-                            "%(old_master)s to new source %(new_master)s.")
-                    msg_values = {
-                        "slave": replica.id,
-                        "old_master": old_master.id,
-                        "new_master": master_candidate.id
-                    }
-                    LOG.exception(msg % msg_values)
-                    exception_replicas.append(replica.id)
+                except exception.TroveError as ex:
+                    msg = (_("Unable to migrate replica %(slave)s from "
+                             "old replica source %(old_master)s to "
+                             "new source %(new_master)s on eject.") %
+                           {"slave": replica.id,
+                            "old_master": old_master.id,
+                            "new_master": master_candidate.id})
+                    LOG.exception(msg)
+                    exception_replicas.append(replica)
+                    error_messages += "%s (%s)\n" % (msg, ex)
 
             if master_candidate.post_processing_required_for_replication():
                 new_slaves = list(replica_models)
@@ -249,13 +252,12 @@ class Manager(periodic_task.PeriodicTasks):
             if exception_replicas:
                 self._set_task_status(exception_replicas,
                                       InstanceTasks.EJECTION_ERROR)
-                msg = _("eject-replica-source %(id)s: The following "
-                        "replicas may not have been switched: %(replicas)s")
-                msg_values = {
-                    "id": master_candidate.id,
-                    "replicas": exception_replicas
-                }
-                raise ReplicationSlaveAttachError(msg % msg_values)
+                msg = (_("eject-replica-source %(id)s: The following "
+                         "replicas may not have been switched: %(replicas)s") %
+                       {"id": master_candidate.id,
+                        "replicas": [repl.id for repl in exception_replicas]})
+                raise ReplicationSlaveAttachError("%s:\n%s" %
+                                                  (msg, error_messages))
 
         with EndNotification(context):
             master = BuiltInstanceTasks.load(context, instance_id)
@@ -427,7 +429,7 @@ class Manager(periodic_task.PeriodicTasks):
                         cluster_config, volume_type, modules, locality):
         with EndNotification(context,
                              instance_id=(instance_id[0]
-                                          if type(instance_id) is list
+                                          if isinstance(instance_id, list)
                                           else instance_id)):
             self._create_instance(context, instance_id, name, flavor,
                                   image_id, databases, users,
@@ -443,15 +445,6 @@ class Manager(periodic_task.PeriodicTasks):
         with EndNotification(context):
             instance_tasks.upgrade(datastore_version)
 
-    def update_overrides(self, context, instance_id, overrides):
-        instance_tasks = models.BuiltInstanceTasks.load(context, instance_id)
-        instance_tasks.update_overrides(overrides)
-
-    def unassign_configuration(self, context, instance_id, flavor,
-                               configuration_id):
-        instance_tasks = models.BuiltInstanceTasks.load(context, instance_id)
-        instance_tasks.unassign_configuration(flavor, configuration_id)
-
     def create_cluster(self, context, cluster_id):
         with EndNotification(context, cluster_id=cluster_id):
             cluster_tasks = models.load_cluster_tasks(context, cluster_id)
@@ -465,6 +458,10 @@ class Manager(periodic_task.PeriodicTasks):
         cluster_tasks = models.load_cluster_tasks(context, cluster_id)
         cluster_tasks.shrink_cluster(context, cluster_id, instance_ids)
 
+    def restart_cluster(self, context, cluster_id):
+        cluster_tasks = models.load_cluster_tasks(context, cluster_id)
+        cluster_tasks.restart_cluster(context, cluster_id)
+
     def upgrade_cluster(self, context, cluster_id, datastore_version_id):
         datastore_version = DatastoreVersion.load_by_uuid(datastore_version_id)
         cluster_tasks = models.load_cluster_tasks(context, cluster_id)
@@ -474,6 +471,12 @@ class Manager(periodic_task.PeriodicTasks):
         with EndNotification(context):
             cluster_tasks = models.load_cluster_tasks(context, cluster_id)
             cluster_tasks.delete_cluster(context, cluster_id)
+
+    def reapply_module(self, context, module_id, md5, include_clustered,
+                       batch_size, batch_delay, force):
+        models.ModuleTasks.reapply_module(
+            context, module_id, md5, include_clustered,
+            batch_size, batch_delay, force)
 
     if CONF.exists_notification_transformer:
         @periodic_task.periodic_task

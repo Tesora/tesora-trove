@@ -21,6 +21,8 @@ import hashlib
 import six
 from sqlalchemy.sql.expression import or_
 
+from oslo_log import log as logging
+
 from trove.common import cfg
 from trove.common import crypto_utils
 from trove.common import exception
@@ -28,8 +30,7 @@ from trove.common.i18n import _
 from trove.common import utils
 from trove.datastore import models as datastore_models
 from trove.db import models
-
-from oslo_log import log as logging
+from trove.taskmanager import api as task_api
 
 
 CONF = cfg.CONF
@@ -128,6 +129,26 @@ class Modules(object):
             modules = db_info.all()
         return modules
 
+    @staticmethod
+    def validate(modules, datastore_id, datastore_version_id):
+        for module in modules:
+            if (module.datastore_id and
+                    module.datastore_id != datastore_id):
+                reason = (_("Module '%(mod)s' cannot be applied "
+                            " (Wrong datastore '%(ds)s' - expected '%(ds2)s')")
+                          % {'mod': module.name, 'ds': module.datastore_id,
+                             'ds2': datastore_id})
+                raise exception.ModuleInvalid(reason=reason)
+            if (module.datastore_version_id and
+                    module.datastore_version_id != datastore_version_id):
+                reason = (_("Module '%(mod)s' cannot be applied "
+                            " (Wrong datastore version '%(ver)s' "
+                            "- expected '%(ver2)s')")
+                          % {'mod': module.name,
+                             'ver': module.datastore_version_id,
+                             'ver2': datastore_version_id})
+                raise exception.ModuleInvalid(reason=reason)
+
 
 class Module(object):
 
@@ -147,8 +168,9 @@ class Module(object):
         Module.validate_action(
             context, 'create', tenant_id, auto_apply, visible, priority_apply,
             full_access)
-        datastore_id, datastore_version_id = Module.validate_datastore(
-            datastore, datastore_version)
+        datastore_id, datastore_version_id = (
+            datastore_models.get_datastore_or_version(
+                datastore, datastore_version))
         if Module.key_exists(
                 name, module_type, tenant_id,
                 datastore_id, datastore_version_id):
@@ -204,24 +226,6 @@ class Module(object):
             raise exception.ModuleAccessForbidden(
                 action=action_str, options=admin_options_str)
         return admin_options_str
-
-    @staticmethod
-    def validate_datastore(datastore, datastore_version):
-        datastore_id = None
-        datastore_version_id = None
-        if datastore:
-            if datastore_version:
-                ds, ds_ver = datastore_models.get_datastore_version(
-                    type=datastore, version=datastore_version)
-                datastore_id = ds.id
-                datastore_version_id = ds_ver.id
-            else:
-                ds = datastore_models.Datastore.load(datastore)
-                datastore_id = ds.id
-        elif datastore_version:
-            msg = _("Cannot specify version without datastore")
-            raise exception.BadRequest(message=msg)
-        return datastore_id, datastore_version_id
 
     @staticmethod
     def key_exists(name, module_type, tenant_id, datastore_id,
@@ -325,7 +329,7 @@ class Module(object):
         # but we turn it on/off if full_access is specified
         if full_access is not None:
             module.is_admin = 0 if full_access else 1
-        ds_id, ds_ver_id = Module.validate_datastore(
+        ds_id, ds_ver_id = datastore_models.get_datastore_or_version(
             module.datastore_id, module.datastore_version_id)
         if module.contents != original_module.contents:
             md5, processed_contents = Module.process_contents(module.contents)
@@ -343,19 +347,19 @@ class Module(object):
         module.updated = datetime.utcnow()
         DBModule.save(module)
 
+    @staticmethod
+    def reapply(context, id, md5, include_clustered,
+                batch_size, batch_delay, force):
+        task_api.API(context).reapply_module(
+            id, md5, include_clustered, batch_size, batch_delay, force)
+
 
 class InstanceModules(object):
 
     @staticmethod
     def load(context, instance_id=None, module_id=None, md5=None):
-        selection = {'deleted': False}
-        if instance_id:
-            selection['instance_id'] = instance_id
-        if module_id:
-            selection['module_id'] = module_id
-        if md5:
-            selection['md5'] = md5
-        db_info = DBInstanceModule.find_all(**selection)
+        db_info = InstanceModules.load_all(
+            context, instance_id=instance_id, module_id=module_id, md5=md5)
         if db_info.count() == 0:
             LOG.debug("No instance module records found")
 
@@ -365,6 +369,17 @@ class InstanceModules(object):
             'modules', db_info, 'foo', limit=limit, marker=context.marker)
         next_marker = data_view.next_page_marker
         return data_view.collection, next_marker
+
+    @staticmethod
+    def load_all(context, instance_id=None, module_id=None, md5=None):
+        query_opts = {'deleted': False}
+        if instance_id:
+            query_opts['instance_id'] = instance_id
+        if module_id:
+            query_opts['module_id'] = module_id
+        if md5:
+            query_opts['md5'] = md5
+        return DBInstanceModule.find_all(**query_opts)
 
 
 class InstanceModule(object):
@@ -376,10 +391,33 @@ class InstanceModule(object):
 
     @staticmethod
     def create(context, instance_id, module_id, md5):
-        instance_module = DBInstanceModule.create(
-            instance_id=instance_id,
-            module_id=module_id,
-            md5=md5)
+        instance_module = None
+        # First mark any 'old' records as deleted and/or update the
+        # current one.
+        deleted_records = 0
+        old_ims = InstanceModules.load_all(
+            context, instance_id=instance_id, module_id=module_id)
+        for old_im in old_ims:
+            if old_im.md5 == md5 and not instance_module:
+                instance_module = old_im
+                InstanceModule.update(context, instance_module)
+            else:
+                if old_im.md5 == md5 and instance_module:
+                    LOG.debug("Found dupe IM record %s; marking as deleted." %
+                              old_im.id)
+                InstanceModule.delete(context, old_im)
+                deleted_records += 1
+        if deleted_records:
+            LOG.debug("Marked %s instance module record(s) as deleted" %
+                      deleted_records)
+
+        # If we don't have an instance module, it means we need to create
+        # a new one.
+        if not instance_module:
+            instance_module = DBInstanceModule.create(
+                instance_id=instance_id,
+                module_id=module_id,
+                md5=md5)
         return instance_module
 
     @staticmethod

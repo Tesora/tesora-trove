@@ -71,6 +71,10 @@ class ClusterTasks(object):
         0x06, 'SHRINKING_CLUSTER', 'Decreasing the size of the cluster.')
     UPGRADING_CLUSTER = ClusterTask(
         0x07, 'UPGRADING_CLUSTER', 'Upgrading the cluster to new version.')
+    RESTARTING_CLUSTER = ClusterTask(
+        0x08, 'RESTARTING_CLUSTER', 'Restarting the cluster.')
+    UPDATING_CLUSTER = ClusterTask(
+        0x09, 'UPDATING_CLUSTER', 'Updating cluster configuration.')
 
 
 # Dissuade further additions at run-time.

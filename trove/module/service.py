@@ -42,8 +42,8 @@ class ModuleController(wsgi.Controller):
 
     @classmethod
     def authorize_module_action(cls, context, module_rule_name, module):
-        """If a modules in not owned by any particular tenant just check
-        the current tenant is allowed to perform the action.
+        """If a module is not owned by any particular tenant just check
+        that the current tenant is allowed to perform the action.
         """
         if module.tenant_id is not None:
             policy.authorize_on_target(context, 'module:%s' % module_rule_name,
@@ -64,7 +64,7 @@ class ModuleController(wsgi.Controller):
         return wsgi.Result(view.data(), 200)
 
     def show(self, req, tenant_id, id):
-        LOG.info(_("Showing module %s") % id)
+        LOG.info(_("Showing module %s.") % id)
 
         context = req.environ[wsgi.CONTEXT_KEY]
         module = models.Module.load(context, id)
@@ -106,7 +106,7 @@ class ModuleController(wsgi.Controller):
         return wsgi.Result(view_data.data(), 200)
 
     def delete(self, req, tenant_id, id):
-        LOG.info(_("Deleting module %s") % id)
+        LOG.info(_("Deleting module %s.") % id)
 
         context = req.environ[wsgi.CONTEXT_KEY]
         module = models.Module.load(context, id)
@@ -115,7 +115,7 @@ class ModuleController(wsgi.Controller):
         return wsgi.Result(None, 200)
 
     def update(self, req, body, tenant_id, id):
-        LOG.info(_("Updating module %s") % id)
+        LOG.info(_("Updating module %s.") % id)
 
         context = req.environ[wsgi.CONTEXT_KEY]
         module = models.Module.load(context, id)
@@ -173,26 +173,60 @@ class ModuleController(wsgi.Controller):
         return wsgi.Result(view_data.data(), 200)
 
     def instances(self, req, tenant_id, id):
-        LOG.info(_("Getting instances for module %s") % id)
+        LOG.info(_("Getting instances for module %s.") % id)
 
         context = req.environ[wsgi.CONTEXT_KEY]
 
         module = models.Module.load(context, id)
-        self.authorize_module_action(context, 'update', module)
-
-        instance_modules, marker = models.InstanceModules.load(
-            context, module_id=id)
-        if instance_modules:
-            instance_ids = [inst_mod.instance_id
-                            for inst_mod in instance_modules]
-            include_clustered = (
-                req.GET.get('include_clustered', '').lower() == 'true')
-            instances, marker = instance_models.Instances.load(
-                context, include_clustered, instance_ids=instance_ids)
+        self.authorize_module_action(context, 'instances', module)
+        count_only = req.GET.get('count_only', '').lower() == 'true'
+        include_clustered = (
+            req.GET.get('include_clustered', '').lower() == 'true')
+        if count_only:
+            instance_count = instance_models.module_instance_count(
+                context, id, include_clustered=include_clustered)
+            result_list = {
+                'instances':
+                instance_views.convert_instance_count(instance_count)}
         else:
-            instances = []
-            marker = None
-        view = instance_views.InstancesView(instances, req=req)
-        paged = pagination.SimplePaginatedDataView(req.url, 'instances',
-                                                   view, marker)
-        return wsgi.Result(paged.data(), 200)
+            instance_modules, marker = models.InstanceModules.load(
+                context, module_id=id)
+            if instance_modules:
+                instance_ids = [inst_mod.instance_id
+                                for inst_mod in instance_modules]
+                instances, marker = instance_models.Instances.load(
+                    context, include_clustered, instance_ids=instance_ids)
+            else:
+                instances = []
+                marker = None
+            view = instance_views.InstancesView(instances, req=req)
+            result_list = pagination.SimplePaginatedDataView(
+                req.url, 'instances', view, marker).data()
+        return wsgi.Result(result_list, 200)
+
+    def reapply(self, req, body, tenant_id, id):
+        LOG.info(_("Reapplying module %s to all instances.") % id)
+
+        context = req.environ[wsgi.CONTEXT_KEY]
+        md5 = None
+        if 'md5' in body['reapply']:
+            md5 = body['reapply']['md5']
+        include_clustered = None
+        if 'include_clustered' in body['reapply']:
+            include_clustered = body['reapply']['include_clustered']
+        if 'batch_size' in body['reapply']:
+            batch_size = body['reapply']['batch_size']
+        else:
+            batch_size = CONF.module_reapply_max_batch_size
+        if 'batch_delay' in body['reapply']:
+            batch_delay = body['reapply']['batch_delay']
+        else:
+            batch_delay = CONF.module_reapply_min_batch_delay
+        force = None
+        if 'force' in body['reapply']:
+            force = body['reapply']['force']
+        module = models.Module.load(context, id)
+        self.authorize_module_action(context, 'reapply', module)
+        models.Module.reapply(context, id, md5, include_clustered,
+                              batch_size, batch_delay, force)
+        return wsgi.Result(None, 202)

@@ -783,6 +783,7 @@ class CassandraApp(object):
         for save_dir in [upgrade_info['save_etc'],
                          upgrade_info['save_cqlshrc']]:
             operating_system.remove(save_dir, force=True, as_root=True)
+        self.configuration_manager.refresh_cache()
         self.status.set_ready()
 
 

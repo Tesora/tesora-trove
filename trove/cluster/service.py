@@ -72,7 +72,14 @@ class ClusterController(wsgi.Controller):
                                          " one action specified in body"))
         context = req.environ[wsgi.CONTEXT_KEY]
         cluster = models.Cluster.load(context, id)
-        self.authorize_cluster_action(context, 'action', cluster)
+        if ('reset-status' in body and
+                'force_delete' not in body['reset-status']):
+            self.authorize_cluster_action(context, 'reset-status', cluster)
+        elif ('reset-status' in body and
+                'force_delete' in body['reset-status']):
+            self.authorize_cluster_action(context, 'force_delete', cluster)
+        else:
+            self.authorize_cluster_action(context, 'action', cluster)
         cluster.action(context, req, *body.items()[0])
 
         view = views.load_view(cluster, req=req, load_servers=False)
@@ -219,6 +226,8 @@ class ClusterController(wsgi.Controller):
             if locality not in locality_domain:
                 raise exception.BadRequest(msg=locality_domain_msg)
 
+        configuration = body['cluster'].get('configuration')
+
         context.notification = notification.DBaaSClusterCreate(context,
                                                                request=req)
         with StartNotification(context, name=name, datastore=datastore.name,
@@ -226,7 +235,7 @@ class ClusterController(wsgi.Controller):
             cluster = models.Cluster.create(context, name, datastore,
                                             datastore_version, instances,
                                             extended_properties,
-                                            locality)
+                                            locality, configuration)
         cluster.locality = locality
         view = views.load_view(cluster, req=req, load_servers=False)
         return wsgi.Result(view.data(), 200)

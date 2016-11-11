@@ -44,7 +44,6 @@ from trove.common import utils
 from trove.datastore import models as datastore_models
 import trove.db.models
 from trove.extensions.common import models as common_models
-from trove.extensions.mysql import models as mysql_models
 import trove.guestagent.api
 from trove.instance.models import BaseInstance
 from trove.instance.models import DBInstance
@@ -1105,18 +1104,18 @@ class RootReportTest(trove_testtools.TestCase):
         super(RootReportTest, self).tearDown()
 
     def test_report_root_first_time(self):
-        report = mysql_models.RootHistory.create(
+        report = common_models.RootHistory.create(
             None, utils.generate_uuid(), 'root')
         self.assertIsNotNone(report)
 
     def test_report_root_double_create(self):
         uuid = utils.generate_uuid()
-        history = mysql_models.RootHistory(uuid, 'root').save()
-        with patch.object(mysql_models.RootHistory, 'load',
+        history = common_models.RootHistory(uuid, 'root').save()
+        with patch.object(common_models.RootHistory, 'load',
                           Mock(return_value=history)):
-            report = mysql_models.RootHistory.create(
+            report = common_models.RootHistory.create(
                 None, uuid, 'root')
-            self.assertTrue(mysql_models.RootHistory.load.called)
+            self.assertTrue(common_models.RootHistory.load.called)
             self.assertEqual(history.user, report.user)
             self.assertEqual(history.id, report.id)
 

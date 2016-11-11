@@ -14,6 +14,7 @@
 #    under the License.
 
 import datetime
+import json
 import os
 import proboscis
 import time as timer
@@ -40,6 +41,19 @@ TEST_RUNNERS_NS = 'trove.tests.scenario.runners'
 TEST_HELPERS_NS = 'trove.tests.scenario.helpers'
 TEST_HELPER_MODULE_NAME = 'test_helper'
 TEST_HELPER_BASE_NAME = 'TestHelper'
+
+
+class SkipKnownBug(proboscis.SkipTest):
+    """Skip test failures due to known bug(s).
+    These should get fixed sometime in the future.
+    """
+
+    def __init__(self, *bugs):
+        """
+        :param bugs:    One or more bug references (e.g. link, bug #).
+        """
+        bug_ref = '; '.join(map(str, bugs))
+        super(SkipKnownBug, self).__init__("Known bug: %s" % bug_ref)
 
 
 class RunnerFactory(object):
@@ -162,19 +176,6 @@ class InstanceTestInfo(object):
         self.databases = None  # The databases created on the instance.
         self.helper_user = None  # Test helper user if exists.
         self.helper_database = None  # Test helper database if exists.
-
-
-class SkipKnownBug(proboscis.SkipTest):
-    """Skip test failures due to known bug(s).
-    These should get fixed sometime in the future.
-    """
-
-    def __init__(self, *bugs):
-        """
-        :param bugs:    One or more bug references (e.g. link, bug #).
-        """
-        bug_ref = '; '.join(map(str, bugs))
-        super(SkipKnownBug, self).__init__("Known bug: %s" % bug_ref)
 
 
 class TestRunner(object):
@@ -582,7 +583,7 @@ class TestRunner(object):
 
     def _has_status(self, instance_id, status, fast_fail_status=None):
         fast_fail_status = fast_fail_status or []
-        instance = self.get_instance(instance_id)
+        instance = self.get_instance(instance_id, self.admin_client)
         self.report.log("Polling instance '%s' for state '%s', was '%s'."
                         % (instance_id, status, instance.status))
         if instance.status in fast_fail_status:
@@ -788,6 +789,25 @@ class TestRunner(object):
     def get_db_names(self, instance_id):
         full_list = self.auth_client.databases.list(instance_id)
         return {database.name: database for database in full_list}
+
+    def create_initial_configuration(self, expected_http_code):
+        dynamic_config = self.test_helper.get_dynamic_group()
+        non_dynamic_config = self.test_helper.get_non_dynamic_group()
+        values = dynamic_config or non_dynamic_config
+        if values:
+            json_def = json.dumps(values)
+            result = self.auth_client.configurations.create(
+                'initial_configuration_for_create_tests',
+                json_def,
+                "Configuration group used by create tests.",
+                datastore=self.instance_info.dbaas_datastore,
+                datastore_version=self.instance_info.dbaas_datastore_version)
+            self.assert_client_code(expected_http_code,
+                                    client=self.auth_client)
+
+            return (result.id, dynamic_config is None)
+
+        return (None, False)
 
 
 class CheckInstance(AttrCheck):

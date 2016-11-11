@@ -815,7 +815,7 @@
         {
             "name": "QUERY_REWRITE_ENABLED",
             "restart_required": false,
-            "type": "string"
+            "type": "boolean"
         },
         {
             "name": "QUERY_REWRITE_INTEGRITY",

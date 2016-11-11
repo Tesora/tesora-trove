@@ -17,24 +17,24 @@ from trove.extensions.common import views as common_views
 from trove.guestagent.db import models as guest_models
 
 
-class SchemaView(common_views.SingleModelView):
+class DatabaseView(common_views.SingleModelView):
 
     def __init__(self, schema):
-        super(SchemaView, self).__init__('database', schema)
+        super(DatabaseView, self).__init__('database', schema)
 
     @classmethod
     def deserialize_model(cls, schema):
         return {'name': schema.name}
 
 
-class SchemasView(common_views.ModelCollectionView):
+class DatabasesView(common_views.ModelCollectionView):
 
     def __init__(self, schemas):
-        super(SchemasView, self).__init__('databases', schemas)
+        super(DatabasesView, self).__init__('databases', schemas)
 
     @classmethod
     def deserialize_model(cls, schema):
-        return SchemaView.deserialize_model(schema)
+        return DatabaseView.deserialize_model(schema)
 
 
 class UserView(common_views.SingleModelView):
@@ -46,12 +46,11 @@ class UserView(common_views.SingleModelView):
     def deserialize_model(cls, user):
         item = {
             "name": user.name,
-            "host": user.host,
         }
-        # Schema models are stored in serialized form.
+        # Database models are stored in serialized form.
         schema_models = [guest_models.CassandraSchema.deserialize_schema(db)
                          for db in user.databases]
-        item.update(SchemasView(schema_models).data())
+        item.update(DatabasesView(schema_models).data())
         return item
 
 

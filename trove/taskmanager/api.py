@@ -207,6 +207,12 @@ class API(object):
         cctxt.cast(self.context, "upgrade", instance_id=instance_id,
                    datastore_version_id=datastore_version_id)
 
+    def restart_cluster(self, cluster_id):
+        LOG.debug("Making async call to restart cluster %s " % cluster_id)
+
+        cctxt = self.client.prepare(version=self.version_cap)
+        cctxt.cast(self.context, "restart_cluster", cluster_id=cluster_id)
+
     def upgrade_cluster(self, cluster_id, datastore_version_id):
         LOG.debug("Making async call to upgrade guest to datastore "
                   "version %s " % datastore_version_id)
@@ -214,6 +220,16 @@ class API(object):
         cctxt = self.client.prepare(version=self.version_cap)
         cctxt.cast(self.context, "upgrade_cluster", cluster_id=cluster_id,
                    datastore_version_id=datastore_version_id)
+
+    def reapply_module(self, module_id, md5, include_clustered,
+                       batch_size, batch_delay, force):
+        LOG.debug("Making async call to reapply module %s" % module_id)
+
+        cctxt = self.client.prepare(version=self.version_cap)
+        cctxt.cast(self.context, "reapply_module",
+                   module_id=module_id, md5=md5,
+                   include_clustered=include_clustered,
+                   batch_size=batch_size, batch_delay=batch_delay, force=force)
 
 
 def load(context, manager=None):

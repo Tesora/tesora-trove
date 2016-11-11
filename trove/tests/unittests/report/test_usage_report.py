@@ -14,6 +14,7 @@
 #    under the License.
 
 import datetime as dt
+import mock
 
 from testtools import matchers
 
@@ -168,6 +169,48 @@ class UsageReportTest(trove_testtools.TestCase):
 
         self._validate_testcase(test_results, start_date,
                                 end_date, daily, overall)
+
+    @mock.patch.object(usage_report, '_generate_csv_file')
+    @mock.patch.object(usage_report, 'process_data')
+    @mock.patch.object(usage_report, '_run_query')
+    @mock.patch.object(usage_report, '_get_current_date')
+    def test_date_parameters(self, mock_end_date, mock_query, mock_process,
+                             mock_gen_csv):
+        mock_end_date.return_value = dt.datetime(2016, 8, 5)
+
+        start_date = '2016-08-02'
+        start_date_d = dt.datetime.strptime(start_date, '%Y-%m-%d').date()
+
+        mock_query.return_value = list()
+        mock_process.return_value = (list(), "overall")
+
+        # test for exception on end date > today
+        end_date = '2016-08-06'
+        self.assertRaises(exception.BadValue, usage_report.usage_report,
+                          start_date, end_date, "nofile")
+
+        # test for exception on end date < start date
+        end_date = '2016-08-01'
+        self.assertRaises(exception.BadValue, usage_report.usage_report,
+                          start_date, end_date, "nofile")
+
+        # test for no exception on some boundaries
+        # end date = today
+        end_date = '2016-08-05'
+        end_date_d = dt.datetime.strptime(end_date, '%Y-%m-%d').date()
+        usage_report.usage_report(start_date, end_date, "nofile")
+        mock_process.assert_called_once_with(list(), start_date_d, end_date_d)
+        self.assertTrue(mock_gen_csv.called)
+        mock_process.reset_mock()
+        mock_gen_csv.reset_mock()
+
+        # end date = start date
+        usage_report.usage_report(start_date, start_date, "nofile")
+        mock_process.assert_called_once_with(list(), start_date_d,
+                                             start_date_d)
+        self.assertTrue(mock_gen_csv.called)
+        mock_process.reset_mock()
+        mock_gen_csv.reset_mock()
 
     def _generate_mock_events(self, event_date, is_deleted):
         # give event_date an arbitrary time component

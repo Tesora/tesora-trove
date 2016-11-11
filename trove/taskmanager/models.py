@@ -47,6 +47,7 @@ from trove.common.i18n import _
 from trove.common import instance as rd_instance
 from trove.common.instance import ServiceStatuses
 from trove.common.notification import (
+    DBaaSInstanceRestart,
     DBaaSInstanceUpgrade,
     EndNotification,
     StartNotification,
@@ -57,6 +58,7 @@ from trove.common.notification import (
 import trove.common.remote as remote
 from trove.common.remote import create_cinder_client
 from trove.common.remote import create_dns_client
+from trove.common.remote import create_guest_client
 from trove.common.remote import create_heat_client
 from trove.common import server_group as srv_grp
 from trove.common.strategies.cluster import strategy
@@ -64,7 +66,7 @@ from trove.common.strategies.storage import get_storage_strategy
 from trove.common import template
 from trove.common import utils
 from trove.common.utils import try_recover
-from trove.extensions.mysql import models as mysql_models
+from trove.extensions.common import models as api_ext_models
 from trove.extensions.security_group.models import (
     SecurityGroupInstanceAssociation)
 from trove.extensions.security_group.models import SecurityGroup
@@ -73,9 +75,12 @@ from trove.instance import models as inst_models
 from trove.instance.models import BuiltInstance
 from trove.instance.models import DBInstance
 from trove.instance.models import FreshInstance
+from trove.instance.models import Instance
 from trove.instance.models import InstanceServiceStatus
 from trove.instance.models import InstanceStatus
 from trove.instance.tasks import InstanceTasks
+from trove.module import models as module_models
+from trove.module import views as module_views
 from trove.quota.quota import run_with_quotas
 from trove import rpc
 
@@ -366,6 +371,46 @@ class ClusterTasks(Cluster):
         cluster.task_status = tasks.ClusterTasks.NONE
         cluster.save()
         LOG.debug("end delete_cluster for id: %s" % cluster_id)
+
+    def rolling_restart_cluster(self, context, cluster_id, delay_sec=0):
+        LOG.debug("Begin rolling cluster restart for id: %s" % cluster_id)
+
+        def _restart_cluster_instance(instance):
+            LOG.debug("Restarting instance with id: %s" % instance.id)
+            context.notification = (
+                DBaaSInstanceRestart(context, **request_info))
+            with StartNotification(context, instance_id=instance.id):
+                with EndNotification(context):
+                    instance.update_db(task_status=InstanceTasks.REBOOTING)
+                    instance.restart()
+
+        timeout = Timeout(CONF.cluster_usage_timeout)
+        cluster_notification = context.notification
+        request_info = cluster_notification.serialize(context)
+        try:
+            node_db_inst = DBInstance.find_all(cluster_id=cluster_id).all()
+            for index, db_inst in enumerate(node_db_inst):
+                if index > 0:
+                    LOG.debug(
+                        "Waiting (%ds) for restarted nodes to rejoin the "
+                        "cluster before proceeding." % delay_sec)
+                    time.sleep(delay_sec)
+                instance = BuiltInstanceTasks.load(context, db_inst.id)
+                _restart_cluster_instance(instance)
+        except Timeout as t:
+            if t is not timeout:
+                raise  # not my timeout
+            LOG.exception(_("Timeout for restarting cluster."))
+            raise
+        except Exception:
+            LOG.exception(_("Error restarting cluster.") % cluster_id)
+            raise
+        finally:
+            context.notification = cluster_notification
+            timeout.cancel()
+            self.reset_task()
+
+        LOG.debug("End rolling restart for id: %s." % cluster_id)
 
     def rolling_upgrade_cluster(self, context, cluster_id, datastore_version):
         LOG.debug("Begin rolling cluster upgrade for id: %s." % cluster_id)
@@ -668,7 +713,7 @@ class FreshInstanceTasks(FreshInstance, NotifyMixin, ConfigurationMixin):
             self._log_and_raise(e_create, msg_create, err)
 
     def report_root_enabled(self):
-        mysql_models.RootHistory.create(self.context, self.id, 'root')
+        api_ext_models.RootHistory.create(self.context, self.id, 'root')
 
     def update_statuses_on_time_out(self):
 
@@ -1649,6 +1694,73 @@ class BackupTasks(object):
         else:
             backup.delete()
         LOG.info(_("Deleted backup %s successfully.") % backup_id)
+
+
+class ModuleTasks(object):
+
+    @classmethod
+    def reapply_module(cls, context, module_id, md5, include_clustered,
+                       batch_size, batch_delay, force):
+        """Reapply module."""
+        LOG.info(_("Reapplying module %s.") % module_id)
+
+        batch_size = batch_size or CONF.module_reapply_max_batch_size
+        batch_delay = batch_delay or CONF.module_reapply_min_batch_delay
+        # Don't let non-admin bypass the safeguards
+        if not context.is_admin:
+            batch_size = min(batch_size, CONF.module_reapply_max_batch_size)
+            batch_delay = max(batch_delay, CONF.module_reapply_min_batch_delay)
+        modules = module_models.Modules.load_by_ids(context, [module_id])
+        current_md5 = modules[0].md5
+        LOG.debug("MD5: %s  Force: %s." % (md5, force))
+
+        # Process all the instances
+        instance_modules = module_models.InstanceModules.load_all(
+            context, module_id=module_id, md5=md5)
+        total_count = instance_modules.count()
+        reapply_count = 0
+        skipped_count = 0
+        if instance_modules:
+            module_list = module_views.convert_modules(modules)
+            for instance_module in instance_modules:
+                instance_id = instance_module.instance_id
+                if (instance_module.md5 != current_md5 or force) and (
+                        not md5 or md5 == instance_module.md5):
+                    instance = BuiltInstanceTasks.load(context, instance_id,
+                                                       needs_server=False)
+                    if instance and (
+                            include_clustered or not instance.cluster_id):
+                        reapply_count += 1
+                        try:
+                            module_models.Modules.validate(
+                                modules, instance.datastore.id,
+                                instance.datastore_version.id)
+                            client = create_guest_client(context, instance_id)
+                            client.module_apply(module_list)
+                            Instance.add_instance_modules(
+                                context, instance_id, modules)
+                        except exception.ModuleInvalid as ex:
+                            LOG.info(_("Skipping: %s") % ex)
+
+                        # Sleep if we've fired off too many in a row.
+                        if (batch_size and
+                                not reapply_count % batch_size and
+                                (reapply_count + skipped_count) < total_count):
+                            LOG.debug("Applied module to %d of %d instances - "
+                                      "sleeping for %ds" % (reapply_count,
+                                                            total_count,
+                                                            batch_delay))
+                            time.sleep(batch_delay)
+                    else:
+                        LOG.debug("Instance '%s' not found or doesn't match "
+                                  "criteria, skipping reapply." % instance_id)
+                        skipped_count += 1
+                else:
+                    LOG.debug("Instance '%s' does not match "
+                              "criteria, skipping reapply." % instance_id)
+                    skipped_count += 1
+        LOG.info(_("Reapplied module to %(num)d instances (skipped %(skip)d).")
+                 % {'num': reapply_count, 'skip': skipped_count})
 
 
 class ResizeVolumeAction(object):

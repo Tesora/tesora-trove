@@ -18,9 +18,12 @@ import Crypto.Random
 from proboscis import SkipTest
 import re
 import tempfile
+import time
 
 from troveclient.compat import exceptions
 
+from trove.common import exception
+from trove.common.utils import poll_until
 from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
 from trove.module import models
@@ -64,8 +67,12 @@ class ModuleRunner(TestRunner):
             {'suffix': '_updated', 'priority': False, 'order': 8},
         ]
 
+        self.apply_count = 0
         self.mod_inst_id = None
+        self.mod_inst_apply_count = 0
         self.temp_module = None
+        self.live_update_orig_md5 = None
+        self.reapply_max_upd_date = None
         self._module_type = None
 
         self.test_modules = []
@@ -103,6 +110,10 @@ class ModuleRunner(TestRunner):
     @property
     def update_test_module(self):
         return self._get_test_module(1)
+
+    @property
+    def live_update_test_module(self):
+        return self._find_live_update_module()
 
     def build_module_args(self, name_order=None):
         suffix = "_unknown"
@@ -152,6 +163,11 @@ class ModuleRunner(TestRunner):
         def _match(mod):
             return mod.auto_apply and mod.tenant_id and mod.visible
         return self._find_module(_match, "Could not find auto-apply module")
+
+    def _find_live_update_module(self):
+        def _match(mod):
+            return mod.live_update and mod.tenant_id and mod.visible
+        return self._find_module(_match, "Could not find live-update module")
 
     def _find_all_tenant_module(self):
         def _match(mod):
@@ -516,8 +532,7 @@ class ModuleRunner(TestRunner):
             self.unauth_client.modules.get, self.main_test_module.id)
         # we're using a different client, so we'll check the return code
         # on it explicitly, instead of depending on 'assert_raises'
-        self.assert_client_code(expected_http_code=expected_http_code,
-                                client=self.unauth_client)
+        self.assert_client_code(expected_http_code, client=self.unauth_client)
 
     def run_module_list(self):
         self.assert_module_list(
@@ -576,6 +591,7 @@ class ModuleRunner(TestRunner):
         self.assert_module_create(
             self.admin_client, 5,
             live_update=True)
+        self.live_update_orig_md5 = self.test_modules[-1].md5
 
     def run_module_create_admin_priority_apply(self):
         self.assert_module_create(
@@ -856,7 +872,7 @@ class ModuleRunner(TestRunner):
     def assert_module_list_instance(self, client, instance_id, expected_count,
                                     expected_http_code=200):
         module_list = client.instances.modules(instance_id)
-        self.assert_client_code(expected_http_code, client)
+        self.assert_client_code(expected_http_code, client=client)
         count = len(module_list)
         self.assert_equal(expected_count, count,
                           "Wrong number of modules from list instance")
@@ -871,10 +887,31 @@ class ModuleRunner(TestRunner):
     def assert_module_instances(self, client, module_id, expected_count,
                                 expected_http_code=200):
         instance_list = client.modules.instances(module_id)
-        self.assert_client_code(expected_http_code, client)
+        self.assert_client_code(expected_http_code, client=client)
         count = len(instance_list)
         self.assert_equal(expected_count, count,
                           "Wrong number of instances applied from module")
+
+    def run_module_instance_count_empty(self):
+        self.assert_module_instance_count(
+            self.auth_client, self.main_test_module.id, 0)
+
+    def assert_module_instance_count(self, client, module_id,
+                                     expected_rows, expected_count=None,
+                                     expected_http_code=200):
+        instance_count_list = client.modules.instances(module_id,
+                                                       count_only=True)
+        self.assert_client_code(expected_http_code, client=client)
+        rowcount = len(instance_count_list)
+        self.assert_equal(expected_rows, rowcount,
+                          "Wrong number of instance count records from module")
+        # expected_count is a dict of md5->count pairs.
+        if expected_rows and expected_count:
+            for row in instance_count_list:
+                self.assert_equal(
+                    expected_count[row.module_md5], row.instance_count,
+                    "Wrong count in record from module instances; md5: %s" %
+                    row.module_md5)
 
     def run_module_query_empty(self):
         self.assert_module_query(
@@ -884,12 +921,12 @@ class ModuleRunner(TestRunner):
     def run_module_query_after_remove(self):
         self.assert_module_query(
             self.auth_client, self.instance_info.id,
-            self.module_auto_apply_count_prior_to_create + 1)
+            self.module_auto_apply_count_prior_to_create + 2)
 
     def assert_module_query(self, client, instance_id, expected_count,
                             expected_http_code=200, expected_results=None):
         modquery_list = client.instances.module_query(instance_id)
-        self.assert_client_code(expected_http_code, client)
+        self.assert_client_code(expected_http_code, client=client)
         count = len(modquery_list)
         self.assert_equal(expected_count, count,
                           "Wrong number of modules from query")
@@ -921,6 +958,7 @@ class ModuleRunner(TestRunner):
     def run_module_apply(self):
         self.assert_module_apply(self.auth_client, self.instance_info.id,
                                  self.main_test_module)
+        self.apply_count += 1
 
     def assert_module_apply(self, client, instance_id, module,
                             expected_is_admin=False,
@@ -929,7 +967,7 @@ class ModuleRunner(TestRunner):
                             expected_http_code=200):
         module_apply_list = client.instances.module_apply(
             instance_id, [module.id])
-        self.assert_client_code(expected_http_code, client)
+        self.assert_client_code(expected_http_code, client=client)
         expected_status = expected_status or 'OK'
         expected_message = (expected_message or
                             self.get_module_message(module.name))
@@ -1006,15 +1044,16 @@ class ModuleRunner(TestRunner):
 
     def run_module_list_instance_after_apply(self):
         self.assert_module_list_instance(
-            self.auth_client, self.instance_info.id, 1)
+            self.auth_client, self.instance_info.id, self.apply_count)
 
     def run_module_apply_another(self):
         self.assert_module_apply(self.auth_client, self.instance_info.id,
                                  self.update_test_module)
+        self.apply_count += 1
 
     def run_module_list_instance_after_apply_another(self):
         self.assert_module_list_instance(
-            self.auth_client, self.instance_info.id, 2)
+            self.auth_client, self.instance_info.id, self.apply_count)
 
     def run_module_update_after_remove(self):
         name, description, contents, priority, order = (
@@ -1027,8 +1066,17 @@ class ModuleRunner(TestRunner):
             datastore_version=self.instance_info.dbaas_datastore_version,
             contents=contents)
 
+    def run_module_instances_after_apply(self):
+        self.assert_module_instances(
+            self.auth_client, self.main_test_module.id, 1)
+
+    def run_module_instance_count_after_apply(self):
+        self.assert_module_instance_count(
+            self.auth_client, self.main_test_module.id, 1,
+            {self.main_test_module.md5: 1})
+
     def run_module_query_after_apply(self):
-        expected_count = self.module_auto_apply_count_prior_to_create + 1
+        expected_count = self.module_auto_apply_count_prior_to_create + 2
         expected_results = self.create_default_query_expected_results(
             [self.main_test_module])
         self.assert_module_query(self.auth_client, self.instance_info.id,
@@ -1061,13 +1109,48 @@ class ModuleRunner(TestRunner):
             }
         return expected_results
 
+    def run_module_instances_after_apply_another(self):
+        self.assert_module_instances(
+            self.auth_client, self.main_test_module.id, 1)
+
+    def run_module_instance_count_after_apply_another(self):
+        self.assert_module_instance_count(
+            self.auth_client, self.main_test_module.id, 1,
+            {self.main_test_module.md5: 1})
+
     def run_module_query_after_apply_another(self):
-        expected_count = self.module_auto_apply_count_prior_to_create + 2
+        expected_count = self.module_auto_apply_count_prior_to_create + 3
         expected_results = self.create_default_query_expected_results(
             [self.main_test_module, self.update_test_module])
         self.assert_module_query(self.auth_client, self.instance_info.id,
                                  expected_count=expected_count,
                                  expected_results=expected_results)
+
+    def run_module_update_not_live(
+            self, expected_exception=exceptions.Forbidden,
+            expected_http_code=403):
+        self.assert_raises(
+            expected_exception, expected_http_code,
+            self.auth_client.modules.update,
+            self.main_test_module.id, description='Do not allow this change')
+
+    def run_module_apply_live_update(self):
+        module = self.live_update_test_module
+        self.assert_module_apply(self.auth_client, self.instance_info.id,
+                                 module, expected_is_admin=module.is_admin)
+        self.apply_count += 1
+
+    def run_module_list_instance_after_apply_live(self):
+        self.assert_module_list_instance(
+            self.auth_client, self.instance_info.id, self.apply_count)
+
+    def run_module_update_live_update(self):
+        module = self.live_update_test_module
+        new_contents = self.get_module_contents(name=module.name + '_upd')
+        self.assert_module_update(
+            self.admin_client,
+            module.id,
+            contents=new_contents)
 
     def run_module_update_after_remove_again(self):
         self.assert_module_update(
@@ -1078,10 +1161,13 @@ class ModuleRunner(TestRunner):
             all_datastore_versions=True)
 
     def run_create_inst_with_mods(self, expected_http_code=200):
+        live_update = self.live_update_test_module
         self.mod_inst_id = self.assert_inst_mod_create(
-            self.main_test_module.id, '_module', expected_http_code)
+            [self.main_test_module.id, live_update.id],
+            '_module', expected_http_code)
+        self.mod_inst_apply_count += 2
 
-    def assert_inst_mod_create(self, module_id, name_suffix,
+    def assert_inst_mod_create(self, module_ids, name_suffix,
                                expected_http_code):
         inst = self.auth_client.instances.create(
             self.instance_info.name + name_suffix,
@@ -1090,9 +1176,9 @@ class ModuleRunner(TestRunner):
             datastore=self.instance_info.dbaas_datastore,
             datastore_version=self.instance_info.dbaas_datastore_version,
             nics=self.instance_info.nics,
-            modules=[module_id],
+            modules=module_ids,
         )
-        self.assert_client_code(expected_http_code)
+        self.assert_client_code(expected_http_code, client=self.auth_client)
         return inst.id
 
     def run_create_inst_with_wrong_module(
@@ -1126,14 +1212,14 @@ class ModuleRunner(TestRunner):
     def assert_module_remove(self, client, instance_id, module_id,
                              expected_http_code=200):
         client.instances.module_remove(instance_id, module_id)
-        self.assert_client_code(expected_http_code, client)
+        self.assert_client_code(expected_http_code, client=client)
 
     def run_wait_for_inst_with_mods(self, expected_states=['BUILD', 'ACTIVE']):
         self.assert_instance_action(self.mod_inst_id, expected_states, None)
 
     def run_module_query_after_inst_create(self):
         auto_modules = self._find_all_auto_apply_modules(visible=True)
-        expected_count = 1 + len(auto_modules)
+        expected_count = self.mod_inst_apply_count + len(auto_modules)
         expected_results = self.create_default_query_expected_results(
             [self.main_test_module] + auto_modules)
         self.assert_module_query(self.auth_client, self.mod_inst_id,
@@ -1142,7 +1228,7 @@ class ModuleRunner(TestRunner):
 
     def run_module_retrieve_after_inst_create(self):
         auto_modules = self._find_all_auto_apply_modules(visible=True)
-        expected_count = 1 + len(auto_modules)
+        expected_count = self.mod_inst_apply_count + len(auto_modules)
         expected_results = self.create_default_query_expected_results(
             [self.main_test_module] + auto_modules)
         self.assert_module_retrieve(self.auth_client, self.mod_inst_id,
@@ -1156,7 +1242,7 @@ class ModuleRunner(TestRunner):
             prefix = 'contents'
             modretrieve_list = client.instances.module_retrieve(
                 instance_id, directory=temp_dir, prefix=prefix)
-            self.assert_client_code(expected_http_code, client)
+            self.assert_client_code(expected_http_code, client=client)
             count = len(modretrieve_list)
             self.assert_equal(expected_count, count,
                               "Wrong number of modules from retrieve")
@@ -1187,7 +1273,7 @@ class ModuleRunner(TestRunner):
 
     def run_module_query_after_inst_create_admin(self):
         auto_modules = self._find_all_auto_apply_modules()
-        expected_count = 1 + len(auto_modules)
+        expected_count = self.mod_inst_apply_count + len(auto_modules)
         expected_results = self.create_default_query_expected_results(
             [self.main_test_module] + auto_modules, is_admin=True)
         self.assert_module_query(self.admin_client, self.mod_inst_id,
@@ -1195,9 +1281,8 @@ class ModuleRunner(TestRunner):
                                  expected_results=expected_results)
 
     def run_module_retrieve_after_inst_create_admin(self):
-        pass
         auto_modules = self._find_all_auto_apply_modules()
-        expected_count = 1 + len(auto_modules)
+        expected_count = self.mod_inst_apply_count + len(auto_modules)
         expected_results = self.create_default_query_expected_results(
             [self.main_test_module] + auto_modules, is_admin=True)
         self.assert_module_retrieve(self.admin_client, self.mod_inst_id,
@@ -1212,12 +1297,159 @@ class ModuleRunner(TestRunner):
             expected_exception, expected_http_code,
             self.auth_client.modules.delete, module.id)
 
+    def run_module_list_instance_after_mod_inst(self):
+        self.assert_module_list_instance(
+            self.auth_client, self.mod_inst_id,
+            self.module_auto_apply_create_count + 2)
+
+    def run_module_instances_after_mod_inst(self):
+        self.assert_module_instances(
+            self.auth_client, self.live_update_test_module.id, 2)
+
+    def run_module_instance_count_after_mod_inst(self):
+        self.assert_module_instance_count(
+            self.auth_client, self.live_update_test_module.id, 2,
+            {self.live_update_test_module.md5: 1,
+             self.live_update_orig_md5: 1})
+
+    def run_module_reapply_with_md5(self, expected_http_code=202):
+        self.assert_module_reapply(
+            self.auth_client, self.live_update_test_module,
+            expected_http_code=expected_http_code,
+            md5=self.live_update_test_module.md5)
+
+    def assert_module_reapply(self, client, module, expected_http_code,
+                              md5=None, force=False):
+        self.reapply_max_upd_date = self.get_updated(client, module.id)
+        client.modules.reapply(module.id, md5=md5, force=force)
+        self.assert_client_code(expected_http_code, client=client)
+
+    def run_module_reapply_with_md5_verify(self):
+        # since this isn't supposed to do anything, we can't 'wait' for it to
+        # finish, since we'll never know. So just sleep for a couple seconds
+        # just to make sure.
+        time.sleep(2)
+        # Now we check that the max_updated_date field didn't change
+        module_id = self.live_update_test_module.id
+        instance_count_list = self.auth_client.modules.instances(
+            module_id, count_only=True)
+        mismatch = False
+        for instance_count in instance_count_list:
+            if self.reapply_max_upd_date != instance_count.max_updated_date:
+                mismatch = True
+        self.assert_true(
+            mismatch,
+            "Could not find record having max_updated_date different from %s" %
+            self.reapply_max_upd_date)
+
+    def run_module_list_instance_after_reapply_md5(self):
+        self.assert_module_list_instance(
+            self.auth_client, self.mod_inst_id,
+            self.module_auto_apply_create_count + 2)
+
+    def run_module_instances_after_reapply_md5(self):
+        self.assert_module_instances(
+            self.auth_client, self.live_update_test_module.id, 2)
+
+    def run_module_instance_count_after_reapply_md5(self):
+        self.assert_module_instance_count(
+            self.auth_client, self.live_update_test_module.id, 2,
+            {self.live_update_test_module.md5: 1,
+             self.live_update_orig_md5: 1})
+
+    def run_module_reapply_all(self, expected_http_code=202):
+        module_id = self.live_update_test_module.id
+        self.reapply_max_upd_date = self.get_updated(
+            self.auth_client, module_id)
+        self.assert_module_reapply(
+            self.auth_client, self.live_update_test_module,
+            expected_http_code=expected_http_code)
+
+    def run_module_reapply_all_wait(self):
+        self.wait_for_reapply(
+            self.auth_client, self.live_update_test_module.id,
+            md5=self.live_update_orig_md5)
+
+    def wait_for_reapply(self, client, module_id, updated=None, md5=None):
+        """Reapply is done when all the counts for 'md5' are gone.  If updated
+        is passed in, the min_updated_date must all be greater than it.
+        """
+        if not updated and not md5:
+            raise RuntimeError("Code error: Must pass in 'updated' or 'md5'.")
+        self.report.log("Waiting for all md5:%s modules to have an updated "
+                        "date greater than %s" % (md5, updated))
+
+        def _all_updated():
+            min_updated = self.get_updated(
+                client, module_id, max=False, md5=md5)
+            if md5:
+                return min_updated is None
+            return min_updated > updated
+
+        timeout = 60
+        try:
+            poll_until(_all_updated, time_out=timeout, sleep_time=5)
+            self.report.log("All instances now have the current module "
+                            "for md5: %s." % md5)
+        except exception.PollTimeOut:
+            self.fail("Some instances were not updated with the "
+                      "timeout: %ds" % timeout)
+
+    def get_updated(self, client, module_id, max=True, md5=None):
+        updated = None
+        instance_count_list = client.modules.instances(
+            module_id, count_only=True)
+        for instance_count in instance_count_list:
+            if not md5 or md5 == instance_count.module_md5:
+                if not updated or (
+                        (max and instance_count.max_updated_date > updated) or
+                        (not max and
+                         instance_count.min_updated_date < updated)):
+                    updated = (instance_count.max_updated_date
+                               if max else instance_count.min_updated_date)
+        return updated
+
+    def run_module_list_instance_after_reapply(self):
+        self.assert_module_list_instance(
+            self.auth_client, self.mod_inst_id,
+            self.module_auto_apply_create_count + 2)
+
+    def run_module_instances_after_reapply(self):
+        self.assert_module_instances(
+            self.auth_client, self.live_update_test_module.id, 2)
+
+    def run_module_instance_count_after_reapply(self):
+        self.assert_module_instance_count(
+            self.auth_client, self.live_update_test_module.id, 1,
+            {self.live_update_test_module.md5: 2})
+
+    def run_module_reapply_with_force(self, expected_http_code=202):
+        self.assert_module_reapply(
+            self.auth_client, self.live_update_test_module,
+            expected_http_code=expected_http_code,
+            force=True)
+
+    def run_module_reapply_with_force_wait(self):
+        self.wait_for_reapply(
+            self.auth_client, self.live_update_test_module.id,
+            updated=self.reapply_max_upd_date)
+
     def run_delete_inst_with_mods(self, expected_http_code=202):
         self.assert_delete_instance(self.mod_inst_id, expected_http_code)
 
     def assert_delete_instance(self, instance_id, expected_http_code):
         self.auth_client.instances.delete(instance_id)
-        self.assert_client_code(expected_http_code)
+        self.assert_client_code(expected_http_code, client=self.auth_client)
+
+    def run_remove_mods_from_main_inst(self, expected_http_code=200):
+        modquery_list = self.auth_client.instances.module_query(
+            self.instance_info.id)
+        self.assert_client_code(expected_http_code, client=self.auth_client)
+        for modquery in modquery_list:
+            self.auth_client.instances.module_remove(self.instance_info.id,
+                                                     modquery.id)
+            self.assert_client_code(expected_http_code,
+                                    client=self.auth_client)
 
     def run_wait_for_delete_inst_with_mods(
             self, expected_last_state=['SHUTDOWN']):

@@ -1,8 +1,11 @@
 {
     "admin_or_owner":  "role:admin or is_admin:True or tenant:%(tenant)s",
+    "admin": "role:admin or is_admin:True",
+    "default": "rule:admin_or_owner",
 
     "instance:create": "rule:admin_or_owner",
     "instance:delete": "rule:admin_or_owner",
+    "instance:force_delete": "rule:admin_or_owner",
     "instance:index": "rule:admin_or_owner",
     "instance:show": "rule:admin_or_owner",
     "instance:update": "rule:admin_or_owner",
@@ -11,6 +14,7 @@
     "instance:resize_volume": "rule:admin_or_owner",
     "instance:resize_flavor": "rule:admin_or_owner",
     "instance:reset_password": "rule:admin_or_owner",
+    "instance:reset_status": "rule:admin",
     "instance:promote_to_replica_source": "rule:admin_or_owner",
     "instance:eject_replica_source": "rule:admin_or_owner",
     "instance:configuration": "rule:admin_or_owner",
@@ -42,10 +46,12 @@
 
     "cluster:create": "rule:admin_or_owner",
     "cluster:delete": "rule:admin_or_owner",
+    "cluster:force_delete": "rule:admin_or_owner",
     "cluster:index": "rule:admin_or_owner",
     "cluster:show": "rule:admin_or_owner",
     "cluster:show_instance": "rule:admin_or_owner",
     "cluster:action": "rule:admin_or_owner",
+    "cluster:reset-status": "rule:admin",
 
     "cluster:extension:root:create": "rule:admin_or_owner",
     "cluster:extension:root:delete": "rule:admin_or_owner",
@@ -69,16 +75,16 @@
     "configuration-parameter:index_by_version": "rule:admin_or_owner",
     "configuration-parameter:show_by_version": "rule:admin_or_owner",
 
-    "datastore:index": "rule:admin_or_owner",
-    "datastore:show": "rule:admin_or_owner",
-    "datastore:version_show": "rule:admin_or_owner",
-    "datastore:version_show_by_uuid": "rule:admin_or_owner",
-    "datastore:version_index": "rule:admin_or_owner",
-    "datastore:list_associated_flavors": "rule:admin_or_owner",
-    "datastore:list_associated_volume_types": "rule:admin_or_owner",
+    "datastore:index": "",
+    "datastore:show": "",
+    "datastore:version_show": "",
+    "datastore:version_show_by_uuid": "",
+    "datastore:version_index": "",
+    "datastore:list_associated_flavors": "",
+    "datastore:list_associated_volume_types": "",
 
-    "flavor:index": "rule:admin_or_owner",
-    "flavor:show": "rule:admin_or_owner",
+    "flavor:index": "",
+    "flavor:show": "",
 
     "limits:index": "rule:admin_or_owner",
 

@@ -34,6 +34,7 @@ CONF = cfg.CONF
 
 
 class FakeOptGroup(object):
+
     def __init__(self, cluster_member_count=3,
                  volume_support=True, device_path='/dev/vdb'):
         self.cluster_member_count = cluster_member_count
@@ -42,6 +43,7 @@ class FakeOptGroup(object):
 
 
 class ClusterTest(trove_testtools.TestCase):
+
     def setUp(self):
         super(ClusterTest, self).setUp()
 
@@ -94,7 +96,7 @@ class ClusterTest(trove_testtools.TestCase):
                           self.datastore,
                           self.datastore_version,
                           self.instances_w_volumes,
-                          {}, None)
+                          {}, None, None)
 
     @patch.object(remote, 'create_nova_client')
     @patch.object(redis_api, 'CONF')
@@ -108,7 +110,7 @@ class ClusterTest(trove_testtools.TestCase):
                           self.datastore,
                           self.datastore_version,
                           self.instances_no_volumes,
-                          {}, None)
+                          {}, None, None)
 
     @patch.object(remote, 'create_nova_client')
     @patch.object(redis_api, 'CONF')
@@ -125,7 +127,7 @@ class ClusterTest(trove_testtools.TestCase):
                           self.datastore,
                           self.datastore_version,
                           self.instances_w_volumes,
-                          {}, None)
+                          {}, None, None)
 
     @patch.object(remote, 'create_nova_client')
     @patch.object(redis_api, 'CONF')
@@ -133,6 +135,7 @@ class ClusterTest(trove_testtools.TestCase):
                                                                   mock_conf,
                                                                   mock_client):
         class FakeFlavor:
+
             def __init__(self, flavor_id):
                 self.flavor_id = flavor_id
 
@@ -154,7 +157,7 @@ class ClusterTest(trove_testtools.TestCase):
                           self.datastore,
                           self.datastore_version,
                           self.instances_no_volumes,
-                          {}, None)
+                          {}, None, None)
 
     @patch.object(redis_api, 'CONF')
     @patch.object(inst_models.Instance, 'create')
@@ -170,7 +173,7 @@ class ClusterTest(trove_testtools.TestCase):
                             self.cluster_name,
                             self.datastore,
                             self.datastore_version,
-                            self.instances_w_volumes, {}, None)
+                            self.instances_w_volumes, {}, None, None)
         mock_task_api.return_value.create_cluster.assert_called_with(
             self.dbcreate_mock.return_value.id)
         self.assertEqual(3, mock_ins_create.call_count)
@@ -184,6 +187,7 @@ class ClusterTest(trove_testtools.TestCase):
                                           mock_task_api, mock_ins_create,
                                           mock_conf):
         class FakeFlavor:
+
             def __init__(self, flavor_id):
                 self.flavor_id = flavor_id
 
@@ -202,7 +206,7 @@ class ClusterTest(trove_testtools.TestCase):
                             self.cluster_name,
                             self.datastore,
                             self.datastore_version,
-                            self.instances_no_volumes, {}, None)
+                            self.instances_no_volumes, {}, None, None)
         mock_task_api.return_value.create_cluster.assert_called_with(
             self.dbcreate_mock.return_value.id)
         self.assertEqual(3, mock_ins_create.call_count)

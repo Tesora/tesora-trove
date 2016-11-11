@@ -15,6 +15,7 @@
 
 import six
 
+import netaddr
 from oslo_config.cfg import NoSuchOptError
 from oslo_log import log as logging
 
@@ -90,8 +91,11 @@ class CouchbaseCluster(models.Cluster):
 
     @classmethod
     def create(cls, context, name, datastore, datastore_version,
-               instances, extended_properties, locality):
+               instances, extended_properties, locality, configuration):
         LOG.debug("Processing a request for creating a new cluster.")
+
+        if configuration:
+            raise exception.ConfigurationNotSupported()
 
         cls.validate_instance_types(instances, datastore_version.manager,
                                     for_grow=False)
@@ -344,17 +348,32 @@ class CouchbaseCluster(models.Cluster):
         self.rolling_upgrade(datastore_version)
 
 
+def _filter_ipv4s(build_instances_output):
+    """Couchbase does not support IPv6 so the cluster IP list should only
+    contain IPv4 addresses.
+    """
+    (instances, ip_list) = build_instances_output
+    if ip_list:
+        ip_list = []
+        for instance_dict in instances:
+            ipv4s = [ip for ip in instance_dict["ip"]
+                     if netaddr.valid_ipv4(ip)]
+            if ipv4s:
+                ip_list.append(ipv4s[0])
+    return instances, ip_list
+
+
 class CouchbaseClusterView(ClusterView):
 
     def build_instances(self):
-        return self._build_instances(
+        return _filter_ipv4s(self._build_instances(
             CouchbaseClusterTasks.EXPOSED_SERVICES,
-            CouchbaseClusterTasks.EXPOSED_SERVICES)
+            CouchbaseClusterTasks.EXPOSED_SERVICES))
 
 
 class CouchbaseMgmtClusterView(MgmtClusterView):
 
     def build_instances(self):
-        return self._build_instances(
+        return _filter_ipv4s(self._build_instances(
             CouchbaseClusterTasks.EXPOSED_SERVICES,
-            CouchbaseClusterTasks.EXPOSED_SERVICES)
+            CouchbaseClusterTasks.EXPOSED_SERVICES))

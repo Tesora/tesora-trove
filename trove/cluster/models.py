@@ -23,17 +23,25 @@ from trove.cluster.tasks import ClusterTasks
 from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
-from trove.common.notification import (DBaaSClusterGrow, DBaaSClusterShrink,
-                                       DBaaSClusterResetStatus)
+from trove.common.notification import (
+    DBaaSClusterAttachConfiguration,
+    DBaaSClusterDetachConfiguration,
+    DBaaSClusterGrow, DBaaSClusterShrink,
+    DBaaSClusterResetStatus, DBaaSClusterRestart)
 from trove.common.notification import DBaaSClusterUpgrade
+from trove.common.notification import DBaaSInstanceAttachConfiguration
+from trove.common.notification import DBaaSInstanceDetachConfiguration
+from trove.common.notification import EndNotification
 from trove.common.notification import StartNotification
 from trove.common import remote
 from trove.common import server_group as srv_grp
 from trove.common.strategies.cluster import strategy
 from trove.common import utils
+from trove.configuration import models as config_models
 from trove.datastore import models as datastore_models
 from trove.db import models as dbmodels
 from trove.instance import models as inst_models
+from trove.instance.tasks import InstanceTasks
 from trove.taskmanager import api as task_api
 
 
@@ -50,7 +58,7 @@ def persisted_models():
 class DBCluster(dbmodels.DatabaseModelBase):
     _data_fields = ['id', 'created', 'updated', 'name', 'task_id',
                     'tenant_id', 'datastore_version_id', 'deleted',
-                    'deleted_at']
+                    'deleted_at', 'configuration_id']
 
     def __init__(self, task_status, **kwargs):
         """
@@ -198,6 +206,10 @@ class Cluster(object):
         return self.db_info.deleted_at
 
     @property
+    def configuration_id(self):
+        return self.db_info.configuration_id
+
+    @property
     def db_instances(self):
         """DBInstance objects are persistent, therefore cacheable."""
         if not self._db_instances:
@@ -246,14 +258,14 @@ class Cluster(object):
 
     @classmethod
     def create(cls, context, name, datastore, datastore_version,
-               instances, extended_properties, locality):
+               instances, extended_properties, locality, configuration):
         locality = srv_grp.ServerGroup.build_scheduler_hint(
             context, locality, name)
         api_strategy = strategy.load_api_strategy(datastore_version.manager)
         return api_strategy.cluster_class.create(context, name, datastore,
                                                  datastore_version, instances,
                                                  extended_properties,
-                                                 locality)
+                                                 locality, configuration)
 
     def validate_cluster_available(self, valid_states=[ClusterTasks.NONE]):
         if self.db_info.task_status not in valid_states:
@@ -322,6 +334,11 @@ class Cluster(object):
             with StartNotification(context, cluster_id=self.id):
                 return self.reset_status()
 
+        elif action == 'restart':
+            context.notification = DBaaSClusterRestart(context, request=req)
+            with StartNotification(context, cluster_id=self.id):
+                return self.restart()
+
         elif action == 'upgrade':
             context.notification = DBaaSClusterUpgrade(context, request=req)
             dv_id = param['datastore_version']
@@ -330,6 +347,21 @@ class Cluster(object):
                                    datastore_version=dv.id):
                 self.upgrade(dv)
             self.update_db(datastore_version_id=dv.id)
+
+        elif action == 'configuration_attach':
+            configuration_id = param['configuration_id']
+            context.notification = DBaaSClusterAttachConfiguration(context,
+                                                                   request=req)
+            with StartNotification(context, cluster_id=self.id,
+                                   configuration_id=configuration_id):
+                return self.configuration_attach(configuration_id)
+
+        elif action == 'configuration_detach':
+            context.notification = DBaaSClusterDetachConfiguration(context,
+                                                                   request=req)
+            with StartNotification(context, cluster_id=self.id):
+                return self.configuration_detach()
+
         else:
             raise exception.BadRequest(_("Action %s not supported") % action)
 
@@ -338,6 +370,20 @@ class Cluster(object):
 
     def shrink(self, instance_ids):
         raise exception.BadRequest(_("Action 'shrink' not supported"))
+
+    def rolling_restart(self):
+        self.validate_cluster_available()
+        self.db_info.update(task_status=ClusterTasks.RESTARTING_CLUSTER)
+        try:
+            cluster_id = self.db_info.id
+            task_api.load(self.context, self.ds_version.manager
+                          ).restart_cluster(cluster_id)
+        except Exception:
+            self.db_info.update(task_status=ClusterTasks.NONE)
+            raise
+
+        return self.__class__(self.context, self.db_info,
+                              self.ds, self.ds_version)
 
     def rolling_upgrade(self, datastore_version):
         """Upgrades a cluster to a new datastore version."""
@@ -357,8 +403,133 @@ class Cluster(object):
         return self.__class__(self.context, self.db_info,
                               self.ds, self.ds_version)
 
+    def restart(self):
+        raise exception.BadRequest(_("Action 'restart' not supported"))
+
     def upgrade(self, datastore_version):
-            raise exception.BadRequest(_("Action 'upgrade' not supported"))
+        raise exception.BadRequest(_("Action 'upgrade' not supported"))
+
+    def configuration_attach(self, configuration_id):
+        raise exception.BadRequest(
+            _("Action 'configuration_attach' not supported"))
+
+    def rolling_configuration_update(self, configuration_id,
+                                     apply_on_all=True):
+        cluster_notification = self.context.notification
+        request_info = cluster_notification.serialize(self.context)
+        self.validate_cluster_available()
+        self.db_info.update(task_status=ClusterTasks.UPDATING_CLUSTER)
+        try:
+            configuration = config_models.Configuration.find(
+                self.context, configuration_id, self.datastore_version.id)
+            instances = [inst_models.Instance.load(self.context, instance.id)
+                         for instance in self.instances]
+
+            LOG.debug("Persisting changes on cluster nodes.")
+            # Allow re-applying the same configuration (e.g. on configuration
+            # updates).
+            for instance in instances:
+                if not (instance.configuration and
+                        instance.configuration.id != configuration_id):
+                    self.context.notification = (
+                        DBaaSInstanceAttachConfiguration(self.context,
+                                                         **request_info))
+                    with StartNotification(self.context,
+                                           instance_id=instance.id,
+                                           configuration_id=configuration_id):
+                        with EndNotification(self.context):
+                            instance.save_configuration(configuration)
+                else:
+                    LOG.debug(
+                        "Node '%s' already has the configuration '%s' "
+                        "attached." % (instance.id, configuration_id))
+
+            # Configuration has been persisted to all instances.
+            # The cluster is in a consistent state with all nodes
+            # requiring restart.
+            # We therefore assign the configuration group ID now.
+            # The configuration can be safely detached at this point.
+            self.update_db(configuration_id=configuration_id)
+
+            LOG.debug("Applying runtime configuration changes.")
+            if instances[0].apply_configuration(configuration):
+                LOG.debug(
+                    "Runtime changes have been applied successfully to the "
+                    "first node.")
+                remaining_nodes = instances[1:]
+                if apply_on_all:
+                    LOG.debug(
+                        "Applying the changes to the remaining nodes.")
+                    for instance in remaining_nodes:
+                        instance.apply_configuration(configuration)
+                else:
+                    LOG.debug(
+                        "Releasing restart-required task on the remaining "
+                        "nodes.")
+                    for instance in remaining_nodes:
+                        instance.update_db(task_status=InstanceTasks.NONE)
+        finally:
+            self.update_db(task_status=ClusterTasks.NONE)
+
+        return self.__class__(self.context, self.db_info,
+                              self.ds, self.ds_version)
+
+    def configuration_detach(self):
+        raise exception.BadRequest(
+            _("Action 'configuration_detach' not supported"))
+
+    def rolling_configuration_remove(self, apply_on_all=True):
+        cluster_notification = self.context.notification
+        request_info = cluster_notification.serialize(self.context)
+        self.validate_cluster_available()
+        self.db_info.update(task_status=ClusterTasks.UPDATING_CLUSTER)
+        try:
+            instances = [inst_models.Instance.load(self.context, instance.id)
+                         for instance in self.instances]
+
+            LOG.debug("Removing changes from cluster nodes.")
+            for instance in instances:
+                if instance.configuration:
+                    self.context.notification = (
+                        DBaaSInstanceDetachConfiguration(self.context,
+                                                         **request_info))
+                    with StartNotification(self.context,
+                                           instance_id=instance.id):
+                        with EndNotification(self.context):
+                            instance.delete_configuration()
+                else:
+                    LOG.debug(
+                        "Node '%s' has no configuration attached."
+                        % instance.id)
+
+            # The cluster is in a consistent state with all nodes
+            # requiring restart.
+            # New configuration can be safely attached at this point.
+            configuration_id = self.configuration_id
+            self.update_db(configuration_id=None)
+
+            LOG.debug("Applying runtime configuration changes.")
+            if instances[0].reset_configuration(configuration_id):
+                LOG.debug(
+                    "Runtime changes have been applied successfully to the "
+                    "first node.")
+                remaining_nodes = instances[1:]
+                if apply_on_all:
+                    LOG.debug(
+                        "Applying the changes to the remaining nodes.")
+                    for instance in remaining_nodes:
+                        instance.reset_configuration(configuration_id)
+                else:
+                    LOG.debug(
+                        "Releasing restart-required task on the remaining "
+                        "nodes.")
+                    for instance in remaining_nodes:
+                        instance.update_db(task_status=InstanceTasks.NONE)
+        finally:
+            self.update_db(task_status=ClusterTasks.NONE)
+
+        return self.__class__(self.context, self.db_info,
+                              self.ds, self.ds_version)
 
     @staticmethod
     def load_instance(context, cluster_id, instance_id):

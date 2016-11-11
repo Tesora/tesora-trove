@@ -34,10 +34,9 @@ from trove.common.remote import create_guest_client
 from trove.common import utils
 from trove.common import wsgi
 from trove.datastore import models as datastore_models
+from trove.extensions.common.service import RoutingDatabaseController
 from trove.extensions.common.service import RoutingUserController
-from trove.extensions.mysql.common import populate_validated_databases
 from trove.instance import models, views
-from trove.guestagent.db import models as guest_models
 from trove.module import models as module_models
 from trove.module import views as module_views
 
@@ -187,6 +186,11 @@ class InstanceController(wsgi.Controller):
         return wsgi.Result(None, 202)
 
     def _action_reset_status(self, context, req, instance, body):
+        if 'force_delete' in body['reset_status']:
+            self.authorize_instance_action(context, 'force_delete', instance)
+        else:
+            self.authorize_instance_action(
+                context, 'reset_status', instance)
         context.notification = notification.DBaaSInstanceResetStatus(
             context, request=req)
         with StartNotification(context, instance_id=instance.id):
@@ -373,29 +377,45 @@ class InstanceController(wsgi.Controller):
             user_data = body['instance'].get('users', [])
             user_models = []
             user_controller = None
-            if user_data:
-                try:
-                    user_controller = RoutingUserController.load_controller(
-                        manager)
-                    if not user_controller:
-                        # Datastore supports user operations but the related
-                        # controller is undefined.
-                        raise exception.BadRequest(
-                            _("Datastore does not have user controller "
-                              "configured."))
-                    user_models = user_controller.parse_users_from_request(
-                        user_data)
-                except NoSuchOptError:
-                    # Datastore does not support users at all.
-                    pass
+            try:
+                user_controller = RoutingUserController.load_controller(
+                    manager)
+                if not user_controller:
+                    # Datastore supports user operations but the related
+                    # controller is undefined.
+                    raise exception.BadRequest(
+                        _("Datastore does not have user controller "
+                          "configured."))
+                user_models = user_controller.parse_users_from_request(
+                    user_data)
+            except NoSuchOptError:
+                # Datastore does not support users at all.
+                pass
 
-            init_db_names = []
-            databases = populate_validated_databases(
-                body['instance'].get('databases', []))
-            for db in databases:
-                db_model = guest_models.MySQLDatabase()
-                db_model.deserialize(db)
-                init_db_names.append(db_model.name)
+            db_data = body['instance'].get('databases', [])
+            db_models = []
+            db_controller = None
+            try:
+                db_controller = RoutingDatabaseController.load_controller(
+                    manager)
+                if not db_controller:
+                    # Datastore supports database operations but the
+                    # related controller is undefined.
+                    raise exception.BadRequest(
+                        _("Datastore does not have database controller "
+                          "configured."))
+                db_models = db_controller.parse_databases_from_request(
+                    db_data)
+            except NoSuchOptError:
+                # Datastore does not support databases at all.
+                pass
+
+            unique_db_ids = set()
+            for db_model in db_models:
+                database_id = db_controller.get_database_id(db_model)
+                if database_id in unique_db_ids:
+                    raise exception.DatabaseInitialDatabaseDuplicateError()
+                unique_db_ids.add(database_id)
 
             unique_user_ids = set()
             for user_model in user_models:
@@ -404,16 +424,17 @@ class InstanceController(wsgi.Controller):
                     raise exception.DatabaseInitialUserDuplicateError()
                 unique_user_ids.add(user_id)
 
-                if hasattr(user_model, 'databases'):
-                    for db in user_model.databases:
-                        db_model = guest_models.MySQLDatabase()
-                        db_model.deserialize(db)
-                        db_name = db_model.name
-                        if db_name not in init_db_names:
+                if hasattr(user_model, 'databases') and user_model.databases:
+                    user_dbs = db_controller.parse_databases_from_response(
+                        user_model.databases)
+                    for db_model in user_dbs:
+                        database_id = db_controller.get_database_id(db_model)
+                        if database_id not in unique_db_ids:
                             raise DatabaseForUserNotInDatabaseListError(
-                                user=user_id, database=db_name)
+                                user=user_id, database=database_id)
 
             users = [user_model.serialize() for user_model in user_models]
+            databases = [db_model.serialize() for db_model in db_models]
 
             return users, databases
         except ValueError as ve:
@@ -441,13 +462,13 @@ class InstanceController(wsgi.Controller):
                 configuration_id = kwargs['configuration_id']
                 with StartNotification(context, instance_id=instance.id,
                                        configuration_id=configuration_id):
-                    instance.assign_configuration(configuration_id)
+                    instance.attach_configuration(configuration_id)
             else:
                 context.notification = (
                     notification.DBaaSInstanceDetachConfiguration(context,
                                                                   request=req))
                 with StartNotification(context, instance_id=instance.id):
-                    instance.unassign_configuration()
+                    instance.detach_configuration()
         if 'datastore_version' in kwargs:
             datastore_version = datastore_models.DatastoreVersion.load(
                 instance.datastore, kwargs['datastore_version'])
@@ -588,8 +609,9 @@ class InstanceController(wsgi.Controller):
         self.authorize_instance_action(context, 'module_apply', instance)
         module_ids = [mod['id'] for mod in body.get('modules', [])]
         modules = module_models.Modules.load_by_ids(context, module_ids)
-        module_list = models.validate_modules(
+        module_models.Modules.validate(
             modules, instance.datastore.id, instance.datastore_version.id)
+        module_list = module_views.convert_modules(modules)
         client = create_guest_client(context, id)
         result_list = client.module_apply(module_list)
         models.Instance.add_instance_modules(context, id, modules)
@@ -606,8 +628,13 @@ class InstanceController(wsgi.Controller):
         module_info = module_views.DetailedModuleView(module).data()
         client = create_guest_client(context, id)
         client.module_remove(module_info)
-        instance_module = module_models.InstanceModule.load(
+        instance_modules = module_models.InstanceModules.load_all(
             context, instance_id=id, module_id=module_id)
-        if instance_module:
+        im_delete_count = 0
+        for instance_module in instance_modules:
             module_models.InstanceModule.delete(context, instance_module)
+            im_delete_count += 1
+        if im_delete_count:
+            LOG.debug("Deleted %d instance module record(s)." %
+                      im_delete_count)
         return wsgi.Result(None, 200)
