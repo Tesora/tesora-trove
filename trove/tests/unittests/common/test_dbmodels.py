@@ -116,15 +116,16 @@ class DatastoreUserTest(trove_testtools.TestCase):
                           '_collate': None}
         self.databases = [self.serial_db]
         self.host_wildcard = '%'
+        self.roles = ['read-only']
         self.serial_user_basic = {
             '_name': self.username, '_password': None,
             '_host': self.host_wildcard, '_databases': [],
-            '_is_root': False
+            '_is_root': False, '_roles': []
         }
         self.serial_user_full = {
             '_name': self.username, '_password': self.password,
             '_host': self.host, '_databases': self.databases,
-            '_is_root': False
+            '_is_root': False, '_roles': self.roles
         }
 
     def tearDown(self):
@@ -178,7 +179,8 @@ class DatastoreUserTest(trove_testtools.TestCase):
         user1 = models.DatastoreUser(self.username)
         self.assertEqual(self.serial_user_basic, user1.serialize())
         user2 = models.DatastoreUser(self.username, self.password,
-                                     self.host, self.dbname)
+                                     self.host, self.dbname,
+                                     roles=self.roles)
         self.assertEqual(self.serial_user_full, user2.serialize())
 
     @mock.patch.object(models.DatastoreUser, '_validate_user_name')

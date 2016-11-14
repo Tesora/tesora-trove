@@ -62,6 +62,15 @@ class MongoDBUser(models.DatastoreUser):
     def database(self, value):
         self._update_name(database=value)
 
+    @property
+    def databases(self):
+        return [MongoDBSchema(role['database']).serialize()
+                for role in self.roles if role['name'] == 'readWrite']
+
+    @databases.setter
+    def databases(self, value):
+        self.add_access_role(value)
+
     def _validate_user_name(self, value):
         self._update_name(name=value)
 
@@ -87,33 +96,63 @@ class MongoDBUser(models.DatastoreUser):
         self._username = username
         self._database = self._build_database_schema(database).serialize()
 
-    @property
-    def roles(self):
-        return self._roles
+    def convert_role_mongo_to_trove(self, role):
+        return {'name': role['role'], 'database': role['db']}
 
-    @roles.setter
-    def roles(self, value):
-        if isinstance(value, list):
-            for role in value:
-                self._add_role(role)
+    def convert_role_trove_to_mongo(self, role):
+        if role.get('database'):
+            return {'role': role['name'], 'db': role['database']}
         else:
-            self._add_role(value)
+            return {'role': role['name'], 'db': self.database.name}
 
-    def revoke_role(self, role):
-        if role in self.roles:
-            self._roles.remove(role)
+    @property
+    def mongo_roles(self):
+        return [self.convert_role_trove_to_mongo(role)
+                for role in self.roles]
+
+    @mongo_roles.setter
+    def mongo_roles(self, value):
+        if isinstance(value, list):
+            for mongo_role in value:
+                self._roles.append(
+                    self.convert_role_mongo_to_trove(mongo_role))
+        else:
+            self._roles.append(self.convert_role_mongo_to_trove(value))
 
     def _init_roles(self):
         if '_roles' not in self.__dict__:
             self._roles = []
+        if '_databases' in self.__dict__:
             for db in self._databases:
-                self._roles.append({'db': db['_name'], 'role': 'readWrite'})
+                self.add_access_role(db['_name'])
+            del self._databases
+
+    def access_role(self, value):
+        return {'name': 'readWrite', 'database': value}
+
+    def add_access_role(self, value):
+        """Access is tracked not via the old-style _databases but via _roles,
+        so if given access to a database convert it to the readWrite role.
+        """
+        access_role = self.access_role(value)
+        if access_role not in self._roles:
+            self._roles.append(access_role)
+
+    @classmethod
+    def deserialize(cls, value, verify=True):
+        user = super(MongoDBUser, cls).deserialize(value, verify)
+        user.name = user._name
+        user._init_roles()
+        return user
+
+    def serialize(self):
+        dbs = self.databases
+        d = super(MongoDBUser, self).serialize()
+        d['_databases'] = dbs
+        return d
 
     def _build_database_schema(self, name):
         return MongoDBSchema(name)
-
-    def deserialize_schema(self, value):
-        return MongoDBSchema.deserialize(value)
 
     @staticmethod
     def _parse_name(value):
@@ -128,20 +167,6 @@ class MongoDBUser(models.DatastoreUser):
     @property
     def _max_user_name_length(self):
         return 128
-
-    def _add_role(self, value):
-        if not self._is_valid_role(value):
-            raise ValueError(_('Role %s is invalid.') % value)
-        self._roles.append(value)
-        if value['role'] == 'readWrite':
-            self.databases = value['db']
-
-    def _is_valid_role(self, value):
-        if not isinstance(value, dict):
-            return False
-        if not {'db', 'role'} == set(value):
-            return False
-        return True
 
     def verify_dict(self):
         super(MongoDBUser, self).verify_dict()

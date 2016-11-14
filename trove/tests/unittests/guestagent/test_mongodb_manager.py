@@ -49,9 +49,9 @@ class GuestAgentMongoDBManagerTest(DatastoreManagerTest):
 
         self.mount_point = '/var/lib/mongodb'
         self.host_wildcard = '%'  # This is used in the test_*_user tests below
-        self.serialized_user = {
+        self._serialized_user = {
             '_name': 'testdb.testuser', '_password': None,
-            '_roles': [{'db': 'testdb', 'role': 'testrole'}],
+            '_roles': [{'database': 'testdb', 'name': 'testrole'}],
             '_username': 'testuser', '_databases': [],
             '_host': self.host_wildcard,
             '_database': {'_name': 'testdb',
@@ -59,6 +59,10 @@ class GuestAgentMongoDBManagerTest(DatastoreManagerTest):
                           '_collate': None},
             '_is_root': False
         }
+
+    @property
+    def serialized_user(self):
+        return self._serialized_user.copy()
 
     def tearDown(self):
         super(GuestAgentMongoDBManagerTest, self).tearDown()
@@ -175,7 +179,7 @@ class GuestAgentMongoDBManagerTest(DatastoreManagerTest):
     @mock.patch.object(service.MongoDBAdmin, '_get_user_record')
     def test_create_user(self, mocked_get_user, mocked_admin_user,
                          mocked_client):
-        user = self.serialized_user.copy()
+        user = self.serialized_user
         user['_password'] = 'testpassword'
         users = [user]
 
@@ -217,11 +221,11 @@ class GuestAgentMongoDBManagerTest(DatastoreManagerTest):
     @mock.patch.object(service.MongoDBAdmin, '_admin_user')
     def test_list_users(self, mocked_admin_user, mocked_client):
         # roles are NOT returned by list_users
-        user1 = self.serialized_user.copy()
-        user2 = self.serialized_user.copy()
+        user1 = self.serialized_user
+        user2 = self.serialized_user
         user2['_name'] = 'testdb.otheruser'
         user2['_username'] = 'otheruser'
-        user2['_roles'] = [{'db': 'testdb2', 'role': 'readWrite'}]
+        user2['_roles'] = [{'database': 'testdb2', 'name': 'readWrite'}]
         user2['_databases'] = [{'_name': 'testdb2',
                                 '_character_set': None,
                                 '_collate': None}]
@@ -263,7 +267,7 @@ class GuestAgentMongoDBManagerTest(DatastoreManagerTest):
                                    '_character_set': None,
                                    '_collate': None},
                      '_password': 'password',
-                     '_roles': [{'db': 'admin', 'role': 'root'}],
+                     '_roles': [{'database': 'admin', 'name': 'root'}],
                      '_databases': [],
                      '_host': self.host_wildcard,
                      '_is_root': True}
@@ -299,9 +303,9 @@ class GuestAgentMongoDBManagerTest(DatastoreManagerTest):
         client = mocked_client().__enter__()['testdb']
 
         mocked_get_user.return_value.roles = [
-            {'db': 'db1', 'role': 'readWrite'},
-            {'db': 'db2', 'role': 'readWrite'},
-            {'db': 'db3', 'role': 'readWrite'}
+            {'database': 'db1', 'name': 'readWrite'},
+            {'database': 'db2', 'name': 'readWrite'},
+            {'database': 'db3', 'name': 'readWrite'}
         ]
 
         self.manager.revoke_access(self.context, 'testdb.testuser',
@@ -319,9 +323,9 @@ class GuestAgentMongoDBManagerTest(DatastoreManagerTest):
     def test_list_access(self, mocked_get_user,
                          mocked_admin_user, mocked_client):
         mocked_get_user.return_value.roles = [
-            {'db': 'db1', 'role': 'readWrite'},
-            {'db': 'db2', 'role': 'readWrite'},
-            {'db': 'db3', 'role': 'readWrite'}
+            {'database': 'db1', 'name': 'readWrite'},
+            {'database': 'db2', 'name': 'readWrite'},
+            {'database': 'db3', 'name': 'readWrite'}
         ]
 
         accessible_databases = self.manager.list_access(

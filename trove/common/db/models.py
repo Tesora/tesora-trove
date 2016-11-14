@@ -210,12 +210,13 @@ class DatastoreUser(DatastoreModelsBase):
     root_username = 'root'
 
     def __init__(self, name=None, password=None, host=None, databases=None,
-                 deserializing=False):
+                 roles=None, deserializing=False):
         self._name = None
         self._password = None
         self._host = self._HOSTNAME_WILDCARD
         self._databases = []
         self._is_root = False
+        self._roles = []
         if not deserializing:
             self.name = name
             if password:
@@ -224,6 +225,8 @@ class DatastoreUser(DatastoreModelsBase):
                 self.host = host
             if databases:
                 self.databases = databases
+            if roles:
+                self.roles = roles
 
     @classmethod
     def root(cls, name=None, password=None, *args, **kwargs):
@@ -272,6 +275,23 @@ class DatastoreUser(DatastoreModelsBase):
                 self._add_database(dbname)
         else:
             self._add_database(value)
+
+    @property
+    def roles(self):
+        if not hasattr(self, '_roles'):
+            self._roles = []
+        return self._roles
+
+    @roles.setter
+    def roles(self, value):
+        if isinstance(value, list):
+            self._roles.extend(value)
+        else:
+            self._roles.append(value)
+
+    def revoke_role(self, role):
+        if role in self.roles:
+            self._roles.remove(role)
 
     @property
     def host(self):
