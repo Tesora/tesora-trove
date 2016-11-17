@@ -29,10 +29,20 @@ class CouchbaseHelper(TestHelper):
         self._data_cache = dict()
 
     def get_valid_user_definitions(self):
-        return [{'name': 'bucket1', 'password': 'password1', 'databases': []}]
+        return [{'name': 'bucket1', 'password': 'password1'},
+                {'name': 'bucket2', 'password': 'password2',
+                 'bucket_ramsize': 100, 'bucket_replica': 0},
+                {'name': 'bucket3', 'password': 'password3',
+                 'bucket_ramsize': 110, 'bucket_replica': 1,
+                 'enable_index_replica': 1,
+                 'bucket_eviction_policy': 'fullEviction',
+                 'bucket_priority': 'high'}]
 
     def get_helper_credentials(self):
         return {'name': 'lite', 'password': 'litepass'}
+
+    def get_helper_user_properties(self):
+        return {'bucket_ramsize': 100}
 
     def create_client(self, host, *args, **kwargs):
         user = self.get_helper_credentials()
@@ -50,11 +60,13 @@ class CouchbaseHelper(TestHelper):
             self._set_data_point(client, data_label,
                                  self._get_dataset(data_start, data_size))
 
-    @utils.retry((cb_except.TemporaryFailError, cb_except.BusyError))
+    @utils.retry((cb_except.TemporaryFailError, cb_except.BusyError),
+                 retries=5)
     def _key_exists(self, client, key, *args, **kwargs):
         return client.get(key, quiet=True).success
 
-    @utils.retry((cb_except.TemporaryFailError, cb_except.BusyError))
+    @utils.retry((cb_except.TemporaryFailError, cb_except.BusyError),
+                 retries=5)
     def _set_data_point(self, client, key, value, *args, **kwargs):
         client.insert(key, value)
 
@@ -74,7 +86,8 @@ class CouchbaseHelper(TestHelper):
         if self._key_exists(client, data_label, *args, **kwargs):
             self._remove_data_point(client, data_label, *args, **kwargs)
 
-    @utils.retry((cb_except.TemporaryFailError, cb_except.BusyError))
+    @utils.retry((cb_except.TemporaryFailError, cb_except.BusyError),
+                 retries=5)
     def _remove_data_point(self, client, key, *args, **kwargs):
         client.remove(key)
 
@@ -91,7 +104,8 @@ class CouchbaseHelper(TestHelper):
                                 "Unexpected value '%s' returned from "
                                 "Couchbase key '%s'" % (value, key))
 
-    @utils.retry((cb_except.TemporaryFailError, cb_except.BusyError))
+    @utils.retry((cb_except.TemporaryFailError, cb_except.BusyError),
+                 retries=5)
     def _get_data_point(self, client, key, *args, **kwargs):
         return client.get(key).value
 

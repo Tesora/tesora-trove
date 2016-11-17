@@ -322,6 +322,8 @@ class Controller(object):
             exception.BackupTooLarge,
             exception.ModuleAccessForbidden,
             exception.ModuleAppliedToInstance,
+            exception.PolicyNotAuthorized,
+            exception.LogAccessForbidden,
         ],
         webob.exc.HTTPBadRequest: [
             exception.InvalidModelError,
@@ -332,6 +334,8 @@ class Controller(object):
             exception.UserAlreadyExists,
             exception.LocalStorageNotSpecified,
             exception.ModuleAlreadyExists,
+            exception.ReservedDatabaseId,
+            exception.DuplicateDatabaseId,
         ],
         webob.exc.HTTPNotFound: [
             exception.NotFound,
@@ -341,8 +345,10 @@ class Controller(object):
             exception.DatabaseNotFound,
             exception.QuotaResourceUnknown,
             exception.BackupFileNotFound,
+            exception.InstanceNotFound,
             exception.ClusterNotFound,
             exception.DatastoreNotFound,
+            exception.DatabaseNotInAccessList,
             exception.SwiftNotFound,
             exception.ModuleTypeNotFound,
         ],

@@ -54,7 +54,7 @@ from trove.guestagent.common import operating_system
 from trove.guestagent.datastore.experimental.postgresql import (
     service as community_service
 )
-from trove.guestagent.db import models
+from trove.common.db.postgresql import models
 
 
 class EDBApp(community_service.PgSqlApp):
@@ -105,4 +105,4 @@ class EDBApp(community_service.PgSqlApp):
         super(EDBApp, self).secure(context)
 
     def build_root_user(self, password=None):
-        return models.EnterpriseDBRootUser(password=password)
+        return models.PostgreSQLUser.root(password=password)

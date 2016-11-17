@@ -243,9 +243,37 @@ class DatabaseAlreadyExists(BadRequest):
     message = _('A database with the name "%(name)s" already exists.')
 
 
+class ReservedDatabaseId(BadRequest):
+
+    message = _('Cannot access or modify reserved database "%(name)s".')
+
+
+class DuplicateDatabaseId(BadRequest):
+
+    message = _('All created databases must be unique. '
+                'Database "%(name)s" appears multiple times.')
+
+
 class UserAlreadyExists(BadRequest):
 
     message = _('A user with the name "%(name)s" already exists.')
+
+
+class ReservedUserId(BadRequest):
+
+    message = _('Cannot access or modify reserved user "%(name)s".')
+
+
+class DuplicateUserId(BadRequest):
+
+    message = _('All created users must be unique. '
+                'User "%(name)s" appears multiple times.')
+
+
+class DatabaseNotInAccessList(NotFound):
+
+    message = _("Database %(database_name)s is not on the access list of user "
+                "%(user_name)s.")
 
 
 class InstanceAssignedToConfiguration(BadRequest):
@@ -261,9 +289,9 @@ class UnprocessableEntity(TroveError):
     message = _("Unable to process the contained request.")
 
 
-class UnauthorizedRequest(TroveError):
+class ConfigurationNotSupported(UnprocessableEntity):
 
-    message = _("Unauthorized request.")
+    message = _("Configuration groups not supported by the datastore.")
 
 
 class CannotResizeToSameSize(TroveError):
@@ -332,6 +360,11 @@ class PollTimeOut(TroveError):
 class Forbidden(TroveError):
 
     message = _("User does not have admin privileges.")
+
+
+class PolicyNotAuthorized(Forbidden):
+
+    message = _("Policy doesn't allow %(action)s to be performed.")
 
 
 class InvalidModelError(TroveError):
@@ -563,6 +596,10 @@ class ModuleInvalid(Forbidden):
     message = _("The module is invalid: %(reason)s")
 
 
+class InstanceNotFound(NotFound):
+    message = _("Instance '%(instance)s' cannot be found.")
+
+
 class ClusterNotFound(NotFound):
     message = _("Cluster '%(cluster)s' cannot be found.")
 
@@ -624,6 +661,13 @@ class ClusterOperationNotSupported(TroveError):
     message = _("The '%(operation)s' operation is not supported for cluster.")
 
 
+class ClusterInstanceTypeMissing(TroveError):
+
+    message = _("Instance(s) missing one or more required types. "
+                "'%(types)s' specified but '%(req)s' is required "
+                "(per instance: %(per)s).")
+
+
 class TroveOperationAuthError(TroveError):
     message = _("Operation not allowed for tenant %(tenant_id)s.")
 
@@ -647,3 +691,8 @@ class ImageNotFound(NotFound):
 class DatastoreVersionAlreadyExists(BadRequest):
 
     message = _("A datastore version with the name '%(name)s' already exists.")
+
+
+class LogAccessForbidden(Forbidden):
+
+    message = _("You must be admin to %(action)s log '%(log)s'.")

@@ -13,8 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import json
-
 from proboscis import SkipTest
 
 from trove.tests.config import CONFIG
@@ -28,9 +26,7 @@ class InstanceCreateRunner(TestRunner):
 
     def __init__(self):
         super(InstanceCreateRunner, self).__init__()
-        self.error_inst_id = None
-        self.error2_inst_id = None
-        self.init_inst_id = None
+        self.init_inst_info = None
         self.init_inst_dbs = None
         self.init_inst_users = None
         self.init_inst_host = None
@@ -62,23 +58,13 @@ class InstanceCreateRunner(TestRunner):
         self.instance_info.volume = instance_info.volume
         self.instance_info.srv_grp_id = self.assert_server_group_exists(
             self.instance_info.id)
+        self.instance_info.helper_user = instance_info.helper_user
+        self.instance_info.helper_database = instance_info.helper_database
 
     def run_initial_configuration_create(self, expected_http_code=200):
-        dynamic_config = self.test_helper.get_dynamic_group()
-        non_dynamic_config = self.test_helper.get_non_dynamic_group()
-        values = dynamic_config or non_dynamic_config
-        if values:
-            json_def = json.dumps(values)
-            result = self.auth_client.configurations.create(
-                'initial_configuration_for_instance_create',
-                json_def,
-                "Configuration group used by instance create tests.",
-                datastore=self.instance_info.dbaas_datastore,
-                datastore_version=self.instance_info.dbaas_datastore_version)
-            self.assert_client_code(expected_http_code,
-                                    client=self.auth_client)
-
-            self.config_group_id = result.id
+        group_id, _ = self.create_initial_configuration(expected_http_code)
+        if group_id:
+            self.config_group_id = group_id
         else:
             raise SkipTest("No groups defined.")
 
@@ -110,7 +96,7 @@ class InstanceCreateRunner(TestRunner):
                 expected_states, expected_http_code,
                 create_helper_user=create_helper_user)
 
-            self.init_inst_id = info.id
+            self.init_inst_info = info
         else:
             # There is no need to run this test as it's effectively the same as
             # the empty instance test.
@@ -133,6 +119,8 @@ class InstanceCreateRunner(TestRunner):
         users = [{'name': item['name'], 'password': item['password']}
                  for item in user_definitions]
 
+        instance_info = InstanceTestInfo()
+
         # Here we add helper user/database if any.
         if create_helper_user:
             helper_db_def, helper_user_def, root_def = self.build_helper_defs()
@@ -141,14 +129,15 @@ class InstanceCreateRunner(TestRunner):
                     "Appending a helper database '%s' to the instance "
                     "definition." % helper_db_def['name'])
                 databases.append(helper_db_def)
+                instance_info.helper_database = helper_db_def
             if helper_user_def:
                 self.report.log(
                     "Appending a helper user '%s:%s' to the instance "
                     "definition."
                     % (helper_user_def['name'], helper_user_def['password']))
                 users.append(helper_user_def)
+                instance_info.helper_user = helper_user_def
 
-        instance_info = InstanceTestInfo()
         instance_info.name = name
         instance_info.databases = databases
         instance_info.users = users
@@ -229,49 +218,44 @@ class InstanceCreateRunner(TestRunner):
 
         return instance_info
 
-    def run_create_build_instance(self, expected_states=['BUILD'],
-                                  expected_http_code=200):
-        if self.is_using_existing_instance:
-            raise SkipTest("Using an existing instance.")
-
-        name = self.instance_info.name + '_build'
-        flavor = self.get_instance_flavor()
-        volume_size = self.instance_info.volume_size
-
-        inst = self.assert_instance_create(
-            name, flavor, volume_size, [], [], None, None,
-            CONFIG.dbaas_datastore, CONFIG.dbaas_datastore_version,
-            expected_states, expected_http_code, create_helper_user=False)
-        self.assert_client_code(expected_http_code)
-        self.build_inst_id = inst.id
-
-    def run_delete_build_instance(self, expected_http_code=202):
-        if self.build_inst_id:
-            self.auth_client.instances.force_delete(self.build_inst_id)
-            self.assert_client_code(expected_http_code)
-
-    def run_wait_for_build_instance(self, expected_states=['BUILD']):
-        if self.build_inst_id:
-            self.assert_all_instance_states([self.build_inst_id],
-                                            expected_states)
-
     def run_wait_for_created_instances(
             self, expected_states=['BUILD', 'ACTIVE']):
         instances = [self.instance_info.id]
-        if self.init_inst_id:
-            instances.append(self.init_inst_id)
+        if self.init_inst_info:
+            instances.append(self.init_inst_info.id)
         self.assert_all_instance_states(instances, expected_states)
 
+        # It may take some time before the initial users/databases
+        # appear on the instance after it went ACTIVE.
+        # We need to wait for that before we can proceed with data operations.
+        self.wait_for_test_helpers(self.instance_info)
+        if self.init_inst_info:
+            self.wait_for_test_helpers(self.init_inst_info)
+
+    def wait_for_test_helpers(self, inst_info):
+        self.report.log("Waiting for helper users and databases to be "
+                        "created on instance: %s" % inst_info.id)
+        if inst_info.helper_user:
+            self.wait_for_user_create(inst_info.id,
+                                      [inst_info.helper_user])
+        if inst_info.helper_database:
+            self.wait_for_database_create(inst_info.id,
+                                          [inst_info.helper_database])
+        self.report.log("Test helpers are ready.")
+
     def run_add_initialized_instance_data(self):
-        self.init_inst_data = DataType.small
-        self.init_inst_host = self.get_instance_host(self.init_inst_id)
-        self.test_helper.add_data(self.init_inst_data, self.init_inst_host)
+        if self.init_inst_info:
+            self.init_inst_data = DataType.small
+            self.init_inst_host = self.get_instance_host(
+                self.init_inst_info.id)
+            self.test_helper.add_data(self.init_inst_data, self.init_inst_host)
 
     def run_validate_initialized_instance(self):
-        if self.init_inst_id:
+        if self.init_inst_info:
             self.assert_instance_properties(
-                self.init_inst_id, self.init_inst_dbs, self.init_inst_users,
-                self.init_inst_config_group_id, self.init_inst_data)
+                self.init_inst_info.id, self.init_inst_dbs,
+                self.init_inst_users, self.init_inst_config_group_id,
+                self.init_inst_data)
 
     def assert_instance_properties(
             self, instance_id, expected_dbs_definitions,
@@ -306,38 +290,26 @@ class InstanceCreateRunner(TestRunner):
                               "No configuration group expected")
 
     def assert_database_list(self, instance_id, expected_databases):
-        expected_names = self._get_names(expected_databases)
-        full_list = self.auth_client.databases.list(instance_id)
-        self.assert_is_none(full_list.next,
-                            "Unexpected pagination in the database list.")
-        listed_names = [database.name for database in full_list]
-        self.assert_is_sublist(expected_names, listed_names,
-                               "Mismatch in instance databases.")
+        self.wait_for_database_create(instance_id, expected_databases)
 
     def _get_names(self, definitions):
         return [item['name'] for item in definitions]
 
     def assert_user_list(self, instance_id, expected_users):
-        expected_names = self._get_names(expected_users)
-        full_list = self.auth_client.users.list(instance_id)
-        self.assert_is_none(full_list.next,
-                            "Unexpected pagination in the user list.")
-        listed_names = [user.name for user in full_list]
-        self.assert_is_sublist(expected_names, listed_names,
-                               "Mismatch in instance users.")
-
+        self.wait_for_user_create(instance_id, expected_users)
         # Verify that user definitions include only created databases.
         all_databases = self._get_names(
             self.test_helper.get_valid_database_definitions())
         for user in expected_users:
-            self.assert_is_sublist(
-                self._get_names(user['databases']), all_databases,
-                "Definition of user '%s' specifies databases not included in "
-                "the list of initial databases." % user['name'])
+            if 'databases' in user:
+                self.assert_is_sublist(
+                    self._get_names(user['databases']), all_databases,
+                    "Definition of user '%s' specifies databases not included "
+                    "in the list of initial databases." % user['name'])
 
     def run_initialized_instance_delete(self, expected_http_code=202):
-        if self.init_inst_id:
-            self.auth_client.instances.delete(self.init_inst_id)
+        if self.init_inst_info:
+            self.auth_client.instances.delete(self.init_inst_info.id)
             self.assert_client_code(expected_http_code,
                                     client=self.auth_client)
         else:
@@ -345,13 +317,13 @@ class InstanceCreateRunner(TestRunner):
 
     def run_wait_for_init_delete(self, expected_states=['SHUTDOWN']):
         delete_ids = []
-        if self.init_inst_id:
-            delete_ids.append(self.init_inst_id)
+        if self.init_inst_info:
+            delete_ids.append(self.init_inst_info.id)
         if delete_ids:
             self.assert_all_gone(delete_ids, expected_states[-1])
         else:
             raise SkipTest("Cleanup is not required.")
-        self.init_inst_id = None
+        self.init_inst_info = None
         self.init_inst_dbs = None
         self.init_inst_users = None
         self.init_inst_host = None
@@ -366,27 +338,3 @@ class InstanceCreateRunner(TestRunner):
         else:
             raise SkipTest("Cleanup is not required.")
         self.config_group_id = None
-
-
-class CouchbaseInstanceCreateRunner(InstanceCreateRunner):
-
-    def run_initialized_instance_create(
-            self, with_dbs=True, with_users=False, configuration_id=None,
-            expected_states=['BUILD', 'ACTIVE'], expected_http_code=200,
-            create_helper_user=True, name_suffix='_init'):
-        # Couchbase supports only one user per instance.
-        # Since we already by default create the helper user, we need to skip
-        # creating any other instance users.
-        super(CouchbaseInstanceCreateRunner,
-              self).run_initialized_instance_create(
-            with_dbs=with_dbs,
-            with_users=with_users,
-            configuration_id=configuration_id,
-            expected_states=expected_states,
-            expected_http_code=expected_http_code,
-            create_helper_user=create_helper_user,
-            name_suffix=name_suffix)
-
-
-class Couchbase_4InstanceCreateRunner(CouchbaseInstanceCreateRunner):
-    pass

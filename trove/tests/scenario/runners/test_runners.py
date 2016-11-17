@@ -14,6 +14,7 @@
 #    under the License.
 
 import datetime
+import json
 import os
 import proboscis
 import time as timer
@@ -173,6 +174,8 @@ class InstanceTestInfo(object):
         self.user = None  # The user instance who owns the instance.
         self.users = None  # The users created on the instance.
         self.databases = None  # The databases created on the instance.
+        self.helper_user = None  # Test helper user if exists.
+        self.helper_database = None  # Test helper database if exists.
 
 
 class TestRunner(object):
@@ -518,10 +521,18 @@ class TestRunner(object):
                                else [instance_ids], expected_last_status)
 
     def assert_pagination_match(
-            self, list_page, full_list, start_idx, end_idx):
-        self.assert_equal(full_list[start_idx:end_idx], list(list_page),
-                          "List page does not match the expected full "
-                          "list section.")
+            self, list_page, full_list, start_idx, end_idx,
+            comp=lambda a, b: a == b):
+        expected = full_list[start_idx:end_idx]
+        actual = list(list_page)
+        self.assert_equal(len(expected), len(actual),
+                          "List page has an unexpected length.")
+        for idx, exp_val in enumerate(expected):
+            self.assert_true(
+                comp(exp_val, actual[idx]),
+                "List page does not match the expected full "
+                "list section at index %d: '%s' (expected '%s')."
+                % (idx, actual, expected))
 
     def _wait_all_deleted(self, instance_ids, expected_last_status):
         self.report.log("Waiting for instances to be gone: %s (status %s)" %
@@ -716,6 +727,15 @@ class TestRunner(object):
                             'databases': databases}
             return None
 
+        def _build_user_def(creds, user_properties):
+            user_def = _get_credentials(creds)
+            if user_def:
+                if user_properties:
+                    user_def.update(user_properties)
+                return user_def
+
+            return None
+
         credentials = self.test_helper.get_helper_credentials()
         if credentials:
             database = credentials.get('database')
@@ -723,9 +743,10 @@ class TestRunner(object):
                 database_def = {'name': database}
         credentials_root = self.test_helper.get_helper_credentials_root()
 
+        user_properties = self.test_helper.get_helper_user_properties()
         return (database_def,
-                _get_credentials(credentials),
-                _get_credentials(credentials_root))
+                _build_user_def(credentials, user_properties),
+                _build_user_def(credentials_root, user_properties))
 
     def wait_for_user_create(self, instance_id, expected_user_defs):
         expected_user_names = {user_def['name']
@@ -768,6 +789,25 @@ class TestRunner(object):
     def get_db_names(self, instance_id):
         full_list = self.auth_client.databases.list(instance_id)
         return {database.name: database for database in full_list}
+
+    def create_initial_configuration(self, expected_http_code):
+        dynamic_config = self.test_helper.get_dynamic_group()
+        non_dynamic_config = self.test_helper.get_non_dynamic_group()
+        values = dynamic_config or non_dynamic_config
+        if values:
+            json_def = json.dumps(values)
+            result = self.auth_client.configurations.create(
+                'initial_configuration_for_create_tests',
+                json_def,
+                "Configuration group used by create tests.",
+                datastore=self.instance_info.dbaas_datastore,
+                datastore_version=self.instance_info.dbaas_datastore_version)
+            self.assert_client_code(expected_http_code,
+                                    client=self.auth_client)
+
+            return (result.id, dynamic_config is None)
+
+        return (None, False)
 
 
 class CheckInstance(AttrCheck):

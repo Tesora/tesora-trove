@@ -12,6 +12,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import collections
 import os
 import stat
 import tempfile
@@ -24,7 +25,9 @@ from mock import patch
 from mock import PropertyMock
 from oslo_utils import netutils
 
+from trove.common.db.couchbase import models as guest_models
 from trove.common.exception import ProcessExecutionError
+from trove.common.exception import TroveError
 from trove.common import utils
 from trove.guestagent import backup
 from trove.guestagent.common import operating_system
@@ -209,6 +212,44 @@ class GuestAgentCouchbaseManagerTest(DatastoreManagerTest):
             set(['--bucket=bucket1', '--bucket-replica=0', '--wait']),
             set(opts))
 
+        opts = app.build_admin()._build_command_options(
+            {'server-add': ['0.0.0.0', '1.2.3.4'],
+             'server-add-username': 'user',
+             'server-add-password': 'password',
+             'server-remove': ['8.8.8.8']})
+        self.assertEqual(
+            set(['--server-add=0.0.0.0', '--server-add=1.2.3.4',
+                 '--server-add-username=user',
+                 '--server-add-password=password',
+                 '--server-remove=8.8.8.8']),
+            set(opts))
+
+        opts = app.build_admin()._build_command_options(
+            [collections.OrderedDict([
+                ('server-add', '0.0.0.0'),
+                ('server-add-username', 'user1'),
+                ('server-add-password', 'password1')]),
+             collections.OrderedDict([
+                 ('server-add', '1.2.3.4'),
+                 ('server-add-username', 'user2'),
+                 ('server-add-password', 'password2')]),
+             {'server-remove': ['8.8.8.8']}])
+        self.assertEqual(
+            ['--server-add=0.0.0.0',
+             '--server-add-username=user1',
+             '--server-add-password=password1',
+             '--server-add=1.2.3.4',
+             '--server-add-username=user2',
+             '--server-add-password=password2',
+             '--server-remove=8.8.8.8'],
+            opts)
+
+        opts = app.build_admin()._build_command_options(
+            [{'server-remove': ['8.8.8.8']}])
+        self.assertEqual(
+            ['--server-remove=8.8.8.8'],
+            opts)
+
     def test_parse_bucket_list(self):
         app = couch_service.CouchbaseApp(Mock())
         bucket_list = app.build_admin()._parse_bucket_list(
@@ -247,3 +288,79 @@ class GuestAgentCouchbaseManagerTest(DatastoreManagerTest):
 
             available_ram_mock.return_value = 128
             self.assertEqual('256', str(app.ramsize_quota_mb))
+
+    @patch.object(couch_service.CouchbaseAdmin, 'get_used_quota_mb',
+                  return_value=0)
+    @patch.object(couch_service.CouchbaseAdmin, 'get_memory_quota_mb',
+                  return_value=1024)
+    def test_compute_bucket_mem_allocations(self, quota_mock, used_quota_mock):
+        app = couch_service.CouchbaseApp(Mock())
+        admin = app.build_admin()
+
+        buckets = [
+            guest_models.CouchbaseUser('b1', bucket_ramsize_mb=250),
+            guest_models.CouchbaseUser('b2', bucket_ramsize_mb=300),
+            guest_models.CouchbaseUser('b3', bucket_ramsize_mb=150)]
+        admin._compute_bucket_mem_allocations(buckets)
+        self.assertEqual(250, buckets[0].bucket_ramsize_mb)
+        self.assertEqual(300, buckets[1].bucket_ramsize_mb)
+        self.assertEqual(150, buckets[2].bucket_ramsize_mb)
+
+        buckets = [
+            guest_models.CouchbaseUser('b1', bucket_ramsize_mb=250),
+            guest_models.CouchbaseUser('b2', bucket_ramsize_mb=300),
+            guest_models.CouchbaseUser('b3', bucket_ramsize_mb=None)]
+        admin._compute_bucket_mem_allocations(buckets)
+        self.assertEqual(250, buckets[0].bucket_ramsize_mb)
+        self.assertEqual(300, buckets[1].bucket_ramsize_mb)
+        self.assertEqual(474, buckets[2].bucket_ramsize_mb)
+
+        buckets = [
+            guest_models.CouchbaseUser('b1', bucket_ramsize_mb=462),
+            guest_models.CouchbaseUser('b2', bucket_ramsize_mb=462),
+            guest_models.CouchbaseUser('b3', bucket_ramsize_mb=None)]
+        admin._compute_bucket_mem_allocations(buckets)
+        self.assertEqual(462, buckets[0].bucket_ramsize_mb)
+        self.assertEqual(462, buckets[1].bucket_ramsize_mb)
+        self.assertEqual(100, buckets[2].bucket_ramsize_mb)
+
+        buckets = [
+            guest_models.CouchbaseUser('b1', bucket_ramsize_mb=250),
+            guest_models.CouchbaseUser('b2', bucket_ramsize_mb=300),
+            guest_models.CouchbaseUser('b3', bucket_ramsize_mb=None),
+            guest_models.CouchbaseUser('b4', bucket_ramsize_mb=None)]
+        admin._compute_bucket_mem_allocations(buckets)
+        self.assertEqual(250, buckets[0].bucket_ramsize_mb)
+        self.assertEqual(300, buckets[1].bucket_ramsize_mb)
+        self.assertEqual(237, buckets[2].bucket_ramsize_mb)
+        self.assertEqual(237, buckets[3].bucket_ramsize_mb)
+
+        buckets = [
+            guest_models.CouchbaseUser('b1', bucket_ramsize_mb=None),
+            guest_models.CouchbaseUser('b2', bucket_ramsize_mb=None),
+            guest_models.CouchbaseUser('b3', bucket_ramsize_mb=None)]
+        admin._compute_bucket_mem_allocations(buckets)
+        self.assertEqual(341, buckets[0].bucket_ramsize_mb)
+        self.assertEqual(341, buckets[1].bucket_ramsize_mb)
+        self.assertEqual(341, buckets[2].bucket_ramsize_mb)
+
+        buckets = [
+            guest_models.CouchbaseUser('b1', bucket_ramsize_mb=512),
+            guest_models.CouchbaseUser('b2', bucket_ramsize_mb=512)]
+        self.assertEqual(512, buckets[0].bucket_ramsize_mb)
+        self.assertEqual(512, buckets[1].bucket_ramsize_mb)
+
+        buckets = [
+            guest_models.CouchbaseUser('b1', bucket_ramsize_mb=550),
+            guest_models.CouchbaseUser('b2', bucket_ramsize_mb=450),
+            guest_models.CouchbaseUser('b3', bucket_ramsize_mb=100),
+            guest_models.CouchbaseUser('b4', bucket_ramsize_mb=None)]
+        self.assertRaises(TroveError, admin._compute_bucket_mem_allocations,
+                          buckets)
+
+        buckets = [
+            guest_models.CouchbaseUser('b1', bucket_ramsize_mb=550),
+            guest_models.CouchbaseUser('b2', bucket_ramsize_mb=450),
+            guest_models.CouchbaseUser('b3', bucket_ramsize_mb=None)]
+        self.assertRaises(TroveError, admin._compute_bucket_mem_allocations,
+                          buckets)

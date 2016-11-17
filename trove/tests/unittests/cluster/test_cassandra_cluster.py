@@ -17,6 +17,7 @@ from mock import ANY
 from mock import MagicMock
 from mock import Mock
 from mock import patch
+import uuid
 
 from trove.cluster import models
 from trove.common.strategies.cluster.experimental.cassandra.api \
@@ -25,6 +26,7 @@ from trove.common.strategies.cluster.experimental.cassandra.taskmanager \
     import CassandraClusterTasks
 from trove.instance import models as inst_models
 from trove.quota import quota
+from trove.taskmanager import api as task_api
 from trove.tests.unittests import trove_testtools
 
 
@@ -32,7 +34,23 @@ class ClusterTest(trove_testtools.TestCase):
 
     def setUp(self):
         super(ClusterTest, self).setUp()
+        self.cluster_id = str(uuid.uuid4())
+        self.cluster_name = "Cluster" + self.cluster_id
+        self.tenant_id = "23423432"
+        self.dv_id = "1"
+        self.db_info = models.DBCluster(
+            models.ClusterTasks.NONE, id=self.cluster_id,
+            name=self.cluster_name, tenant_id=self.tenant_id,
+            datastore_version_id=self.dv_id,
+            task_id=models.ClusterTasks.NONE._code)
         self.context = trove_testtools.TroveTestContext(self)
+        self.datastore = Mock()
+        self.dv = Mock()
+        self.dv.manager = "cassandra"
+        self.datastore_version = self.dv
+        self.cluster = CassandraCluster(
+            self.context, self.db_info, self.datastore, self.datastore_version)
+        self.cluster._server_group_loaded = True
 
     def tearDown(self):
         super(ClusterTest, self).tearDown()
@@ -53,7 +71,7 @@ class ClusterTest(trove_testtools.TestCase):
             CassandraCluster._create_cluster_instances(
                 self.context, 'test_cluster_id', 'test_cluster',
                 datastore, datastore_version,
-                test_instances, None, None)
+                test_instances, None, None, None)
 
         check_quotas.assert_called_once_with(
             ANY, instances=num_instances, volumes=get_vol_size.return_value)
@@ -97,3 +115,23 @@ class ClusterTest(trove_testtools.TestCase):
                           'rack': 'rack1'
                           })
         return nodes
+
+    @patch.object(CassandraCluster, '__init__')
+    @patch.object(task_api, 'load')
+    @patch.object(models.DBCluster, 'update')
+    @patch.object(inst_models.DBInstance, 'find_all')
+    @patch.object(inst_models.Instance, 'load')
+    @patch.object(models.Cluster, 'validate_cluster_available')
+    def test_upgrade(self, mock_validate, mock_load, mock_find_all,
+                     mock_update, mock_task_api, mock_init):
+        mock_init.return_value = None
+        existing_instances = [Mock(), Mock()]
+        mock_find_all.return_value.all.return_value = existing_instances
+        self.cluster.upgrade(self.datastore_version)
+        mock_validate.assert_called_with()
+        mock_update.assert_called_with(
+            task_status=models.ClusterTasks.UPGRADING_CLUSTER)
+        mock_task_api.return_value.upgrade_cluster.assert_called_with(
+            self.db_info.id, self.datastore_version.id)
+        mock_init.assert_called_with(self.context, self.db_info,
+                                     self.datastore, self.datastore_version)

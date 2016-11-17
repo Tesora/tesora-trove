@@ -228,11 +228,6 @@
             "type": "string"
         },
         {
-            "name": "initial_token",
-            "restart_required": true,
-            "type": "string"
-        },
-        {
             "name": "num_tokens",
             "restart_required": true,
             "min": 0,
@@ -292,12 +287,6 @@
         },
         {
             "name": "counter_cache_save_period",
-            "restart_required": true,
-            "min": 0,
-            "type": "integer"
-        },
-        {
-            "name": "counter_cache_keys_to_save",
             "restart_required": true,
             "min": 0,
             "type": "integer"

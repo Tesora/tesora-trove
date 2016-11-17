@@ -13,6 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import six
+
 from oslo_config.cfg import NoSuchOptError
 from oslo_log import log as logging
 
@@ -70,7 +72,14 @@ class ClusterController(wsgi.Controller):
                                          " one action specified in body"))
         context = req.environ[wsgi.CONTEXT_KEY]
         cluster = models.Cluster.load(context, id)
-        self.authorize_cluster_action(context, 'action', cluster)
+        if ('reset-status' in body and
+                'force_delete' not in body['reset-status']):
+            self.authorize_cluster_action(context, 'reset-status', cluster)
+        elif ('reset-status' in body and
+                'force_delete' in body['reset-status']):
+            self.authorize_cluster_action(context, 'force_delete', cluster)
+        else:
+            self.authorize_cluster_action(context, 'action', cluster)
         cluster.action(context, req, *next(iter(body.items())))
 
         view = views.load_view(cluster, req=req, load_servers=False)
@@ -192,6 +201,11 @@ class ClusterController(wsgi.Controller):
                 availability_zone = node['availability_zone']
             if 'modules' in node:
                 modules = node['modules']
+            instance_type = None
+            if 'type' in node:
+                instance_type = node['type']
+                if isinstance(instance_type, six.string_types):
+                    instance_type = instance_type.split(',')
 
             instances.append({"flavor_id": flavor_id,
                               "volume_size": volume_size,
@@ -199,7 +213,8 @@ class ClusterController(wsgi.Controller):
                               "nics": nics,
                               "availability_zone": availability_zone,
                               'region_name': node.get('region_name'),
-                              "modules": modules})
+                              "modules": modules,
+                              "instance_type": instance_type})
 
         locality = body['cluster'].get('locality')
         if locality:
@@ -211,6 +226,8 @@ class ClusterController(wsgi.Controller):
             if locality not in locality_domain:
                 raise exception.BadRequest(msg=locality_domain_msg)
 
+        configuration = body['cluster'].get('configuration')
+
         context.notification = notification.DBaaSClusterCreate(context,
                                                                request=req)
         with StartNotification(context, name=name, datastore=datastore.name,
@@ -218,7 +235,7 @@ class ClusterController(wsgi.Controller):
             cluster = models.Cluster.create(context, name, datastore,
                                             datastore_version, instances,
                                             extended_properties,
-                                            locality)
+                                            locality, configuration)
         cluster.locality = locality
         view = views.load_view(cluster, req=req, load_servers=False)
         return wsgi.Result(view.data(), 200)

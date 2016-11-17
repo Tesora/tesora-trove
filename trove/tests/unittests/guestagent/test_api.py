@@ -327,7 +327,8 @@ class ApiTest(trove_testtools.TestCase):
         self.api.detach_replica()
         # verify
         self._verify_rpc_prepare_before_call()
-        self._verify_call('detach_replica', for_failover=False)
+        self._verify_call('detach_replica', for_failover=False,
+                          for_promote=False)
 
     def test_get_replica_context(self):
         # execute

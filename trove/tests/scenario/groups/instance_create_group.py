@@ -108,6 +108,7 @@ class InstanceInitDeleteWaitGroup(TestGroup):
         super(InstanceInitDeleteWaitGroup, self).__init__(
             InstanceCreateRunnerFactory.instance())
 
+    @test
     def wait_for_init_delete(self):
         """Wait for the initialized instance to be gone."""
         self.test_runner.run_wait_for_init_delete()
@@ -116,33 +117,3 @@ class InstanceInitDeleteWaitGroup(TestGroup):
     def delete_initial_configuration(self):
         """Delete the initial configuration group."""
         self.test_runner.run_initial_configuration_delete()
-
-
-@test(depends_on_groups=[groups.INST_CREATE],
-      groups=[GROUP, groups.INST_INIT_FORCE_DELETE])
-class InstanceInitForceDeleteGroup(TestGroup):
-    """Test Initialized Instance Force Delete functionality."""
-
-    def __init__(self):
-        super(InstanceInitForceDeleteGroup, self).__init__(
-            InstanceCreateRunnerFactory.instance())
-
-    @test
-    def create_build_instance(self):
-        """Create an instance in BUILD state."""
-        self.test_runner.run_create_build_instance()
-
-
-@test(depends_on_groups=[groups.INST_INIT_FORCE_DELETE],
-      groups=[GROUP, groups.INST_INIT_FORCE_DELETE_WAIT])
-class InstanceInitForceDeleteWaitGroup(TestGroup):
-    """Test that BUILD Instance Force Delete Completes."""
-
-    def __init__(self):
-        super(InstanceInitForceDeleteWaitGroup, self).__init__(
-            InstanceCreateRunnerFactory.instance())
-
-    @test
-    def delete_build_instance(self):
-        """Delete the instance in BUILD state"""
-        self.test_runner.run_delete_build_instance()

@@ -15,6 +15,7 @@
 #
 
 import abc
+import operator
 
 from oslo_config import cfg as oslo_cfg
 from oslo_log import log as logging
@@ -26,6 +27,7 @@ from trove.common import exception
 from trove.common.i18n import _
 from trove.common import instance
 from trove.common.notification import EndNotification
+from trove.common import stream_codecs
 from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.common.operating_system import FileMode
@@ -62,6 +64,8 @@ class Manager(periodic_task.PeriodicTasks):
     GUEST_LOG_DEFS_ERROR_LABEL = 'error'
     GUEST_LOG_DEFS_SLOW_QUERY_LABEL = 'slow_query'
 
+    MODULE_APPLY_TO_ALL = module_manager.ModuleManager.MODULE_APPLY_TO_ALL
+
     def __init__(self, manager_name):
         super(Manager, self).__init__(CONF)
 
@@ -69,6 +73,9 @@ class Manager(periodic_task.PeriodicTasks):
         self.__manager_name = manager_name
         self.__manager = None
         self.__prepare_error = False
+
+        # Cluster properties
+        self._cluster_config = None
 
         # Guest log
         self._guest_log_context = None
@@ -136,6 +143,14 @@ class Manager(periodic_task.PeriodicTasks):
         it should override this to return it.
         """
         return None
+
+    @property
+    def cluster_config(self):
+        return self._cluster_config
+
+    @cluster_config.setter
+    def cluster_config(self, cluster_config):
+        self._cluster_config = cluster_config
 
     @property
     def datastore_log_defs(self):
@@ -283,6 +298,7 @@ class Manager(periodic_task.PeriodicTasks):
                  cluster_config, snapshot, modules):
         LOG.info(_("Starting datastore prepare for '%s'.") % self.manager)
         self.status.begin_install()
+        self.cluster_config = cluster_config
         if (cluster_config or (
                 snapshot and
                 self.post_processing_required_for_replication(None))):
@@ -367,6 +383,8 @@ class Manager(periodic_task.PeriodicTasks):
                               users, device_path, mount_point, backup_info,
                               config_contents, root_password, overrides,
                               cluster_config, snapshot)
+            if CONF.get(self.manager).get('enable_saslauthd'):
+                self.enable_ldap()
             LOG.info(_("Post prepare for '%s' datastore completed.") %
                      self.manager)
         except Exception as ex:
@@ -430,6 +448,38 @@ class Manager(periodic_task.PeriodicTasks):
         """Restart the database service."""
         pass
 
+    def enable_ldap(self):
+        LOG.debug("Starting saslauthd for LDAP support.")
+        # Ubuntu and RHEL have different ways of enabling the service
+        saslauthd_init_file = operating_system.file_discovery(
+            ['/etc/default/saslauthd'])
+        if saslauthd_init_file:
+            saslauthd_init = operating_system.read_file(
+                saslauthd_init_file, stream_codecs.KeyValueCodec(),
+                as_root=True)
+            saslauthd_init['START'] = 'yes'
+            operating_system.write_file(
+                saslauthd_init_file, saslauthd_init,
+                stream_codecs.KeyValueCodec(), as_root=True)
+        elif operating_system.file_discovery(['/etc/sysconfig/saslauthd']):
+            operating_system.enable_service_on_boot(['saslauth'])
+        else:
+            LOG.exception(_("Cannot find saslauthd service to enable for LDAP "
+                            "client. Skipping."))
+            return
+        operating_system.start_service(['saslauth'])
+        saslauthd_conf_file = '/etc/saslauthd.conf'
+        saslauthd_conf = operating_system.read_file(
+            saslauthd_conf_file, stream_codecs.YamlCodec(), as_root=True)
+        saslauthd_conf.update({
+            'ldap_servers': CONF.get(self.manager).get('ldap_servers'),
+            'ldap_search_base': CONF.get(self.manager).get('ldap_search_base')
+        })
+        operating_system.write_file(
+            saslauthd_conf_file, saslauthd_conf,
+            stream_codecs.YamlCodec(), as_root=True)
+        LOG.debug("Enabled saslauthd as an LDAP client.")
+
     #####################
     # File System related
     #####################
@@ -471,6 +521,10 @@ class Manager(periodic_task.PeriodicTasks):
         if self.configuration_manager:
             config_contents = configuration['config_contents']
             self.configuration_manager.save_configuration(config_contents)
+
+    def pre_replication_demote(self, context):
+        """Run steps needed before demoting the replication master."""
+        pass
 
     #################
     # Cluster related
@@ -666,18 +720,33 @@ class Manager(periodic_task.PeriodicTasks):
     def module_apply(self, context, modules=None):
         LOG.info(_("Applying modules."))
         results = []
-        for module_data in modules:
-            module = module_data['module']
+        modules = [data['module'] for data in modules]
+        try:
+            # make sure the modules are applied in the correct order
+            modules.sort(key=operator.itemgetter('apply_order'))
+            modules.sort(key=operator.itemgetter('priority_apply'),
+                         reverse=True)
+        except KeyError:
+            # if we don't have ordering info, just continue
+            pass
+        for module in modules:
             id = module.get('id', None)
             module_type = module.get('type', None)
             name = module.get('name', None)
-            tenant = module.get('tenant', None)
-            datastore = module.get('datastore', None)
-            ds_version = module.get('datastore_version', None)
+            tenant = module.get('tenant', self.MODULE_APPLY_TO_ALL)
+            datastore = module.get('datastore', self.MODULE_APPLY_TO_ALL)
+            ds_version = module.get('datastore_version',
+                                    self.MODULE_APPLY_TO_ALL)
             contents = module.get('contents', None)
             md5 = module.get('md5', None)
             auto_apply = module.get('auto_apply', True)
             visible = module.get('visible', True)
+            is_admin = module.get('is_admin', None)
+            if is_admin is None:
+                # fall back to the old method of checking for an admin option
+                is_admin = (tenant == self.MODULE_APPLY_TO_ALL or
+                            not visible or
+                            auto_apply)
             if not name:
                 raise AttributeError(_("Module name not specified"))
             if not contents:
@@ -687,9 +756,24 @@ class Manager(periodic_task.PeriodicTasks):
                 raise exception.ModuleTypeNotFound(
                     _("No driver implemented for module type '%s'") %
                     module_type)
+
+            if (datastore and datastore != self.MODULE_APPLY_TO_ALL and
+                    datastore != CONF.datastore_manager):
+                reason = (_("Module not valid for datastore %s") %
+                          CONF.datastore_manager)
+                raise exception.ModuleInvalid(reason=reason)
+
+            if module_type == "db_command_executor":
+                use_root = True
+                if datastore == self.MODULE_APPLY_TO_ALL:
+                    datastore = self.manager_name
+            else:
+                use_root = False
+
             result = module_manager.ModuleManager.apply_module(
                 driver, module_type, name, tenant, datastore, ds_version,
-                contents, id, md5, auto_apply, visible)
+                contents, id, md5, auto_apply, visible, is_admin,
+                use_root=use_root)
             results.append(result)
         LOG.info(_("Returning list of modules: %s") % results)
         return results
@@ -841,7 +925,7 @@ class Manager(periodic_task.PeriodicTasks):
         raise exception.DatastoreOperationNotSupported(
             operation='attach_replication_slave', datastore=self.manager)
 
-    def detach_replica(self, context, for_failover=False):
+    def detach_replica(self, context, for_failover=False, for_promote=False):
         LOG.debug("Detaching replica.")
         raise exception.DatastoreOperationNotSupported(
             operation='detach_replica', datastore=self.manager)

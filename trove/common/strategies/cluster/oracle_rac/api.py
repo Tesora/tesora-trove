@@ -118,7 +118,11 @@ class OracleRACCluster(models.Cluster):
 
     @classmethod
     def create(cls, context, name, datastore, datastore_version,
-               instances, extended_properties, locality):
+               instances, extended_properties, locality, configuration):
+
+        if configuration:
+            raise exception.ConfigurationNotSupported()
+
         nova_client = remote.create_nova_client(context)
         network_driver = (importutils.import_class(
             CONF.network_driver))(context, None)

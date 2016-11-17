@@ -15,10 +15,10 @@
 
 from oslo_log import log as logging
 
+from trove.common.db.cassandra import models
 from trove.guestagent.datastore.experimental.cassandra import (
     service as community_service
 )
-from trove.guestagent.db import models
 
 
 LOG = logging.getLogger(__name__)

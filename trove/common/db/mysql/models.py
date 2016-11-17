@@ -155,12 +155,6 @@ class MySQLUser(models.DatastoreUser):
             # If it wasn't required, anything else goes.
             return True
 
-    def _build_database_schema(self, name):
-        return MySQLSchema(name)
-
-    def deserialize_schema(self, value):
-        return MySQLSchema.deserialize(value)
-
     @property
     def _max_user_name_length(self):
         return 16

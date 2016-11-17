@@ -50,6 +50,7 @@ from trove.guestagent.datastore import service
 from trove.guestagent import pkg
 
 ADMIN_USER_NAME = "os_admin"
+ADMIN_HOST = "127.0.0.1"
 CONNECTION_STR_FORMAT = "mysql+pymysql://%s:%s@127.0.0.1:3306"
 LOG = logging.getLogger(__name__)
 FLUSH = text(sql_query.FLUSH)
@@ -358,6 +359,9 @@ class BaseMySqlAdmin(object):
             # Could possibly throw a ValueError here.
             user = models.MySQLUser(name=username)
             user.check_reserved()
+            if username == ADMIN_USER_NAME and hostname == ADMIN_HOST:
+                raise ValueError(
+                    "User %s@%s is reserved." % (ADMIN_USER_NAME, ADMIN_HOST))
         except ValueError as ve:
             LOG.exception(_("Error Getting user information"))
             err_msg = encodeutils.exception_to_unicode(ve)
@@ -455,7 +459,7 @@ class BaseMySqlAdmin(object):
             next_marker = None
             LOG.debug("database_names = %r." % database_names)
             for count, database in enumerate(database_names):
-                if count >= limit:
+                if limit is not None and count >= limit:
                     break
                 LOG.debug("database = %s." % str(database))
                 mysql_db = models.MySQLSchema(name=database[0],
@@ -518,7 +522,7 @@ class BaseMySqlAdmin(object):
             next_marker = None
             LOG.debug("result = " + str(result))
             for count, row in enumerate(result):
-                if count >= limit:
+                if limit is not None and count >= limit:
                     break
                 LOG.debug("user = " + str(row))
                 mysql_user = models.MySQLUser(name=row['User'],
@@ -734,7 +738,7 @@ class BaseMySqlApp(object):
     def _save_authentication_properties(self, admin_password):
         client_sect = {'client': {'user': ADMIN_USER_NAME,
                                   'password': admin_password,
-                                  'host': '127.0.0.1'}}
+                                  'host': ADMIN_HOST}}
         operating_system.write_file(self.get_client_auth_file(),
                                     client_sect, codec=self.CFG_CODEC)
 

@@ -44,10 +44,11 @@ class CouchbaseUser(models.DatastoreUser):
 
     MAX_PASSWORD_LEN = 24
     MAX_REPLICA_COUNT = 3
+    MIN_BUCKET_RAMSIZE_MB = 100
     VALID_BUCKET_PRIORITY = ['low', 'high']
     VALID_BUCKET_EVICTION_POLICY = ['valueOnly', 'fullEviction']
 
-    def __init__(self, name, password=None, roles=None,
+    def __init__(self, name='root', password=None, roles=None,
                  bucket_ramsize_mb=None,
                  bucket_replica_count=None,
                  enable_index_replica=None,

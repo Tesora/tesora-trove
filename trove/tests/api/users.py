@@ -54,7 +54,7 @@ class TestUsers(object):
     db2 = "usersseconddb"
 
     created_users = [username, username1]
-    system_users = ['root', 'debian_sys_maint']
+    system_users = ['root@%', 'debian_sys_maint@%']
 
     def __init__(self):
         self.dbaas = util.create_dbaas_client(instance_info.user)

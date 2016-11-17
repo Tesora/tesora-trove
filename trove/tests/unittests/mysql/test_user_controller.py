@@ -16,16 +16,17 @@
 import jsonschema
 from testtools.matchers import Is
 
-from trove.extensions.mysql.service import SchemaController
-from trove.extensions.mysql.service import UserAccessController
-from trove.extensions.mysql.service import UserController
+from trove.extensions.common.service import RoutingDatabaseController
+from trove.extensions.common.service import RoutingUserAccessController
+from trove.extensions.common.service import RoutingUserController
 from trove.tests.unittests import trove_testtools
 
 
 class TestUserController(trove_testtools.TestCase):
+
     def setUp(self):
         super(TestUserController, self).setUp()
-        self.controller = UserController()
+        self.controller = RoutingUserController()
 
     def test_get_create_schema(self):
         body = {'users': [{'name': 'test', 'password': 'test'}]}
@@ -306,9 +307,10 @@ class TestUserController(trove_testtools.TestCase):
 
 
 class TestUserAccessController(trove_testtools.TestCase):
+
     def test_validate_update_db(self):
         body = {"databases": []}
-        schema = (UserAccessController()).get_schema('update_all', body)
+        schema = (RoutingUserAccessController()).get_schema('update_all', body)
         validator = jsonschema.Draft4Validator(schema)
         self.assertTrue(validator.is_valid(body))
         # TODO(zed): Restore after API version increment
@@ -319,9 +321,10 @@ class TestUserAccessController(trove_testtools.TestCase):
 
 
 class TestSchemaController(trove_testtools.TestCase):
+
     def setUp(self):
         super(TestSchemaController, self).setUp()
-        self.controller = SchemaController()
+        self.controller = RoutingDatabaseController()
         self.body = {
             "databases": [
                 {

@@ -81,8 +81,7 @@ class ClusterTest(trove_testtools.TestCase):
                           self.datastore,
                           self.datastore_version,
                           [],
-                          None, None
-                          )
+                          None, None, None)
 
     @patch.object(remote, 'create_nova_client')
     def test_create_unequal_flavors(self, mock_client):
@@ -95,8 +94,7 @@ class ClusterTest(trove_testtools.TestCase):
                           self.datastore,
                           self.datastore_version,
                           instances,
-                          None, None
-                          )
+                          None, None, None)
 
     @patch.object(remote, 'create_nova_client')
     def test_create_unequal_volumes(self,
@@ -112,8 +110,7 @@ class ClusterTest(trove_testtools.TestCase):
                           self.datastore,
                           self.datastore_version,
                           instances,
-                          None, None
-                          )
+                          None, None, None)
 
     @patch.object(remote, 'create_nova_client')
     def test_create_storage_not_specified(self,
@@ -142,8 +139,7 @@ class ClusterTest(trove_testtools.TestCase):
                           self.datastore,
                           self.datastore_version,
                           instances,
-                          None, None
-                          )
+                          None, None, None)
 
     @patch('trove.cluster.models.LOG')
     def test_delete_bad_task_status(self, mock_logging):
@@ -221,3 +217,7 @@ class ClusterTest(trove_testtools.TestCase):
             task_status=ClusterTasks.ADDING_SHARD)
         mock_task_api.mongodb_add_shard_cluster.assert_called_with(
             self.cluster.id, 'new-shard-id', 'rs2')
+
+    @patch('trove.cluster.models.LOG')
+    def test_upgrade_not_implemented(self, mock_logging):
+        self.assertRaises(exception.BadRequest, self.cluster.upgrade, "foo")

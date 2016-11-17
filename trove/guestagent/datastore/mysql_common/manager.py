@@ -290,6 +290,7 @@ class MySqlManager(manager.Manager):
         operating_system.copy("%s/." % upgrade_info['home_save'],
                               os.path.expanduser('~'),
                               preserve=True, as_root=True)
+        self.configuration_manager.refresh_cache()
         app.start_mysql()
 
     def restart(self, context):
@@ -379,7 +380,7 @@ class MySqlManager(manager.Manager):
         LOG.debug("Calling wait_for_txn.")
         self.mysql_app(self.mysql_app_status.get()).wait_for_txn(txn)
 
-    def detach_replica(self, context, for_failover=False):
+    def detach_replica(self, context, for_failover=False, for_promote=False):
         LOG.debug("Detaching replica.")
         app = self.mysql_app(self.mysql_app_status.get())
         replica_info = self.replication.detach_slave(app, for_failover)

@@ -1,8 +1,10 @@
 {
     "admin_or_owner":  "role:admin or is_admin:True or tenant:%(tenant)s",
+    "admin": "role:admin or is_admin:True",
 
     "instance:create": "rule:admin_or_owner",
     "instance:delete": "rule:admin_or_owner",
+    "instance:force_delete": "rule:admin_or_owner",
     "instance:index": "rule:admin_or_owner",
     "instance:show": "rule:admin_or_owner",
     "instance:update": "rule:admin_or_owner",
@@ -11,6 +13,7 @@
     "instance:resize_volume": "rule:admin_or_owner",
     "instance:resize_flavor": "rule:admin_or_owner",
     "instance:reset_password": "rule:admin_or_owner",
+    "instance:reset_status": "rule:admin",
     "instance:promote_to_replica_source": "rule:admin_or_owner",
     "instance:eject_replica_source": "rule:admin_or_owner",
     "instance:configuration": "rule:admin_or_owner",
@@ -42,10 +45,12 @@
 
     "cluster:create": "rule:admin_or_owner",
     "cluster:delete": "rule:admin_or_owner",
+    "cluster:force_delete": "rule:admin_or_owner",
     "cluster:index": "rule:admin_or_owner",
     "cluster:show": "rule:admin_or_owner",
     "cluster:show_instance": "rule:admin_or_owner",
     "cluster:action": "rule:admin_or_owner",
+    "cluster:reset-status": "rule:admin",
 
     "cluster:extension:root:create": "rule:admin_or_owner",
     "cluster:extension:root:delete": "rule:admin_or_owner",
@@ -87,5 +92,6 @@
     "module:index": "rule:admin_or_owner",
     "module:show": "rule:admin_or_owner",
     "module:instances": "rule:admin_or_owner",
-    "module:update": "rule:admin_or_owner"
+    "module:update": "rule:admin_or_owner",
+    "module:reapply": "rule:admin_or_owner"
 }

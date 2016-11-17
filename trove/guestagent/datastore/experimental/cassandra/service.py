@@ -185,13 +185,21 @@ class CassandraApp(object):
         self.status.restart_db_service(
             self.service_candidates, self.state_change_wait_time)
 
+    def initial_stop(self):
+        if (self.status.wait_for_real_status_to_change_to(
+                rd_instance.ServiceStatuses.RUNNING,
+                CONF.state_change_wait_time,
+                False)):
+            LOG.debug("Stopping database prior to configuration.")
+            self.stop_db()
+
     def _install_db(self, packages):
         """Install Cassandra server"""
         LOG.debug("Installing Cassandra server.")
         packager.pkg_install(packages, None, 10000)
         LOG.debug("Finished installing Cassandra server")
 
-    def _remove_system_tables(self):
+    def remove_system_tables(self):
         """
         Clean up the system keyspace.
 
@@ -772,6 +780,8 @@ class CassandraApp(object):
         for save_dir in [upgrade_info['save_etc'],
                          upgrade_info['save_cqlshrc']]:
             operating_system.remove(save_dir, force=True, as_root=True)
+        self.configuration_manager.refresh_cache()
+        self.status.set_ready()
 
 
 class CassandraAppStatus(service.BaseDbStatus):
@@ -794,8 +804,8 @@ class CassandraAppStatus(service.BaseDbStatus):
 
     def _get_actual_db_status(self):
         try:
-            self.client.execute('SELECT now() FROM system.local;')
-            return rd_instance.ServiceStatuses.RUNNING
+            if self.client.local_node_is_up():
+                return rd_instance.ServiceStatuses.RUNNING
         except NoHostAvailable:
             return rd_instance.ServiceStatuses.SHUTDOWN
         except Exception:
@@ -1269,6 +1279,19 @@ class CassandraConnection(object):
         """List names of all available keyspaces.
         """
         return self._cluster.metadata.keyspaces.keys()
+
+    def node_is_up(self, host_ip):
+        """Test whether the Cassandra node located at the given IP is up.
+        """
+        for host in self._cluster.metadata.all_hosts():
+            if host.address == host_ip:
+                return host.is_up
+        return False
+
+    def local_node_is_up(self):
+        """Test whether Cassandra is up on the localhost.
+        """
+        return self.node_is_up('127.0.0.1')
 
     def _connect(self):
         if not self._cluster.is_shutdown:

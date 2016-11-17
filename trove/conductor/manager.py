@@ -24,7 +24,7 @@ from trove.common.instance import ServiceStatus
 from trove.common.rpc import version as rpc_version
 from trove.common.serializable_notification import SerializableNotification
 from trove.conductor.models import LastSeen
-from trove.extensions.mysql import models as mysql_models
+from trove.extensions.common import models as api_ext_models
 from trove.instance import models as inst_models
 
 LOG = logging.getLogger(__name__)
@@ -138,7 +138,7 @@ class Manager(periodic_task.PeriodicTasks):
         backup.save()
 
     def report_root(self, context, instance_id, user):
-        mysql_models.RootHistory.create(context, instance_id, user)
+        api_ext_models.RootHistory.create(context, instance_id, user)
 
     def notify_end(self, context, serialized_notification, notification_args):
         notification = SerializableNotification.deserialize(

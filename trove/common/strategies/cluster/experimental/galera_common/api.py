@@ -97,7 +97,8 @@ class GaleraCommonCluster(cluster_models.Cluster):
 
     @staticmethod
     def _create_instances(context, db_info, datastore, datastore_version,
-                          instances, extended_properties, locality):
+                          instances, extended_properties, locality,
+                          configuration_id):
         member_config = {"id": db_info.id,
                          "instance_type": "member"}
         name_index = 1
@@ -118,7 +119,7 @@ class GaleraCommonCluster(cluster_models.Cluster):
                                 availability_zone=instance.get(
                                     'availability_zone', None),
                                 nics=instance.get('nics', None),
-                                configuration_id=None,
+                                configuration_id=configuration_id,
                                 cluster_config=member_config,
                                 region_name=instance.get('region_name'),
                                 locality=locality,
@@ -128,7 +129,7 @@ class GaleraCommonCluster(cluster_models.Cluster):
 
     @classmethod
     def create(cls, context, name, datastore, datastore_version,
-               instances, extended_properties, locality):
+               instances, extended_properties, locality, configuration):
         LOG.debug("Initiating Galera cluster creation.")
         cls._validate_cluster_instances(context, instances, datastore,
                                         datastore_version)
@@ -136,24 +137,18 @@ class GaleraCommonCluster(cluster_models.Cluster):
         db_info = cluster_models.DBCluster.create(
             name=name, tenant_id=context.tenant,
             datastore_version_id=datastore_version.id,
-            task_status=ClusterTasks.BUILDING_INITIAL)
+            task_status=ClusterTasks.BUILDING_INITIAL,
+            configuration_id=configuration)
 
         cls._create_instances(context, db_info, datastore, datastore_version,
-                              instances, extended_properties, locality)
+                              instances, extended_properties, locality,
+                              configuration)
 
         # Calling taskmanager to further proceed for cluster-configuration
         task_api.load(context, datastore_version.manager).create_cluster(
             db_info.id)
 
         return cls(context, db_info, datastore, datastore_version)
-
-    def _get_cluster_network_interfaces(self):
-        nova_client = remote.create_nova_client(self.context)
-        nova_instance_id = self.db_instances[0].compute_instance_id
-        interfaces = nova_client.virtual_interfaces.list(nova_instance_id)
-        ret = [{"net-id": getattr(interface, 'net_id')}
-               for interface in interfaces]
-        return ret
 
     def grow(self, instances):
         LOG.debug("Growing cluster %s." % self.id)
@@ -167,15 +162,11 @@ class GaleraCommonCluster(cluster_models.Cluster):
 
         db_info.update(task_status=ClusterTasks.GROWING_CLUSTER)
         try:
-            # Get the network of the existing cluster instances.
-            interface_ids = self._get_cluster_network_interfaces()
-            for instance in instances:
-                instance["nics"] = interface_ids
-
             locality = srv_grp.ServerGroup.convert_to_hint(self.server_group)
+            configuration_id = self.db_info.configuration_id
             new_instances = self._create_instances(
                 context, db_info, datastore, datastore_version, instances,
-                None, locality)
+                None, locality, configuration_id)
 
             task_api.load(context, datastore_version.manager).grow_cluster(
                 db_info.id, [instance.id for instance in new_instances])
@@ -207,6 +198,18 @@ class GaleraCommonCluster(cluster_models.Cluster):
 
         return self.__class__(self.context, self.db_info,
                               self.ds, self.ds_version)
+
+    def restart(self):
+        self.rolling_restart()
+
+    def upgrade(self, datastore_version):
+        self.rolling_upgrade(datastore_version)
+
+    def configuration_attach(self, configuration_id):
+        self.rolling_configuration_update(configuration_id)
+
+    def configuration_detach(self):
+        self.rolling_configuration_remove()
 
 
 class GaleraCommonClusterView(ClusterView):

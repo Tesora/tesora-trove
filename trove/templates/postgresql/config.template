@@ -193,7 +193,7 @@ max_stack_depth = 7MB			# min 100kB
 
 # - Settings -
 
-wal_level = minimal			# minimal, archive, hot_standby, or logical
+wal_level = hot_standby			# minimal, archive, hot_standby, or logical
 					# (change requires restart)
 					# (controlled by Trove)
 #fsync = on				# turns forced synchronization on or off

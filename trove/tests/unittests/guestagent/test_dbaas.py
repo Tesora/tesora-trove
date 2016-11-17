@@ -641,7 +641,8 @@ class MySqlAdminTest(trove_testtools.TestCase):
         expected = ("SELECT User, Host, Marker FROM"
                     " (SELECT User, Host, CONCAT(User, '@', Host) as Marker"
                     " FROM mysql.user ORDER BY User, Host) as innerquery WHERE"
-                    " Host != 'localhost' AND User NOT IN ('os_admin', 'root')"
+                    " Host != 'localhost'"
+                    " AND User NOT IN ('os_admin@127.0.0.1', 'root@%')"
                     " ORDER BY Marker;"
                     )
 
@@ -654,7 +655,8 @@ class MySqlAdminTest(trove_testtools.TestCase):
         expected = ("SELECT User, Host, Marker FROM"
                     " (SELECT User, Host, CONCAT(User, '@', Host) as Marker"
                     " FROM mysql.user ORDER BY User, Host) as innerquery WHERE"
-                    " Host != 'localhost' AND User NOT IN ('os_admin', 'root')"
+                    " Host != 'localhost'"
+                    " AND User NOT IN ('os_admin@127.0.0.1', 'root@%')"
                     " ORDER BY Marker"
                     " LIMIT " + str(limit + 1) + ";"
                     )
@@ -669,7 +671,8 @@ class MySqlAdminTest(trove_testtools.TestCase):
         expected = ("SELECT User, Host, Marker FROM"
                     " (SELECT User, Host, CONCAT(User, '@', Host) as Marker"
                     " FROM mysql.user ORDER BY User, Host) as innerquery WHERE"
-                    " Host != 'localhost' AND User NOT IN ('os_admin', 'root')"
+                    " Host != 'localhost'"
+                    " AND User NOT IN ('os_admin@127.0.0.1', 'root@%')"
                     " AND Marker > '" + marker + "'"
                     " ORDER BY Marker;"
                     )
@@ -683,7 +686,8 @@ class MySqlAdminTest(trove_testtools.TestCase):
         expected = ("SELECT User, Host, Marker FROM"
                     " (SELECT User, Host, CONCAT(User, '@', Host) as Marker"
                     " FROM mysql.user ORDER BY User, Host) as innerquery WHERE"
-                    " Host != 'localhost' AND User NOT IN ('os_admin', 'root')"
+                    " Host != 'localhost'"
+                    " AND User NOT IN ('os_admin@127.0.0.1', 'root@%')"
                     " AND Marker >= '" + marker + "'"
                     " ORDER BY Marker;"
                     )
@@ -717,7 +721,7 @@ class MySqlAdminTest(trove_testtools.TestCase):
     @patch('trove.guestagent.datastore.mysql_common.service.LOG')
     def test_fail_get_user(self, *args):
         username = "os_admin"
-        hostname = "host"
+        hostname = "127.0.0.1"
         self.assertRaisesRegexp(BadRequest, "Username os_admin is not valid",
                                 self.mySqlAdmin.get_user, username, hostname)
 

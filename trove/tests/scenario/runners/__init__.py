@@ -1,2 +1,5 @@
 BUG_EJECT_VALID_MASTER = 1622014
 BUG_WRONG_API_VALIDATION = 1498573
+
+# Fixed upstream, requires changes from reviews '278074' and '329208'.
+BUG_USER_DB_PAGINATION = 'DBAAS-990'

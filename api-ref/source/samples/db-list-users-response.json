@@ -38,6 +38,11 @@
             ],
             "host": "%",
             "name": "demouser"
+        },
+        {
+            "databases": [],
+            "host": "%",
+            "name": "os_admin"
         }
     ]
 }

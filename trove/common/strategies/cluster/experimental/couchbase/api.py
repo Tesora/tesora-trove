@@ -13,12 +13,18 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import six
+
+import netaddr
+from oslo_config.cfg import NoSuchOptError
 from oslo_log import log as logging
 
 from trove.cluster import models
 from trove.cluster.tasks import ClusterTasks
 from trove.cluster.views import ClusterView
 from trove.common import cfg
+from trove.common import exception
+from trove.common.i18n import _
 from trove.common import server_group as srv_grp
 from trove.common.strategies.cluster import base
 from trove.common.strategies.cluster.experimental.couchbase.taskmanager import(
@@ -81,13 +87,18 @@ class CouchbaseAPIStrategy(base.BaseAPIStrategy):
 
 class CouchbaseCluster(models.Cluster):
 
-    DEFAULT_SERVICES = "data"
     MAX_PASSWORD_LEN = 24
 
     @classmethod
     def create(cls, context, name, datastore, datastore_version,
-               instances, extended_properties, locality):
+               instances, extended_properties, locality, configuration):
         LOG.debug("Processing a request for creating a new cluster.")
+
+        if configuration:
+            raise exception.ConfigurationNotSupported()
+
+        cls.validate_instance_types(instances, datastore_version.manager,
+                                    for_grow=False)
 
         # Updating Cluster Task.
         db_info = models.DBCluster.create(
@@ -130,6 +141,7 @@ class CouchbaseCluster(models.Cluster):
         # one from an existing cluster.
         required_instance_flavor = None
         required_volume_size = None
+        for_grow = False
         if cluster_node_ids:
             cluster_nodes = CouchbaseClusterTasks.load_cluster_nodes(
                 context,
@@ -139,6 +151,7 @@ class CouchbaseCluster(models.Cluster):
             required_volume_size = coordinator['instance'].volume_size
 
             cluster_password = coordinator['guest'].get_cluster_password()
+            for_grow = True
         else:
             pwd_len = min(cls.MAX_PASSWORD_LEN, CONF.default_password_length)
             cluster_password = utils.generate_random_password(pwd_len)
@@ -165,20 +178,25 @@ class CouchbaseCluster(models.Cluster):
         deltas = {'instances': num_new_instances, 'volumes': req_volume_size}
         check_quotas(context.tenant, deltas)
 
+        instance_types = cls.get_instance_types(
+            instances, datastore_version.manager, for_grow)
+
         # Creating member instances.
         num_instances = len(cluster_node_ids)
         new_instances = []
-        for instance_idx, instance in enumerate(instances, num_instances + 1):
+        for new_inst_idx, instance in enumerate(instances):
+            instance_idx = new_inst_idx + num_instances + 1
             instance_az = instance.get('availability_zone', None)
 
-            member_config = {"id": cluster_id,
-                             "instance_type": "member",
-                             "cluster_password": cluster_password}
+            instance_type = instance_types[new_inst_idx]
+            cluster_config = {"id": cluster_id,
+                              "instance_type": instance_type,
+                              "cluster_password": cluster_password}
 
             instance_name = instance.get('name')
             if not instance_name:
                 instance_name = cls._build_instance_name(
-                    cluster_name, cls.DEFAULT_SERVICES, instance_az,
+                    cluster_name, sorted(instance_type), instance_az,
                     instance_idx)
 
             new_instance = inst_models.Instance.create(
@@ -187,11 +205,11 @@ class CouchbaseCluster(models.Cluster):
                 datastore_version.image_id,
                 [], [],
                 datastore, datastore_version,
-                instance['volume_size'], None,
+                instance.get('volume_size'), None,
                 nics=instance.get('nics', None),
                 availability_zone=instance_az,
                 configuration_id=None,
-                cluster_config=member_config,
+                cluster_config=cluster_config,
                 region_name=instance.get('region_name'),
                 locality=locality)
 
@@ -200,13 +218,65 @@ class CouchbaseCluster(models.Cluster):
         return new_instances
 
     @classmethod
-    def _build_instance_name(cls, cluster_name, service, group, instance_idx):
-        name_components = [cluster_name, service, 'services']
+    def _build_instance_name(cls, cluster_name, services, group, instance_idx):
+        name_components = [cluster_name]
+        if any(services):
+            name_components.extend(services)
+            name_components.append('services')
         if group:
             name_components.append(group)
         name_components.append(str(instance_idx))
 
         return '-'.join(name_components)
+
+    @classmethod
+    def get_instance_types(cls, instances, manager, for_grow):
+        try:
+            default_services = CONF.get(manager).get('default_services', [])
+        except NoSuchOptError:
+            default_services = []
+
+        valid_services = CouchbaseClusterTasks.VALID_SERVICES[manager]
+        required_services = CouchbaseClusterTasks.REQUIRED_SERVICES[manager]
+        server_requires_all = (
+            CouchbaseClusterTasks.REQUIRE_ALL_SERVICES[manager])
+        if isinstance(default_services, six.string_types):
+            default_services = default_services.split(',')
+        instances = instances or []
+        type_lists = [instance.get('instance_type')
+                      if instance.get('instance_type') else default_services
+                      for instance in instances]
+        has_types = any(type_lists)
+        if has_types or any(required_services):
+            all_types = set(
+                [item for subtypes in type_lists for item in subtypes])
+            unknown = all_types.difference(set(valid_services))
+            if unknown:
+                raise exception.TroveError(
+                    _("Unknown type '%(unknown)s' specified. "
+                      "Allowed values are '%(valid)s'.") %
+                    {'unknown': ','.join(sorted(unknown)),
+                     'valid': ','.join(valid_services)})
+            if not for_grow and any(required_services) and not all(
+                    [rs in all_types for rs in required_services]):
+                raise exception.ClusterInstanceTypeMissing(
+                    types=','.join(all_types),
+                    req=','.join(required_services),
+                    per=server_requires_all)
+            if server_requires_all:
+                for types in type_lists:
+                    if not set(types).issuperset(required_services):
+                        raise exception.ClusterInstanceTypeMissing(
+                            types=','.join(types),
+                            req=','.join(required_services),
+                            per=server_requires_all)
+
+        return type_lists
+
+    @classmethod
+    def validate_instance_types(cls, instances, manager, for_grow=False):
+        # This will raise an error if the types aren't valid
+        cls.get_instance_types(instances, manager, for_grow)
 
     def grow(self, instances):
         LOG.debug("Processing a request for growing cluster: %s" % self.id)
@@ -217,6 +287,9 @@ class CouchbaseCluster(models.Cluster):
         db_info = self.db_info
         datastore = self.ds
         datastore_version = self.ds_version
+
+        self.validate_instance_types(instances, datastore_version.manager,
+                                     for_grow=True)
 
         db_info.update(task_status=ClusterTasks.GROWING_CLUSTER)
 
@@ -230,6 +303,19 @@ class CouchbaseCluster(models.Cluster):
 
         return CouchbaseCluster(context, db_info, datastore, datastore_version)
 
+    def _get_remaining_instance_services(self, cluster_id, removal_ids):
+        db_instances = inst_models.DBInstance.find_all(
+            cluster_id=cluster_id).all()
+        all_services = []
+        remaining_instances = [inst for inst in db_instances
+                               if inst.id not in removal_ids]
+        for instance in remaining_instances:
+            services = instance.type
+            if isinstance(services, six.string_types):
+                services = services.split(',')
+            all_services.append({"instance_type": services})
+        return all_services
+
     def shrink(self, removal_ids):
         LOG.debug("Processing a request for shrinking cluster: %s" % self.id)
 
@@ -240,6 +326,17 @@ class CouchbaseCluster(models.Cluster):
         datastore = self.ds
         datastore_version = self.ds_version
 
+        # we have to make sure that there are nodes with all the required
+        # services left after the shrink
+        remaining_instance_services = self._get_remaining_instance_services(
+            db_info.id, removal_ids)
+        try:
+            self.validate_instance_types(
+                remaining_instance_services, datastore_version.manager)
+        except exception.ClusterInstanceTypeMissing as ex:
+            raise exception.TroveError(
+                _("The remaining instances would not be valid: %s") % str(ex))
+
         db_info.update(task_status=ClusterTasks.SHRINKING_CLUSTER)
 
         task_api.load(context, datastore_version.manager).shrink_cluster(
@@ -247,14 +344,36 @@ class CouchbaseCluster(models.Cluster):
 
         return CouchbaseCluster(context, db_info, datastore, datastore_version)
 
+    def upgrade(self, datastore_version):
+        self.rolling_upgrade(datastore_version)
+
+
+def _filter_ipv4s(build_instances_output):
+    """Couchbase does not support IPv6 so the cluster IP list should only
+    contain IPv4 addresses.
+    """
+    (instances, ip_list) = build_instances_output
+    if ip_list:
+        ip_list = []
+        for instance_dict in instances:
+            ipv4s = [ip for ip in instance_dict["ip"]
+                     if netaddr.valid_ipv4(ip)]
+            if ipv4s:
+                ip_list.append(ipv4s[0])
+    return instances, ip_list
+
 
 class CouchbaseClusterView(ClusterView):
 
     def build_instances(self):
-        return self._build_instances(['member'], ['member'])
+        return _filter_ipv4s(self._build_instances(
+            CouchbaseClusterTasks.EXPOSED_SERVICES,
+            CouchbaseClusterTasks.EXPOSED_SERVICES))
 
 
 class CouchbaseMgmtClusterView(MgmtClusterView):
 
     def build_instances(self):
-        return self._build_instances(['member'], ['member'])
+        return _filter_ipv4s(self._build_instances(
+            CouchbaseClusterTasks.EXPOSED_SERVICES,
+            CouchbaseClusterTasks.EXPOSED_SERVICES))

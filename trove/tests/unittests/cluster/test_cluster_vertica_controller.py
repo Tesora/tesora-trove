@@ -145,7 +145,8 @@ class TestClusterController(trove_testtools.TestCase):
                 'region_name': None,
                 'nics': [
                     {'net-id': 'e89aa5fd-6b0a-436d-a75c-1545d34d5331'}
-                ]
+                ],
+                'instance_type': None,
             }
         ] * 3
         mock_id_from_href.return_value = '1234'
@@ -159,7 +160,7 @@ class TestClusterController(trove_testtools.TestCase):
         self.controller.create(req, body, tenant_id)
         mock_cluster_create.assert_called_with(context, 'products',
                                                datastore, datastore_version,
-                                               instances, {}, None)
+                                               instances, {}, None, None)
 
     @patch.object(Cluster, 'load')
     def test_show_cluster(self,

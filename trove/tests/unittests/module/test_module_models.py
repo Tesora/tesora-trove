@@ -42,6 +42,7 @@ class CreateModuleTest(trove_testtools.TestCase):
         module = models.Module.create(
             self.context,
             self.name, self.module_type, self.contents,
-            'my desc', 'my_tenant', None, None, False, True, False)
+            'my desc', 'my_tenant', None, None, False, True, False,
+            False, 5, True)
         self.assertIsNotNone(module)
         module.delete()

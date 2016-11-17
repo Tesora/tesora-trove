@@ -104,7 +104,10 @@ class Manager(manager.OracleManager):
                     # only create 1 database
                     database = databases[:1]
                 else:
-                    db = models.OracleSchema(re.sub(r'[\W_]', '', CONF.guest_name[:8]))
+                    # no database name provided so default to first 8 valid
+                    # characters of instance name (alphanumeric, no '_')
+                    db = models.OracleSchema(
+                        re.sub(r'[\W_]', '', CONF.guest_name)[:8])
                     database = [db.serialize()]
                 self.admin.create_database(database)
 
@@ -116,6 +119,29 @@ class Manager(manager.OracleManager):
 
             if root_password:
                 self.admin.enable_root(root_password)
+
+    def pre_upgrade(self, context):
+        LOG.debug('Preparing Oracle for upgrade.')
+        app = self.app
+        app.status.begin_restart()
+        app.stop_db()
+        mount_point = app.paths.data_dir
+        upgrade_info = app.save_files_pre_upgrade(mount_point)
+        upgrade_info['mount_point'] = mount_point
+        return upgrade_info
+
+    def post_upgrade(self, context, upgrade_info):
+        LOG.debug('Finalizing Oracle upgrade.')
+        app = self.app
+        app.stop_db()
+        if 'device' in upgrade_info:
+            self.mount_volume(context,
+                              mount_point=upgrade_info['mount_point'],
+                              device_path=upgrade_info['device'],
+                              write_to_fstab=True)
+        app.restore_files_post_upgrade(upgrade_info)
+        # don't use the cached app now
+        self.app.start_db()
 
     def create_database(self, context, databases):
         raise exception.DatastoreOperationNotSupported(
@@ -208,7 +234,7 @@ class Manager(manager.OracleManager):
         LOG.debug("Calling sync_data_to_slaves.")
         self.replication.sync_data_to_slaves(self.app)
 
-    def detach_replica(self, context, for_failover=False):
+    def detach_replica(self, context, for_failover=False, for_promote=False):
         LOG.debug("Detaching replica.")
         replica_info = self.replication.detach_slave(self.app, for_failover)
         return replica_info

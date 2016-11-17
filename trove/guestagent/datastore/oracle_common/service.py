@@ -181,15 +181,12 @@ class OracleClient(object):
     def __enter__(self):
         os.environ['ORACLE_HOME'] = self.oracle_home
         os.environ['ORACLE_SID'] = self.sid
+        ora_dsn = ''
         if self.use_service:
             ora_dsn = cx_Oracle.makedsn(self.hostname,
                                         self.port,
                                         service_name=self.sid)
-        else:
-            ora_dsn = cx_Oracle.makedsn(self.hostname,
-                                        self.port,
-                                        self.sid)
-        LOG.debug("Connecting to Oracle with DSN: %s" % ora_dsn)
+            LOG.debug("Connecting to Oracle with DSN: %s" % ora_dsn)
         self.conn = cx_Oracle.connect(user=self.user_id,
                                       password=self.password,
                                       dsn=ora_dsn,
@@ -246,18 +243,23 @@ class OracleAdmin(object):
         pass
 
     def create_database(self, databases):
-        db_name = models.OracleSchema.deserialize_schema(databases[0]).name
+        db_name = models.OracleSchema.deserialize(databases[0]).name
         self.ora_config.db_name = db_name
         self._create_database(db_name)
         # Create the cloud user role for identifying dbaas-managed users
         with self.cursor(db_name) as cursor:
             cursor.execute(str(sql_query.CreateRole(self.cloud_role_name)))
+            privileges = ['CREATE SESSION', 'CREATE TABLE',
+                          'CREATE TABLESPACE', 'DROP TABLESPACE',
+                          'CREATE USER', 'DROP USER']
+            cursor.execute(str(sql_query.Grant(self.cloud_role_name,
+                                               privileges)))
 
     def _delete_database(self, db_name):
         pass
 
     def delete_database(self, database):
-        db_name = models.OracleSchema.deserialize_schema(database).name
+        db_name = models.OracleSchema.deserialize(database).name
         self._delete_database(db_name)
 
     def is_root_enabled(self):
@@ -279,10 +281,7 @@ class OracleAdmin(object):
                 self.root_user_name, root_password)))
         self.ora_config.enable_root()
         self.ora_config.root_password = root_password
-        user = models.RootUser()
-        user.name = self.root_user_name
-        user.host = '%'
-        user.password = root_password
+        user = models.User.root(self.root_user_name, root_password)
         LOG.debug("Successfully enabled root.")
         return user.serialize()
 
@@ -316,15 +315,12 @@ class OracleAdmin(object):
 
     def create_user(self, users):
         for item in users:
-            user = models.OracleUser.deserialize_user(item)
+            user = models.OracleUser.deserialize(item)
             LOG.debug("Creating user %s." % user.name)
             with self.cursor(self.database_name) as cursor:
+                cursor.execute(str(sql_query.CreateTablespace(user.name)))
                 cursor.execute(str(
                     sql_query.CreateUser(user.name, user.password)))
-                roles = ['CREATE SESSION', 'CREATE TABLE', 'SELECT ANY TABLE',
-                         'UPDATE ANY TABLE', 'INSERT ANY TABLE',
-                         'DROP ANY TABLE']
-                cursor.execute(str(sql_query.Grant(user.name, roles)))
                 cursor.execute(str(
                     sql_query.Grant(user.name, 'UNLIMITED TABLESPACE')))
                 cursor.execute(str(
@@ -332,11 +328,15 @@ class OracleAdmin(object):
             LOG.debug("Successfully created user.")
 
     def delete_user(self, user):
-        oracle_user = models.OracleUser.deserialize_user(user)
+        oracle_user = models.OracleUser.deserialize(user)
         LOG.debug("Deleting user %s." % oracle_user.name)
         with self.cursor(self.database_name) as cursor:
             cursor.execute(str(
                 sql_query.DropUser(oracle_user.name, cascade=True)))
+            cursor.execute(str(
+                sql_query.DropTablespace(oracle_user.name,
+                                         datafiles=True,
+                                         cascade=True)))
 
     def list_users(self, limit=None, marker=None, include_marker=False):
         LOG.debug("Listing users (limit of %s, marker %s, "

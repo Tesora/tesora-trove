@@ -145,7 +145,7 @@ class OracleVMClient(service.OracleClient):
                  port=None,
                  user_id=None,
                  password=None,
-                 use_service=True,
+                 use_service=False,
                  mode=cx_Oracle.SYSDBA):
         port = port if port else CONF.get(MANAGER).listener_port
         user_id = user_id if user_id else ADMIN_USER_NAME
@@ -192,9 +192,9 @@ class OracleVMPaths(object):
             self.redo_logs_backup_dir = path.join(
                 self.db_fast_recovery_logs_dir, 'backupset')
             self.audit_dir = path.join(self.admin_dir, db_name, 'adump')
-            self.ctlfile1_file = path.join(self.db_data_dir, 'control01.ctl')
-            self.ctlfile2_file = path.join(
-                self.db_fast_recovery_dir, 'control02.ctl')
+            self.ctlfile1_dir = path.join(self.db_data_dir, 'controlfile')
+            self.ctlfile2_dir = path.join(self.db_fast_recovery_dir,
+                                          'controlfile')
             self.diag_dir = path.join(
                 self.oracle_base, 'diag', 'rdbms', db_name.lower(), db_name)
             self.alert_log_file = path.join(self.diag_dir, 'alert', 'log.xml')
@@ -372,6 +372,8 @@ class OracleVMAdmin(service.OracleAdmin):
         with self.cursor(db_name,
                          user_id='sys',
                          password=sys_pwd) as sys_cursor:
+            sys_cursor.execute(str(sql_query.CreateTablespace(
+                ADMIN_USER_NAME)))
             sys_cursor.execute(str(sql_query.CreateUser(ADMIN_USER_NAME,
                                                         admin_pwd)))
             sys_cursor.execute(str(
@@ -505,6 +507,49 @@ class OracleVMApp(service.OracleApp):
             self.start_db()
         finally:
             self.status.end_restart()
+
+    def save_files_pre_upgrade(self, mount_point):
+        save_dir = path.join(mount_point, 'saves')
+        saves = {
+            'oratab': self.paths.oratab_file,
+            'dbs': self.paths.dbs_dir,
+            'oranet': self.paths.oranet_dir,
+            'admin': self.paths.admin_dir,
+            'conf_file': CONF.get(MANAGER).conf_file
+        }
+        if not operating_system.exists(save_dir,
+                                       is_directory=True, as_root=True):
+            operating_system.create_directory(save_dir,
+                                              force=True, as_root=True)
+        for item in saves.keys():
+            operating_system.copy(saves[item], path.join(save_dir, item),
+                                  recursive=True, preserve=True, as_root=True)
+        return {'save_dir': save_dir,
+                'saves': saves}
+
+    def restore_files_post_upgrade(self, upgrade_info):
+        saves = upgrade_info.get('saves')
+        save_dir = upgrade_info.get('save_dir')
+        if not (saves and save_dir):
+            raise exception.GuestError(_(
+                "Missing upgrade saves and/or save directory info: %s")
+                % upgrade_info)
+        for item in saves.keys():
+            if item == 'conf_file':
+                operating_system.copy(path.join(save_dir, item),
+                                      CONF.get(MANAGER).conf_file,
+                                      force=True, preserve=True, as_root=True)
+                continue
+            if operating_system.exists(saves[item],
+                                       is_directory=True, as_root=True):
+                operating_system.remove(saves[item], force=True,
+                                        recursive=True, as_root=True)
+            operating_system.copy(path.join(save_dir, item), saves[item],
+                                  recursive=True, preserve=True, as_root=True)
+        operating_system.remove(save_dir, force=True, as_root=True)
+        self._init_configuration_manager()
+        self.configuration_manager.refresh_cache()
+        self.status.set_ready()
 
     def prep_pfile_management(self):
         """Generate the base PFILE from the original SPFILE,

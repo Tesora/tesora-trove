@@ -182,24 +182,28 @@ class PostgresqlReplicationStreaming(base.Replication):
         self.enable_hot_standby(service)
         # Ensure the WAL arch is empty before restoring
         service.recreate_wal_archive_dir()
+        service.restart()
 
-    def detach_slave(self, service, for_failover):
+    def detach_slave(self, service, for_failover, for_promote):
         """Touch trigger file in to disable recovery mode"""
-        LOG.info(_("Detaching slave, use trigger to disable recovery mode"))
-        operating_system.write_file(TRIGGER_FILE, '')
-        operating_system.chown(TRIGGER_FILE, user=service.pgsql_owner,
-                               group=service.pgsql_owner, as_root=True)
+        if for_promote:
+            LOG.info(
+                _("Detaching slave for promotion. Use trigger to disable "
+                  "recovery mode"))
+            operating_system.write_file(TRIGGER_FILE, '')
+            operating_system.chown(TRIGGER_FILE, user=service.pgsql_owner,
+                                   group=service.pgsql_owner, as_root=True)
 
-        def _wait_for_failover():
-            """Wait until slave has switched out of recovery mode"""
-            return not service.pg_is_in_recovery()
+            def _wait_for_failover():
+                """Wait until slave has switched out of recovery mode"""
+                return not service.pg_is_in_recovery()
 
-        try:
-            utils.poll_until(_wait_for_failover, time_out=120)
+            try:
+                utils.poll_until(_wait_for_failover, time_out=120)
 
-        except exception.PollTimeOut:
-            raise RuntimeError(_("Timeout occurred waiting for slave to exit"
-                                 "recovery mode"))
+            except exception.PollTimeOut:
+                raise RuntimeError(_("Timeout occurred waiting for slave to"
+                                     " exit recovery mode"))
 
     def cleanup_source_on_replica_detach(self, admin_service, replica_info):
         pass
@@ -305,3 +309,6 @@ class PostgresqlReplicationStreaming(base.Replication):
             'master': self.get_master_ref(None, None),
             'log_position': log_position
         }
+
+    def pre_replication_demote(self, service):
+        service.stop_db()

@@ -24,6 +24,7 @@ from trove.common import context
 from trove.common import exception
 from trove.common import remote
 from trove.common import utils
+from trove.datastore import models as datastore_models
 from trove.db.models import DatabaseModelBase
 from trove.instance import models as instance_models
 from trove.taskmanager import api
@@ -64,7 +65,12 @@ class BackupCreateTest(trove_testtools.TestCase):
                 tenant_id=self.context.tenant).delete()
 
     @patch.object(api.API, 'get_client', MagicMock(return_value=MagicMock()))
-    def test_create(self):
+    @patch.object(datastore_models.DatastoreVersion, 'load_by_uuid',
+                  return_value=MagicMock())
+    def test_create(self, mock_dv):
+        mock_dv.return_value.manager = "mysql"
+        self.patch_conf_property("enable_cluster_instance_backup", False,
+                                 section="mysql")
         instance = MagicMock()
         with patch.object(instance_models.BuiltInstance, 'load',
                           return_value=instance):
@@ -99,7 +105,12 @@ class BackupCreateTest(trove_testtools.TestCase):
                                      db_record['datastore_version_id'])
 
     @patch.object(api.API, 'get_client', MagicMock(return_value=MagicMock()))
-    def test_create_incremental(self):
+    @patch.object(datastore_models.DatastoreVersion, 'load_by_uuid',
+                  return_value=MagicMock())
+    def test_create_incremental(self, mock_dv):
+        mock_dv.return_value.manager = "mysql"
+        self.patch_conf_property("enable_cluster_instance_backup", False,
+                                 section="mysql")
         instance = MagicMock()
         parent = MagicMock(spec=models.DBBackup)
         with patch.object(instance_models.BuiltInstance, 'load',
@@ -147,7 +158,12 @@ class BackupCreateTest(trove_testtools.TestCase):
                           self.context, self.instance_id,
                           BACKUP_NAME, BACKUP_DESC)
 
-    def test_create_incremental_not_found(self):
+    @patch.object(datastore_models.DatastoreVersion, 'load_by_uuid',
+                  return_value=MagicMock())
+    def test_create_incremental_not_found(self, mock_dv):
+        mock_dv.return_value.manager = "mysql"
+        self.patch_conf_property("enable_cluster_instance_backup", False,
+                                 section="mysql")
         instance = MagicMock()
         with patch.object(instance_models.BuiltInstance, 'load',
                           return_value=instance):
@@ -202,7 +218,13 @@ class BackupCreateTest(trove_testtools.TestCase):
                                   self.context, self.instance_id,
                                   BACKUP_NAME, BACKUP_DESC)
 
-    def test_create_backup_cluster_instance_operation_not_supported(self):
+    @patch.object(datastore_models.DatastoreVersion, 'load_by_uuid',
+                  return_value=MagicMock())
+    def test_create_backup_cluster_instance_operation_not_supported(self,
+                                                                    mock_dv):
+        mock_dv.return_value.manager = "mysql"
+        self.patch_conf_property("enable_cluster_instance_backup", False,
+                                 section="mysql")
         instance = MagicMock()
         instance.cluster_id = 'bad_id'
         with patch.object(instance_models.BuiltInstance, 'load',
@@ -216,7 +238,12 @@ class BackupCreateTest(trove_testtools.TestCase):
                               self.context, self.instance_id,
                               BACKUP_NAME, BACKUP_DESC)
 
-    def test_create_backup_creation_error(self):
+    @patch.object(datastore_models.DatastoreVersion, 'load_by_uuid',
+                  return_value=MagicMock())
+    def test_create_backup_creation_error(self, mock_dv):
+        mock_dv.return_value.manager = "mysql"
+        self.patch_conf_property("enable_cluster_instance_backup", False,
+                                 section="mysql")
         instance = MagicMock()
         instance.cluster_id = None
         with patch.object(instance_models.BuiltInstance, 'load',

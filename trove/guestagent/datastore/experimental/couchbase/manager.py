@@ -187,20 +187,17 @@ class Manager(manager.Manager):
         with EndNotification(context):
             backup.backup(context, backup_info)
 
-    def initialize_cluster(self, context):
-        self.app.initialize_cluster()
+    def initialize_cluster(self, context, node_info):
+        self.app.initialize_cluster(node_info=node_info)
 
     def get_cluster_password(self, context):
         return self.app.get_cluster_admin().password
 
-    def get_cluster_rebalance_status(self, context):
-        return self.app.get_cluster_rebalance_status()
+    def add_nodes(self, context, node_info):
+        return self.app.rebalance_cluster(add_node_info=node_info)
 
-    def add_nodes(self, context, nodes):
-        self.app.rebalance_cluster(added_nodes=nodes)
-
-    def remove_nodes(self, context, nodes):
-        self.app.rebalance_cluster(removed_nodes=nodes)
+    def remove_nodes(self, context, node_info):
+        return self.app.rebalance_cluster(remove_node_info=node_info)
 
     def pre_upgrade(self, context):
         LOG.debug('Preparing Couchbase for upgrade.')
@@ -216,9 +213,11 @@ class Manager(manager.Manager):
         self.app.stop_db()
         if 'device' in upgrade_info:
             self.mount_volume(context, mount_point=upgrade_info['mount_point'],
-                              device_path=upgrade_info['device'])
+                              device_path=upgrade_info['device'],
+                              write_to_fstab=True)
         self.app.restore_files_post_upgrade(upgrade_info)
         # password file has been restored at this point, need to refresh the
-        # credentials stored in the app by resetting the app.
+        # credentials stored in the app and admin by resetting them.
         self._app = None
+        self._admin = None
         self.app.start_db()

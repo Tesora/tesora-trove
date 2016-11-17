@@ -134,7 +134,6 @@ function configure_trove {
         iniset $TROVE_CONF oslo_messaging_rabbit rabbit_password $RABBIT_PASSWORD
         iniset $TROVE_CONF oslo_messaging_rabbit rabbit_userid $RABBIT_USERID
 
-
         iniset $TROVE_CONF database connection `database_connection_url trove`
         iniset $TROVE_CONF DEFAULT default_datastore $TROVE_DATASTORE_TYPE
         setup_trove_logging $TROVE_CONF
@@ -167,6 +166,11 @@ function configure_trove {
         iniset $TROVE_TASKMANAGER_CONF DEFAULT nova_proxy_admin_pass $RADMIN_USER_PASS
         iniset $TROVE_TASKMANAGER_CONF DEFAULT trove_auth_url $TROVE_AUTH_ENDPOINT
         setup_trove_logging $TROVE_TASKMANAGER_CONF
+
+        # Increase default timeouts (required by the tests).
+        iniset $TROVE_TASKMANAGER_CONF DEFAULT agent_call_low_timeout 15
+        iniset $TROVE_TASKMANAGER_CONF DEFAULT agent_call_high_timeout 600
+        iniset $TROVE_TASKMANAGER_CONF DEFAULT usage_timeout 1800
     fi
 
     # (Re)create trove conductor conf file if needed

@@ -19,6 +19,7 @@ from datetime import datetime
 from datetime import timedelta
 import os.path
 import re
+from sqlalchemy import func
 
 from novaclient import exceptions as nova_exceptions
 from oslo_config.cfg import NoSuchOptError
@@ -105,6 +106,7 @@ class InstanceStatus(object):
     EJECT = "EJECT"
     UPGRADE = "UPGRADE"
     DETACH = "DETACH"
+    DELETING = "DELETING"
 
 
 def validate_volume_size(size):
@@ -312,12 +314,17 @@ class SimpleInstance(object):
         if self.db_info.task_status.is_error:
             return InstanceStatus.ERROR
 
-        # If we've reset the status, show it as an error
-        if tr_instance.ServiceStatuses.UNKNOWN == self.datastore_status.status:
+        action = self.db_info.task_status.action
+
+        # Check if we are resetting status or force deleting
+        if (tr_instance.ServiceStatuses.UNKNOWN == self.datastore_status.status
+                and action == InstanceTasks.DELETING.action):
+            return InstanceStatus.DELETING
+        elif (tr_instance.ServiceStatuses.UNKNOWN ==
+                self.datastore_status.status):
             return InstanceStatus.ERROR
 
         # Check for taskmanager status.
-        action = self.db_info.task_status.action
         if 'BUILDING' == action:
             if 'ERROR' == self.db_info.server_status:
                 return InstanceStatus.ERROR
@@ -724,6 +731,15 @@ class BaseInstance(SimpleInstance):
             self._server_group_loaded = True
         return self._server_group
 
+    def reset_status(self):
+        LOG.info(_LI("Resetting the status to ERROR on instance %s."),
+                 self.id)
+        self.reset_task_status()
+
+        reset_instance = InstanceServiceStatus.find_by(instance_id=self.id)
+        reset_instance.set_status(tr_instance.ServiceStatuses.UNKNOWN)
+        reset_instance.save()
+
     def get_injected_files(self, datastore_manager):
         injected_config_location = CONF.get('injected_config_location')
         guest_info = CONF.get('guest_info')
@@ -750,20 +766,6 @@ class BaseInstance(SimpleInstance):
                                    "trove-guestagent.conf")] = f.read()
 
         return files
-
-    def reset_status(self):
-        if self.is_building or self.is_error:
-            LOG.info(_LI("Resetting the status to ERROR on instance %s."),
-                     self.id)
-            self.reset_task_status()
-
-            reset_instance = InstanceServiceStatus.find_by(instance_id=self.id)
-            reset_instance.set_status(tr_instance.ServiceStatuses.UNKNOWN)
-            reset_instance.save()
-        else:
-            raise exception.UnprocessableEntity(
-                "Instance %s status can only be reset in BUILD or ERROR "
-                "state." % self.id)
 
 
 class FreshInstance(BaseInstance):
@@ -1044,22 +1046,20 @@ class Instance(BuiltInstance):
         for aa_module in auto_apply_modules:
             if aa_module.id not in module_ids:
                 modules.append(aa_module)
-        module_list = []
-        for module in modules:
-            module.contents = module_models.Module.deprocess_contents(
-                module.contents)
-            module_info = module_views.DetailedModuleView(module).data(
-                include_contents=True)
-            module_list.append(module_info)
+        module_models.Modules.validate(
+            modules, datastore.id, datastore_version.id)
+        module_list = module_views.convert_modules(modules)
 
         def _create_resources():
 
             if cluster_config:
                 cluster_id = cluster_config.get("id", None)
                 shard_id = cluster_config.get("shard_id", None)
-                instance_type = cluster_config.get("instance_type", None)
+                instance_types = cluster_config.get("instance_type", None)
+                if isinstance(instance_types, list):
+                    instance_types = ','.join(instance_types)
             else:
-                cluster_id = shard_id = instance_type = None
+                cluster_id = shard_id = instance_types = None
 
             ids = []
             names = []
@@ -1073,7 +1073,7 @@ class Instance(BuiltInstance):
                     task_status=InstanceTasks.BUILDING,
                     configuration_id=configuration_id,
                     slave_of_id=slave_of_id, cluster_id=cluster_id,
-                    shard_id=shard_id, type=instance_type,
+                    shard_id=shard_id, type=instance_types,
                     region_id=region_name)
                 LOG.debug("Tenant %(tenant)s created new Trove instance "
                           "%(db)s in region %(region)s.",
@@ -1325,11 +1325,6 @@ class Instance(BuiltInstance):
         Raises exception if a configuration assign cannot
         currently be performed
         """
-        # check if the instance already has a configuration assigned
-        if self.db_info.configuration_id:
-            raise exception.ConfigurationAlreadyAttached(
-                instance_id=self.id,
-                configuration_id=self.db_info.configuration_id)
 
         # check if the instance is not ACTIVE or has tasks
         status = None
@@ -1342,23 +1337,118 @@ class Instance(BuiltInstance):
             raise exception.InvalidInstanceState(instance_id=self.id,
                                                  status=status)
 
-    def unassign_configuration(self):
-        LOG.debug("Unassigning the configuration from the instance %s.",
-                  self.id)
+    def attach_configuration(self, configuration_id):
+        LOG.debug("Attaching configuration to instance: %s", self.id)
+        if not self.db_info.configuration_id:
+            self._validate_can_perform_assign()
+            LOG.debug("Attaching configuration: %s", configuration_id)
+            config = Configuration.find(self.context, configuration_id,
+                                        self.db_info.datastore_version_id)
+            self.update_configuration(config)
+        else:
+            raise exception.ConfigurationAlreadyAttached(
+                instance_id=self.id,
+                configuration_id=self.db_info.configuration_id)
+
+    def update_configuration(self, configuration):
+        self.save_configuration(configuration)
+        return self.apply_configuration(configuration)
+
+    def save_configuration(self, configuration):
+        """Save configuration changes on the guest.
+        Update Trove records if successful.
+        This method does not update runtime values. It sets the instance task
+        to RESTART_REQUIRED.
+        """
+
+        LOG.debug("Saving configuration on instance: %s", self.id)
+        overrides = configuration.get_configuration_overrides()
+
+        # Always put the instance into RESTART_REQUIRED state after
+        # configuration update. The sate may be released only once (and if)
+        # the configuration is successfully applied.
+        # This ensures that the instance will always be in a consistent state
+        # even if the apply never executes or fails.
+        LOG.debug("Persisting new configuration on the guest.")
+        self.guest.update_overrides(overrides)
+        LOG.debug("Configuration has been persisted on the guest.")
+
+        # Configuration has now been persisted on the instance an can be safely
+        # detached. Update our records to reflect this change irrespective of
+        # results of any further operations.
+        self.update_db(task_status=InstanceTasks.RESTART_REQUIRED,
+                       configuration_id=configuration.configuration_id)
+
+    def apply_configuration(self, configuration):
+        """Apply runtime configuration changes and release the
+        RESTART_REQUIRED task.
+        Apply changes only if ALL values can be applied at once.
+        Return True if the configuration has changed.
+        """
+
+        LOG.debug("Applying configuration on instance: %s", self.id)
+        overrides = configuration.get_configuration_overrides()
+
+        if not configuration.does_configuration_need_restart():
+            LOG.debug("Applying runtime configuration changes.")
+            self.guest.apply_overrides(overrides)
+            LOG.debug("Configuration has been applied.")
+            self.update_db(task_status=InstanceTasks.NONE)
+
+            return True
+
+        LOG.debug(
+            "Configuration changes include non-dynamic settings and "
+            "will require restart to take effect.")
+
+        return False
+
+    def detach_configuration(self):
+        LOG.debug("Detaching configuration from instance: %s", self.id)
         if self.configuration and self.configuration.id:
-            LOG.debug("Unassigning the configuration id %s.",
-                      self.configuration.id)
+            self._validate_can_perform_assign()
+            LOG.debug("Detaching configuration: %s", self.configuration.id)
+            self.remove_configuration()
+        else:
+            LOG.debug("No configuration found on instance.")
 
-            self.guest.update_overrides({}, remove=True)
+    def remove_configuration(self):
+        configuration_id = self.delete_configuration()
+        return self.reset_configuration(configuration_id)
 
-            # Dynamically reset the configuration values back to their default
-            # values from the configuration template.
-            # Reset the values only if the default is available for all of
-            # them and restart is not required by any.
-            # Mark the instance with a 'RESTART_REQUIRED' status otherwise.
+    def delete_configuration(self):
+        """Remove configuration changes from the guest.
+        Update Trove records if successful.
+        This method does not update runtime values. It sets the instance task
+        to RESTART_REQUIRED.
+        Return ID of the removed configuration group.
+        """
+        LOG.debug("Deleting configuration from instance: %s", self.id)
+        configuration_id = self.configuration.id
+
+        LOG.debug("Removing configuration from the guest.")
+        self.guest.update_overrides({}, remove=True)
+        LOG.debug("Configuration has been removed from the guest.")
+
+        self.update_db(task_status=InstanceTasks.RESTART_REQUIRED,
+                       configuration_id=None)
+
+        return configuration_id
+
+    def reset_configuration(self, configuration_id):
+        """Dynamically reset the configuration values back to their default
+        values from the configuration template and release the
+        RESTART_REQUIRED task.
+        Reset the values only if the default is available for all of
+        them and restart is not required by any.
+        Return True if the configuration has changed.
+        """
+
+        LOG.debug("Resetting configuration on instance: %s", self.id)
+        if configuration_id:
             flavor = self.get_flavor()
             default_config = self._render_config_dict(flavor)
-            current_config = Configuration(self.context, self.configuration.id)
+            current_config = Configuration(self.context, configuration_id)
             current_overrides = current_config.get_configuration_overrides()
             # Check the configuration template has defaults for all modified
             # values.
@@ -1366,56 +1456,22 @@ class Instance(BuiltInstance):
                                        for key in current_overrides.keys())
             if (not current_config.does_configuration_need_restart() and
                     has_defaults_for_all):
+                LOG.debug("Applying runtime configuration changes.")
                 self.guest.apply_overrides(
                     {k: v for k, v in default_config.items()
                      if k in current_overrides})
+                LOG.debug("Configuration has been applied.")
+                self.update_db(task_status=InstanceTasks.NONE)
+
+                return True
             else:
                 LOG.debug(
                     "Could not revert all configuration changes dynamically. "
                     "A restart will be required.")
-                self.update_db(task_status=InstanceTasks.RESTART_REQUIRED)
         else:
-            LOG.debug("No configuration found on instance. Skipping.")
+            LOG.debug("There are no values to reset.")
 
-    def assign_configuration(self, configuration_id):
-        self._validate_can_perform_assign()
-
-        try:
-            configuration = Configuration.load(self.context, configuration_id)
-        except exception.ModelNotFoundError:
-            raise exception.NotFound(
-                message='Configuration group id: %s could not be found.'
-                % configuration_id)
-
-        config_ds_v = configuration.datastore_version_id
-        inst_ds_v = self.db_info.datastore_version_id
-        if (config_ds_v != inst_ds_v):
-            raise exception.ConfigurationDatastoreNotMatchInstance(
-                config_datastore_version=config_ds_v,
-                instance_datastore_version=inst_ds_v)
-
-        config = Configuration(self.context, configuration.id)
-        LOG.debug("Config is %s.", config)
-
-        self.update_overrides(config)
-        self.update_db(configuration_id=configuration.id)
-
-    def update_overrides(self, config):
-        LOG.debug("Updating or removing overrides for instance %s.", self.id)
-
-        overrides = config.get_configuration_overrides()
-        self.guest.update_overrides(overrides)
-
-        # Apply the new configuration values dynamically to the running
-        # datastore service.
-        # Apply overrides only if ALL values can be applied at once or mark
-        # the instance with a 'RESTART_REQUIRED' status.
-        if not config.does_configuration_need_restart():
-            self.guest.apply_overrides(overrides)
-        else:
-            LOG.debug("Configuration overrides has non-dynamic settings and "
-                      "will require restart to take effect.")
-            self.update_db(task_status=InstanceTasks.RESTART_REQUIRED)
+        return False
 
     def _render_config_dict(self, flavor):
         config = template.SingleInstanceConfigTemplate(
@@ -1468,12 +1524,13 @@ class Instances(object):
                       'deleted': False}
         if not include_clustered:
             query_opts['cluster_id'] = None
-        if instance_ids and len(instance_ids) > 1:
-            raise exception.DatastoreOperationNotSupported(
-                operation='module-instances', datastore='current')
         if instance_ids:
-            query_opts['id'] = instance_ids[0]
-        db_infos = DBInstance.find_all(**query_opts)
+            if context.is_admin:
+                query_opts.pop('tenant_id')
+            filters = [DBInstance.id.in_(instance_ids)]
+            db_infos = DBInstance.find_by_filter(filters=filters, **query_opts)
+        else:
+            db_infos = DBInstance.find_all(**query_opts)
         limit = utils.pagination_limit(context.limit, Instances.DEFAULT_LIMIT)
         data_view = DBInstance.find_by_pagination('instances', db_infos, "foo",
                                                   limit=limit,
@@ -1579,6 +1636,40 @@ class DBInstance(dbmodels.DatabaseModelBase):
         self.task_description = value.db_text
 
     task_status = property(get_task_status, set_task_status)
+
+
+def module_instance_count(context, module_id, include_clustered=False):
+    """Returns a summary of the instances that have applied a given
+    module.  We use the SQLAlchemy query object directly here as there's
+    functionality needed that's not exposed in the trove/db/__init__.py/Query
+    object.
+    """
+    columns = [module_models.DBModule.name,
+               module_models.DBInstanceModule.module_id,
+               module_models.DBInstanceModule.md5,
+               func.count(module_models.DBInstanceModule.md5),
+               (module_models.DBInstanceModule.md5 ==
+                module_models.DBModule.md5),
+               func.min(module_models.DBInstanceModule.updated),
+               func.max(module_models.DBInstanceModule.updated)]
+    filters = [module_models.DBInstanceModule.module_id == module_id,
+               module_models.DBInstanceModule.deleted == 0]
+    query = module_models.DBInstanceModule.query()
+    query = query.join(
+        module_models.DBModule,
+        module_models.DBInstanceModule.module_id == module_models.DBModule.id)
+    query = query.join(
+        DBInstance,
+        module_models.DBInstanceModule.instance_id == DBInstance.id)
+    if not include_clustered:
+        filters.append(DBInstance.cluster_id.is_(None))
+    if not context.is_admin:
+        filters.append(DBInstance.tenant_id == context.tenant)
+    query = query.group_by(module_models.DBInstanceModule.md5)
+    query = query.add_columns(*columns)
+    query = query.filter(*filters)
+    query = query.order_by(module_models.DBInstanceModule.updated)
+    return query.all()
 
 
 def persist_instance_fault(notification, event_qualifier):

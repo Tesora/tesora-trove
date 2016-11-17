@@ -417,13 +417,15 @@ class MongoDBApp(object):
                               system.CONFIG_DIR,
                               preserve=True, recursive=True,
                               force=True, as_root=True)
-        operating_system.copy('%s/.' % upgrade_info['save_creds'],
+        operating_system.copy(os.path.join(upgrade_info['save_creds'],
+                                           system.MONGO_ADMIN_CREDS_FILENAME),
                               os.path.expanduser('~'),
-                              preserve=True, recursive=True,
-                              force=True, as_root=True)
+                              preserve=True)
         for save_dir in [upgrade_info['save_confs'],
                          upgrade_info['save_creds']]:
             operating_system.remove(save_dir, force=True, as_root=True)
+        self.status.set_ready()
+        self.configuration_manager.refresh_cache()
 
 
 class MongoDBAppStatus(service.BaseDbStatus):
@@ -496,6 +498,10 @@ class MongoDBAdmin(object):
         """
         LOG.debug('Creating user %s on database %s with roles %s.'
                   % (user.username, user.database.name, str(user.mongo_roles)))
+
+        if not user.password:
+            raise exception.BadRequest(_("User's password is empty."))
+
         if client:
             self._create_user_with_client(user, client)
         else:
@@ -624,9 +630,9 @@ class MongoDBAdmin(object):
         if not password:
             LOG.debug('Generating root user password.')
             password = utils.generate_random_password()
-        root_user = models.MongoDBUser.root(password=password)
+        root_user = models.MongoDBUser.root(name='admin.root',
+                                            password=password)
         root_user.mongo_roles = {'db': 'admin', 'role': 'root'}
-        root_user.check_create()
         self.create_validated_user(root_user)
         return root_user.serialize()
 
