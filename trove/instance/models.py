@@ -28,12 +28,12 @@ from oslo_log import log as logging
 from trove.backup.models import Backup
 from trove.common import cfg
 from trove.common import exception
+from trove.common.glance_remote import create_glance_client
 from trove.common.i18n import _, _LE, _LI, _LW
 import trove.common.instance as tr_instance
 from trove.common.notification import StartNotification
 from trove.common.remote import create_cinder_client
 from trove.common.remote import create_dns_client
-from trove.common.remote import create_glance_client
 from trove.common.remote import create_guest_client
 from trove.common.remote import create_nova_client
 from trove.common import server_group as srv_grp
@@ -799,7 +799,8 @@ class Instance(BuiltInstance):
                       datastore_manager)
             return False
 
-    def _validate_remote_datastore(self, context, region_name, flavor,
+    @classmethod
+    def _validate_remote_datastore(cls, context, region_name, flavor,
                                    datastore, datastore_version):
         remote_nova_client = create_nova_client(context,
                                                 region_name=region_name)
@@ -1551,9 +1552,18 @@ class Instances(object):
     def load_all_by_cluster_id(context, cluster_id, load_servers=True):
         db_instances = DBInstance.find_all(cluster_id=cluster_id,
                                            deleted=False)
-        return [load_any_instance(context, db_inst.id,
-                                  load_server=load_servers)
-                for db_inst in db_instances]
+        db_insts = []
+        for db_instance in db_instances:
+            try:
+                db_inst = load_any_instance(
+                    context, db_instance.id, load_server=load_servers)
+                db_insts.append(db_inst)
+            except exception.NotFound:
+                # The instance may be gone if we're in the middle of a
+                # shrink operation, so just log and continue
+                LOG.debug("Instance %s is no longer available, skipping." %
+                          db_instance.id)
+        return db_insts
 
     @staticmethod
     def _load_servers_status(load_instance, context, db_items, find_server):

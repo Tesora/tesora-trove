@@ -40,6 +40,7 @@ from trove.instance import models, views
 from trove.module import models as module_models
 from trove.module import views as module_views
 
+
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 
