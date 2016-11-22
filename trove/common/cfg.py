@@ -119,17 +119,17 @@ common_opts = [
                help='Service type to use when searching catalog.'),
     cfg.StrOpt('swift_endpoint_type', default='publicURL',
                help='Service endpoint type to use when searching catalog.'),
+    cfg.URIOpt('glance_url', help='URL ending in ``AUTH_``.'),
+    cfg.StrOpt('glance_service_type', default='image',
+               help='Service type to use when searching catalog.'),
+    cfg.StrOpt('glance_endpoint_type', default='publicURL',
+               help='Service endpoint type to use when searching catalog.'),
     cfg.URIOpt('trove_auth_url', default='http://0.0.0.0:5000/v2.0',
                help='Trove authentication URL.'),
     cfg.StrOpt('trove_url', help='URL without the tenant segment.'),
     cfg.StrOpt('trove_service_type', default='database',
                help='Service type to use when searching catalog.'),
     cfg.StrOpt('trove_endpoint_type', default='publicURL',
-               help='Service endpoint type to use when searching catalog.'),
-    cfg.StrOpt('glance_url', help='URL without the tenant segment.'),
-    cfg.StrOpt('glance_service_type', default='image',
-               help='Service type to use when searching catalog.'),
-    cfg.StrOpt('glance_endpoint_type', default='publicURL',
                help='Service endpoint type to use when searching catalog.'),
     cfg.IPOpt('host', default='0.0.0.0',
               help='Host to listen for RPC messages.'),
@@ -377,10 +377,10 @@ common_opts = [
                help='Client to send Swift calls to.'),
     cfg.StrOpt('remote_trove_client',
                default='trove.common.trove_remote.trove_client',
-               help='Client to send Swift calls to.'),
+               help='Client to send Trove calls to.'),
     cfg.StrOpt('remote_glance_client',
-               default='trove.common.remote.glance_client',
-               help='Client to send Swift calls to.'),
+               default='trove.common.glance_remote.glance_client',
+               help='Client to send Glance calls to.'),
     cfg.StrOpt('exists_notification_transformer',
                help='Transformer for exists notifications.'),
     cfg.IntOpt('exists_notification_interval', default=3600,
@@ -2206,18 +2206,19 @@ mariadb_opts = [
 upgrade_levels = cfg.OptGroup(
     'upgrade_levels',
     title='RPC upgrade levels group for handling versions',
-    help='Contains the support version caps for each RPC API')
+    help='Contains the support version caps (Openstack Release) for '
+    'each RPC API')
 
 rpcapi_cap_opts = [
     cfg.StrOpt(
-        'taskmanager', default="icehouse",
+        'taskmanager', default='latest',
         help='Set a version cap for messages sent to taskmanager services'),
     cfg.StrOpt(
-        'guestagent', default="icehouse",
+        'guestagent', default='latest',
         help='Set a version cap for messages sent to guestagent services'),
     cfg.StrOpt(
-        'conductor', default="icehouse",
-        help='Set a version cap for messages sent to conductor services'),
+        'conductor', default='latest',
+        help='Set Openstack Release compatibility for conductor services'),
 ]
 
 CONF = cfg.CONF

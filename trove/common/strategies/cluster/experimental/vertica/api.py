@@ -122,7 +122,7 @@ class VerticaCluster(models.Cluster):
                     datastore_version, volume_size, None,
                     nics=nics[i], availability_zone=azs[i],
                     configuration_id=None, cluster_config=member_config,
-                    locality=locality, modules=instances[i].get('modules'),
+                    modules=instances[i].get('modules'), locality=locality,
                     region_name=regions[i])
             )
         return minstances

@@ -156,9 +156,9 @@ class CassandraCluster(models.Cluster):
                 availability_zone=instance_az,
                 configuration_id=configuration_id,
                 cluster_config=member_config,
-                region_name=instance.get('region_name'),
+                modules=instance.get('modules'),
                 locality=locality,
-                modules=instance.get('modules'))
+                region_name=instance.get('region_name'))
 
             new_instances.append(new_instance)
 

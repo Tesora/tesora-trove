@@ -559,15 +559,12 @@ def validate_instance_flavors(context, instances,
         region_name = instance.get('region_name')
         flavor_id = instance['flavor_id']
         try:
-            if region_name is None:
-                nova_client = remote.create_nova_client(context, region_name)
+            if region_name in nova_cli_cache:
+                nova_client = nova_cli_cache[region_name]
             else:
-                if region_name not in nova_cli_cache:
-                    nova_client = remote.create_nova_client(
-                        context, region_name)
-                    nova_cli_cache[region_name] = nova_client
-                else:
-                    nova_client = nova_cli_cache[region_name]
+                nova_client = remote.create_nova_client(
+                    context, region_name)
+                nova_cli_cache[region_name] = nova_client
 
             flavor = nova_client.flavors.get(flavor_id)
             if (not volume_enabled and
