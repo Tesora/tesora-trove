@@ -234,7 +234,6 @@ class MgmtInstancesIndex(object):
             'updated',
             'region'
         ]
-        raise SkipTest("test disabled")
 
         if CONFIG.trove_volume_support:
             expected_fields.append('volume')
@@ -257,7 +256,6 @@ class MgmtInstancesIndex(object):
         Make sure that the deleted= filter works as expected, and no instances
         are excluded.
         """
-        raise SkipTest("test disabled")
 
         if not hasattr(self.client.management.index, 'deleted'):
             raise SkipTest("instance index must have a deleted "

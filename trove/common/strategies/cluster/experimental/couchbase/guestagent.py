@@ -35,26 +35,36 @@ class CouchbaseGuestAgentAPI(guest_api.API):
 
     def initialize_cluster(self, node_info):
         LOG.debug("Configuring cluster parameters via node: %s" % self.id)
+        version = self.API_BASE_VERSION
+
         self._call("initialize_cluster", guest_api.AGENT_HIGH_TIMEOUT,
-                   self.version_cap, node_info=node_info)
+                   version=version, node_info=node_info)
 
     def get_cluster_password(self):
         LOG.debug("Retrieving cluster password from node: %s" % self.id)
+        version = self.API_BASE_VERSION
+
         return self._call("get_cluster_password",
-                          guest_api.AGENT_LOW_TIMEOUT, self.version_cap)
+                          guest_api.AGENT_LOW_TIMEOUT, version=version)
 
     def add_nodes(self, node_info):
         LOG.debug("Adding nodes to the cluster: %s" % self.id)
+        version = self.API_BASE_VERSION
+
         return self._call('add_nodes', CONF.cluster_usage_timeout,
-                          self.version_cap, node_info=node_info)
+                          version=version, node_info=node_info)
 
     def remove_nodes(self, node_info):
         LOG.debug("Removing nodes from the cluster: %s" % self.id)
+        version = self.API_BASE_VERSION
+
         return self._call('remove_nodes', CONF.cluster_usage_timeout,
-                          self.version_cap, node_info=node_info)
+                          version=version, node_info=node_info)
 
     def cluster_complete(self):
         LOG.debug("Sending a setup completion notification for node: %s"
                   % self.id)
+        version = self.API_BASE_VERSION
+
         return self._call("cluster_complete", guest_api.AGENT_HIGH_TIMEOUT,
-                          self.version_cap)
+                          version=version)

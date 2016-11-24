@@ -121,9 +121,9 @@ class GaleraCommonCluster(cluster_models.Cluster):
                                 nics=instance.get('nics', None),
                                 configuration_id=configuration_id,
                                 cluster_config=member_config,
-                                region_name=instance.get('region_name'),
+                                modules=instance.get('modules'),
                                 locality=locality,
-                                modules=instance.get('modules')
+                                region_name=instance.get('region_name')
                                 )
                 for instance in instances]
 

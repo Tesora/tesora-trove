@@ -70,49 +70,69 @@ class OracleRACGuestAgentStrategy(base.BaseGuestAgentStrategy):
 class OracleRACGuestAgentAPI(guest_api.API):
 
     def configure_hosts(self, cluster_name, public_cidr, private_cidr):
+        version = self.API_BASE_VERSION
+
         return self._call("configure_hosts", guest_api.AGENT_LOW_TIMEOUT,
-                          self.version_cap, cluster_name=cluster_name,
+                          version=version, cluster_name=cluster_name,
                           public_cidr=public_cidr,
                           private_cidr=private_cidr)
 
     def establish_ssh_user_equivalency(self, host_ip_pairs):
+        version = self.API_BASE_VERSION
+
         return self._call("establish_ssh_user_equivalency",
-                          guest_api.AGENT_HIGH_TIMEOUT, self.version_cap,
+                          guest_api.AGENT_HIGH_TIMEOUT, version=version,
                           host_ip_pairs=host_ip_pairs)
 
     def configure_grid(self, cluster_id, cluster_name, nodes_string,
                        public_cidr, private_cidr):
+        version = self.API_BASE_VERSION
+
         return self._call("configure_grid", CONFIGURATION_TIMEOUT,
-                          self.version_cap, cluster_id=cluster_id,
+                          version=version, cluster_id=cluster_id,
                           cluster_name=cluster_name, nodes_string=nodes_string,
                           public_cidr=public_cidr, private_cidr=private_cidr)
 
     def run_grid_root(self):
+        version = self.API_BASE_VERSION
+
         return self._call("run_grid_root", CONFIGURATION_TIMEOUT,
-                          self.version_cap)
+                          version=version)
 
     def install_oracle_database(self, nodes_string):
+        version = self.API_BASE_VERSION
+
         return self._call("install_oracle_database", CONFIGURATION_TIMEOUT,
-                          self.version_cap, nodes_string=nodes_string)
+                          version=version, nodes_string=nodes_string)
 
     def run_oracle_root(self):
+        version = self.API_BASE_VERSION
+
         return self._call("run_oracle_root", CONFIGURATION_TIMEOUT,
-                          self.version_cap)
+                          version=version)
 
     def get_private_vip(self, ip):
+        version = self.API_BASE_VERSION
+
         return self._call("get_private_vip", guest_api.AGENT_LOW_TIMEOUT,
-                          self.version_cap, ip=ip)
+                          version=version, ip=ip)
 
     def create_rac_database(self, nodes_string):
+        version = self.API_BASE_VERSION
+
         return self._call("create_rac_database", CONFIGURATION_TIMEOUT,
-                          self.version_cap, nodes_string=nodes_string)
+                          version=version, nodes_string=nodes_string)
 
     def determine_sid(self):
+        version = self.API_BASE_VERSION
+
         return self._call("determine_sid", guest_api.AGENT_LOW_TIMEOUT,
-                          self.version_cap)
+                          version=version)
 
     def cluster_complete(self):
         LOG.debug("Notifying cluster install completion.")
+        version = self.API_BASE_VERSION
+
         return self._call("cluster_complete", guest_api.AGENT_HIGH_TIMEOUT,
-                          self.version_cap)
+                          version=version)
 

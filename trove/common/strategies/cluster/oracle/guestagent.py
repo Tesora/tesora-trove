@@ -70,5 +70,7 @@ class OracleGuestAgentAPI(guest_api.API):
 
     def cluster_complete(self):
         LOG.debug("Notifying cluster install completion.")
+        version = self.API_BASE_VERSION
+
         return self._call("cluster_complete", guest_api.AGENT_HIGH_TIMEOUT,
-                          self.version_cap)
+                          version=version)

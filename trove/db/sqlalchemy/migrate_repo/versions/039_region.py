@@ -1,4 +1,4 @@
-# Copyright 2014 eBay Software Foundation
+# Copyright 2016 Tesora Inc.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -33,9 +33,3 @@ def upgrade(migrate_engine):
     instances = Table('instances', meta, autoload=True)
     instances.create_column(Column('region_id', String(255)))
     instances.update().values(region_id=CONF.os_region_name).execute()
-
-
-def downgrade(migrate_engine):
-    meta.bind = migrate_engine
-    instances = Table('instances', meta, autoload=True)
-    instances.drop_column('region_id')

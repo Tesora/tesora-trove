@@ -213,12 +213,14 @@ class RemoteSecurityGroup(NetworkRemoteModelBase):
 
     _data_fields = ['id', 'name', 'description', 'rules']
 
-    def __init__(self, security_group=None, id=None, context=None):
+    def __init__(self, security_group=None, id=None, context=None,
+                 region_name=None):
         if id is None and security_group is None:
             msg = _("Security Group does not have id defined!")
             raise exception.InvalidModelError(msg)
         elif security_group is None:
-            driver = self.get_driver(context)
+            driver = self.get_driver(context,
+                                     region_name or CONF.os_region_name)
             self._data_object = driver.get_sec_group_by_id(group_id=id)
         else:
             self._data_object = security_group
