@@ -172,6 +172,7 @@ class GaleraCommonCluster(cluster_models.Cluster):
                 db_info.id, [instance.id for instance in new_instances])
         except Exception:
             db_info.update(task_status=ClusterTasks.NONE)
+            raise
 
         return self.__class__(context, db_info,
                               datastore, datastore_version)
@@ -195,6 +196,7 @@ class GaleraCommonCluster(cluster_models.Cluster):
                                             for instance in removal_instances])
         except Exception:
             self.db_info.update(task_status=ClusterTasks.NONE)
+            raise
 
         return self.__class__(self.context, self.db_info,
                               self.ds, self.ds_version)
