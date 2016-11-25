@@ -36,7 +36,6 @@ from trove.common import utils as utils
 from trove.guestagent.common import guestagent_utils
 from trove.guestagent.common import operating_system
 from trove.guestagent.datastore import service
-from trove.guestagent import dbaas as dbaas_utils
 from trove.guestagent import pkg
 
 
@@ -640,7 +639,7 @@ class CouchbaseAdmin(object):
         for name, info in self._parse_bucket_list(bucket_list).items():
             bucket_ramsize_quota_mb = int(info['ramQuota']) / 1048576
             bucket_replica_count = int(info['numReplicas'])
-            used_ram_mb = dbaas_utils.to_mb(float(info['ramUsed']))
+            used_ram_mb = utils.to_mb(float(info['ramUsed']))
             buckets.append(models.CouchbaseUser(
                 name,
                 bucket_ramsize_mb=bucket_ramsize_quota_mb,
