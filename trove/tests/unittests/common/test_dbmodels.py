@@ -136,7 +136,7 @@ class DatastoreUserTest(trove_testtools.TestCase):
 
     def _test_user_basic(self, user):
         self.assertEqual(self.username, user.name)
-        self.assertEqual(None, user.password)
+        self.assertIsNone(user.password)
         self.assertEqual(self.host_wildcard, user.host)
         self.assertEqual([], user.databases)
 
@@ -318,7 +318,7 @@ class DatastoreUserTest(trove_testtools.TestCase):
     def test_validate_dict_defaults(self):
         user = models.DatastoreUser(self.username)
         user.verify_dict()
-        self.assertEqual(None, user.password)
+        self.assertIsNone(user.password)
         self.assertEqual(self.host_wildcard, user.host)
         self.assertEqual([], user.databases)
 
