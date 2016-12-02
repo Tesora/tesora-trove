@@ -470,17 +470,18 @@ class Manager(periodic_task.PeriodicTasks):
         saslauthd_conf = operating_system.read_file(
             saslauthd_conf_file, stream_codecs.YamlCodec(), as_root=True)
         saslauthd_conf.update({
-            'ldap_servers': CONF.get(self.manager).get('ldap_servers'),
-            'ldap_search_base': CONF.get(self.manager).get('ldap_search_base')
+            'ldap_servers': cfg.get_configuration_property('ldap_servers'),
+            'ldap_search_base':
+                cfg.get_configuration_property('ldap_search_base')
         })
-        ldap_tls_cacert_dir = CONF.get(self.manager).get('ldap_tls_cacert_dir',
-                                                         None)
+        ldap_tls_cacert_dir = cfg.get_configuration_property(
+            'ldap_tls_cacert_dir')
         if ldap_tls_cacert_dir:
             saslauthd_conf.update({
                 'ldap_tls_cacert_dir': ldap_tls_cacert_dir,
             })
-        ldap_tls_cacert_file = (CONF.get(self.manager)
-                                    .get('ldap_tls_cacert_file', None))
+        ldap_tls_cacert_file = cfg.get_configuration_property(
+            'ldap_tls_cacert_file')
         if ldap_tls_cacert_file:
             saslauthd_conf.update({
                 'ldap_tls_cacert_file': ldap_tls_cacert_file,
