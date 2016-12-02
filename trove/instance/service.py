@@ -630,11 +630,8 @@ class InstanceController(wsgi.Controller):
         client.module_remove(module_info)
         instance_modules = module_models.InstanceModules.load_all(
             context, instance_id=id, module_id=module_id)
-        im_delete_count = 0
         for instance_module in instance_modules:
             module_models.InstanceModule.delete(context, instance_module)
-            im_delete_count += 1
-        if im_delete_count:
-            LOG.debug("Deleted %d instance module record(s)." %
-                      im_delete_count)
+            LOG.debug("Deleted IM record %s (instance %s, module %s)." %
+                      (instance_module.id, id, module_id))
         return wsgi.Result(None, 200)
