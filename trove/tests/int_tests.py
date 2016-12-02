@@ -382,8 +382,7 @@ register(
     ["redis_supported"],
     single=[common_groups,
             backup_groups, ],
-    multi=[replication_promote_groups,
-           cluster_actions_groups, ]
+    multi=[replication_promote_groups, ]
 )
 
 register(

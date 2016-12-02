@@ -58,6 +58,12 @@ function is_branch_liberty() {
 . $TROVESTACK_SCRIPTS/functions
 . $TROVESTACK_SCRIPTS/functions_qemu
 
+# Pre-set DISTRO and RELEASE variables based on host OS
+# Can be overridden by env vars DISTRO and RELEASE
+GetDistro
+export DISTRO=${DISTRO:-$DISTRO_NAME}
+export RELEASE=${RELEASE:-$DISTRO_RELEASE}
+
 # Load global configuration variables.
 . $TROVESTACK_SCRIPTS/trovestack.rc
 . $TROVESTACK_SCRIPTS/reviews.rc
@@ -276,7 +282,8 @@ function install_prep_packages() {
     if is_fedora; then
       pkg_install git gettext
     else
-      pkg_install git-core kvm-ipxe gettext
+      #pkg_install git-core kvm-ipxe gettext
+      pkg_install git-core gettext
     fi
     sudo -H $HTTP_PROXY pip install --upgrade pip dib-utils
 }
@@ -702,12 +709,14 @@ function install_test_packages() {
            [ "$DATASTORE_TYPE" = "couchbase_4" ] ||
            [ "$DATASTORE_TYPE" = "couchbase_ee" ] ||
            [ "$DATASTORE_TYPE" = "couchbase_ee45" ]; then
-        # Install Couchbase SDK for scenario tests.
-        sudo -H $HTTP_PROXY curl http://packages.couchbase.com/ubuntu/couchbase.key | sudo apt-key add -
-        echo "deb http://packages.couchbase.com/ubuntu trusty trusty/main" | sudo tee /etc/apt/sources.list.d/couchbase-csdk.list
-        sudo -H $HTTP_PROXY apt-get update
-        sudo -H $HTTP_PROXY apt-get -y install libcouchbase-dev
-        sudo -H $HTTP_PROXY pip install --upgrade couchbase
+        if [ "$DISTRO" == "ubuntu" ]; then
+	        # Install Couchbase SDK for scenario tests.
+	        sudo -H $HTTP_PROXY curl http://packages.couchbase.com/ubuntu/couchbase.key | sudo apt-key add -
+	        echo "deb http://packages.couchbase.com/ubuntu trusty trusty/main" | sudo tee /etc/apt/sources.list.d/couchbase-csdk.list
+	        sudo -H $HTTP_PROXY apt-get update
+	        sudo -H $HTTP_PROXY apt-get -y install libcouchbase-dev
+	        sudo -H $HTTP_PROXY pip install --upgrade couchbase
+        fi
     fi
 }
 
@@ -753,14 +762,19 @@ function mod_confs() {
     # Enable neutron tests if needed
     sed -i "s/%neutron_enabled%/$ENABLE_NEUTRON/g" $TEST_CONF
 
-    # If neutron is enabled, we create a shared network and write this info to the
-    # confs so that the integration tests can use it.
+    # If neutron is enabled, the devstack plugin will have created an alt_demo
+    # network - write this info to the confs so that the integration tests can
+    # use it.
     if [[ $ENABLE_NEUTRON = true ]]; then
-        management_network_id=$(neutron --os-username=admin --os-password=$ADMIN_PASSWORD --os-tenant-name=admin --os-auth-url=$TROVE_AUTH_ENDPOINT net-list | awk '/ alt-private / {print $2}')
-        management_subnet=$(neutron --os-username=admin --os-password=$ADMIN_PASSWORD --os-tenant-name=admin --os-auth-url=$TROVE_AUTH_ENDPOINT subnet-list | awk '/ alt-private-subnet / {print $2}')
-        echo "Using neutron network $management_network_id and subnet $management_subnet"
-        sed -i "s,%shared_network%,$management_network_id,g" $TEST_CONF
-        sed -i "s,%shared_network_subnet%,$management_subnet,g" $TEST_CONF
+        local credentials="--os-username=admin --os-password=$ADMIN_PASSWORD --os-tenant-name=admin --os-auth-url=$TROVE_AUTH_ENDPOINT --os-region $REGION_NAME"
+        TROVE_NET_ID=$(openstack $credentials network list | grep " $TROVE_PRIVATE_NETWORK_NAME " | awk '{print $2}')
+        TROVE_SUBNET_ID=$(openstack $credentials subnet list | grep " $TROVE_PRIVATE_SUBNET_NAME " | awk '{print $2}')
+        # echo "Using network ${TROVE_PRIVATE_NETWORK_NAME} (${TROVE_NET_ID}): ${TROVE_PRIVATE_SUBNET_NAME} (${TROVE_SUBNET_ID})"
+        # sed -i "s,%shared_network%,$TROVE_NET_ID,g" $TEST_CONF
+        # sed -i "s,%shared_network_subnet%,$TROVE_SUBNET_ID,g" $TEST_CONF
+        # remove the network stuff until the alt_demo network issues are sorted out
+        sed -i "/%shared_network%/d" $TEST_CONF
+        sed -i "/%shared_network_subnet%/d" $TEST_CONF
     else
         # do not leave invalid keys in the configuration when using Nova for networking
         sed -i "/%shared_network%/d" $TEST_CONF
@@ -882,16 +896,13 @@ function cmd_build_and_upload_image() {
         IMAGE_URL="file://$QCOW_IMAGE"
     fi
 
-    # The devstack openrc has references to 'enable_plugin' which causes errors
-    # in the stable/juno and stable/kilo branches. These are safe to ignore.
-    set +e; source $PATH_DEVSTACK_SRC/openrc admin admin; set -e
-    TOKEN=$(openstack token issue | grep ' id ' | get_field 2)
-    GLANCE_IMAGEIDS=$(glance image-list | grep $(basename $IMAGE_URL .qcow2) | get_field 1)
+    local credentials="--os-username=admin --os-password=$ADMIN_PASSWORD --os-tenant-name=admin --os-auth-url=$TROVE_AUTH_ENDPOINT --os-region $REGION_NAME"
+    TOKEN=$(openstack $credentials token issue | grep ' id ' | get_field 2)
+    GLANCE_IMAGEIDS=$(glance $credentials image-list | grep $(basename $IMAGE_URL .qcow2) | get_field 1)
     if [[ -n $GLANCE_IMAGEIDS ]]; then
-        glance image-delete $GLANCE_IMAGEIDS
+        glance $credentials image-delete $GLANCE_IMAGEIDS
     fi
     GLANCE_IMAGEID=`get_glance_id upload_image $IMAGE_URL $TOKEN`
-    set +e; source $PATH_DEVSTACK_SRC/openrc demo demo; set -e
     [[ -z "$GLANCE_IMAGEID" ]] && echo "Glance upload failed!" && exit 1
     echo "IMAGE ID: $GLANCE_IMAGEID"
 
@@ -1287,11 +1298,12 @@ function cmd_kick_start() {
 
 function cmd_dsvm_gate_tests() {
     exclaim "Running cmd_dsvm_gate_tests ..."
+    ACTUAL_HOSTNAME=$(hostname -I | sed 's/[0-9]*\.[0-9]*\.[0-9]*\.1\b//g' | sed 's/[0-9a-z][0-9a-z]*:.*:[0-9a-z][0-9a-z]*//g' | sed 's/ /\n/g' | sed '/^$/d' | sort -bu | head -1)
     DATASTORE_TYPE=${1:-'mysql'}
     TEST_GROUP=${2:-${DATASTORE_TYPE}}
     HOST_SCP_USERNAME=${3:-'jenkins'}
     GUEST_USERNAME=${4:-'ubuntu'}
-    CONTROLLER_IP=${5:-'10.1.0.1'}
+    CONTROLLER_IP=${5:-$ACTUAL_HOSTNAME}
     ESCAPED_PATH_TROVE=${6:-'\/opt\/stack\/new\/trove'}
     export REPORT_DIRECTORY=${REPORT_DIRECTORY:=$HOME/dsvm-report/}
     export TROVE_REPORT_DIR=$HOME/dsvm-report/
@@ -1401,7 +1413,6 @@ function cmd_clone_projects() {
 function cmd_repl() {
     INT_TEST_OPTIONS=-i cmd_int_tests_white_box --repl --group=_does_not_exist_ $@
 }
-
 
 ###############################################################################
 # Process the user provided command and run the appropriate command

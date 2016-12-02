@@ -394,7 +394,6 @@ class InstanceModule(object):
         instance_module = None
         # First mark any 'old' records as deleted and/or update the
         # current one.
-        deleted_records = 0
         old_ims = InstanceModules.load_all(
             context, instance_id=instance_id, module_id=module_id)
         for old_im in old_ims:
@@ -403,13 +402,14 @@ class InstanceModule(object):
                 InstanceModule.update(context, instance_module)
             else:
                 if old_im.md5 == md5 and instance_module:
-                    LOG.debug("Found dupe IM record %s; marking as deleted." %
-                              old_im.id)
+                    LOG.debug("Found dupe IM record %s; marking as deleted "
+                              "(instance %s, module %s)." %
+                              (old_im.id, instance_id, module_id))
+                else:
+                    LOG.debug("Deleting IM record %s (instance %s, "
+                              "module %s)." %
+                              (old_im.id, instance_id, module_id))
                 InstanceModule.delete(context, old_im)
-                deleted_records += 1
-        if deleted_records:
-            LOG.debug("Marked %s instance module record(s) as deleted" %
-                      deleted_records)
 
         # If we don't have an instance module, it means we need to create
         # a new one.

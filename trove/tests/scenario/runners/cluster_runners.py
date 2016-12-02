@@ -24,6 +24,8 @@ from trove.common import cfg
 from trove.common import exception
 from trove.common.utils import poll_until
 from trove.tests.scenario.helpers.test_helper import DataType
+from trove.tests.scenario import runners
+from trove.tests.scenario.runners.test_runners import SkipKnownBug
 from trove.tests.scenario.runners.test_runners import TestRunner
 from trove.tests.util.check import TypeCheck
 from troveclient.compat import exceptions
@@ -761,6 +763,10 @@ class PxcClusterRunner(ClusterRunner):
     @property
     def min_cluster_node_count(self):
         return self.get_datastore_config_property('min_cluster_member_count')
+
+    def run_cluster_delete(self, expected_task_name='NONE',
+                           expected_http_code=202):
+        raise SkipKnownBug(runners.BUG_STOP_DB_IN_CLUSTER)
 
 
 class RedisClusterRunner(ClusterRunner):
