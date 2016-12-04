@@ -453,27 +453,39 @@ class Manager(periodic_task.PeriodicTasks):
         saslauthd_init_file = operating_system.file_discovery(
             ['/etc/default/saslauthd'])
         if saslauthd_init_file:
+            codec = stream_codecs.KeyValueCodec(line_terminator='\n')
             saslauthd_init = operating_system.read_file(
-                saslauthd_init_file, stream_codecs.KeyValueCodec(),
-                as_root=True)
+                saslauthd_init_file, codec=codec, as_root=True)
             saslauthd_init['START'] = 'yes'
             operating_system.write_file(
-                saslauthd_init_file, saslauthd_init,
-                stream_codecs.KeyValueCodec(), as_root=True)
+                saslauthd_init_file, saslauthd_init, codec=codec, as_root=True)
         elif operating_system.file_discovery(['/etc/sysconfig/saslauthd']):
-            operating_system.enable_service_on_boot(['saslauth'])
+            operating_system.enable_service_on_boot(['saslauthd'])
         else:
             LOG.exception(_("Cannot find saslauthd service to enable for LDAP "
                             "client. Skipping."))
             return
-        operating_system.start_service(['saslauth'])
+        operating_system.start_service(['saslauthd'])
         saslauthd_conf_file = '/etc/saslauthd.conf'
         saslauthd_conf = operating_system.read_file(
             saslauthd_conf_file, stream_codecs.YamlCodec(), as_root=True)
         saslauthd_conf.update({
-            'ldap_servers': CONF.get(self.manager).get('ldap_servers'),
-            'ldap_search_base': CONF.get(self.manager).get('ldap_search_base')
+            'ldap_servers': cfg.get_configuration_property('ldap_servers'),
+            'ldap_search_base':
+                cfg.get_configuration_property('ldap_search_base')
         })
+        ldap_tls_cacert_dir = cfg.get_configuration_property(
+            'ldap_tls_cacert_dir')
+        if ldap_tls_cacert_dir:
+            saslauthd_conf.update({
+                'ldap_tls_cacert_dir': ldap_tls_cacert_dir,
+            })
+        ldap_tls_cacert_file = cfg.get_configuration_property(
+            'ldap_tls_cacert_file')
+        if ldap_tls_cacert_file:
+            saslauthd_conf.update({
+                'ldap_tls_cacert_file': ldap_tls_cacert_file,
+            })
         operating_system.write_file(
             saslauthd_conf_file, saslauthd_conf,
             stream_codecs.YamlCodec(), as_root=True)

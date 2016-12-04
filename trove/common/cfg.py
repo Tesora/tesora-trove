@@ -507,6 +507,12 @@ common_opts = [
     cfg.StrOpt('ldap_search_base', default='',
                help='If saslauthd is enabled, set the saslauthd.conf '
                     'configuration option.'),
+    cfg.StrOpt('ldap_tls_cacert_dir', default=None,
+               help='If saslauthd is enabled, set the saslauthd.conf '
+                    'configuration option.'),
+    cfg.StrOpt('ldap_tls_cacert_file', default=None,
+               help='If saslauthd is enabled, set the saslauthd.conf '
+                    'configuration option.'),
 ]
 
 

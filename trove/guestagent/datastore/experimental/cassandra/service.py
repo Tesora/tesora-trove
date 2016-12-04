@@ -1303,7 +1303,8 @@ class CassandraConnection(object):
     def local_node_is_up(self):
         """Test whether Cassandra is up on the localhost.
         """
-        return self.node_is_up('127.0.0.1')
+        return (self.node_is_up('127.0.0.1') or
+                self.node_is_up(netutils.get_my_ipv4()))
 
     def _connect(self):
         if not self._cluster.is_shutdown:
