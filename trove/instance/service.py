@@ -13,7 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from oslo_config.cfg import NoSuchOptError
 from oslo_log import log as logging
 from oslo_utils import strutils
 import webob.exc
@@ -388,7 +387,7 @@ class InstanceController(wsgi.Controller):
                           "configured."))
                 user_models = user_controller.parse_users_from_request(
                     user_data)
-            except NoSuchOptError:
+            except exception.DatastoreOperationNotSupported:
                 # Datastore does not support users at all.
                 pass
 
@@ -406,7 +405,7 @@ class InstanceController(wsgi.Controller):
                           "configured."))
                 db_models = db_controller.parse_databases_from_request(
                     db_data)
-            except NoSuchOptError:
+            except exception.DatastoreOperationNotSupported:
                 # Datastore does not support databases at all.
                 pass
 
