@@ -146,6 +146,9 @@ class MockStorage(Storage):
     def get_container_name(self):
         return 'database_backups'
 
+    def get_storage_url(self):
+        return 'http://foobar/database_backups'
+
 
 class MockRestoreRunner(RestoreRunner):
 

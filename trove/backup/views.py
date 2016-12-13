@@ -25,6 +25,7 @@ class BackupView(object):
                 "id": self.backup.id,
                 "name": self.backup.name,
                 "description": self.backup.description,
+                "type": self.backup.backup_type,
                 "locationRef": self.backup.location,
                 "instance_id": self.backup.instance_id,
                 "created": self.backup.created,
@@ -32,6 +33,8 @@ class BackupView(object):
                 "size": self.backup.size,
                 "status": self.backup.state,
                 "parent_id": self.backup.parent_id,
+                "filename": self.backup.filename,
+                "container": self.backup.container,
             }
         }
         if self.backup.datastore_version_id:

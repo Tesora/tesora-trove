@@ -13,9 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-from trove.common import cfg
-
-CONF = cfg.CONF
 
 url_ref = {
     "type": "string",
@@ -98,6 +95,14 @@ uuid = {
     "maxLength": 64,
     "pattern": "^([0-9a-fA-F]){8}-([0-9a-fA-F]){4}-([0-9a-fA-F]){4}"
                "-([0-9a-fA-F]){4}-([0-9a-fA-F]){12}$"
+}
+
+datastore_ref = {
+    "type": "object",
+    "properties": {
+        "type": non_empty_string,
+        "version": non_empty_string
+    }
 }
 
 backup_id = {
@@ -557,12 +562,27 @@ backup = {
         "properties": {
             "backup": {
                 "type": "object",
-                "required": ["instance", "name"],
+                "required": [],
                 "properties": {
                     "description": non_empty_string,
                     "instance": uuid,
                     "name": non_empty_string,
-                    "parent_id": backup_id
+                    "parent_id": backup_id,
+                    "incremental": boolean_string,
+                    "meta": {
+                        "type": "object",
+                        "required": ["id", "name", "type",
+                                     "datastore", "locationRef"],
+                        "properties": {
+                            "id": uuid,
+                            "name": non_empty_string,
+                            "type": non_empty_string,
+                            "datastore": datastore_ref,
+                            "locationRef": non_empty_string,
+                            "description": non_empty_string,
+                            "checksum": non_empty_string
+                        }
+                    }
                 }
             }
         }
@@ -612,13 +632,7 @@ module = {
                     "module_type": non_empty_string,
                     "contents": module_contents,
                     "description": non_empty_string,
-                    "datastore": {
-                        "type": "object",
-                        "properties": {
-                            "type": non_empty_string,
-                            "version": non_empty_string
-                        }
-                    },
+                    "datastore": datastore_ref,
                     "auto_apply": boolean_string,
                     "all_tenants": boolean_string,
                     "visible": boolean_string,
