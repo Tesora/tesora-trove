@@ -126,7 +126,6 @@ class BackupRunner(TestRunner):
         datastore_version = self.auth_client.datastore_versions.get(
             self.instance_info.dbaas_datastore,
             self.instance_info.dbaas_datastore_version)
-
         self.assert_equal('BACKUP', instance.status,
                           'Unexpected instance status')
         self.assert_equal(self.instance_info.dbaas_datastore,
