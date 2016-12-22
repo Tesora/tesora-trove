@@ -73,10 +73,10 @@ class TemplateTest(trove_testtools.TestCase):
                                self.flavor_dict, self.server_id)
 
     def test_renderer_discovers_special_config(self):
-        """Finds our special config file for the version 'mysql-test'."""
+        """Finds our special config file for the version 'mysqltest'."""
         datastore = Mock(spec=DatastoreVersion)
         datastore.datastore_name = 'mysql'
-        datastore.name = 'mysql-test'
+        datastore.name = 'mysqltest'
         datastore.manager = 'mysql'
         config = template.SingleInstanceConfigTemplate(datastore,
                                                        self.flavor_dict,

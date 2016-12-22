@@ -68,6 +68,15 @@ class SingleInstanceConfigTemplate(object):
         """
         self.flavor_dict = flavor_dict
         self.datastore_version = datastore_version
+        # Tesora Downstream HACK!
+        # To support the template search into a specific ds version
+        # directory, we are going to make sure to strip off everything
+        # past the "real" ds version. e.g. a Tesora version looks like:
+        # 9.4-123 - for template search we just need "9.4"
+        # This will have no effect if the ds version doesn't have the
+        # hyphen in it.
+        adjusted_dsv_name = self.datastore_version.name.split('-')[0]
+
         # TODO(tim.simpson): The current definition of datastore_version is a
         #                    bit iffy and I believe will change soon, so I'm
         #                    creating a dictionary here for jinja to consume
@@ -75,7 +84,7 @@ class SingleInstanceConfigTemplate(object):
         self.datastore_dict = {
             'name': self.datastore_version.datastore_name,
             'manager': self.datastore_version.manager,
-            'version': self.datastore_version.name,
+            'version': adjusted_dsv_name
         }
         self.instance_id = instance_id
 

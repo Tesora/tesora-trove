@@ -293,7 +293,7 @@ class PostgresqlReplicationStreaming(base.Replication):
     def enable_hot_standby(self, service):
         opts = {'hot_standby': 'on'}
         # wal_log_hints for pg_rewind is only supported in 9.4+
-        if service.pg_version[1] in ('9.4', '9.5'):
+        if not service.pg_version[1] in ('9.3'):
             opts['wal_log_hints'] = 'on'
 
         service.configuration_manager.\
