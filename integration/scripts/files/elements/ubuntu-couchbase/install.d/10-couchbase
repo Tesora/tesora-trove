@@ -26,7 +26,6 @@ exit \$?
 _EOF_
 
 apt-get -qy update
-apt-get -qy install curl
 
 # Install deb package
 # Do not start instance when installation is complete

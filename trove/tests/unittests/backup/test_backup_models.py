@@ -238,9 +238,10 @@ class BackupCreateTest(trove_testtools.TestCase):
                               self.context, self.instance_id,
                               BACKUP_NAME, BACKUP_DESC)
 
+    @patch('trove.backup.models.LOG')
     @patch.object(datastore_models.DatastoreVersion, 'load_by_uuid',
                   return_value=MagicMock())
-    def test_create_backup_creation_error(self, mock_dv):
+    def test_create_backup_creation_error(self, mock_dv, mock_logging):
         mock_dv.return_value.manager = "mysql"
         self.patch_conf_property("enable_cluster_instance_backup", False,
                                  section="mysql")

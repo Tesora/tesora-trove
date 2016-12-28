@@ -7,7 +7,7 @@ set -e
 set -o xtrace
 
 export DEBIAN_FRONTEND=noninteractive
-apt-get -y install python-dev libxml2-dev libxslt1-dev python-setuptools \
+apt-get --allow-unauthenticated -y install python-dev libxml2-dev libxslt1-dev python-setuptools \
     python-pip python-sqlalchemy python-lxml \
     python-routes python-eventlet python-webob \
     python-pastedeploy python-paste python-netaddr \
@@ -24,8 +24,8 @@ if [ -f ${TMP_HOOKS_DIR}/upper-constraints.txt ]; then
     UPPER_CONSTRAINTS=" -c ${TMP_HOOKS_DIR}/upper-constraints.txt"
 fi
 
-pip install -q --upgrade -r ${TMP_HOOKS_DIR}/requirements.txt ${UPPER_CONSTRAINTS}
+pip2 install -q --upgrade -r ${TMP_HOOKS_DIR}/requirements.txt ${UPPER_CONSTRAINTS}
 
 echo "diagnostic pip freeze output follows"
-pip freeze
+pip2 freeze
 echo "diagnostic pip freeze output above"

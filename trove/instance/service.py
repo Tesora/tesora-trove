@@ -312,6 +312,25 @@ class InstanceController(wsgi.Controller):
             policy.authorize_on_tenant(
                 context, 'instance:extension:database:create')
 
+        modules = body['instance'].get('modules')
+
+        # The following operations have their own API calls.
+        # We need to make sure the same policies are enforced when
+        # creating an instance.
+        # i.e. if attaching configuration group to an existing instance is not
+        # allowed, it should not be possible to create a new instance with the
+        # group attached either
+        if configuration:
+            policy.authorize_on_tenant(context, 'instance:update')
+        if modules:
+            policy.authorize_on_tenant(context, 'instance:module_apply')
+        if users:
+            policy.authorize_on_tenant(
+                context, 'instance:extension:user:create')
+        if databases:
+            policy.authorize_on_tenant(
+                context, 'instance:extension:database:create')
+
         if 'volume' in body['instance']:
             volume_info = body['instance']['volume']
             volume_size = int(volume_info['size'])

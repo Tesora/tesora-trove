@@ -56,8 +56,6 @@ class InstanceCreateRunner(TestRunner):
             instance_info.dbaas_datastore_version)
         self.instance_info.dbaas_flavor_href = instance_info.dbaas_flavor_href
         self.instance_info.volume = instance_info.volume
-        self.instance_info.srv_grp_id = self.assert_server_group_exists(
-            self.instance_info.id)
         self.instance_info.helper_user = instance_info.helper_user
         self.instance_info.helper_database = instance_info.helper_database
 
@@ -148,10 +146,7 @@ class InstanceCreateRunner(TestRunner):
             instance_info.volume = {'size': trove_volume_size}
         else:
             instance_info.volume = None
-
-        shared_network = CONFIG.get('shared_network', None)
-        if shared_network:
-            instance_info.nics = [{'net-id': shared_network}]
+        instance_info.nics = self.instance_info.nics
 
         self.report.log("Testing create instance: %s"
                         % {'name': name,
@@ -173,7 +168,8 @@ class InstanceCreateRunner(TestRunner):
             instance_info.name = instance.name
         else:
             self.report.log("Creating a new instance.")
-            instance = self.auth_client.instances.create(
+            client = self.auth_client
+            instance = client.instances.create(
                 instance_info.name,
                 instance_info.dbaas_flavor_href,
                 instance_info.volume,
@@ -185,8 +181,8 @@ class InstanceCreateRunner(TestRunner):
                 datastore=instance_info.dbaas_datastore,
                 datastore_version=instance_info.dbaas_datastore_version,
                 locality=locality)
-            self.assert_instance_action(
-                instance.id, expected_states[0:1], expected_http_code)
+            self.assert_client_code(client, expected_http_code)
+            self.assert_instance_action(instance.id, expected_states[0:1])
 
         instance_info.id = instance.id
 
@@ -218,28 +214,30 @@ class InstanceCreateRunner(TestRunner):
 
         return instance_info
 
-    def run_wait_for_created_instances(
+    def run_wait_for_instance(
             self, expected_states=['BUILD', 'ACTIVE']):
         instances = [self.instance_info.id]
-        if self.init_inst_info:
-            instances.append(self.init_inst_info.id)
         self.assert_all_instance_states(instances, expected_states)
-
-        # It may take some time before the initial users/databases
-        # appear on the instance after it went ACTIVE.
-        # We need to wait for that before we can proceed with data operations.
+        self.instance_info.srv_grp_id = self.assert_server_group_exists(
+            self.instance_info.id)
         self.wait_for_test_helpers(self.instance_info)
+
+    def run_wait_for_init_instance(
+            self, expected_states=['BUILD', 'ACTIVE']):
         if self.init_inst_info:
+            instances = [self.init_inst_info.id]
+            self.assert_all_instance_states(instances, expected_states)
             self.wait_for_test_helpers(self.init_inst_info)
 
     def wait_for_test_helpers(self, inst_info):
         self.report.log("Waiting for helper users and databases to be "
                         "created on instance: %s" % inst_info.id)
+        client = self.auth_client
         if inst_info.helper_user:
-            self.wait_for_user_create(inst_info.id,
+            self.wait_for_user_create(client, inst_info.id,
                                       [inst_info.helper_user])
         if inst_info.helper_database:
-            self.wait_for_database_create(inst_info.id,
+            self.wait_for_database_create(client, inst_info.id,
                                           [inst_info.helper_database])
         self.report.log("Test helpers are ready.")
 
@@ -290,13 +288,15 @@ class InstanceCreateRunner(TestRunner):
                               "No configuration group expected")
 
     def assert_database_list(self, instance_id, expected_databases):
-        self.wait_for_database_create(instance_id, expected_databases)
+        self.wait_for_database_create(self.auth_client,
+                                      instance_id, expected_databases)
 
     def _get_names(self, definitions):
         return [item['name'] for item in definitions]
 
     def assert_user_list(self, instance_id, expected_users):
-        self.wait_for_user_create(instance_id, expected_users)
+        self.wait_for_user_create(self.auth_client,
+                                  instance_id, expected_users)
         # Verify that user definitions include only created databases.
         all_databases = self._get_names(
             self.test_helper.get_valid_database_definitions())
@@ -309,9 +309,9 @@ class InstanceCreateRunner(TestRunner):
 
     def run_initialized_instance_delete(self, expected_http_code=202):
         if self.init_inst_info:
-            self.auth_client.instances.delete(self.init_inst_info.id)
-            self.assert_client_code(expected_http_code,
-                                    client=self.auth_client)
+            client = self.auth_client
+            client.instances.delete(self.init_inst_info.id)
+            self.assert_client_code(client, expected_http_code)
         else:
             raise SkipTest("Cleanup is not required.")
 
@@ -332,9 +332,9 @@ class InstanceCreateRunner(TestRunner):
 
     def run_initial_configuration_delete(self, expected_http_code=202):
         if self.config_group_id:
-            self.auth_client.configurations.delete(self.config_group_id)
-            self.assert_client_code(expected_http_code,
-                                    client=self.auth_client)
+            client = self.auth_client
+            client.configurations.delete(self.config_group_id)
+            self.assert_client_code(client, expected_http_code)
         else:
             raise SkipTest("Cleanup is not required.")
         self.config_group_id = None

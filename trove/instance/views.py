@@ -131,10 +131,8 @@ class InstanceDetailView(InstanceView):
             result['instance']['shard_id'] = self.instance.shard_id
 
         if self.context.is_admin:
-            if self.instance.server_id:
-                result['instance']['server_id'] = self.instance.server_id
-            if self.instance.volume_support and self.instance.volume_id:
-                result['instance']['volume_id'] = self.instance.volume_id
+            result['instance']['server_id'] = self.instance.server_id
+            result['instance']['volume_id'] = self.instance.volume_id
 
         return result
 
