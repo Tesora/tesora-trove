@@ -37,7 +37,7 @@ class TestPolicy(trove_testtools.TestCase):
         test_rule = NonCallableMock()
         trove_policy.authorize_on_tenant(self.context, test_rule)
         self.mock_get_enforcer.assert_called_once_with()
-        self.mock_enforcer.enforce.assert_called_once_with(
+        self.mock_enforcer.authorize.assert_called_once_with(
             test_rule, {'tenant': self.context.tenant}, self.context.to_dict(),
             do_raise=True, exc=trove_exceptions.PolicyNotAuthorized,
             action=test_rule)
@@ -47,7 +47,7 @@ class TestPolicy(trove_testtools.TestCase):
         test_target = NonCallableMock()
         trove_policy.authorize_on_target(self.context, test_rule, test_target)
         self.mock_get_enforcer.assert_called_once_with()
-        self.mock_enforcer.enforce.assert_called_once_with(
+        self.mock_enforcer.authorize.assert_called_once_with(
             test_rule, test_target, self.context.to_dict(),
             do_raise=True, exc=trove_exceptions.PolicyNotAuthorized,
             action=test_rule)

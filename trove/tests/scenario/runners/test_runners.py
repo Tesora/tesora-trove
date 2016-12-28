@@ -14,6 +14,7 @@
 #    under the License.
 
 import datetime
+import inspect
 import json
 import netaddr
 import os
@@ -233,6 +234,10 @@ class TestRunner(object):
         else:
             self.instance_info.volume_size = None
             self.instance_info.volume = None
+        self.instance_info.nics = None
+        shared_network = CONFIG.get('shared_network', None)
+        if shared_network:
+            self.instance_info.nics = [{'net-id': shared_network}]
 
         self._auth_client = None
         self._unauth_client = None
@@ -318,9 +323,7 @@ class TestRunner(object):
 
     @property
     def auth_client(self):
-        if not self._auth_client:
-            self._auth_client = self._create_authorized_client()
-        return self._auth_client
+        return self._create_authorized_client()
 
     def _create_authorized_client(self):
         """Create a client from the normal 'authorized' user."""
@@ -328,9 +331,7 @@ class TestRunner(object):
 
     @property
     def unauth_client(self):
-        if not self._unauth_client:
-            self._unauth_client = self._create_unauthorized_client()
-        return self._unauth_client
+        return self._create_unauthorized_client()
 
     def _create_unauthorized_client(self):
         """Create a client from a different 'unauthorized' user
@@ -343,9 +344,7 @@ class TestRunner(object):
 
     @property
     def admin_client(self):
-        if not self._admin_client:
-            self._admin_client = self._create_admin_client()
-        return self._admin_client
+        return self._create_admin_client()
 
     def _create_admin_client(self):
         """Create a client from an admin user."""
@@ -355,9 +354,7 @@ class TestRunner(object):
 
     @property
     def swift_client(self):
-        if not self._swift_client:
-            self._swift_client = self._create_swift_client()
-        return self._swift_client
+        return self._create_swift_client()
 
     def _create_swift_client(self):
         """Create a swift client from the admin user details."""
@@ -374,9 +371,7 @@ class TestRunner(object):
 
     @property
     def nova_client(self):
-        if not self._nova_client:
-            self._nova_client = create_nova_client(self.instance_info.user)
-        return self._nova_client
+        return create_nova_client(self.instance_info.user)
 
     def get_client_tenant(self, client):
         tenant_name = client.real_client.client.tenant
@@ -386,11 +381,26 @@ class TestRunner(object):
         return tenant_name, tenant_id
 
     def assert_raises(self, expected_exception, expected_http_code,
-                      client_cmd, *cmd_args, **cmd_kwargs):
+                      client, client_cmd, *cmd_args, **cmd_kwargs):
+        if client:
+            # Make sure that the client_cmd comes from the same client that
+            # was passed in, otherwise asserting the client code may fail.
+            cmd_clz = client_cmd.im_self
+            cmd_clz_name = cmd_clz.__class__.__name__
+            client_attrs = [attr[0] for attr in inspect.getmembers(
+                            client.real_client)
+                            if '__' not in attr[0]]
+            match = [getattr(client, a) for a in client_attrs
+                     if getattr(client, a).__class__.__name__ == cmd_clz_name]
+            self.assert_true(any(match),
+                             "Could not find method class in client: %s" %
+                             client_attrs)
+            self.assert_equal(
+                match[0], cmd_clz,
+                "Test error: client_cmd must be from client obj")
         asserts.assert_raises(expected_exception, client_cmd,
                               *cmd_args, **cmd_kwargs)
-
-        self.assert_client_code(expected_http_code)
+        self.assert_client_code(client, expected_http_code)
 
     def get_datastore_config_property(self, name, datastore=None):
         """Get a Trove configuration property for a given datastore.
@@ -426,17 +436,14 @@ class TestRunner(object):
     def has_do_not_delete_instance(self):
         return self.has_env_flag(self.DO_NOT_DELETE_INSTANCE_FLAG)
 
-    def assert_instance_action(
-            self, instance_ids, expected_states, expected_http_code=None):
-        self.assert_client_code(expected_http_code)
+    def assert_instance_action(self, instance_ids, expected_states):
         if expected_states:
             self.assert_all_instance_states(
                 instance_ids if utils.is_collection(instance_ids)
                 else [instance_ids], expected_states)
 
-    def assert_client_code(self, expected_http_code, client=None):
-        if expected_http_code is not None:
-            client = client or self.auth_client
+    def assert_client_code(self, client, expected_http_code):
+        if client and expected_http_code is not None:
             self.assert_equal(expected_http_code, client.last_http_code,
                               "Unexpected client status code")
 
@@ -487,16 +494,18 @@ class TestRunner(object):
             fast_fail_status = ['ERROR', 'FAILED']
         found = False
         for status in expected_states:
-            if require_all_states or found or self._has_status(
-                    instance_id, status, fast_fail_status=fast_fail_status):
+            found_current = self._has_status(
+                instance_id, status, fast_fail_status=fast_fail_status)
+            if require_all_states or found or found_current:
                 found = True
                 start_time = timer.time()
                 try:
-                    poll_until(lambda: self._has_status(
-                        instance_id, status,
-                        fast_fail_status=fast_fail_status),
-                        sleep_time=self.def_sleep_time,
-                        time_out=self.def_timeout)
+                    if not found_current:
+                        poll_until(lambda: self._has_status(
+                            instance_id, status,
+                            fast_fail_status=fast_fail_status),
+                            sleep_time=self.def_sleep_time,
+                            time_out=self.def_timeout)
                     self.report.log("Instance '%s' has gone '%s' in %s." %
                                     (instance_id, status,
                                      self._time_since(start_time)))
@@ -696,19 +705,20 @@ class TestRunner(object):
         not be changed by individual test-cases.
         """
         database_def, user_def, root_def = self.build_helper_defs()
+        client = self.auth_client
         if database_def:
             self.report.log(
                 "Creating a helper database '%s' on instance: %s"
                 % (database_def['name'], instance_id))
-            self.auth_client.databases.create(instance_id, [database_def])
-            self.wait_for_database_create(instance_id, [database_def])
+            client.databases.create(instance_id, [database_def])
+            self.wait_for_database_create(client, instance_id, [database_def])
 
         if user_def:
             self.report.log(
                 "Creating a helper user '%s:%s' on instance: %s"
                 % (user_def['name'], user_def['password'], instance_id))
-            self.auth_client.users.create(instance_id, [user_def])
-            self.wait_for_user_create(instance_id, [user_def])
+            client.users.create(instance_id, [user_def])
+            self.wait_for_user_create(client, instance_id, [user_def])
 
         if root_def:
             # Not enabling root on a single instance of the cluster here
@@ -755,14 +765,14 @@ class TestRunner(object):
                 _build_user_def(credentials, user_properties),
                 _build_user_def(credentials_root, user_properties))
 
-    def wait_for_user_create(self, instance_id, expected_user_defs):
+    def wait_for_user_create(self, client, instance_id, expected_user_defs):
         expected_user_names = {user_def['name']
                                for user_def in expected_user_defs}
         self.report.log("Waiting for all created users to appear in the "
                         "listing: %s" % expected_user_names)
 
         def _all_exist():
-            all_users = self.get_user_names(instance_id)
+            all_users = self.get_user_names(client, instance_id)
             return all(usr in all_users for usr in expected_user_names)
 
         try:
@@ -772,18 +782,19 @@ class TestRunner(object):
             self.fail("Some users were not created within the poll "
                       "timeout: %ds" % self.GUEST_CAST_WAIT_TIMEOUT_SEC)
 
-    def get_user_names(self, instance_id):
-        full_list = self.auth_client.users.list(instance_id)
+    def get_user_names(self, client, instance_id):
+        full_list = client.users.list(instance_id)
         return {user.name: user for user in full_list}
 
-    def wait_for_database_create(self, instance_id, expected_database_defs):
+    def wait_for_database_create(self, client,
+                                 instance_id, expected_database_defs):
         expected_db_names = {db_def['name']
                              for db_def in expected_database_defs}
         self.report.log("Waiting for all created databases to appear in the "
                         "listing: %s" % expected_db_names)
 
         def _all_exist():
-            all_dbs = self.get_db_names(instance_id)
+            all_dbs = self.get_db_names(client, instance_id)
             return all(db in all_dbs for db in expected_db_names)
 
         try:
@@ -793,24 +804,24 @@ class TestRunner(object):
             self.fail("Some databases were not created within the poll "
                       "timeout: %ds" % self.GUEST_CAST_WAIT_TIMEOUT_SEC)
 
-    def get_db_names(self, instance_id):
-        full_list = self.auth_client.databases.list(instance_id)
+    def get_db_names(self, client, instance_id):
+        full_list = client.databases.list(instance_id)
         return {database.name: database for database in full_list}
 
     def create_initial_configuration(self, expected_http_code):
         dynamic_config = self.test_helper.get_dynamic_group()
         non_dynamic_config = self.test_helper.get_non_dynamic_group()
         values = dynamic_config or non_dynamic_config
+        client = self.auth_client
         if values:
             json_def = json.dumps(values)
-            result = self.auth_client.configurations.create(
+            result = client.configurations.create(
                 'initial_configuration_for_create_tests',
                 json_def,
                 "Configuration group used by create tests.",
                 datastore=self.instance_info.dbaas_datastore,
                 datastore_version=self.instance_info.dbaas_datastore_version)
-            self.assert_client_code(expected_http_code,
-                                    client=self.auth_client)
+            self.assert_client_code(client, expected_http_code)
 
             return (result.id, dynamic_config is None)
 

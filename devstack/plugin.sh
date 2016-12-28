@@ -100,9 +100,42 @@ function iniset_conditional {
 }
 
 
+# configure_nova_kvm() - update the nova hypervisor configuration if possible
+function configure_nova_kvm {
+    cpu="unknown"
+
+    if [ -e /sys/module/kvm_*/parameters/nested ]; then
+        reconfigure_nova="F"
+
+        if [ -e /sys/module/kvm_intel/parameters/nested ]; then
+            cpu="Intel"
+            if [[ "$(cat /sys/module/kvm_*/parameters/nested)" == "Y" ]]; then
+                reconfigure_nova="Y"
+            fi
+        elif [ -e /sys/module/kvm_amd/parameters/nested ]; then
+            cpu="AMD"
+            if [[ "$(cat /sys/module/kvm_*/parameters/nested)" == "1" ]]; then
+                reconfigure_nova="Y"
+            fi
+        fi
+
+        if [ "${reconfigure_nova}" == "Y" ]; then
+            NOVA_CONF_DIR=${NOVA_CONF_DIR:-/etc/nova}
+            NOVA_CONF=${NOVA_CONF:-${NOVA_CONF_DIR}/nova.conf}
+            iniset $NOVA_CONF libvirt cpu_mode "none"
+            iniset $NOVA_CONF libvirt virt_type "kvm"
+        fi
+    fi
+
+    virt_type=$(iniget $NOVA_CONF libvirt virt_type)
+    echo "configure_nova_kvm: using virt_type: ${virt_type} for cpu: ${cpu}."
+}
+
 # configure_trove() - Set config files, create data dirs, etc
 function configure_trove {
     setup_develop $TROVE_DIR
+
+    configure_nova_kvm
 
     # Create the trove conf dir and cache dirs if they don't exist
     sudo install -d -o $STACK_USER ${TROVE_CONF_DIR} ${TROVE_AUTH_CACHE_DIR}
@@ -371,6 +404,27 @@ function _create_private_subnet_v6 {
     echo $ipv6_subnet_id
 }
 
+# Set up a network on the alt_demo tenant.  Requires ROUTER_ID, REGION_NAME and IP_VERSION to be set
+function set_up_network() {
+    local CLOUD_USER=$1
+    local PROJECT_ID=$2
+    local NET_NAME=$3
+    local SUBNET_NAME=$4
+    local IPV6_SUBNET_NAME=$5
+
+    NEW_NET_ID=$(openstack --os-cloud ${CLOUD_USER} --os-region "$REGION_NAME" network create --project ${PROJECT_ID} "$NET_NAME" | grep ' id ' | get_field 2)
+    if [[ "$IP_VERSION" =~ 4.* ]]; then
+        NEW_SUBNET_ID=$(_create_private_subnet_v4 ${PROJECT_ID} ${NEW_NET_ID} ${SUBNET_NAME} ${CLOUD_USER})
+        openstack --os-cloud ${CLOUD_USER} --os-region "$REGION_NAME" router add subnet $ROUTER_ID $NEW_SUBNET_ID
+    fi
+    if [[ "$IP_VERSION" =~ .*6 ]]; then
+        NEW_IPV6_SUBNET_ID=$(_create_private_subnet_v6 ${PROJECT_ID} ${NEW_NET_ID} ${IPV6_SUBNET_NAME} ${CLOUD_USER})
+        openstack --os-cloud ${CLOUD_USER} --os-region "$REGION_NAME" router add subnet $ROUTER_ID $NEW_IPV6_SUBNET_ID
+    fi
+
+    echo $NEW_NET_ID
+}
+
 # finalize_trove_network() - do the last thing(s) before starting Trove
 function finalize_trove_network {
 
@@ -394,19 +448,15 @@ function finalize_trove_network {
     ALT_PRIVATE_NETWORK_NAME=${TROVE_PRIVATE_NETWORK_NAME}
     ALT_PRIVATE_SUBNET_NAME=${TROVE_PRIVATE_SUBNET_NAME}
     ALT_PRIVATE_IPV6_SUBNET_NAME=ipv6-${ALT_PRIVATE_SUBNET_NAME}
-    ALT_NET_ID=$(openstack --os-cloud ${ADMIN_ALT_DEMO_CLOUD} --os-region "$REGION_NAME" network create --project ${ALT_TENANT_ID} "$ALT_PRIVATE_NETWORK_NAME" | grep ' id ' | get_field 2)
-    if [[ "$IP_VERSION" =~ 4.* ]]; then
-        ALT_SUBNET_ID=$(_create_private_subnet_v4 ${ALT_TENANT_ID} ${ALT_NET_ID} ${ALT_PRIVATE_SUBNET_NAME} ${ADMIN_ALT_DEMO_CLOUD})
-        openstack --os-cloud ${ADMIN_ALT_DEMO_CLOUD} --os-region "$REGION_NAME" router add subnet $ROUTER_ID $ALT_SUBNET_ID
-        echo "Created network ${ALT_PRIVATE_NETWORK_NAME} (${ALT_NET_ID}): ${ALT_PRIVATE_SUBNET_NAME} (${ALT_SUBNET_ID})"
-    else
-        echo "Only IPV4 supported at present"
-    fi
-    #if [[ "$IP_VERSION" =~ .*6 ]]; then
-    #    ALT_IPV6_SUBNET_ID=$(_create_private_subnet_v6 ${ALT_TENANT_ID} ${ALT_NET_ID} ${ALT_PRIVATE_IPV6_SUBNET_NAME} ${ADMIN_ALT_DEMO_CLOUD})
-    #    openstack --os-cloud ${ADMIN_ALT_DEMO_CLOUD} --os-region "$REGION_NAME" router add subnet $ROUTER_ID $ALT_IPV6_SUBNET_ID
-    #    echo "Created IPv6 network ${ALT_PRIVATE_NETWORK_NAME} (${ALT_NET_ID}): ${ALT_PRIVATE_IPV6_SUBNET_NAME} (${ALT_IPV6_SUBNET_ID})"
-    #fi
+    ALT_NET_ID=$(set_up_network $ADMIN_ALT_DEMO_CLOUD $ALT_TENANT_ID $ALT_PRIVATE_NETWORK_NAME $ALT_PRIVATE_SUBNET_NAME $ALT_PRIVATE_IPV6_SUBNET_NAME)
+    echo "Created network ${ALT_PRIVATE_NETWORK_NAME} (${ALT_NET_ID})"
+
+    # Set up a management network to test that functionality
+    ALT_MGMT_NETWORK_NAME=trove-mgmt
+    ALT_MGMT_SUBNET_NAME=${ALT_MGMT_NETWORK_NAME}-subnet
+    ALT_MGMT_IPV6_SUBNET_NAME=ipv6-${ALT_MGMT_SUBNET_NAME}
+    ALT_MGMT_ID=$(set_up_network $ADMIN_ALT_DEMO_CLOUD $ALT_TENANT_ID $ALT_MGMT_NETWORK_NAME $ALT_MGMT_SUBNET_NAME $ALT_MGMT_IPV6_SUBNET_NAME)
+    echo "Created network ${ALT_MGMT_NETWORK_NAME} (${ALT_MGMT_ID})"
 
     # Make sure we can reach the VMs
     local replace_range=${SUBNETPOOL_PREFIX_V4}
@@ -415,26 +465,24 @@ function finalize_trove_network {
     fi
     sudo ip route replace $replace_range via $ROUTER_GW_IP
 
-    # Share the private network so that the alt_demo tenant can access it too.
-    # This will be used as the management network for the alt_demo tenant.
-    NET_ID=$(openstack --os-cloud devstack-admin --os-region "$REGION_NAME" network list | grep " $PRIVATE_NETWORK_NAME " | awk '{print $2}')
-    $(openstack --os-cloud devstack-admin --os-region "$REGION_NAME" network set --share $NET_ID)
-    echo "Using network ${PRIVATE_NETWORK_NAME} (${NET_ID}) as the Management network for Trove."
-
     echo "Neutron network list:"
     openstack --os-cloud devstack-admin --os-region "$REGION_NAME" network list
 
     # Now make sure the conf settings are right
-    iniset $TROVE_CONF DEFAULT network_label_regex .*
-    iniset $TROVE_CONF DEFAULT ip_regex .*
-    iniset $TROVE_CONF DEFAULT black_list_regex ^10.0.1.*
-    iniset $TROVE_CONF DEFAULT default_neutron_networks ${NET_ID}
+    iniset $TROVE_CONF DEFAULT network_label_regex "${ALT_PRIVATE_NETWORK_NAME}"
+    iniset $TROVE_CONF DEFAULT ip_regex ""
+    iniset $TROVE_CONF DEFAULT black_list_regex ""
+    # Don't use a default network for now, until the neutron issues are figured out
+    #iniset $TROVE_CONF DEFAULT default_neutron_networks "${ALT_MGMT_ID}"
+    iniset $TROVE_CONF DEFAULT default_neutron_networks ""
     iniset $TROVE_CONF DEFAULT network_driver trove.network.neutron.NeutronDriver
 
-    iniset $TROVE_TASKMANAGER_CONF DEFAULT network_label_regex .*
-    iniset $TROVE_TASKMANAGER_CONF DEFAULT ip_regex .*
-    iniset $TROVE_TASKMANAGER_CONF DEFAULT black_list_regex ^10.0.1.*
-    iniset $TROVE_TASKMANAGER_CONF DEFAULT default_neutron_networks ${NET_ID}
+    iniset $TROVE_TASKMANAGER_CONF DEFAULT network_label_regex "${ALT_PRIVATE_NETWORK_NAME}"
+    iniset $TROVE_TASKMANAGER_CONF DEFAULT ip_regex ""
+    iniset $TROVE_TASKMANAGER_CONF DEFAULT black_list_regex ""
+    # Don't use a default network for now, until the neutron issues are figured out
+    #iniset $TROVE_TASKMANAGER_CONF DEFAULT default_neutron_networks "${ALT_MGMT_ID}"
+    iniset $TROVE_CONF DEFAULT default_neutron_networks ""
     iniset $TROVE_TASKMANAGER_CONF DEFAULT network_driver trove.network.neutron.NeutronDriver
 }
 

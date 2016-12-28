@@ -179,17 +179,21 @@ cluster_groups.extend([cluster_group.GROUP])
 
 # Single-instance based groups
 instance_create_groups = list(base_groups)
-instance_create_groups.extend([instance_create_group.GROUP,
-                               instance_delete_group.GROUP])
+instance_create_groups.extend([groups.INST_CREATE,
+                               groups.INST_DELETE_WAIT])
 
 instance_error_create_groups = list(base_groups)
 instance_error_create_groups.extend([instance_error_create_group.GROUP])
 
-instance_upgrade_groups = list(instance_create_groups)
-instance_upgrade_groups.extend([instance_upgrade_group.GROUP])
-
 instance_force_delete_groups = list(base_groups)
 instance_force_delete_groups.extend([instance_force_delete_group.GROUP])
+
+instance_init_groups = list(base_groups)
+instance_init_groups.extend([instance_create_group.GROUP,
+                             instance_delete_group.GROUP])
+
+instance_upgrade_groups = list(instance_create_groups)
+instance_upgrade_groups.extend([instance_upgrade_group.GROUP])
 
 backup_groups = list(instance_create_groups)
 backup_groups.extend([groups.BACKUP,
@@ -197,6 +201,9 @@ backup_groups.extend([groups.BACKUP,
 
 backup_incremental_groups = list(backup_groups)
 backup_incremental_groups.extend([backup_group.GROUP])
+
+backup_negative_groups = list(backup_groups)
+backup_negative_groups.extend([groups.BACKUP_CREATE_NEGATIVE])
 
 configuration_groups = list(instance_create_groups)
 configuration_groups.extend([configuration_group.GROUP])
@@ -239,12 +246,13 @@ user_actions_groups.extend([user_actions_group.GROUP])
 
 # groups common to all datastores
 common_groups = list(instance_groups)
-common_groups.extend([guest_log_groups, module_groups])
+common_groups.extend([guest_log_groups, instance_init_groups, module_groups])
 
 # Register: Component based groups
 register(["backup"], backup_groups)
 register(["backup_incremental"], backup_incremental_groups)
-register(["cluster"], cluster_groups)
+register(["backup_negative"], backup_negative_groups)
+register(["cluster"], cluster_actions_groups)
 register(["cluster_actions"], cluster_actions_groups)
 register(["cluster_create"], cluster_create_groups)
 register(["cluster_negative_actions"], cluster_negative_actions_groups)
@@ -264,6 +272,7 @@ register(["instance_actions"], instance_actions_groups)
 register(["instance_create"], instance_create_groups)
 register(["instance_error"], instance_error_create_groups)
 register(["instance_force_delete"], instance_force_delete_groups)
+register(["instance_init"], instance_init_groups)
 register(["instance_upgrade"], instance_upgrade_groups)
 register(["module"], module_groups)
 register(["module_create"], module_create_groups)
@@ -295,6 +304,8 @@ register(
             user_actions_groups, ],
     multi=[cluster_actions_groups,
            cluster_config_actions_groups,
+           cluster_negative_actions_groups,
+           cluster_root_actions_groups,
            cluster_upgrade_groups, ]
 )
 
@@ -320,29 +331,6 @@ register(
 )
 
 register(
-    ["postgresql_supported"],
-    single=[common_groups,
-            backup_incremental_groups,
-            database_actions_groups,
-            configuration_groups,
-            root_actions_groups,
-            user_actions_groups, ],
-    multi=[replication_promote_groups, ]
-)
-
-register(
-    ["mysql_supported", "percona_supported"],
-    single=[common_groups,
-            backup_incremental_groups,
-            configuration_groups,
-            database_actions_groups,
-            instance_upgrade_groups,
-            root_actions_groups,
-            user_actions_groups, ],
-    multi=[replication_promote_groups, ]
-)
-
-register(
     ["mariadb_supported"],
     single=[common_groups,
             backup_incremental_groups,
@@ -350,9 +338,11 @@ register(
             database_actions_groups,
             root_actions_groups,
             user_actions_groups, ],
-    multi=[replication_promote_groups,
-           cluster_actions_groups,
-           cluster_upgrade_groups, ]
+    multi=[replication_promote_groups, ]
+    # multi=[cluster_actions_groups,
+    #        cluster_negative_actions_groups,
+    #        cluster_root_actions_groups,
+    #        replication_promote_groups, ]
 )
 
 register(
@@ -367,6 +357,41 @@ register(
 )
 
 register(
+    ["mysql_supported"],
+    single=[common_groups,
+            backup_incremental_groups,
+            configuration_groups,
+            database_actions_groups,
+            instance_upgrade_groups,
+            root_actions_groups,
+            user_actions_groups, ],
+    multi=[replication_promote_groups, ]
+)
+
+register(
+    ["percona_supported"],
+    single=[common_groups,
+            backup_incremental_groups,
+            configuration_groups,
+            database_actions_groups,
+            instance_upgrade_groups,
+            root_actions_groups,
+            user_actions_groups, ],
+    multi=[replication_promote_groups, ]
+)
+
+register(
+    ["postgresql_supported"],
+    single=[common_groups,
+            backup_incremental_groups,
+            database_actions_groups,
+            configuration_groups,
+            root_actions_groups,
+            user_actions_groups, ],
+    multi=[replication_groups, ]
+)
+
+register(
     ["pxc_supported"],
     single=[common_groups,
             backup_incremental_groups,
@@ -374,15 +399,20 @@ register(
             database_actions_groups,
             root_actions_groups,
             user_actions_groups, ],
-    multi=[cluster_actions_groups,
-           cluster_config_actions_groups, ]
+    multi=[]
+    # multi=[cluster_actions_groups,
+    #        cluster_negative_actions_groups,
+    #        cluster_root_actions_groups, ]
 )
 
 register(
     ["redis_supported"],
     single=[common_groups,
-            backup_groups, ],
-    multi=[replication_promote_groups, ]
+            backup_groups,
+            backup_negative_groups, ],
+    multi=[cluster_actions_groups,
+           cluster_negative_actions_groups,
+           replication_promote_groups, ]
 )
 
 register(
@@ -391,7 +421,8 @@ register(
             configuration_groups,
             root_actions_groups, ],
     multi=[cluster_actions_groups,
-           cluster_root_groups, ]
+           cluster_negative_actions_groups,
+           cluster_root_actions_groups, ]
 )
 
 # Tesora Downstream test groups

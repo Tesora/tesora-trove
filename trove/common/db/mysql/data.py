@@ -13,8 +13,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-
-charset = {"big5": ["big5_chinese_ci", "big5_bin"],
+# DS HACK ALERT - see DBAAS-2448 - add "UTF" and "en_US.UTF8" to these dicts
+charset = {"UTF8": ["en_US.UTF8"],
+           "big5": ["big5_chinese_ci", "big5_bin"],
            "dec8": ["dec8_swedish_ci", "dec8_bin"],
            "cp850": ["cp850_general_ci", "cp850_bin"],
            "hp8": ["hp8_english_ci", "hp8_bin"],
@@ -115,7 +116,8 @@ charset = {"big5": ["big5_chinese_ci", "big5_bin"],
            "cp932": ["cp932_japanese_ci", "cp932_bin"],
            "eucjpms": ["eucjpms_japanese_ci", "eucjpms_bin"]}
 
-collation = {"big5_chinese_ci": "big5",
+collation = {"en_US.UTF8": "UTF8",
+             "big5_chinese_ci": "big5",
              "big5_bin": "big5",
              "dec8_swedish_ci": "dec8",
              "dec8_bin": "dec8",

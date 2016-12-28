@@ -21,6 +21,8 @@
 # Backup Group
 BACKUP = "scenario.backup_grp"
 BACKUP_CREATE = "scenario.backup_create_grp"
+BACKUP_CREATE_NEGATIVE = "scenario.backup_create_negative_grp"
+BACKUP_CREATE_WAIT = "scenario.backup_create_wait_grp"
 BACKUP_DELETE = "scenario.backup_delete_grp"
 BACKUP_INST = "scenario.backup_inst_grp"
 BACKUP_INST_CREATE = "scenario.backup_inst_create_grp"
@@ -104,6 +106,8 @@ INST_UPGRADE = "scenario.inst_upgrade_grp"
 # Instance Create Group
 INST_CREATE = "scenario.inst_create_grp"
 INST_CREATE_WAIT = "scenario.inst_create_wait_grp"
+INST_INIT_CREATE = "scenario.inst_init_create_grp"
+INST_INIT_CREATE_WAIT = "scenario.inst_init_create_wait_grp"
 INST_INIT_DELETE = "scenario.inst_init_delete_grp"
 INST_INIT_DELETE_WAIT = "scenario.inst_init_delete_wait_grp"
 INST_INIT_FORCE_DELETE = "scenario.inst_init_force_delete_grp"
