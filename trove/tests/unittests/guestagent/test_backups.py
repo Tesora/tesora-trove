@@ -477,10 +477,6 @@ class GuestAgentBackupTest(trove_testtools.TestCase):
             chmod.assert_called_once_with(
                 ANY, operating_system.FileMode.ADD_READ_ALL, as_root=True)
 
-            # Make sure the temporary error log got deleted as root
-            # (see bug/1423759).
-            remove.assert_called_once_with(ANY, force=True, as_root=True)
-
     @mock.patch.object(ImportOverrideStrategy, '_initialize_import_directory')
     def test_backup_encrypted_mongodump_command(self, _):
         backupBase.BackupRunner.is_zipped = True
