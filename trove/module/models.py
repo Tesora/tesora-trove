@@ -163,7 +163,7 @@ class Module(object):
                priority_apply, apply_order, full_access):
         if (module_type.lower() not in Modules.VALID_MODULE_TYPES and
                 Modules.ANY_MODULE not in Modules.VALID_MODULE_TYPES):
-            LOG.error("Valid module types: %s" % Modules.VALID_MODULE_TYPES)
+            LOG.error(_("Valid module types: %s") % Modules.VALID_MODULE_TYPES)
             raise exception.ModuleTypeNotFound(module_type=module_type)
         Module.validate_action(
             context, 'create', tenant_id, auto_apply, visible, priority_apply,
@@ -215,13 +215,13 @@ class Module(object):
             option_strs.append(_("Priority: %s") % priority_apply)
         if full_access is not None:
             if full_access and option_strs:
-                admin_options_str = "(" + " ".join(option_strs) + ")"
+                admin_options_str = "(" + ", ".join(option_strs) + ")"
                 raise exception.InvalidModelError(
                     errors=_('Cannot make module full access: %s') %
                     admin_options_str)
             option_strs.append(_("Full Access: %s") % full_access)
         if option_strs:
-            admin_options_str = "(" + " ".join(option_strs) + ")"
+            admin_options_str = "(" + ", ".join(option_strs) + ")"
         if not context.is_admin and admin_options_str:
             raise exception.ModuleAccessForbidden(
                 action=action_str, options=admin_options_str)
@@ -335,8 +335,8 @@ class Module(object):
             md5, processed_contents = Module.process_contents(module.contents)
             module.md5 = md5
             module.contents = processed_contents
-        else:
-            # on load the contents were decrypted, so
+        elif hasattr(original_module, 'encrypted_contents'):
+            # on load the contents may have been decrypted, so
             # we need to put the encrypted contents back before we update
             module.contents = original_module.encrypted_contents
         if module.datastore_id:
