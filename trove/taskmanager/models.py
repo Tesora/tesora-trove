@@ -1720,7 +1720,7 @@ class ModuleTasks(object):
         reapply_count = 0
         skipped_count = 0
         if instance_modules:
-            module_list = module_views.convert_modules(modules)
+            module_list = module_views.get_module_list(modules)
             for instance_module in instance_modules:
                 instance_id = instance_module.instance_id
                 if (instance_module.md5 != current_md5 or force) and (

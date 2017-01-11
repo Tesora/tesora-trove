@@ -585,6 +585,26 @@ def load_server_group_info(instance, context, compute_id):
         instance.locality = srv_grp.ServerGroup.get_locality(server_group)
 
 
+def validate_modules_for_apply(modules, datastore_id, datastore_version_id):
+    for module in modules:
+        if (module.datastore_id and
+                module.datastore_id != datastore_id):
+            reason = (_("Module '%(mod)s' cannot be applied "
+                        " (Wrong datastore '%(ds)s' - expected '%(ds2)s')")
+                      % {'mod': module.name, 'ds': module.datastore_id,
+                         'ds2': datastore_id})
+            raise exception.ModuleInvalid(reason=reason)
+        if (module.datastore_version_id and
+                module.datastore_version_id != datastore_version_id):
+            reason = (_("Module '%(mod)s' cannot be applied "
+                        " (Wrong datastore version '%(ver)s' "
+                        "- expected '%(ver2)s')")
+                      % {'mod': module.name,
+                         'ver': module.datastore_version_id,
+                         'ver2': datastore_version_id})
+            raise exception.ModuleInvalid(reason=reason)
+
+
 class BaseInstance(SimpleInstance):
     """Represents an instance.
     -----------
@@ -1047,9 +1067,8 @@ class Instance(BuiltInstance):
         for aa_module in auto_apply_modules:
             if aa_module.id not in module_ids:
                 modules.append(aa_module)
-        module_models.Modules.validate(
-            modules, datastore.id, datastore_version.id)
-        module_list = module_views.convert_modules(modules)
+        validate_modules_for_apply(modules, datastore.id, datastore_version.id)
+        module_list = module_views.get_module_list(modules)
 
         def _create_resources():
 

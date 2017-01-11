@@ -14,6 +14,7 @@
 #    under the License.
 #
 
+import copy
 from mock import Mock, patch
 
 from trove.module import models
@@ -38,11 +39,13 @@ class CreateModuleTest(trove_testtools.TestCase):
     def tearDown(self):
         super(CreateModuleTest, self).tearDown()
 
-    def test_can_create_module(self):
+    def test_can_create_update_module(self):
         module = models.Module.create(
             self.context,
             self.name, self.module_type, self.contents,
             'my desc', 'my_tenant', None, None, False, True, False,
             False, 5, True)
         self.assertIsNotNone(module)
+        new_module = copy.copy(module)
+        models.Module.update(self.context, new_module, module, False)
         module.delete()

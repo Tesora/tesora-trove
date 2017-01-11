@@ -100,14 +100,18 @@ class DetailedModuleView(ModuleView):
         if hasattr(self.module, 'instance_count'):
             module_dict["instance_count"] = self.module.instance_count
         if include_contents:
+            if not hasattr(self.module, 'encrypted_contents'):
+                self.module.encrypted_contents = self.module.contents
+                self.module.contents = models.Module.deprocess_contents(
+                    self.module.contents)
             module_dict['contents'] = self.module.contents
         return {"module": module_dict}
 
 
-def convert_modules(modules):
+def get_module_list(modules):
     module_list = []
     for module in modules:
-        module.contents = models.Module.deprocess_contents(module.contents)
-        module_info = DetailedModuleView(module).data(include_contents=True)
+        module_info = DetailedModuleView(module).data(
+            include_contents=True)
         module_list.append(module_info)
     return module_list

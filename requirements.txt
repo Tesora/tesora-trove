@@ -12,7 +12,6 @@ PasteDeploy>=1.5.0 # MIT
 Paste # MIT
 sqlalchemy-migrate>=0.9.6 # Apache-2.0
 netaddr!=0.7.16,>=0.7.13 # BSD
-netifaces>=0.10.4 # MIT
 httplib2>=0.7.5 # MIT
 lxml!=3.7.0,>=2.3 # BSD
 passlib>=1.7.0 # BSD
@@ -43,7 +42,7 @@ stevedore>=1.17.1 # Apache-2.0
 oslo.messaging>=5.14.0 # Apache-2.0
 osprofiler>=1.4.0 # Apache-2.0
 oslo.log>=3.11.0 # Apache-2.0
-oslo.db>=4.13.3 # Apache-2.0
+oslo.db>=4.15.0 # Apache-2.0
 enum34;python_version=='2.7' or python_version=='2.6' or python_version=='3.3' # BSD
 psutil>=1.1.1,<2.0.0 # BSD
 oslo.policy>=1.6.0 # Apache-2.0

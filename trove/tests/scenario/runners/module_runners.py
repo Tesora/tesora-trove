@@ -273,11 +273,10 @@ class ModuleRunner(TestRunner):
             expected_http_code=400):
         client = self.admin_client
         self.assert_raises(
-            expected_exception, None,
+            expected_exception, expected_http_code,
             client, client.modules.create,
             self.MODULE_NAME, self.module_type, self.MODULE_NEG_CONTENTS,
             full_access=True, auto_apply=True)
-        self.assert_client_code(client, expected_http_code)
 
     def run_module_create_bad_datastore(
             self, expected_exception=exceptions.NotFound,
@@ -743,22 +742,22 @@ class ModuleRunner(TestRunner):
 
     def assert_module_toggle(self, module, toggle_off_args, toggle_on_args,
                              expected_exception, expected_http_code):
-        client = self.auth_client
         # First try to update the module based on the change
         # (this should toggle the state but still not allow non-admin access)
-        self.assert_module_update(
-            self.admin_client, module.id, **toggle_off_args)
+        client = self.admin_client
+        self.assert_module_update(client, module.id, **toggle_off_args)
         # The non-admin client should fail to update
+        non_admin_client = self.auth_client
         self.assert_raises(
             expected_exception, expected_http_code,
-            client, client.modules.update, module.id,
+            non_admin_client, non_admin_client.modules.update, module.id,
             description='Updated by non-admin')
         # Make sure we can still update with the admin client
         self.assert_module_update(
-            self.admin_client, module.id, description='Updated by admin')
+            client, module.id, description='Updated by admin')
         # Now set it back
         self.assert_module_update(
-            self.admin_client, module.id, description=module.description,
+            client, module.id, description=module.description,
             **toggle_on_args)
 
     def run_module_update_all_tenant_toggle(
@@ -1056,9 +1055,9 @@ class ModuleRunner(TestRunner):
     def run_module_apply_wrong_module(
             self, expected_exception=exceptions.BadRequest,
             expected_http_code=400):
-        client = self.auth_client
         module = self._find_diff_datastore_module()
         self.report.log("Found 'wrong' module: %s" % module.name)
+        client = self.auth_client
         self.assert_raises(
             expected_exception, expected_http_code,
             client, client.instances.module_apply,
@@ -1203,15 +1202,16 @@ class ModuleRunner(TestRunner):
             modules=module_ids,
         )
         self.assert_client_code(client, expected_http_code)
+        self.register_debug_inst_ids(inst.id)
         return inst.id
 
     def run_create_inst_with_wrong_module(
             self, expected_exception=exceptions.BadRequest,
             expected_http_code=400):
-        client = self.auth_client
         module = self._find_diff_datastore_module()
         self.report.log("Found 'wrong' module: %s" % module.name)
 
+        client = self.auth_client
         self.assert_raises(
             expected_exception, expected_http_code,
             client, client.instances.create,

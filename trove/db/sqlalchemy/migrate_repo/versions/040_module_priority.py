@@ -46,12 +46,3 @@ def upgrade(migrate_engine):
            values=dict(is_admin=1),
            whereclause="visible=0 or auto_apply=1 or tenant_id is null"
            ).execute()
-
-
-def downgrade(migrate_engine):
-    meta = MetaData()
-    meta.bind = migrate_engine
-    modules = Table('modules', meta, autoload=True)
-    modules.drop_column(COLUMN_NAME_1)
-    modules.drop_column(COLUMN_NAME_2)
-    modules.drop_column(COLUMN_NAME_3)

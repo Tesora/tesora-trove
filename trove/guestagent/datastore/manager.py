@@ -738,7 +738,10 @@ class Manager(periodic_task.PeriodicTasks):
             modules.sort(key=operator.itemgetter('priority_apply'),
                          reverse=True)
         except KeyError:
-            # if we don't have ordering info, just continue
+            # If we don't have ordering info then maybe we're running
+            # a version of the module feature before ordering was
+            # introduced.  In that case, since we don't have any
+            # way to order the modules we should just continue.
             pass
         for module in modules:
             id = module.get('id', None)
@@ -767,7 +770,6 @@ class Manager(periodic_task.PeriodicTasks):
                 raise exception.ModuleTypeNotFound(
                     _("No driver implemented for module type '%s'") %
                     module_type)
-
             if (datastore and datastore != self.MODULE_APPLY_TO_ALL and
                     datastore != CONF.datastore_manager):
                 reason = (_("Module not valid for datastore %s") %
