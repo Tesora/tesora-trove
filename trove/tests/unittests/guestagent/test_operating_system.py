@@ -586,6 +586,71 @@ class TestOperatingSystem(trove_testtools.TestCase):
                               "Got unknown keyword args: {'_unknown_kw': 0}"),
             'source', 'destination', _unknown_kw=0)
 
+    def test_link(self):
+        self._assert_execute_call(
+            [['ln', '-s', 'source', 'destination']],
+            [{'run_as_root': True, 'root_helper': 'sudo'}],
+            operating_system.link, None, 'source', 'destination', as_root=True)
+
+        self._assert_execute_call(
+            [['ln', '-s', 'source', 'destination']],
+            [{'run_as_root': True, 'root_helper': 'sudo'}],
+            operating_system.link, None, 'source', 'destination',
+            symbolic=True, as_root=True)
+
+        self._assert_execute_call(
+            [['ln', 'source', 'destination']],
+            [{'run_as_root': True, 'root_helper': 'sudo'}],
+            operating_system.link, None, 'source', 'destination',
+            symbolic=False, as_root=True)
+
+        self._assert_execute_call(
+            [['ln', '-s', 'source', 'destination']], [{}],
+            operating_system.link, None, 'source', 'destination')
+
+        self._assert_execute_call(
+            None, None,
+            operating_system.link,
+            ExpectedException(exception.UnprocessableEntity,
+                              "Missing source path."), '', 'destination')
+
+        self._assert_execute_call(
+            None, None,
+            operating_system.link,
+            ExpectedException(exception.UnprocessableEntity,
+                              "Missing source path."), None, 'destination')
+
+        self._assert_execute_call(
+            None, None,
+            operating_system.link,
+            ExpectedException(exception.UnprocessableEntity,
+                              "Missing destination path."), 'source', '')
+
+        self._assert_execute_call(
+            None, None,
+            operating_system.link,
+            ExpectedException(exception.UnprocessableEntity,
+                              "Missing destination path."), 'source', None)
+
+        self._assert_execute_call(
+            None, None,
+            operating_system.copy,
+            ExpectedException(exception.UnprocessableEntity,
+                              "Missing source path."), '', '')
+
+        self._assert_execute_call(
+            None, None,
+            operating_system.link,
+            ExpectedException(exception.UnprocessableEntity,
+                              "Missing source path."), None, None)
+
+        self._assert_execute_call(
+            None, None,
+            operating_system.link,
+            ExpectedException(UnknownArgumentError,
+                              "Got unknown keyword args: {'_unknown_kw': 0}"),
+            'source', 'destination', _unknown_kw=0)
+
     def test_chown(self):
         self._assert_execute_call(
             [['chown', '-R', 'usr:grp', 'path']],
