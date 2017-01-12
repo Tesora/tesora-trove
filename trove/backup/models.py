@@ -23,6 +23,7 @@ from trove.common import cfg
 from trove.common import exception
 from trove.common.i18n import _
 from trove.common.remote import create_swift_client
+from trove.common.strategies import storage as storage_strategies
 from trove.common import utils
 from trove.datastore import models as datastore_models
 from trove.db.models import DatabaseModelBase
@@ -49,7 +50,7 @@ class Backup(object):
 
     @classmethod
     def create(cls, context, instance, name, description=None,
-               parent_id=None, incremental=False):
+               parent_id=None, incremental=False, meta=None):
         """
         create db record for Backup
         :param cls:
@@ -60,8 +61,46 @@ class Backup(object):
         :param parent_id:
         :param incremental: flag to indicate incremental backup
         based on previous backup
+        :param meta: metadata to import the backup from
         :return:
         """
+
+        def _create_from_metadata():
+            ds_info = meta['datastore']
+            ds_name = ds_info['type']
+            ds_ver = ds_info['version']
+
+            try:
+                datastore = datastore_models.Datastore.load(ds_name)
+                datastore_version = datastore_models.DatastoreVersion.load(
+                    datastore, ds_ver)
+
+                storage = storage_strategies.get_storage_strategy(
+                    CONF.storage_strategy, CONF.storage_namespace)(context)
+                storage_url = storage.get_storage_url()
+                location = '%s/%s' % (storage_url, meta['filename'])
+
+                db_info = DBBackup.create(
+                    id=meta['id'],
+                    name=meta['name'],
+                    description=meta.get('description'),
+                    backup_type=meta.get('type'),
+                    location=location,
+                    size=meta.get('size'),
+                    checksum=meta.get('checksum'),
+                    tenant_id=context.tenant,
+                    state=BackupState.COMPLETED,
+                    instance_id=None,
+                    parent_id=None,
+                    datastore_version_id=datastore_version.id,
+                    deleted=False)
+
+                return db_info
+            except exception.NotFound:
+                raise exception.BackupCreationError(
+                    _("Backup cannot be created because the requested"
+                      " datastore does not exist: %(name)s (%(version)s)")
+                    % {'name': ds_name, 'version': ds_ver})
 
         def _create_resources():
             # parse the ID from the Ref
@@ -144,6 +183,12 @@ class Backup(object):
                            }
             api.API(context).create_backup(backup_info, instance_id)
             return db_info
+
+        if meta:
+            return run_with_quotas(context.tenant,
+                                   {'backups': 1},
+                                   _create_from_metadata)
+
         return run_with_quotas(context.tenant,
                                {'backups': 1},
                                _create_resources)
@@ -347,6 +392,18 @@ class DBBackup(DatabaseModelBase):
             return None
 
     @property
+    def container(self):
+        if self.location:
+            parts = self.location.split('/')
+            container = parts[-2]
+            if len(parts) == 0:
+                raise ValueError(_("Bad location for backup object: %s")
+                                 % self.location)
+            return container
+        else:
+            return None
+
+    @property
     def datastore(self):
         if self.datastore_version_id:
             return datastore_models.Datastore.load(
@@ -366,7 +423,7 @@ class DBBackup(DatabaseModelBase):
             client = create_swift_client(context)
             LOG.debug("Checking if backup exists in %s" % self.location)
             resp = client.head_object(container, obj)
-            if verify_checksum:
+            if self.checksum and verify_checksum:
                 LOG.debug("Checking if backup checksum matches swift "
                           "for backup %s" % self.id)
                 # swift returns etag in double quotes
