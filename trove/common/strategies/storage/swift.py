@@ -132,7 +132,7 @@ class SwiftStorage(base.Storage):
             # Raise an error and mark backup as failed
             if etag != segment_checksum:
                 LOG.error(_("Error saving data segment to swift. "
-                          "ETAG: %(tag)s Segment MD5: %(checksum)s."),
+                            "ETAG: %(tag)s Segment MD5: %(checksum)s."),
                           {'tag': etag, 'checksum': segment_checksum})
                 return False, "Error saving data to Swift!", None, location
 
@@ -193,7 +193,7 @@ class SwiftStorage(base.Storage):
         headers, info = self.connection.get_object(container, filename,
                                                    resp_chunk_size=CHUNK_SIZE)
 
-        if CONF.verify_swift_checksum_on_restore:
+        if backup_checksum and CONF.verify_swift_checksum_on_restore:
             self._verify_checksum(headers.get('etag', ''), backup_checksum)
 
         return info
@@ -242,3 +242,7 @@ class SwiftStorage(base.Storage):
     def get_container_name(self):
         """Get the name of the container."""
         return BACKUP_CONTAINER
+
+    def get_storage_url(self):
+        """Get the object storage URL."""
+        return "%s/%s" % (self.connection.url, self.get_container_name())

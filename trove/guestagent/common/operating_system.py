@@ -543,7 +543,7 @@ def chown(path, user, group, recursive=True, force=False, **kwargs):
             _("Please specify owner or group, or both."))
 
     owner_group_modifier = _build_user_group_pair(user, group)
-    options = (('f', force), ('R', recursive))
+    options = [('f', force), ('R', recursive)]
     _execute_shell_cmd('chown', options, owner_group_modifier, path, **kwargs)
 
 
@@ -562,7 +562,7 @@ def _create_directory(dir_path, force=True, **kwargs):
     :type force:            boolean
     """
 
-    options = (('p', force),)
+    options = [('p', force)]
     _execute_shell_cmd('mkdir', options, dir_path, **kwargs)
 
 
@@ -591,7 +591,7 @@ def chmod(path, mode, recursive=True, force=False, **kwargs):
     """
 
     if path:
-        options = (('f', force), ('R', recursive))
+        options = [('f', force), ('R', recursive)]
         shell_modes = _build_shell_chmod_mode(mode)
         _execute_shell_cmd('chmod', options, shell_modes, path, **kwargs)
     else:
@@ -631,7 +631,7 @@ def change_user_group(user, group, append=True, add_group=True, **kwargs):
     elif not group:
         raise exception.UnprocessableEntity(_("Missing group."))
 
-    options = (('a', append), ('G', add_group))
+    options = [('a', append), ('G', add_group)]
     _execute_shell_cmd('usermod', options, group, user, **kwargs)
 
 
@@ -683,7 +683,7 @@ def remove(path, force=False, recursive=True, **kwargs):
     """
 
     if path:
-        options = (('f', force), ('R', recursive))
+        options = [('f', force), ('R', recursive)]
         _execute_shell_cmd('rm', options, path, **kwargs)
     else:
         raise exception.UnprocessableEntity(_("Cannot remove a blank file."))
@@ -714,7 +714,7 @@ def move(source, destination, force=False, **kwargs):
     elif not destination:
         raise exception.UnprocessableEntity(_("Missing destination path."))
 
-    options = (('f', force),)
+    options = [('f', force)]
     _execute_shell_cmd('mv', options, source, destination, **kwargs)
 
 
@@ -754,9 +754,36 @@ def copy(source, destination, force=False, preserve=False, recursive=True,
     elif not destination:
         raise exception.UnprocessableEntity(_("Missing destination path."))
 
-    options = (('f', force), ('p', preserve), ('R', recursive),
-               ('L', dereference))
+    options = [('f', force), ('p', preserve), ('R', recursive),
+               ('L', dereference)]
     _execute_shell_cmd('cp', options, source, destination, **kwargs)
+
+
+def link(source, destination, symbolic=True, **kwargs):
+    """Link a given file or directory to another location.
+
+    :seealso: _execute_shell_cmd for valid optional keyword arguments.
+
+    :param source:          Path to the source location.
+    :type source:           string
+
+    :param destination:     Path to the destination location.
+    :type destination:      string
+
+    :param symbolic:        Create symbolic link instead of hard link.
+    :type symbolic:         boolean
+
+    :raises:                :class:`UnprocessableEntity` if source or
+                            destination not given.
+    """
+
+    if not source:
+        raise exception.UnprocessableEntity(_("Missing source path."))
+    elif not destination:
+        raise exception.UnprocessableEntity(_("Missing destination path."))
+
+    options = [('s', symbolic)]
+    _execute_shell_cmd('ln', options, source, destination, **kwargs)
 
 
 def get_bytes_free_on_fs(path):

@@ -46,3 +46,7 @@ class Storage(Strategy):
     @abc.abstractmethod
     def get_container_name(self):
         """Get the name of the container."""
+
+    @abc.abstractmethod
+    def get_storage_url(self):
+        """Get the object storage URL."""

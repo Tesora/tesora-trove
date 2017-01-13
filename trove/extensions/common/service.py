@@ -290,10 +290,14 @@ class RoutingController(ExtensionController):
 
     @classmethod
     def load_controller(cls, manager):
-        clazz = cfg.get_configuration_property(cls.NAME, manager)
-        LOG.debug("Loading controller class: %s" % clazz)
-        controller = import_class(clazz)
-        return controller()
+        try:
+            clazz = cfg.get_configuration_property(cls.NAME, manager)
+            LOG.debug("Loading controller class: %s" % clazz)
+            controller = import_class(clazz)
+            return controller()
+        except NoSuchOptError:
+            raise exception.DatastoreOperationNotSupported(
+                _("This operation is not supported."))
 
 
 class RoutingUserController(RoutingController):

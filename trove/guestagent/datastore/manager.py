@@ -462,9 +462,11 @@ class Manager(periodic_task.PeriodicTasks):
         elif operating_system.file_discovery(['/etc/sysconfig/saslauthd']):
             operating_system.enable_service_on_boot(['saslauthd'])
         else:
-            LOG.exception(_("Cannot find saslauthd service to enable for LDAP "
-                            "client. Skipping."))
+            LOG.info(_("Cannot find saslauthd service to enable for LDAP "
+                       "client. Skipping."))
             return
+        operating_system.link('/var/run/saslauthd', '/var/run/sasl2',
+                              symbolic=True, as_root=True)
         operating_system.start_service(['saslauthd'])
         saslauthd_conf_file = '/etc/saslauthd.conf'
         saslauthd_conf = operating_system.read_file(

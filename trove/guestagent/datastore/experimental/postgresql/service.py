@@ -289,7 +289,7 @@ class PgSqlApp(object):
             'wal_keep_segments': 8,
             'archive_command': arch_cmd
         }
-        if self.pg_version[1] in ('9.4', '9.5'):
+        if not self.pg_version[1] in ('9.3'):
             opts['wal_log_hints'] = 'on'
 
         self.configuration_manager.apply_system_override(opts,

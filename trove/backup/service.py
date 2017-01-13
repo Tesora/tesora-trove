@@ -18,7 +18,7 @@ from oslo_log import log as logging
 from trove.backup.models import Backup
 from trove.backup import views
 from trove.common import apischema
-from trove.common import cfg
+from trove.common import exception
 from trove.common.i18n import _
 from trove.common import notification
 from trove.common.notification import StartNotification
@@ -26,7 +26,6 @@ from trove.common import pagination
 from trove.common import policy
 from trove.common import wsgi
 
-CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 
 
@@ -65,17 +64,34 @@ class BackupController(wsgi.Controller):
         context = req.environ[wsgi.CONTEXT_KEY]
         policy.authorize_on_tenant(context, 'backup:create')
         data = body['backup']
-        instance = data['instance']
-        name = data['name']
+        instance = data.get('instance')
+        name = data.get('name')
         desc = data.get('description')
         parent = data.get('parent_id')
         incremental = data.get('incremental')
+        meta = data.get('meta', {})
+
+        if not (meta or instance):
+            raise exception.BadRequest(
+                _("Specify one of the following properties: instance, meta"))
+        if meta and (instance or parent or incremental):
+            raise exception.BadRequest(
+                _("No instance or parent properties may be specified when "
+                  "creating a backup from metadata."))
+
         context.notification = notification.DBaaSBackupCreate(context,
                                                               request=req)
         with StartNotification(context, name=name, instance_id=instance,
                                description=desc, parent_id=parent):
-            backup = Backup.create(context, instance, name, desc,
-                                   parent_id=parent, incremental=incremental)
+            if meta:
+                backup = Backup.create(context, None, None, meta=meta)
+                with notification.EndNotification(
+                        context, backup_id=backup.id):
+                    pass
+            else:
+                backup = Backup.create(
+                    context, instance, name, desc,
+                    parent_id=parent, incremental=incremental, meta=meta)
         return wsgi.Result(views.BackupView(backup).data(), 202)
 
     def delete(self, req, tenant_id, id):

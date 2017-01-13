@@ -17,7 +17,6 @@
 from distutils import spawn
 import glob
 import os
-import re
 import tempfile
 
 from oslo_log import log as logging
@@ -42,10 +41,6 @@ class MySQLRestoreMixin(object):
 
     RESET_ROOT_MYSQL_COMMANDS = ("SET PASSWORD FOR "
                                  "'root'@'localhost'=PASSWORD('');")
-    # This is a suffix MySQL appends to the file name given in
-    # the '--log-error' startup parameter.
-    _ERROR_LOG_SUFFIX = '.err'
-    _ERROR_MESSAGE_PATTERN = re.compile("ERROR")
 
     def mysql_is_running(self):
         try:
@@ -85,10 +80,9 @@ class MySQLRestoreMixin(object):
         utils.execute_with_timeout('sudo', 'systemctl', 'unset-environment',
                                    'MYSQLD_OPTS')
 
-    def _start_mysqld_safe_with_init_file(self, init_file, err_log_file):
+    def _start_mysqld_safe_with_init_file(self, init_file):
         child = pexpect.spawn(
-            "sudo mysqld_safe --init-file=%s --log-error=%s" %
-            (init_file.name, err_log_file.name))
+            "sudo mysqld_safe --init-file=%s" % init_file.name)
         try:
             index = child.expect(['Starting mysqld daemon'])
             if index == 0:
@@ -98,17 +92,10 @@ class MySQLRestoreMixin(object):
         finally:
             # There is a race condition here where we kill mysqld before
             # the init file been executed. We need to ensure mysqld is up.
-            #
-            # mysqld_safe will start even if init-file statement(s) fail.
-            # We therefore also check for errors in the log file.
             self.poll_until_then_raise(
                 self.mysql_is_running,
                 base.RestoreError("Reset root password failed:"
                                   " mysqld did not start!"))
-            first_err_message = self._find_first_error_message(err_log_file)
-            if first_err_message:
-                raise base.RestoreError("Reset root password failed: %s"
-                                        % first_err_message)
 
             LOG.info(_("Root password reset successfully."))
             LOG.debug("Cleaning up the temp mysqld process.")
@@ -140,44 +127,19 @@ class MySQLRestoreMixin(object):
                                         self.RESET_ROOT_MYSQL_COMMANDS)
             operating_system.chmod(init_file.name, FileMode.ADD_READ_ALL,
                                    as_root=True)
-            # Do not attempt to delete the file as the 'trove' user.
-            # The process writing into it may have assumed its ownership.
-            # Only owners can delete temporary
-            # files (restricted deletion).
-            err_log_file = tempfile.NamedTemporaryFile(
-                suffix=self._ERROR_LOG_SUFFIX,
-                delete=False)
-            try:
-                # As of MySQL 5.7.6, for MySQL installation using an RPM
-                # distribution, server startup and shutdown is managed by
-                # systemd on several Linux platforms. On these platforms,
-                # mysqld_safe is no longer installed because it is
-                # unnecessary.
-                if self._mysqld_safe_cmd_exists():
-                    self._start_mysqld_safe_with_init_file(
-                        init_file, err_log_file)
-                else:
-                    self._start_mysqld_with_init_file(init_file)
-            finally:
-                err_log_file.close()
-                operating_system.remove(
-                    err_log_file.name, force=True, as_root=True)
-
-    def _find_first_error_message(self, fp):
-        if self._is_non_zero_file(fp):
-            return self._find_first_pattern_match(
-                fp, self._ERROR_MESSAGE_PATTERN)
-        return None
+            # As of MySQL 5.7.6, for MySQL installation using an RPM
+            # distribution, server startup and shutdown is managed by
+            # systemd on several Linux platforms. On these platforms,
+            # mysqld_safe is no longer installed because it is
+            # unnecessary.
+            if self._mysqld_safe_cmd_exists():
+                self._start_mysqld_safe_with_init_file(init_file)
+            else:
+                self._start_mysqld_with_init_file(init_file)
 
     def _is_non_zero_file(self, fp):
         file_path = fp.name
         return os.path.isfile(file_path) and (os.path.getsize(file_path) > 0)
-
-    def _find_first_pattern_match(self, fp, pattern):
-        for line in fp:
-            if pattern.match(line):
-                return line
-        return None
 
 
 class MySQLDump(base.RestoreRunner, MySQLRestoreMixin):
