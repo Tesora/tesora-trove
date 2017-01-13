@@ -52,6 +52,8 @@ defaults = {
     'trove.guestagent.datastore.experimental.cassandra_3.manager.Manager',
     'dse':
     'trove.guestagent.datastore.experimental.dse.manager.Manager',
+    'dse_5':
+    'trove.guestagent.datastore.experimental.dse_5.manager.Manager',
     'couchbase':
     'trove.guestagent.datastore.experimental.couchbase.manager.Manager',
     'couchbase_4':

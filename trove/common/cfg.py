@@ -383,6 +383,7 @@ common_opts = [
                          '4deb47af-4153-4118-a5ae-d6f15ce02b10',
                          'cassandra_3': '7b776ee5-b65d-4101-bed0-6c6d6eb34dcc',
                          'dse': '30352416-8603-4844-8629-1a3ec54d16b5',
+                         'dse_5': '207ca695-bc05-49d8-9386-d6577e41b912',
                          'couchbase': 'fa62fe68-74d9-4779-a24e-36f19602c415',
                          'couchbase_4': '931f776f-1770-4841-97be-37dc03cfff93',
                          'mongodb': 'c8c907af-7375-456f-b929-b637ff9209ee',
@@ -1433,6 +1434,11 @@ dse_opts = _update_options(
                          'dse_system', 'dse_perf', 'dse_security'],
                 help='Databases to exclude when listing databases.'))
 
+dse_5_group = cfg.OptGroup(
+    'dse_5', title='DSE 5.0 options',
+    help="Oslo option group designed for DSE 5.0 datastore")
+dse_5_opts = _update_options(dse_opts)
+
 # Couchbase
 couchbase_group = cfg.OptGroup(
     'couchbase', title='Couchbase options',
@@ -2183,6 +2189,7 @@ CONF.register_group(cassandra_group)
 CONF.register_group(cassandra_22_group)
 CONF.register_group(cassandra_3_group)
 CONF.register_group(dse_group)
+CONF.register_group(dse_5_group)
 CONF.register_group(couchbase_group)
 CONF.register_group(couchbase_4_group)
 CONF.register_group(couchbase_ee_group)
@@ -2205,6 +2212,7 @@ CONF.register_opts(cassandra_opts, cassandra_group)
 CONF.register_opts(cassandra_22_opts, cassandra_22_group)
 CONF.register_opts(cassandra_3_opts, cassandra_3_group)
 CONF.register_opts(dse_opts, dse_group)
+CONF.register_opts(dse_5_opts, dse_5_group)
 CONF.register_opts(couchbase_opts, couchbase_group)
 CONF.register_opts(couchbase_4_opts, couchbase_4_group)
 CONF.register_opts(couchbase_ee_opts, couchbase_ee_group)
