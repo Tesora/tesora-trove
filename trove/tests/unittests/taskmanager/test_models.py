@@ -684,6 +684,7 @@ class BuiltInstanceTasksTest(trove_testtools.TestCase):
             spec=novaclient.v2.servers.Server)
         self.stub_verifying_server.status = 'VERIFY_RESIZE'
         self.stub_verifying_server.flavor = {'id': 8, 'ram': 768}
+        self.stub_verifying_server.id = 'inst-verify-id'
         self.stub_server_mgr.get = MagicMock(
             return_value=self.stub_verifying_server)
         self.instance_task._nova_client.servers = self.stub_server_mgr
@@ -758,7 +759,7 @@ class BuiltInstanceTasksTest(trove_testtools.TestCase):
             do_not_start_on_reboot=True)
         orig_server.resize.assert_any_call(self.new_flavor['id'])
         self.assertThat(self.db_instance.task_status, Is(InstanceTasks.NONE))
-        self.assertEqual(1, self.stub_server_mgr.get.call_count)
+        self.assertEqual(2, self.stub_server_mgr.get.call_count)
         self.assertThat(self.db_instance.flavor_id, Is(self.new_flavor['id']))
 
     @patch('trove.taskmanager.models.LOG')
