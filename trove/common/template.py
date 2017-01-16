@@ -42,6 +42,7 @@ SERVICE_PARSERS = {
     'cassandra_22': configurations.CassandraConfParser,
     'cassandra_3': configurations.CassandraConfParser,
     'dse': configurations.CassandraConfParser,
+    'dse_5': configurations.CassandraConfParser,
     'redis': configurations.RedisConfParser,
     'vertica': configurations.VerticaConfParser,
     'oracle': configurations.OracleConfParser,
