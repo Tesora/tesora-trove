@@ -172,6 +172,7 @@ class MySQLRestoreMixin(object):
                 fp, self._ERROR_MESSAGE_PATTERN)
         return None
 
+    @classmethod
     def _is_non_zero_file(self, fp):
         file_path = fp.name
         return os.path.isfile(file_path) and (os.path.getsize(file_path) > 0)
