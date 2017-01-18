@@ -52,7 +52,7 @@ class NeutronDriver(base.NetworkDriver):
         try:
             return self.client.show_security_group(security_group=group_id)
         except neutron_exceptions.NeutronClientException as e:
-            LOG.exception('Failed to get remote security group')
+            LOG.exception(_('Failed to get remote security group'))
             raise exception.TroveError(str(e))
 
     def create_security_group(self, name, description):
@@ -64,14 +64,14 @@ class NeutronDriver(base.NetworkDriver):
                 sec_group.get('security_group', sec_group))
 
         except neutron_exceptions.NeutronClientException as e:
-            LOG.exception('Failed to create remote security group')
+            LOG.exception(_('Failed to create remote security group'))
             raise exception.SecurityGroupCreationError(str(e))
 
     def delete_security_group(self, sec_group_id):
         try:
             self.client.delete_security_group(security_group=sec_group_id)
         except neutron_exceptions.NeutronClientException as e:
-            LOG.exception('Failed to delete remote security group')
+            LOG.exception(_('Failed to delete remote security group'))
             raise exception.SecurityGroupDeletionError(str(e))
 
     def add_security_group_rule(self, sec_group_id, protocol,
@@ -96,9 +96,10 @@ class NeutronDriver(base.NetworkDriver):
         except neutron_exceptions.NeutronClientException as e:
             # ignore error if rule already exists
             if e.status_code == 409:
-                LOG.exception("secgroup rule already exists")
+                LOG.exception(_("Security group rule already exists"))
             else:
-                LOG.exception('Failed to add rule to remote security group')
+                LOG.exception(_('Failed to add rule to remote security '
+                                'group'))
                 raise exception.SecurityGroupRuleCreationError(str(e))
 
     def delete_security_group_rule(self, sec_group_rule_id):
@@ -107,7 +108,7 @@ class NeutronDriver(base.NetworkDriver):
                 security_group_rule=sec_group_rule_id)
 
         except neutron_exceptions.NeutronClientException as e:
-            LOG.exception('Failed to delete rule to remote security group')
+            LOG.exception(_('Failed to delete rule to remote security group'))
             raise exception.SecurityGroupRuleDeletionError(str(e))
 
     def _convert_to_nova_security_group_format(self, security_group):
